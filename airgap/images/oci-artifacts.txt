@@ -1,0 +1,20 @@
+# OCI 아티팩트 목록 — 컨테이너 이미지가 **아닌** OCI 산출물
+#
+# 왜 images.txt 와 분리하나:
+#   trivy-db 는 이미지 미디어 타입이 아니다. `docker pull` 로는 받아지지 않고,
+#   images.txt 에 적으면 01-pull-images.sh 가 조용히 실패하거나 원인을 알기
+#   어려운 오류를 낸다. 전송에 oras 가 필요하다.
+#
+# 형식 : <registry>/<repo>:<tag>, 한 줄에 하나. 빈 줄 / "#" 는 무시.
+# 반입 : [온라인] scripts/pre/pull-oci-artifacts.sh
+#        [오프라인] scripts/14-push-oci-artifacts.sh
+#
+# images.txt 와 달리 **자동 생성이 아니다** — helm template 으로는 아티팩트를
+# 알아낼 수 없다. 도구를 늘리면 여기에 손으로 적는다.
+
+# --- Trivy 취약점 DB (stack: security.imageScanner) ---
+# 업스트림은 6시간마다 갱신된다. 에어갭에서는 번들을 다시 반입하는 만큼만
+# 새것이므로, 릴리스마다 다시 받고 스캔 결과에 DB 나이를 함께 남긴다.
+ghcr.io/aquasecurity/trivy-db:2
+# Java 패키지 스캔용. 앱 이미지에 JAR 이 들어가는 스택에서 필요하다.
+ghcr.io/aquasecurity/trivy-java-db:1

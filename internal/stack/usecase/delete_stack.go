@@ -45,6 +45,9 @@ var legacyReleaseArtifactExactNames = map[string]struct{}{
 	"opensearch-cluster-master-opensearch-cluster-master-0": {},
 	"redis-data-gitlab-redis-master-0":                      {},
 	"repo-data-gitlab-gitaly-0":                             {},
+	// 스캐너의 취약점 DB. 남기면 다음 설치가 "이전 설치의 볼륨이 남아 있습니다"
+	// 검증에 걸려 막힌다 — 스캐너를 고른 적 없는 사용자도 손으로 지워야 한다.
+	"data-trivy-0": {},
 	// OpenBao 금고 데이터와 unseal key. 반드시 함께 삭제해야 한다 —
 	// 한쪽만 남으면 재설치 시 init 이 "이미 초기화됨"으로 건너뛰는데
 	// 금고를 열 키가 없어 영구 봉인 상태가 된다.

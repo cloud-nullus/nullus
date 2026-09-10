@@ -3,7 +3,7 @@ import { create } from 'zustand'
 export type BuildFrequency = 'low' | 'medium' | 'high'
 export type Currency = 'USD' | 'KRW' | 'CNY'
 export type ResourceMode = 'auto' | 'manual'
-export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'authentication' | 'resources' | 'storage' | 'manifests' | 'deploy-script' | 'dry-run'
+export type InstallTab = 'artifacts' | 'pipeline' | 'monitoring' | 'security' | 'authentication' | 'resources' | 'storage' | 'manifests' | 'deploy-script' | 'dry-run'
 
 export type StorageMode = 'existing' | 'create'
 export type StoragePlanMode = 'none' | 'existing-all' | 'integrated-create'
@@ -194,6 +194,11 @@ export interface SourceControlDraft {
   personalAccessToken: string
 }
 
+// 이미지 스캐너는 선택이다. 기본값은 "고르지 않음" 이라 아무것도 설치되지 않는다.
+export interface SecurityConfig {
+  imageScanner: ToolSelection
+}
+
 export interface StackConfigDraft {
   selectedTemplateId: string | null
   clusterId: string | null
@@ -209,6 +214,7 @@ export interface StackConfigDraft {
   pipeline: PipelineConfig
   monitoring: MonitoringConfig
   logging: LoggingConfig
+  security: SecurityConfig
   resources: ResourceConfig
   storage: StorageConfig
   activeTab: InstallTab
@@ -226,7 +232,7 @@ interface StackConfigState {
   setAuthenticationProvider: (provider: '' | 'openbao') => void
   updateSourceControl: (config: Partial<SourceControlDraft>) => void
   setTool: (
-    section: 'artifacts' | 'pipeline' | 'monitoring' | 'logging',
+    section: 'artifacts' | 'pipeline' | 'monitoring' | 'logging' | 'security',
     field: string,
     value: ToolSelection
   ) => void
@@ -278,6 +284,11 @@ const DEFAULT_DRAFT: StackConfigDraft = {
     search: { tool: 'opensearch', version: getToolAppVersion('opensearch') },
     traceLayer: { tool: 'tempo', version: getToolAppVersion('tempo') },
     traceExporter: emptyToolSelection(),
+  },
+  // 스캐너는 고르지 않은 상태로 시작한다. 기본으로 켜면 안 쓰는 조직도
+  // 스캐너 파드를 떠안는다 — 레지스트리가 Harbor 면 내장 스캐너로 충분하다.
+  security: {
+    imageScanner: emptyToolSelection(),
   },
   resources: {
     developerCount: 10,
@@ -350,6 +361,9 @@ function buildTemplateDraft(templateId: string, overrides?: Partial<StackConfigD
           traceLayer: emptyToolSelection(),
           traceExporter: emptyToolSelection(),
         },
+        security: {
+          imageScanner: emptyToolSelection(),
+        },
         storage: {
           ...DEFAULT_DRAFT.storage,
           planMode: 'none',
@@ -395,6 +409,9 @@ function migrateDraftToolVersions(draft: StackConfigDraft): StackConfigDraft {
       search: normalizeToolSelectionVersion(draft.logging.search),
       traceLayer: normalizeToolSelectionVersion(draft.logging.traceLayer),
       traceExporter: normalizeToolSelectionVersion(draft.logging.traceExporter),
+    },
+    security: {
+      imageScanner: normalizeToolSelectionVersion(draft.security.imageScanner),
     },
   }
 }

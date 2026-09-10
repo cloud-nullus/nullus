@@ -139,11 +139,21 @@ export const STORAGE_PROVIDER_OPTIONS: Record<'database' | 'objectStorage', Arra
   ],
 }
 
+// 스캐너는 선택지가 아직 하나다. 고르지 않으면 설치되지 않고, 그 스택의
+// 파이프라인은 이미지 스캔 단계를 켤 수 없다 — 레지스트리가 Harbor 면
+// Harbor 내장 스캐너로 대신할 수 있다.
+export const SECURITY_OPTIONS: Record<string, ToolOption[]> = {
+  imageScanner: [
+    { id: 'trivy', label: 'Trivy', description: '컨테이너 이미지 취약점 스캔 (server 모드)' },
+  ],
+}
+
 export const TOOL_OPTIONS_ALL = [
   ...Object.values(ARTIFACTS_OPTIONS).flat(),
   ...Object.values(PIPELINE_OPTIONS).flat(),
   ...Object.values(MONITORING_OPTIONS).flat(),
   ...Object.values(LOGGING_OPTIONS).flat(),
+  ...Object.values(SECURITY_OPTIONS).flat(),
 ]
 
 export const TOOL_LABEL_MAP = new Map(TOOL_OPTIONS_ALL.map((opt) => [opt.id, opt.label]))
@@ -160,6 +170,7 @@ export const MATRIX_CATEGORY_BY_SLOT: Record<PlanningSlot, string | null> = {
   'logging.search': null,
   'logging.traceLayer': null,
   'logging.traceExporter': null,
+  'security.imageScanner': 'image_scanner',
 }
 
 export const TOOL_ID_TO_MATRIX_NAME: Record<string, string> = {
@@ -241,7 +252,7 @@ export function getManifestBundleId(toolId: string): string {
   return TOOL_BUNDLE_CANONICAL[toolId] ?? toolId
 }
 
-export const SLOT_TOOL_BINDING: Record<PlanningSlot, { section: 'artifacts' | 'pipeline' | 'monitoring' | 'logging'; field: string }> = {
+export const SLOT_TOOL_BINDING: Record<PlanningSlot, { section: 'artifacts' | 'pipeline' | 'monitoring' | 'logging' | 'security'; field: string }> = {
   'artifacts.packageRegistry': { section: 'artifacts', field: 'packageRegistry' },
   'artifacts.sourceRepository': { section: 'artifacts', field: 'sourceRepository' },
   'artifacts.containerRegistry': { section: 'artifacts', field: 'containerRegistry' },
@@ -253,6 +264,7 @@ export const SLOT_TOOL_BINDING: Record<PlanningSlot, { section: 'artifacts' | 'p
   'logging.search': { section: 'logging', field: 'search' },
   'logging.traceLayer': { section: 'logging', field: 'traceLayer' },
   'logging.traceExporter': { section: 'logging', field: 'traceExporter' },
+  'security.imageScanner': { section: 'security', field: 'imageScanner' },
 }
 
 export const GATEWAY_MANIFEST_ID = 'gateway'

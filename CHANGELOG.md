@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **컨테이너 이미지 취약점 스캔 — 스택에서 고르는 선택 항목** (`internal/stack/**`, `internal/cicd/**`, `web/src/features/stack/**`, `airgap/**`, nullus-plan#76): 이미지 스캔 기능이 **전무했다.** 저장소 전수 확인 결과 Trivy 설정 0건이었고, PRD 는 이미 완료 기준으로 "Trivy 스캔 완료" 를 적고 있었다. 설계는 [`docs/11_기능설계/Nullus_컨테이너_이미지_스캔_설계.md`](docs/11_기능설계/Nullus_컨테이너_이미지_스캔_설계.md).
+
+  **차단 게이트를 레지스트리에 두지 않는다.** 지원 레지스트리 5종(`scm_project`·`harbor`·`nexus`·`ghcr`·`external`) 중 자체 스캔 기능이 있는 것은 **Harbor 하나뿐**이다 — GitLab Container Registry 의 Container Scanning 은 CI 잡이지 레지스트리 기능이 아니고, Nexus 는 OSS 에 스캐너가 없으며(Sonatype IQ 는 상용), GHCR 은 네이티브 스캔이 없다. 없는 쪽에 플러그인을 꽂을 확장점도 없다: 확장점이 있는 Harbor 는 이미 스캐너가 있고, 없는 셋은 확장점 자체가 없다. 게이트를 레지스트리에 두면 **5종 중 4종이 게이트 없이 초록불**이 된다.
+
+  **Trivy 를 server 모드로 세운다.** 취약점 DB 를 서버에만 두고 CI 잡은 client 로 붙어 패키지 목록만 보낸다. standalone 이면 파이프라인마다 DB(수백 MB)를 내려받아야 하고, 에어갭에서는 그 반입 지점이 "모든 CI 러너가 닿는 곳" 으로 늘어난다 — 이슈가 파이프라인 스캔의 단점으로 꼽은 바로 그 비용이다. kind 실측에서 client 로그의 DB 다운로드는 **0건**이었고, DB 실크기는 1.3G(PVC 5Gi)였다.
+
+  **기본값은 "고르지 않음" 이다.** 기본으로 켜면 안 쓰는 조직도 스캐너 파드를 떠안는다 — 레지스트리가 Harbor 면 내장 스캐너로 충분하다. 차단 기준은 CRITICAL 차단 · HIGH 경고 · `--ignore-unfixed` 다. 마지막 것이 결정적이다: `debian:11` 은 CRITICAL 5건인데 **전부 수정본이 없어**, 이 옵션이 없으면 평범한 베이스 이미지로 첫 배포가 막힌다(실측).
+
+  **에어갭 반입 경로를 새로 만들었다** (`airgap/images/oci-artifacts.txt`, `scripts/pre/pull-oci-artifacts.sh`, `scripts/14-push-oci-artifacts.sh`). trivy-db 는 컨테이너 이미지가 아니라 **OCI 아티팩트**라 `docker pull` 로 받아지지 않는다. oras 로 OCI layout 을 받아 tar 로 옮기고 내부 레지스트리에 올린다. oras 부재는 경고가 아니라 **실패**로 다룬다 — 조용히 건너뛰면 번들이 초록불인 채로 DB 만 빠진다(`generate-sbom.sh` 가 syft 부재를 `exit 0` 으로 넘겨 SBOM 이 통째로 빠졌던 것과 같은 실패다).
+
 - **상단 내비게이션의 진행 중 작업 알림** (`web/src/features/common/{utils,hooks,components}/` 신규, `components/layout/header.tsx`, nullus-plan#66): 스택 설치나 배포를 걸어 두고 다른 화면으로 옮기면 **진행 중이라는 표시가 어디에도 남지 않았다.** 데모(2026-08-22)에서 지적받은 그대로다 — 사용자는 방금 시킨 일이 아직 도는지, 끝났는지, 실패했는지 알 방법이 없어 목록 화면으로 되돌아가 새로고침을 반복했다. 헤더에 종을 두고 도는 동안 흔들리게 한다. 드롭다운은 이름·단계·경과를 보여 주고, 누르면 해당 상세 화면으로 간다.
 
   **새 집계 API 를 만들지 않았다.** 후보는 셋이었다(신규 집계 API · 기존 목록 API 폴링 · WS 구독). WS 를 뺀 이유는 지금의 `/ws/deployments/:id/logs` 가 **배포 하나**의 로그 스트림이라는 데 있다 — 종이 그것을 쓰려면 "지금 뭐가 도는지" 를 먼저 알아야 하므로 **목록 조회가 어차피 선행되고**, 작업 수만큼 소켓을 여는 비용까지 붙는다. 서버 집계 API 는 stack·cicd 두 모듈의 상태를 한 핸들러가 읽어야 해 모듈 경계를 깨는데, 화면 하나를 위해 치를 값이 아직 아니다. 그래서 `GET /stacks` 와 `GET /cicd/deployments` 를 화면에서 합친다 — **서버 변경 0**. 두 엔드포인트 모두 이미 조직 스코프로 걸러 나오므로 화면에서 다시 거르지 않고, 상세 이동은 세 역할이 모두 볼 수 있는 라우트로만 보낸다(스택은 admin·devops 전용인 `/stack/deploy/:id` 대신 `/stack/logs/:id`).

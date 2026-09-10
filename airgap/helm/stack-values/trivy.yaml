@@ -1,0 +1,48 @@
+# trivy airgap install values
+# Chart: aqua/trivy (https://aquasecurity.github.io/helm-charts/)
+#
+# ===========================================================================
+# [server 모드 — 왜 이 구조인가]
+# 취약점 DB 를 이 서버에만 두고, CI 잡은 client(`trivy image --server ...`)로
+# 붙어 패키지 목록만 보낸다. CVE 매칭과 DB 는 서버 몫이다.
+#
+# standalone 으로 두면 파이프라인마다 DB(수백 MB)를 내려받고 캐시해야 한다.
+# 에어갭에서는 그 반입 지점이 "모든 CI 러너가 닿는 곳" 으로 늘어난다.
+# server 모드는 그 지점을 이 서버 하나로 줄인다.
+# ===========================================================================
+#
+# ===========================================================================
+# [에어갭 취약점 DB — 반입이 안 되면 스캔이 전부 실패한다]
+# trivy-db 는 컨테이너 이미지가 아니라 **OCI 아티팩트**다. `docker pull` 로는
+# 받아지지 않으므로 oras / crane 으로 내부 레지스트리에 미러해야 한다:
+#
+#   oras copy ghcr.io/aquasecurity/trivy-db:2 <내부레지스트리>/aquasecurity/trivy-db:2
+#
+# 그 뒤 아래 dbRepository 를 미러 경로로 바꾼다.
+# skipDBUpdate 는 켜지 않는다 — 켜면 미러를 갱신해도 서버가 옛 DB 를 계속 쓴다.
+#
+# 에어갭에서 DB 는 사람이 가져다 넣는 만큼만 새것이다. 번들 릴리스마다
+# 재반입하고, 스캔 결과에 DB 나이를 함께 남긴다 — 6개월 된 DB 의 "취약점 0건" 은
+# 정보가 아니라 오해다.
+# ===========================================================================
+image:
+  registry: localhost:5001
+  repository: aquasec/trivy
+  tag: 0.74.0
+
+trivy:
+  # 내부 미러. 에어갭이 아니면 ghcr.io/aquasecurity/trivy-db 를 그대로 쓴다.
+  dbRepository: localhost:5001/aquasecurity/trivy-db
+  skipDBUpdate: false
+
+service:
+  type: ClusterIP
+  port: 4954
+
+persistence:
+  enabled: true
+  size: 5Gi
+
+# 단일 인스턴스로 시작한다. DB 가 읽기 전용이라 수평 확장이 쉬우므로,
+# 스캐너 장애가 그 스택의 배포를 멈추는 것이 부담이면 늘린다.
+replicaCount: 1

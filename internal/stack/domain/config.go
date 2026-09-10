@@ -12,6 +12,7 @@ type StackConfig struct {
 	Pipeline                 PipelineConfig                `json:"pipeline"`
 	Monitoring               MonitoringConfig              `json:"monitoring"`
 	Logging                  LoggingConfig                 `json:"logging"`
+	Security                 SecurityConfig                `json:"security"`
 	Resources                ResourcesConfig               `json:"resources"`
 	OptionOverrides          map[string]map[string]float64 `json:"option_overrides,omitempty"`
 	AppliedResourceOverrides map[string]ResourceVector     `json:"applied_resource_overrides,omitempty"`
@@ -88,6 +89,18 @@ type PipelineConfig struct {
 type MonitoringConfig struct {
 	Collection    ToolSelection `json:"collection"`
 	Visualization ToolSelection `json:"visualization"`
+}
+
+// SecurityConfig holds tool selections for the security step.
+//
+// 이미지 스캐너는 선택이다 — 고르지 않으면 설치되지 않고, 그 스택의 파이프라인은
+// 이미지 스캔 단계를 켤 수 없다. 레지스트리가 Harbor 면 Harbor 내장 스캐너로
+// 대신할 수 있다(스캔 소스 판단은 cicd 모듈이 한다).
+//
+// 지원 레지스트리 5종 중 자체 스캔 기능이 있는 것은 Harbor 뿐이라, 나머지
+// 구성에서는 이 자리를 고르지 않으면 이미지를 검사할 수단이 아예 없다.
+type SecurityConfig struct {
+	ImageScanner ToolSelection `json:"image_scanner,omitempty"`
 }
 
 // LoggingConfig holds tool selections for the logging step.

@@ -1,0 +1,12 @@
+# trivy — 이미지 추출용 values (00-generate-images.sh)
+#
+# 여기서는 **업스트림 경로**를 그대로 둔다. rewrite_upstream 은 cloud-nullus /
+# dasomel / bitnami 접두사만 되돌리므로, aquasec 를 localhost:5001 로 적으면
+# 그 경로가 그대로 images.txt 에 박힌다 — 그러면 pull 단계가 아직 존재하지 않는
+# 내부 레지스트리에서 이미지를 받으려 한다.
+#
+# 실제 설치용 재정의는 airgap/helm/stack-values/trivy.yaml 이 갖는다.
+image:
+  registry: docker.io
+  repository: aquasec/trivy
+  tag: 0.74.0

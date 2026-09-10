@@ -35,6 +35,7 @@ const (
 	SlotLogSearch               = "logging.search"
 	SlotTraceLayer              = "logging.traceLayer"
 	SlotTraceExporter           = "logging.traceExporter"
+	SlotImageScanner            = "security.imageScanner"
 )
 
 // PlanningSlots 는 계획 대상 슬롯을 마법사 화면과 같은 순서로 돌려준다.
@@ -51,6 +52,7 @@ func PlanningSlots() []string {
 		SlotLogSearch,
 		SlotTraceLayer,
 		SlotTraceExporter,
+		SlotImageScanner,
 	}
 }
 
@@ -144,11 +146,18 @@ var PlanningOptionDefs = map[string][]PlanningOptionDef{
 		{Key: "traceSpansPerMin", Baseline: 50000, Min: 1000, Max: 3000000, Weight: 0.6, Impact: ResourceImpact{CPU: 0.9, Memory: 0.7, Storage: 0.2}},
 		{Key: "serviceCount", Baseline: 40, Min: 5, Max: 2000, Weight: 0.4, Impact: ResourceImpact{CPU: 0.5, Memory: 0.4, Storage: 0.1}},
 	},
+	// 스캐너는 CVE 매칭이 부하의 전부라 CPU 가 지배적이다. 저장은 취약점 DB
+	// 크기라 거의 고정이므로 다른 슬롯과 달리 보관 기간을 묻지 않는다 —
+	// 물어봐야 사용자가 바꿀 수 있는 것이 없다.
+	SlotImageScanner: {
+		{Key: "scansPerDay", Baseline: 40, Min: 1, Max: 2000, Weight: 0.6, Impact: ResourceImpact{CPU: 1, Memory: 0.6, Storage: 0.1}},
+		{Key: "concurrentScans", Baseline: 2, Min: 1, Max: 50, Weight: 0.4, Impact: ResourceImpact{CPU: 0.9, Memory: 0.8, Storage: 0.1}},
+	},
 }
 
 // 처리량 성격의 옵션 어휘. 프로파일이 작아지면 이 값들이 함께 줄어든다.
 // developers 처럼 여기 걸리지 않는 키는 "기타" 계수를 받는다.
-var throughputOptionPattern = regexp.MustCompile(`(?i)(calls|events|pulls|pushes|ops|deployments|commits|targets|spans|query|users|count)`)
+var throughputOptionPattern = regexp.MustCompile(`(?i)(calls|events|pulls|pushes|ops|deployments|commits|targets|spans|query|users|count|scans)`)
 
 // ProfileFactorByOption 은 프로파일이 옵션 기본값을 몇 배로 조정하는지 돌려준다.
 //

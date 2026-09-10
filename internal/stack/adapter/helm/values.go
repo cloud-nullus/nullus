@@ -153,6 +153,33 @@ func DefaultValues(stepName string) map[string]any {
 				},
 			},
 		}
+	case "installing_trivy":
+		return map[string]any{
+			// CI 잡이 붙을 주소를 domain 상수로 고정한다. 차트 기본값이 바뀌면
+			// 잡은 옛 포트로 붙어 스캔이 전부 실패하는데, 오류가 스캐너 장애처럼
+			// 보여 원인을 찾기 어렵다.
+			"service": map[string]any{
+				"type": "ClusterIP",
+				"port": domain.TrivyServicePort,
+			},
+			// 취약점 DB 를 담는다. 파드가 재시작할 때마다 다시 받으면 에어갭에서는
+			// 아예 못 받는다.
+			"persistence": map[string]any{
+				"enabled": true,
+				"size":    "5Gi",
+			},
+			// 단일 인스턴스로 시작한다. DB 가 읽기 전용이라 수평 확장이 쉬우므로,
+			// 스캐너 장애가 그 스택의 배포를 멈추는 것이 부담이면 운영에서 늘린다.
+			"replicaCount": 1,
+			"trivy": map[string]any{
+				// 취약점 DB 를 받아올 OCI 저장소. 에어갭 설치는
+				// airgap/helm/stack-values/trivy.yaml 이 내부 미러로 덮는다.
+				"dbRepository": "ghcr.io/aquasecurity/trivy-db",
+				// 켜면 미러를 갱신해도 서버가 옛 DB 를 계속 쓴다. 내부 미러에서
+				// 정상 갱신 경로를 타게 두면 DB 를 갱신했을 때 저절로 반영된다.
+				"skipDBUpdate": false,
+			},
+		}
 	case "installing_harbor":
 		return map[string]any{
 			// 인그레스는 게이트웨이가 담당하므로 차트는 Service 만 낸다.

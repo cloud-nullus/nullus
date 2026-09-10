@@ -409,6 +409,7 @@ export function toCreateStackBody(req: CreateStackRequest) {
   const p = req.pipeline as Record<string, { tool: string; version: string }>
   const m = req.monitoring as Record<string, { tool: string; version: string }>
   const l = req.logging as Record<string, { tool: string; version: string }>
+  const sec = (req.security ?? {}) as Record<string, { tool: string; version: string }>
   const monitoringWithMulti = req.monitoring as Record<string, unknown>
   const visualizationMulti = Array.isArray(monitoringWithMulti.visualizations)
     ? (monitoringWithMulti.visualizations as Array<{ tool?: string; version?: string }>)
@@ -470,6 +471,11 @@ export function toCreateStackBody(req: CreateStackRequest) {
         search: toBackendTool(l.search ?? { tool: '', version: '' }),
         trace_layer: toBackendTool(l.traceLayer ?? l.trace_layer ?? { tool: '', version: '' }),
         trace_exporter: toBackendTool(l.traceExporter ?? { tool: '', version: '' }),
+      },
+      // 고르지 않으면 enabled=false 로 간다. true 로 보내면 설치 술어가 켜져
+      // 아무도 고르지 않은 스캐너 워크로드가 뜬다.
+      security: {
+        image_scanner: toBackendTool(sec.imageScanner ?? { tool: '', version: '' }),
       },
       resources: {
         developers: req.resources?.developerCount ?? 0,

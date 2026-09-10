@@ -78,6 +78,11 @@ var installDAG = []installStep{
 	{name: "installing_nexus", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
 	{name: "provisioning_nexus", phase: "B", duration: time.Second, deps: []string{"installing_nexus"}},
 
+	// 이미지 스캐너는 server 모드로 홀로 선다 — 레지스트리에 의존하지 않는다.
+	// 스캔은 CI 잡이 client 로 붙어 요청하는 것이라, 설치 시점에는 서로 알 필요가
+	// 없다. 스캐너를 고르지 않은 스택에서는 술어가 이 단계를 끈다.
+	{name: "installing_trivy", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
+
 	{name: "installing_argocd", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
 	{name: "installing_runner", phase: "B", duration: time.Second, deps: []string{"provisioning_sso", "installing_gitlab"}},
 

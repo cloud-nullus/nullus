@@ -29,6 +29,7 @@ var canonicalToolNameByKey = map[string]string{
 	"trace_exporter":     "opentelemetry-collector",
 	"storage_backend":    "minio",
 	"authentication":     "openbao",
+	"image_scanner":      "trivy",
 }
 
 // InstalledToolWorkloads 는 스택 설정에서 "이 스택이 클러스터에 설치하는 OSS" 목록을
@@ -78,6 +79,9 @@ func InstalledToolWorkloads(cfg StackConfig) []ToolWorkload {
 		// 아니라 릴리스명을 써야 실제 파드와 맞는다.
 		{workload("trace_exporter", cfg.Logging.TraceExporter, OTelCollectorReleaseName), cfg.Logging.TraceExporter.Enabled},
 		{workload("storage_backend", cfg.Artifacts.StorageBackend, MinIOServiceName, "minio"), cfg.Artifacts.StorageBackend.Enabled},
+		// 이미지 스캐너는 선택 항목이라 고르지 않은 스택에서는 빠진다.
+		// 릴리스명이 곧 파드 이름 접두사다.
+		{workload("image_scanner", cfg.Security.ImageScanner, TrivyReleaseName), cfg.Security.ImageScanner.Enabled},
 	}
 
 	// 소스 저장소도 고른 제품에 따라 파드 접두사가 달라지고(GitLab / Gitea),

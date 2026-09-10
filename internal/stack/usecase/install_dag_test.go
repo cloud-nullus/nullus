@@ -38,6 +38,9 @@ var canonicalInstallOrder = []string{
 	"provisioning_harbor",
 	"installing_nexus",
 	"provisioning_nexus",
+	// 이미지 스캐너는 선택이라 고르지 않은 스택에서는 술어가 꺼진다.
+	// DAG 에는 언제나 있고, 설 것인지는 stepConfigEnabled 가 정한다.
+	"installing_trivy",
 	"installing_argocd",
 	"installing_runner",
 	// Jenkins 는 CI 슬롯의 다른 선택지다. 술어가 배타적이라 둘 중 하나만 선다.

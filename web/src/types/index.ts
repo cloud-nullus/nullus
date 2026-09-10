@@ -226,6 +226,8 @@ export interface StackConfig {
   pipeline: Record<string, ToolSelection>;
   monitoring: Record<string, ToolSelection>;
   logging: Record<string, ToolSelection>;
+  // 이미지 스캐너는 선택이라 고르지 않은 스택에서는 비어 있다.
+  security?: Record<string, ToolSelection>;
   resources: StackResourcesInput;
   optionOverrides?: Record<string, Record<string, number>>;
   appliedResourceOverrides?: Record<
