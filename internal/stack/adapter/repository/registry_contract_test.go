@@ -46,6 +46,10 @@ func TestChartVersionsMatchCompatibilityMatrix(t *testing.T) {
 		// 화면이 안내하는 버전과 설치가 갈라진다.
 		{matrixID: "gitlab-harbor-v1", category: "image_scanner", step: "installing_trivy"},
 		{matrixID: "gitlab-nexus-v1", category: "image_scanner", step: "installing_trivy"},
+		// 스캐너는 레지스트리 종류와 무관하다. 특정 조합에만 두면 "그 스택에서는
+		// 못 고르는" 임의의 구멍이 생긴다 — gitlab-argocd-v1 이 실제로 그랬다.
+		{matrixID: "gitlab-argocd-v1", category: "image_scanner", step: "installing_trivy"},
+		{matrixID: "gitlab-allinone-v1", category: "image_scanner", step: "installing_trivy"},
 	}
 
 	for _, tc := range cases {
