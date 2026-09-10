@@ -69,6 +69,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **두 번째 스택 설치를 매번 막던 ESO 소유권 — 인수 대상을 애노테이션으로 찾는다** (`internal/stack/adapter/helm/external-secrets.go`, `internal/stack/usecase/delete_stack.go`): 스택을 지우고 **다른 네임스페이스에 새로 만들면 그때마다 설치가 죽었다.** 실환경 재설치에서 드러났다.
+
+  **인수 대상이 24분의 2였다.** ESO CRD 는 클러스터 범위라 Helm 이 릴리스 삭제 시 지우지 않는다. 코드는 그 사실을 알고 소유권 인수 로직을 두었는데(주석도 *"멀티 스택 제품에서는 반드시 발생하는 상황"* 이라 적고 있다), 대상 목록에 CRD 두 개만 하드코딩돼 있었다. 차트 2.7.0 이 실제로 만드는 것은 CRD 24개 · ClusterRole 5개 · ClusterRoleBinding 2개 · ValidatingWebhookConfiguration 2개다. 알파벳 순으로 첫 미인수 리소스(`acraccesstokens.generators.external-secrets.io`)에서 `invalid ownership metadata` 로 막혔다.
+
+  종류를 손으로 적는 대신 **Helm 이 소유권 충돌을 판정하는 바로 그 애노테이션**(`meta.helm.sh/release-name`)으로 찾는다. 차트가 리소스를 늘려도 따라가고, 살아 있는 다른 스택의 것을 뺏지 않는 기존 가드는 그대로다. 건별 로그는 30건을 넘겨 설치 흐름을 덮으므로 한 줄로 요약한다.
+
+- **네임스페이스가 영구 Terminating 으로 남던 것 — ESO 웹훅을 커스텀 리소스보다 먼저 지운다** (`internal/stack/usecase/delete_stack.go`): 스택을 지우면 네임스페이스가 삭제되지 않고 **몇 시간이고 Terminating 에 머물렀다.** 사람이 손을 대야만 풀렸다.
+
+  **웹훅과 그것이 검증하는 리소스의 순서 문제다.** 삭제는 ExternalSecret 을 먼저 지우도록 이미 정렬돼 있었지만, 검증 웹훅 설정은 아무도 지우지 않았다. 웹훅이 남은 채 그것을 서빙하던 서비스가 사라지면 남은 ExternalSecret 삭제 요청이 **webhook 호출 실패로 거부되고**, 네임스페이스는 그 리소스를 회수하지 못한다.
+
+  웹훅을 커스텀 리소스보다 **먼저** 지운다. 호출 순서가 곧 규칙이므로 순서 자체를 테스트로 고정했다. 이름으로 찾지 않는다 — 실제 이름이 `externalsecret-validate` / `secretstore-validate` 라 `external-secrets` 로 훑는 코드가 놓친다. ESO CRD 도 Argo CD·Gateway 와 같이 삭제 시 정리한다.
+
+- **게이트웨이 설치가 helm CLI 버전에 묶여 있던 것 — 라이브러리에 레지스트리 클라이언트를 붙인다** (`internal/stack/adapter/helm/installer.go`): `installing_gateway` 가 `missing registry client; fallback helm cli install failed` 로 죽었다.
+
+  `action.Configuration.Init` 은 레지스트리 클라이언트를 만들지 않아 `oci://` 차트 조회가 실패했고, 그동안은 helm CLI 로 폴백해 넘겼다. **그 폴백이 PATH 의 CLI 버전에 묶여 있다** — helm v4 가 잡히면 폴백까지 함께 실패해 게이트웨이가 통째로 막힌다. 런북은 helm 존재만 확인하고 버전은 보지 않는다. `registry.NewClient()` 를 붙여 라이브러리 안에서 해결한다. 폴백 경로는 남겨 두되 이제 타지 않는다.
+
 - **GitLab CI 가 한 건도 돌지 않던 것 — 러너 토큰을 등록 토큰으로 넘긴다** (`internal/stack/adapter/helm/gitlab-runner.go`, `orchestrator.go`): `gitlab-*` 골든패스로 설치한 스택에서 러너가 크래시 루프로 죽어 **파이프라인이 하나도 실행되지 않았다.** 실환경 리허설에서 드러났다.
 
   **원인은 토큰의 종류를 구분하지 않은 것이다.** 설치기가 rails 로 인스턴스 러너를 만들어 그 **인증 토큰**을 얻고, 그것을 차트의 `runnerToken` 으로 넘겼다. 인증 토큰은 "이미 등록된 러너의 자격증명" 이므로 러너는 등록이 아니라 **검증**을 시도한다. 그 러너가 GitLab 에서 사라지자 `Verifying runner... is removed` 로 30회 재시도 후 죽었고, **복구 경로가 없었다** — 인증 토큰은 일회성이라 다시 등록할 수단이 없다.

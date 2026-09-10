@@ -11,6 +11,7 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
+	"helm.sh/helm/v3/pkg/registry"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
@@ -414,6 +415,19 @@ func newActionConfig(kubeconfig []byte, namespace string) (*action.Configuration
 	if err := cfg.Init(getter, namespace, "secret", noopHelmDebug); err != nil {
 		return nil, fmt.Errorf("initialize helm action config: %w", err)
 	}
+
+	// cfg.Init 은 레지스트리 클라이언트를 만들지 않는다. 없으면 oci:// 차트
+	// 조회가 "missing registry client" 로 죽는다 — envoy gateway 가 그 경로다.
+	//
+	// 예전에는 helm CLI 로 폴백해 넘겼는데, 그 폴백은 PATH 의 CLI 버전에 묶여
+	// 있다. helm v4 가 잡히면 폴백까지 함께 실패해 게이트웨이 설치가 통째로
+	// 막힌다(2026-09-10 실측). 라이브러리 안에서 해결한다.
+	registryClient, err := registry.NewClient()
+	if err != nil {
+		return nil, fmt.Errorf("create helm registry client: %w", err)
+	}
+	cfg.RegistryClient = registryClient
+
 	return cfg, nil
 }
 
