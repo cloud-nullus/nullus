@@ -60,6 +60,7 @@ func plannedSelections(cfg StackConfig) []plannedSelection {
 		{SlotLogSearch, cfg.Logging.Search},
 		{SlotTraceLayer, cfg.Logging.TraceLayer},
 		{SlotTraceExporter, cfg.Logging.TraceExporter},
+		{SlotImageScanner, cfg.Security.ImageScanner},
 	}
 }
 

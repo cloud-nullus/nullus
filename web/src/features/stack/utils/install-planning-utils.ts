@@ -22,6 +22,7 @@ export type PlanningSlot =
   | 'logging.search'
   | 'logging.traceLayer'
   | 'logging.traceExporter'
+  | 'security.imageScanner'
 
 // 어휘는 types/index.ts 가 갖는다 — 템플릿(API 응답)과 마법사가 같은 값을
 // 주고받아야 하므로 한쪽이 다른 쪽을 import 하는 관계로 두지 않는다.
@@ -138,6 +139,13 @@ export const PLANNING_OPTION_DEFS: Record<PlanningSlot, PlanningOptionDefinition
     { key: 'traceSpansPerMin', label: 'Trace Span 수/분', baseline: 50000, min: 1000, max: 3000000, step: 1000, weight: 0.6, impact: { cpu: 0.9, memory: 0.7, storage: 0.2 } },
     { key: 'serviceCount', label: '추적 대상 서비스 수', baseline: 40, min: 5, max: 2000, step: 1, weight: 0.4, impact: { cpu: 0.5, memory: 0.4, storage: 0.1 } },
   ],
+  // 스캐너는 CVE 매칭이 부하의 전부라 CPU 가 지배적이다. 저장은 취약점 DB
+  // 크기라 거의 고정이므로 보관 기간을 묻지 않는다.
+  // Go 쪽(internal/stack/domain/planning.go PlanningOptionDefs)과 같은 값이어야 한다.
+  'security.imageScanner': [
+    { key: 'scansPerDay', label: '이미지 스캔 수/일', baseline: 40, min: 1, max: 2000, step: 1, weight: 0.6, impact: { cpu: 1, memory: 0.6, storage: 0.1 } },
+    { key: 'concurrentScans', label: '동시 스캔 수', baseline: 2, min: 1, max: 50, step: 1, weight: 0.4, impact: { cpu: 0.9, memory: 0.8, storage: 0.1 } },
+  ],
 }
 
 export function round2(value: number): number {
@@ -178,7 +186,7 @@ export function profileFactorByOption(profile: PlanningProfile, optionKey: strin
   const isRetention = optionKey.toLowerCase().includes('retention')
   const isInterval = optionKey.toLowerCase().includes('interval')
   const isConcurrency = optionKey === 'concurrentRunners'
-  const isThroughput = /(calls|events|pulls|pushes|ops|deployments|commits|targets|spans|query|users|count)/i.test(optionKey)
+  const isThroughput = /(calls|events|pulls|pushes|ops|deployments|commits|targets|spans|query|users|count|scans)/i.test(optionKey)
 
   if (profile === 'local') {
     if (isRetention) return 0.2
