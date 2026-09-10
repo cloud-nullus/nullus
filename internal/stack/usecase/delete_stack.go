@@ -115,6 +115,75 @@ var legacyReleaseArtifactPrefixes = []string{
 	"repo-data-gitlab-",
 }
 
+// esoWebhookConfigurationNames 는 ESO 차트가 만드는 검증 웹훅 설정이다.
+//
+// 이름에 external-secrets 가 없다 — 이름으로 훑는 정리 코드가 놓치는 이유다.
+// (실측 2026-09-10, 차트 2.7.0)
+var esoWebhookConfigurationNames = []string{
+	"externalsecret-validate",
+	"secretstore-validate",
+}
+
+// esoCRDGroupSuffixes 는 ESO 가 만드는 CRD 의 API 그룹이다.
+//
+// 이름을 하나씩 적지 않는다 — 차트 2.7.0 이 만드는 CRD 는 24개이고 버전마다
+// 늘어난다. 그룹으로 훑으면 따라간다.
+var esoCRDGroupSuffixes = []string{
+	".external-secrets.io",
+}
+
+// bestEffortDeleteExternalSecretsWebhooks 는 ESO 검증 웹훅 설정을 지운다.
+//
+// **ESO 커스텀 리소스보다 먼저** 불러야 한다. 웹훅이 살아 있는데 그것을 서빙하던
+// 서비스가 사라지면, 남은 ExternalSecret 을 지우려는 요청이 webhook 호출 실패로
+// 거부된다. 네임스페이스는 그 리소스를 회수하지 못해 영구 Terminating 이 되고,
+// 사람이 웹훅을 손으로 지워야만 풀린다(2026-09-10 실측).
+func (uc *DeleteStack) bestEffortDeleteExternalSecretsWebhooks(ctx context.Context, kubeconfig []byte, stackID string) {
+	for _, name := range esoWebhookConfigurationNames {
+		uc.emit(ctx, stackID, "deleting_crd", "info", fmt.Sprintf("deleting eso webhook %s", name))
+		if _, err := uc.runKubectl(ctx, kubeconfig,
+			"delete", "validatingwebhookconfiguration", name, "--ignore-not-found"); err != nil {
+			slog.Warn("eso webhook delete warning", "name", name, "error", err)
+			uc.emit(ctx, stackID, "deleting_crd", "warn", fmt.Sprintf("eso webhook %s delete warning: %v", name, err))
+		}
+	}
+}
+
+// bestEffortDeleteExternalSecretsCRDs 는 ESO CRD 를 지운다.
+//
+// Argo CD·Gateway 와 같은 이유다 — helm uninstall 은 CRD 를 지우지 않고, 남으면
+// 소유 애노테이션이 삭제된 릴리스를 가리킨 채로 있어 다음 스택 설치가
+// "invalid ownership metadata" 로 막힌다.
+func (uc *DeleteStack) bestEffortDeleteExternalSecretsCRDs(ctx context.Context, kubeconfig []byte, stackID string) {
+	out, err := uc.runKubectl(ctx, kubeconfig, "get", "crd", "-o", "name")
+	if err != nil {
+		slog.Warn("eso crd cleanup skipped due to check failure", "error", err)
+		return
+	}
+
+	for _, line := range strings.Split(string(out), "\n") {
+		name := strings.TrimPrefix(strings.TrimSpace(line), "customresourcedefinition.apiextensions.k8s.io/")
+		if name == "" {
+			continue
+		}
+		matched := false
+		for _, suffix := range esoCRDGroupSuffixes {
+			if strings.HasSuffix(name, suffix) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		uc.emit(ctx, stackID, "deleting_crd", "info", fmt.Sprintf("deleting eso crd %s", name))
+		if _, err := uc.runKubectl(ctx, kubeconfig, "delete", "crd", name, "--ignore-not-found"); err != nil {
+			slog.Warn("eso crd delete warning", "crd", name, "error", err)
+			uc.emit(ctx, stackID, "deleting_crd", "warn", fmt.Sprintf("eso crd %s delete warning: %v", name, err))
+		}
+	}
+}
+
 // argoCDCRDNames 는 Argo CD 차트가 만드는 CRD 다.
 //
 // helm uninstall 은 CRD 를 지우지 않는다. 남으면 소유 애노테이션이 삭제된
@@ -286,6 +355,10 @@ func (uc *DeleteStack) cleanupCluster(ctx context.Context, stack *domain.Stack, 
 	gatewayNames := uc.collectGatewayNames(ctx, kubeconfig, stack)
 	gatewayNames = uc.mergeGatewayNames(gatewayNames, uc.collectGatewayNamesFromManagedResources(ctx, kubeconfig, stack))
 	uc.bestEffortDeleteYAMLResources(ctx, kubeconfig, stack, stackID)
+	// 검증 웹훅을 가장 먼저 지운다. 웹훅이 남은 채 그것을 서빙하던 서비스가
+	// 사라지면 ExternalSecret 삭제 요청이 거부되어 네임스페이스가 영구
+	// Terminating 이 된다 — 아래 CR 삭제가 바로 그 요청이다.
+	uc.bestEffortDeleteExternalSecretsWebhooks(ctx, kubeconfig, stackID)
 	// ESO 커스텀 리소스를 오퍼레이터보다 먼저 지운다.
 	// 순서가 뒤바뀌면 ExternalSecret 의 finalizer 를 처리할 컨트롤러가 사라져
 	// 네임스페이스와 CRD 가 영구 Terminating 상태로 남는다.
@@ -303,6 +376,7 @@ func (uc *DeleteStack) cleanupCluster(ctx context.Context, stack *domain.Stack, 
 	uc.bestEffortDeleteOrphanGatewayTempoResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteGatewayCRDs(ctx, kubeconfig, stackID)
 	uc.bestEffortDeleteArgoCDCRDs(ctx, kubeconfig, stackID)
+	uc.bestEffortDeleteExternalSecretsCRDs(ctx, kubeconfig, stackID)
 	uc.bestEffortDeleteStackLabeledResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteLegacyGatewayPolicyResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteLegacyReleaseArtifacts(ctx, kubeconfig, stack, stackID)
