@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Zadara PoC 를 OpenTofu + Kubespray 로 재구축했다** (`deploy/csp/zadara/opentofu/` 신규, `deploy/csp/zadara/{README,INSTALL,INSTALL_LOG_2026-09-13}.md`, `docs/50_운영/zadara_{opentofu_design,cloud_deployment_plan}.md`): 손으로 만든 node-10/11/20/21 두 클러스터를 2026-09-13 에 폐기하고 **m1(4vCPU/8GB, control-plane+worker+bastion) + w1(16vCPU/32GB, private+NAT)** 단일 클러스터로 바꿨다. VPC/서브넷/NAT/보안 그룹/EIP/VM 과 Kubespray 인벤토리까지가 IaC 소유이고 Kubernetes·Nullus 는 기존처럼 Kubespray·Helm 이 맡는다.
+
+  **실제 apply 로 드러난 zCompute 의 AWS 호환 API 차이를 코드에 못박았다.** 보안 그룹 생성 요청의 tags(D7)와 `AssociatePublicIpAddress`(D8) 는 400 으로 거부되고, root 볼륨의 `delete_on_termination=false` 는 무시된 뒤 ModifyInstance 가 끝나지 않는다(D9). 공인 IP 는 `aws_eip.public` 을 `prevent_destroy` 로 보호하고 association 만 VM 에 묶어 **VM 을 교체해도 121.78.39.241 이 유지**되게 했다(D10). SSH 는 운영자가 여럿이라 22 를 전체 개방하되 키 인증만 허용한다.
+
+  README 는 현재 아키텍처(Mermaid 다이어그램 포함), INSTALL 은 재실행 가능한 절차, INSTALL_LOG 는 실패 13건의 원인·수정 기록으로 나눴다. `tofu test` 15건은 mock provider 로 테넌트 없이 돈다.
 - **컨테이너 이미지 취약점 스캔 — 스택에서 고르는 선택 항목** (`internal/stack/**`, `internal/cicd/**`, `web/src/features/stack/**`, `airgap/**`, nullus-plan#76): 이미지 스캔 기능이 **전무했다.** 저장소 전수 확인 결과 Trivy 설정 0건이었고, PRD 는 이미 완료 기준으로 "Trivy 스캔 완료" 를 적고 있었다. 설계는 [`docs/11_기능설계/Nullus_컨테이너_이미지_스캔_설계.md`](docs/11_기능설계/Nullus_컨테이너_이미지_스캔_설계.md).
 
   **차단 게이트를 레지스트리에 두지 않는다.** 지원 레지스트리 5종(`scm_project`·`harbor`·`nexus`·`ghcr`·`external`) 중 자체 스캔 기능이 있는 것은 **Harbor 하나뿐**이다 — GitLab Container Registry 의 Container Scanning 은 CI 잡이지 레지스트리 기능이 아니고, Nexus 는 OSS 에 스캐너가 없으며(Sonatype IQ 는 상용), GHCR 은 네이티브 스캔이 없다. 없는 쪽에 플러그인을 꽂을 확장점도 없다: 확장점이 있는 Harbor 는 이미 스캐너가 있고, 없는 셋은 확장점 자체가 없다. 게이트를 레지스트리에 두면 **5종 중 4종이 게이트 없이 초록불**이 된다.

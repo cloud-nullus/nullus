@@ -1,0 +1,59 @@
+# cp terraform.tfvars.example terraform.tfvars 후 실제 값으로 채운다.
+# terraform.tfvars 는 .gitignore 대상이다. 자격증명은 이 파일이 아니라
+# ~/.aws/config 의 [profile zadara] + ~/.aws/credentials 로 공급한다.
+
+# ─── 테넌트 ───────────────────────────────────────────────────────────────────
+aws_profile  = "zadara"
+region       = "symphony"
+ec2_endpoint = "https://compute-iaas-kr1-01.zadara.com/api/v2/aws/ec2"
+
+# 2026-09-10 읽기 조회로 확정. 이름 검색 결과를 코드에서 [0] 으로 고르지 않는다.
+availability_zone = "symphony"
+image_id          = "ami-d57f606b4d714d0cb591196e33259d53" # Public - Ubuntu Server 24.04
+# 22.04 를 쓰려면: ami-8fffbd9d1f9d4eb789e39d6c81119ce3
+
+# ─── SSH ──────────────────────────────────────────────────────────────────────
+# zCompute 에 이미 등록된 keypair 이름. OpenTofu 는 개인키를 만들지도 저장하지도 않는다.
+key_name             = "nullus-key" # 테넌트에 등록된 유일한 keypair (2026-09-10 조회)
+ssh_private_key_file = "~/.ssh/nullus-key.pem"
+ssh_user             = "ubuntu"
+
+# 운영자 출발지. 0.0.0.0/0 은 검증에서 거부된다.
+admin_cidrs = ["203.0.113.10/32"]
+
+# 웹은 기본적으로 열지 않는다. SSO/TLS 경로를 확정한 뒤 출발지를 좁혀 개방한다.
+# web_cidrs = ["203.0.113.10/32"]
+
+# ─── 네트워크 ─────────────────────────────────────────────────────────────────
+# 기존 테넌트 VPC 는 172.31.0.0/16(default, subnet 172.31.0.0/20)과 10.0.0.0/16 이다.
+# 두 대역과 겹치지 않게 잡는다.
+vpc_cidr            = "10.20.0.0/16"
+public_subnet_cidr  = "10.20.0.0/24"
+private_subnet_cidr = "10.20.1.0/24"
+
+# nat       — 테넌트가 NAT gateway 를 제공할 때 (기본)
+# public_ip — NAT 를 쓸 수 없을 때의 대안. worker 에 공인 IP 를 붙인다.
+worker_egress = "nat"
+
+# ─── 노드 ─────────────────────────────────────────────────────────────────────
+# 총량은 capacity_limit(기본 20 vCPU / 40GB / 400GB) 이내여야 한다.
+# instance_type 은 describe-instance-types 로 확인한 제공 type 이다. 기존 4대가 보고하는
+# c4/c5 계열은 이 테넌트의 생성 가능 목록(z2/z4/z8/z16, zp2/zp4/zp8/zp16)에 없다.
+# vcpus/memory_gb/disk_gb 는 그 type 의 사양을 그대로 적어 총량 검증이 실제 소비량과 맞게 한다.
+nodes = {
+  m1 = {
+    instance_type = "z2.xlarge" # 4 vCPU / 8 GB
+    vcpus         = 4
+    memory_gb     = 8
+    disk_gb       = 100
+  }
+  w1 = {
+    instance_type = "z2.4xlarge" # 16 vCPU / 32 GB
+    vcpus         = 16
+    memory_gb     = 32
+    disk_gb       = 300
+  }
+}
+
+# 실제 quota 가 다르면 여기서 상한을 바로잡는다.
+# capacity_limit = { vcpus = 20, memory_gb = 40, disk_gb = 400 }

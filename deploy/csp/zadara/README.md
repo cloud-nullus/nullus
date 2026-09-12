@@ -1,291 +1,187 @@
-# Zadara Cloud PoC — Nullus 배포 런북
+# Zadara Cloud PoC — 현재 아키텍처
 
-Zadara Cloud 위에 구축된 Kubernetes 클러스터에 Nullus Platform을 배포하는 절차.
-클러스터 **구축** 절차는 `docs/50_운영/zadara_cloud_poc.md`에 있고, 이 문서는 그
-`§11 다음 단계`에 해당하는 **배포** 절차를 다룬다.
+> 신규 인프라 apply·설치 순서는 [INSTALL.md](INSTALL.md), 실행 기록은
+> [INSTALL_LOG_2026-09-13.md](INSTALL_LOG_2026-09-13.md), 인프라 코드는
+> [opentofu/README.md](opentofu/README.md) / [opentofu/VALIDATION.md](opentofu/VALIDATION.md),
+> 계획 배경은 [배포 재계획](../../../docs/50_운영/zadara_cloud_deployment_plan.md) 참고.
 
-- 작업 위치: **nullus-node-10 (bastion)** — 외부에서 SSH 가능한 유일한 노드
-- 배포 대상: **platform 클러스터** (node-10 control-plane + node-11 worker)
-- 배포 버전: `v0.3.0-alpha` (첫 정식 릴리즈)
+## 1. 목적/범위
 
----
+온라인 PoC, **m1(control-plane+worker+bastion) + w1(worker) 단일 클러스터**.
+airgap·MetalLB·Zadara 볼륨 CSI는 범위 밖 — local-path와 NodePort로 대체한다.
 
-## 1. 클러스터 현황 (2026-07-28 확인)
+## 2. VM 구성
 
-| 항목 | platform | develop |
+| VM | type | vCPU/RAM/disk | 사설 IP | 공인 IP | subnet | 역할 |
+|---|---|---|---|---|---|---|
+| m1 | z2.xlarge | 4/8GB/100GB | 10.20.0.10 | 121.78.39.241 | public | control-plane+etcd+worker(taint 없음)+bastion |
+| w1 | z2.4xlarge | 16/32GB/300GB | 10.20.1.10 | 없음 | private | worker |
+
+w1은 NAT gateway로만 인터넷에 나가고, SSH는 m1을 ProxyCommand로 경유해야 붙는다.
+
+## 3. 네트워크 흐름
+
+```mermaid
+flowchart LR
+  classDef ext fill:#eceff1,stroke:#607d8b,color:#263238
+  classDef pub fill:#e3f2fd,stroke:#1e88e5,color:#0d47a1
+  classDef prv fill:#fff3e0,stroke:#fb8c00,color:#e65100
+  classDef k8s fill:#e8f5e9,stroke:#43a047,color:#1b5e20
+  classDef app fill:#f3e5f5,stroke:#8e24aa,color:#4a148c
+  classDef sg  fill:#ffebee,stroke:#e53935,color:#b71c1c,stroke-dasharray: 4 3
+
+  Op([운영자]):::ext
+  Br([브라우저]):::ext
+  DNS[("DNS<br/>nullus.io · www · auth<br/>→ 121.78.39.241")]:::ext
+  Net((인터넷)):::ext
+
+  subgraph VPC["VPC 10.20.0.0/16 · Zadara zCompute symphony"]
+    direction LR
+    subgraph PUB["public subnet 10.20.0.0/24"]
+      EIP["EIP 121.78.39.241<br/>aws_eip.public · prevent_destroy"]:::pub
+      M1["m1 · z2.xlarge 4vCPU/8GB/100GB<br/>10.20.0.10<br/>control-plane + etcd + worker + bastion"]:::pub
+      IPT["iptables NULLUS-WEB<br/>MARK 0x4000 → REDIRECT<br/>80→30080 · 443→30443"]:::pub
+      NATGW["NAT gateway<br/>(EIP #2)"]:::pub
+    end
+    subgraph PRV["private subnet 10.20.1.0/24"]
+      W1["w1 · z2.4xlarge 16vCPU/32GB/300GB<br/>10.20.1.10 · worker"]:::prv
+    end
+    subgraph K8S["Kubernetes v1.34.3 · Calico VXLAN · Pod 10.233.64.0/18 · Svc 10.233.0.0/18"]
+      ING["ingress-nginx<br/>NodePort 30080/30443<br/>(컨트롤러 on w1)"]:::k8s
+      CM["cert-manager<br/>Let's Encrypt HTTP-01<br/>nullus-wildcard-tls (SAN)"]:::k8s
+      WEB["nullus-web"]:::app
+      API["nullus-api :8080"]:::app
+      KC["keycloak<br/>auth.nullus.io · realm nullus"]:::app
+      PG[("postgresql<br/>PVC 20Gi local-path")]:::app
+      KPG[("keycloak-postgresql<br/>PVC 8Gi local-path")]:::app
+    end
+    SGB["SG bastion: 22 ← 0.0.0.0/0 (key only)"]:::sg
+    SGW["SG web: 80/443 ← 0.0.0.0/0"]:::sg
+    SGN["SG node: 6443/10250/4789udp/30080/30443 self"]:::sg
+  end
+
+  Op -- "SSH 22" --> M1
+  M1 -. "ProxyCommand SSH" .-> W1
+  Br --> DNS --> EIP --> IPT --> ING
+  ING -- "nullus.io" --> WEB
+  WEB -- "/api, /ws" --> API
+  ING -- "auth.nullus.io" --> KC
+  API --> PG
+  KC --> KPG
+  CM -. "TLS secret" .-> ING
+  W1 -- "egress only" --> NATGW --> Net
+  M1 --> Net
+  SGB -.- M1
+  SGW -.- M1
+  SGN -.- M1
+  SGN -.- W1
+```
+
+
+```
+운영자 --SSH(22)--> m1(EIP 121.78.39.241, bastion)
+                      └─ ProxyCommand --SSH--> w1(private)
+
+브라우저 --DNS(nullus.io/www/auth)--> m1 EIP:80/443
+  --iptables nat NULLUS-WEB(MARK 0x4000 → REDIRECT 80→30080,443→30443)-->
+  NodePort 30080/30443 (클러스터 전 노드에 열림, 실제 컨트롤러는 w1)
+  --ingress-nginx(w1)--> nullus-web 서비스
+       └─ web nginx가 /api/, /ws/ 를 --> nullus-api:8080 로 프록시
+       └─ auth.nullus.io 경로 --> keycloak 서비스
+
+w1 --NAT gateway--> 인터넷 (egress 전용, 인바운드 없음)
+```
+
+MARK 단계가 없으면 vxlan.calico가 원본 src IP를 그대로 넘겨 w1이 비대칭 라우팅으로
+직접 응답하며 무응답이 된다 (원인/수정: INSTALL_LOG §실패 8).
+
+## 4. VPC / CIDR
+
+| 구분 | CIDR |
+|---|---|
+| VPC | 10.20.0.0/16 |
+| public subnet (m1) | 10.20.0.0/24 |
+| private subnet (w1) | 10.20.1.0/24 |
+| Pod CIDR (Calico) | 10.233.64.0/18 |
+| Service CIDR | 10.233.0.0/18 |
+
+NAT gateway 1개, EIP 2개(NAT용, m1용). m1 EIP 는 OpenTofu 루트의 `aws_eip.public` 로 `prevent_destroy` 보호되며 VM 교체 시에도 121.78.39.241 이 유지된다(opentofu/README.md D10).
+
+## 5. 보안 그룹
+
+| SG | 인바운드 | 대상 |
 |---|---|---|
-| Control plane | nullus-node-10 (172.31.0.10) | nullus-node-20 (172.31.1.20) |
-| Worker | nullus-node-11 (172.31.0.11) | nullus-node-21 (172.31.1.21) |
-| Kubernetes | v1.34.3 | v1.34.3 |
-| 런타임 / CNI | containerd 2.2.1 / Calico | containerd 2.2.1 / Calico |
-| OS | Ubuntu 24.04.3 LTS | Ubuntu 24.04.3 LTS |
+| bastion | 22/tcp ← 0.0.0.0/0 (운영자 다수·유동 IP, 2026-09-13 개방. 키 인증 전용) | m1 |
+| web | 80/tcp, 443/tcp ← 0.0.0.0/0 | m1(공인 IP 보유 노드) |
+| node | 클러스터 내부 전용(노드 간) | m1, w1 |
 
-> 구축 가이드는 Ubuntu 22.04를 가정하지만 실제 노드는 24.04.3이다.
+## 6. Kubernetes 구성
 
----
+- Kubespray v2.30.0(`f4ccdb5`), Kubernetes v1.34.3, containerd 2.2.1, Calico VXLAN,
+  Ubuntu 24.04.3, kube-proxy **ipvs** 모드.
+- m1은 `kube_control_plane`+`etcd`+`kube_node` 세 그룹에 모두 속해 taint 없음
+  (`schedule_on_control_plane=true`) — 노드가 2대뿐이라 m1도 워크로드를 받는다.
+- kubeconfig: m1의 `/etc/kubernetes/admin.conf` → `~ubuntu/.kube/config` 하나뿐.
+  **클러스터가 1개이므로 `--context` 지정이나 admin.conf 병합이 필요 없다** — 과거
+  platform/develop 2클러스터 시절의 컨텍스트 분리 절차는 폐기됨(§10).
 
-## 2. 완료된 사전작업
+## 7. 애드온
 
-아래 3건은 이미 적용되어 있다. 클러스터를 재생성했다면 다시 수행할 것.
-
-### 2.1 kubeconfig 컨텍스트 분리
-
-Kubespray가 만든 두 `admin.conf`가 **모두 `cluster.local`이라는 동일한 식별자**를
-써서, 그대로 병합하면 cluster 항목이 하나로 합쳐진다. 그 결과
-`kubectl --context=develop`이 **platform 클러스터로 연결되어** 의도하지 않은
-클러스터에 배포될 수 있다.
-
-```bash
-cp ~/.kube/config ~/.kube/config.bak.$(date +%Y%m%d-%H%M%S)
-
-for c in platform develop; do
-  sed "s/cluster\.local/$c/g" ~/kubespray/inventory/$c/artifacts/admin.conf > /tmp/$c.conf
-  kubectl --kubeconfig /tmp/$c.conf config rename-context "kubernetes-admin-$c@$c" "$c"
-done
-
-KUBECONFIG=/tmp/platform.conf:/tmp/develop.conf kubectl config view --flatten > /tmp/merged.conf
-install -m 600 /tmp/merged.conf ~/.kube/config
-kubectl config use-context platform
-rm -f /tmp/platform.conf /tmp/develop.conf /tmp/merged.conf
-```
-
-검증 — cluster 항목이 2개이고 서버 주소가 서로 달라야 한다.
-
-```bash
-kubectl config view -o jsonpath='{range .clusters[*]}{.name}{"\t"}{.cluster.server}{"\n"}{end}'
-# develop   https://172.31.1.20:6443
-# platform  https://172.31.0.10:6443
-```
-
-### 2.2 StorageClass — local-path-provisioner
-
-Zadara 볼륨 CSI 연동이 아직 없어 PoC 한정으로 노드 로컬 디스크를 쓴다.
-**StorageClass가 없으면 PostgreSQL PVC가 Pending에서 멈춰 배포가 진행되지 않는다.**
-
-```bash
-kubectl --context=platform apply -f \
-  https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.31/deploy/local-path-storage.yaml
-
-kubectl --context=platform patch storageclass local-path \
-  -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
-```
-
-> `WaitForFirstConsumer` 모드라 PVC는 파드가 스케줄된 노드의 로컬 디스크에 바인딩된다.
-> **노드를 재생성하면 데이터가 사라진다.** 프로덕션 전환 시 Zadara 볼륨 CSI로 교체할 것.
-
-### 2.3 Ingress — ingress-nginx (NodePort)
-
-Zadara에는 LoadBalancer 연동이 없다. MetalLB는 VPC 여유 IP 대역이 확정되지 않아
-쓰지 않고, NodePort로 고정한다.
-
-```bash
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm repo update
-helm --kube-context=platform upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx --create-namespace \
-  --set controller.service.type=NodePort \
-  --set controller.service.nodePorts.http=30080 \
-  --set controller.service.nodePorts.https=30443 \
-  --set controller.replicaCount=1 \
-  --wait --timeout 300s
-```
-
-NodePort는 전 노드에서 열리므로, 공인 IP가 붙은 node-10으로 들어온 요청이
-kube-proxy를 거쳐 node-11의 컨트롤러 파드로 전달된다.
-
----
-
-## 3. 남은 선행 조건
-
-배포 전에 **반드시** 해결해야 한다.
-
-### 3.1 ghcr 패키지 접근 — **해소됨 (2026-08-07)**
-
-저장소가 public이어도 컨테이너 패키지는 기본 private이다. 3건 모두 private이라
-`ImagePullBackOff`가 되던 상태였고, **2026-08-07에 public으로 전환해 해소했다.**
-`imagePullSecrets`는 비운 채 두면 된다.
-
-전환 확인 (클러스터에서 pull secret 없이 이미지가 받아져야 한다):
-
-```bash
-gh api /orgs/cloud-nullus/packages/container/nullus%2Fnullus-api --jq .visibility   # public
-helm pull oci://ghcr.io/cloud-nullus/charts/nullus --version 0.3.0-alpha            # 익명 pull
-kubectl --context=platform run ghcr-pull-probe --restart=Never --rm -i \
-  --image=ghcr.io/cloud-nullus/nullus/nullus-api:0.3.0-alpha -- echo IMAGE_PULL_OK
-```
-
-이미지 2종은 `linux/amd64` + `linux/arm64` 멀티아치다. `skopeo inspect --no-creds`를
-macOS(arm64/darwin)에서 돌리면 호스트 플랫폼이 인덱스에 없어
-`no image found in image index for architecture`가 나는데, 이는 접근 실패가 아니다.
-`--raw`로 인덱스를 직접 보거나 `--override-os linux`를 붙인다.
-
-> 클러스터를 새로 만들거나 패키지를 다시 private으로 돌렸다면 pull secret이 필요하다.
->
-> ```bash
-> kubectl --context=platform create namespace nullus 2>/dev/null || true
-> kubectl --context=platform -n nullus create secret docker-registry ghcr-pull-secret \
->   --docker-server=ghcr.io --docker-username="$GHCR_USER" --docker-password="$GHCR_PAT"
-> ```
->
-> `GHCR_PAT`는 `read:packages` 스코프면 충분하다. 이후 `values-zadara.yaml`의
-> `imagePullSecrets`를 `[{name: ghcr-pull-secret}]`로 바꾼다. 가시성 전환은 REST API로
-> 되지 않고 **패키지 설정 UI**에서만 가능하다 — 저장소 Settings가 아니라
-> `https://github.com/orgs/cloud-nullus/packages` 아래의 패키지별 Settings다.
-
-### 3.2 차트 패치 — v0.3.0-alpha 태그 그대로는 설치되지 않는다
-
-`v0.3.0-alpha` 태그의 차트에는 이 클러스터에서 실증된 결함 2건이 있다 (CHANGELOG `Unreleased`
-`Fixed` 참조). 아직 패치 릴리즈가 나오지 않았다면 **`main`의 차트를 쓰거나** 해당 커밋을
-체크아웃해야 한다.
-
-| 결함 | 증상 | 확인 명령 |
+| 애드온 | 버전/설정 | 비고 |
 |---|---|---|
-| `nullus-wildcard-tls` 필수 마운트 | API 파드가 `FailedMount`로 Pending | `kubectl -n nullus describe pod -l app.kubernetes.io/component=api` |
-| `bitnami/postgresql` 이미지 소멸 | PostgreSQL 파드 `ImagePullBackOff` | `skopeo inspect --no-creds docker://bitnami/postgresql:17.5.0-debian-12-r20` |
+| local-path-provisioner | v0.0.31, default StorageClass | `WaitForFirstConsumer`, 노드 재생성 시 데이터 소실 |
+| ingress-nginx | chart 4.15.1, NodePort 30080/30443 | 컨트롤러는 w1에 배치 |
+| cert-manager | v1.16.2, ClusterIssuer `letsencrypt`(HTTP-01 전용, DNS-01 자격증명 없음) | |
+| Certificate | `nullus-wildcard` → secret `nullus-wildcard-tls` | SAN: nullus.io, www.nullus.io, auth.nullus.io. **와일드카드 아님** — 호스트 추가마다 SAN 갱신 필요. Let's Encrypt YR1, 만료 2026-12-11 |
 
-수정된 차트에서는 아래가 참이어야 한다.
+## 8. Nullus 배포 상태
 
-```bash
-helm template nullus deploy/helm/nullus -f deploy/csp/zadara/values-zadara.yaml \
-  --set secrets.dbPassword=x --set secrets.encryptionKey=0123456789abcdef0123456789abcdef \
-  | grep -E 'optional: true|bitnamilegacy/postgresql'
-```
+- Helm release `nullus`, namespace `nullus`, chart `nullus-0.5.0` rev 1.
+- values: `deploy/csp/zadara/values-zadara.yaml` 무수정 + `--set` 3개(시크릿).
+- 시크릿은 **m1의 `~/.nullus-secrets`(0600)에만 존재**, 다른 곳에 백업 없음.
+- 마이그레이션 Job `nullus-migrate`: Complete(1/1, 8s), 차트의
+  `post-install,pre-upgrade` 훅으로 자동 실행.
+- PVC: `data-nullus-postgresql-0` 20Gi, `data-nullus-keycloak-postgresql-0` 8Gi, 둘 다 Bound.
+- 릴리즈 이름은 반드시 `nullus`여야 한다 — web nginx가 `nullus-api`/`nullus-web` 등
+  이름 기반 서비스명으로 프록시하기 때문에 이름을 바꾸면 API 프록시가 깨진다.
 
-### 3.3 보안 그룹
+## 9. Keycloak
 
-현재 외부 → node-10은 **22/tcp만** 열려 있다. 웹 UI에 접근하려면 Zadara 콘솔에서
-`30080/tcp`(및 HTTPS 사용 시 `30443/tcp`)를 추가로 연다. 접근 소스는 운영자 IP로
-제한하는 것을 권장한다 — PoC 환경에 인증 없이 노출되는 경로가 생긴다.
+- realm `nullus`, client `nullus-app`(public), redirectUris
+  `https://nullus.io/*`, `http://localhost:5173/*`.
+- 계정: admin@nullus.io / devops@nullus.io / dev@nullus.io, 기본 비밀번호
+  `nullus123!` — **변경 권고**.
+- OSS 연동 클라이언트: grafana/argocd/harbor, 각 `*-dev-secret`.
 
----
+## 10. DNS
 
-## 4. 배포
+`nullus.io`, `www.nullus.io`, `auth.nullus.io` → `121.78.39.241` (Spaceship에서 관리,
+배포 직후 구 IP `121.78.39.184`를 가리키고 있었으므로 `dig @1.1.1.1 <host>`로 재확인).
 
-```bash
-# node-10 에서
-git clone https://github.com/cloud-nullus/nullus.git && cd nullus
-# 차트 결함 2건(§3.2)이 수정된 리비전을 쓴다. 패치 릴리즈가 나오면 그 태그로 바꿀 것.
-git checkout main
+## 11. 접속 방법 요약
 
-export DB_PASSWORD='<강력한_값>'
-export ENCRYPTION_KEY='<정확히_32바이트>'   # 예: openssl rand -hex 16
+- 웹: `https://nullus.io/`
+- SSH: `ssh -i nullus-key.pem ubuntu@121.78.39.241`
+- kubectl/helm: m1에서 직접 실행 (`~ubuntu/.kube/config`). 로컬에서 붙이려면
+  [INSTALL.md](INSTALL.md)의 터널 스크립트(`kubeconfig.sh`, `tunnel.sh`) 참고.
 
-helm dependency update deploy/helm/nullus
-
-helm --kube-context=platform upgrade --install nullus deploy/helm/nullus \
-  --namespace nullus --create-namespace \
-  -f deploy/csp/zadara/values-zadara.yaml \
-  --set secrets.dbPassword="$DB_PASSWORD" \
-  --set secrets.encryptionKey="$ENCRYPTION_KEY" \
-  --wait --timeout 600s
-```
-
-이미지 경로·태그는 차트 기본값(`values.yaml` + `Chart.appVersion`)을 그대로 쓴다.
-다른 버전을 배포하려면 `--set api.image.tag=<버전> --set web.image.tag=<버전>`.
-
-> 릴리즈 태그 `v0.3.0-alpha` → 이미지 태그 `0.3.0-alpha` (`v` 접두사 없음).
-> 프리릴리즈는 `latest`·`0.3` 같은 rolling 태그를 만들지 않으므로 전체 버전을 써야 한다.
-
-### 4.1 DB 마이그레이션
-
-차트는 스키마를 만들지 않는다. 배포 후 마이그레이션 Job을 실행한다.
-
-```bash
-CHART_PATH=./deploy/helm/nullus NULLUS_NAMESPACE=nullus \
-  ./deploy/csp/vm-cluster/runbook_csp.sh status   # 배포 상태 확인
-```
-
-`runbook_csp.sh deploy`는 MetalLB·ingress 설치까지 포함하므로, 위 2.2/2.3을 이미
-수행한 이 환경에서는 **helm 직접 배포 + 마이그레이션만** 사용한다.
-
----
-
-## 5. 검증
-
-```bash
-kubectl --context=platform -n nullus get pods -o wide      # 전부 Running
-kubectl --context=platform -n nullus get pvc               # Bound
-kubectl --context=platform -n nullus get ingress
-
-# 클러스터 내부에서 Host 헤더를 붙여 확인
-curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: nullus.zadara.poc' http://172.31.0.10:30080/
-
-# 외부에서 (보안 그룹 개방 후)
-curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: nullus.zadara.poc' http://<node-10-public-ip>:30080/
-```
-
-`nullus.zadara.poc`는 실재하지 않는 이름이므로, 브라우저로 접근하려면 로컬
-`/etc/hosts`에 `<node-10-public-ip> nullus.zadara.poc`를 추가한다.
-
-라우팅 구조: ingress는 **모든 경로를 web 서비스로** 보내고, web 컨테이너의 nginx가
-`/api/`·`/ws/`를 `http://nullus-api:8080`으로 프록시한다. 따라서 **Helm 릴리즈 이름은
-반드시 `nullus`여야 한다** — 이름이 바뀌면 서비스명이 달라져 API 프록시가 깨진다.
-
----
-
-## 6. 로컬에서 접근하기 (스크립트)
-
-기본 설계는 **외부에서 열리는 포트가 node-10 의 `22/tcp` 하나뿐**이라는 것이다
-(`zadara_cloud_poc.md` §1.2·§1.3, §11 "보안 그룹 최소화"). 아래 스크립트는 모두
-그 22/tcp 위로 터널을 뚫어, 보안 그룹을 건드리지 않고 로컬에서 쓰게 해 준다.
-
-| 스크립트 | 하는 일 | 기본 로컬 포트 |
-|---|---|---|
-| `tunnel.sh` | 웹 UI 를 브라우저로 연다 | 30080 |
-| `kubeconfig.sh` | `kubectl`·`helm` 을 붙인다 | 16443 |
-| `expose-apiserver.sh` | apiserver 를 외부에 노출 — **기본적으로 쓰지 않는다** | — |
-
-### 6.1 웹 UI
-
-```bash
-./deploy/csp/zadara/tunnel.sh          # direct 모드 — hosts/sudo 불필요
-# → http://127.0.0.1:30080
-./deploy/csp/zadara/tunnel.sh stop
-```
-
-`direct` 는 bastion 에서 `kubectl port-forward svc/nullus-web` 를 띄워 그 포트를 당겨온다.
-실제 외부 접근 경로(ingress-nginx NodePort)를 그대로 재현하려면 `MODE=ingress` 를 쓴다 —
-이 경우 ingress 가 Host 헤더로 라우팅하므로 `nullus.zadara.poc` hosts 매핑(sudo)이 필요하다.
-
-### 6.2 kubectl / helm
-
-```bash
-./deploy/csp/zadara/kubeconfig.sh                  # 터널 + ~/.kube/nullus-zadara.conf 생성
-export KUBECONFIG=$HOME/.kube/nullus-zadara.conf
-kubectl get pods -A
-./deploy/csp/zadara/kubeconfig.sh stop
-```
-
-`~/.kube/config` 에 **병합하지 않고 별도 파일로** 쓴다 — §2.1 의 `cluster.local` 충돌과 같은
-이유다. cluster/user/context 이름을 모두 `nullus-zadara` 로 다시 지어 넣으므로, 나중에
-`KUBECONFIG=a:b` 로 합쳐도 충돌하지 않는다. `develop` 은 `CLUSTER=develop` 으로.
-
-`insecure-skip-tls-verify` 는 쓰지 않는다. API 서버 인증서 SAN 에 `127.0.0.1` 과 `localhost`
-가 있어 터널 주소로 붙어도 검증이 통과한다.
-
-### 6.3 apiserver 외부 노출 — 예외 경로
-
-`expose-apiserver.sh` 는 apiserver 를 비표준 포트(36443)로 열고, **노드 iptables 에서 소스 IP
-를 한 번 더 검사**한다(보안 그룹이 넓게 열려도 노드가 DROP). 6443 자체는 열지 않는다.
-
-그래도 **문서 설계에 없던 외부 노출면을 만드는 선택**이므로 터널로 감당이 안 될 때만 쓰고,
-끝나면 `close` 로 되돌린다. 보안 그룹 규칙 자체는 이 스크립트가 넣지 못한다 — 이 환경에는
-zCompute API 자격증명도 IAM 롤도 없다(메타데이터 `iam/security-credentials` 가 404).
-
-```bash
-./deploy/csp/zadara/expose-apiserver.sh open    # 노드 규칙 + 보안 그룹 안내
-./deploy/csp/zadara/expose-apiserver.sh close   # 되돌리기
-```
-
----
-
-## 7. 알려진 제약
+## 12. 운영 시 알아야 할 것 / 한계
 
 | 항목 | 내용 |
 |---|---|
-| 스토리지 | local-path — 노드 재생성 시 데이터 소실. 백업 없음 |
+| 시크릿 위치 | m1 `~/.nullus-secrets` 단일 지점, 백업 없음 |
+| 스토리지 | local-path — 노드 재생성 시 데이터 소실, 백업 미구성 |
+| TLS 인증서 | 와일드카드 아님(SAN 방식), 만료 2026-12-11, 호스트 추가마다 갱신 필요 |
+| CD 시크릿 | `.github/workflows/cd.yml`의 `deploy-zadara` job이 참조하는 ZADARA_HOST/호스트키가 구 IP(121.78.39.184) 기준일 수 있음 — 갱신 확인 필요 |
+| Keycloak 기본 비밀번호 | `nullus123!` 미변경 상태 |
+| quota 상한 | 미확인. `describe-account-attributes`의 `max-instances=20`만 확인(인스턴스 개수 한도, vCPU/RAM 한도 아님) |
+| ingress-nginx | EOL 관련 이슈는 [배포 재계획](../../../docs/50_운영/zadara_cloud_deployment_plan.md) 참고 |
 | 워커 1대 | `replicaCount: 1` 고정. 2 이상이면 파드가 Pending |
-| control-plane | node-10은 2vCPU/4GB이고 bastion 겸용 — 워크로드를 올리지 않는다 |
-| TLS | 미구성. HTTP로만 접근한다. SSO(OIDC/PKCE)는 secure context가 필요해 **HTTPS 없이는 동작하지 않는다** |
-| SSO 스택 | `deploy/k8s/oauth2-proxy/*`와 `airgap/helm/stack-values/*`에 커밋된 고정 시크릿과 `ssl-insecure-skip-verify` 가 있어 PoC 클라우드에 그대로 적용하면 안 된다 |
-| develop 클러스터 | Nullus에 워크로드 클러스터로 등록하는 시나리오는 미수행 |
+| SSO 스택 | `deploy/k8s/oauth2-proxy/*`, `airgap/helm/stack-values/*`의 고정 시크릿·`ssl-insecure-skip-verify`를 이 환경에 그대로 적용하면 안 됨 |
+| 브라우저 로그인 검증 | Claude in Chrome 미연결로 클릭 흐름 미확인, authorize HTML 응답으로만 대체 확인 |
+
+## 13. 폐기된 구 환경 (참고)
+
+2026-09-13, node-10/11/20/21로 구성된 platform/develop 2클러스터와 그 위의 PVC 11개·Helm
+release 12개를 백업 없이 폐기하고 위 m1+w1 단일 클러스터로 전환했다. 상세 경위는
+[INSTALL_LOG_2026-09-13.md](INSTALL_LOG_2026-09-13.md) 참고.
