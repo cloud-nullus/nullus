@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Zadara PoC 를 OpenTofu + Kubespray 로 재구축했다** (`deploy/csp/zadara/opentofu/` 신규, `deploy/csp/zadara/{README,INSTALL,INSTALL_LOG_2026-09-13}.md`, `docs/50_운영/zadara_{opentofu_design,cloud_deployment_plan}.md`): 손으로 만든 node-10/11/20/21 두 클러스터를 2026-09-13 에 폐기하고 **m1(4vCPU/8GB, control-plane+worker+bastion) + w1(16vCPU/32GB, private+NAT)** 단일 클러스터로 바꿨다. VPC/서브넷/NAT/보안 그룹/EIP/VM 과 Kubespray 인벤토리까지가 IaC 소유이고 Kubernetes·Nullus 는 기존처럼 Kubespray·Helm 이 맡는다.
+
+  **실제 apply 로 드러난 zCompute 의 AWS 호환 API 차이를 코드에 못박았다.** 보안 그룹 생성 요청의 tags(D7)와 `AssociatePublicIpAddress`(D8) 는 400 으로 거부되고, root 볼륨의 `delete_on_termination=false` 는 무시된 뒤 ModifyInstance 가 끝나지 않는다(D9). 공인 IP 는 `aws_eip.public` 을 `prevent_destroy` 로 보호하고 association 만 VM 에 묶어 **VM 을 교체해도 121.78.39.241 이 유지**되게 했다(D10). SSH 는 운영자가 여럿이라 22 를 전체 개방하되 키 인증만 허용한다.
+
+  README 는 현재 아키텍처(Mermaid 다이어그램 포함), INSTALL 은 재실행 가능한 절차, INSTALL_LOG 는 실패 13건의 원인·수정 기록으로 나눴다. `tofu test` 15건은 mock provider 로 테넌트 없이 돈다.
+
 - **상단 내비게이션의 진행 중 작업 알림** (`web/src/features/common/{utils,hooks,components}/` 신규, `components/layout/header.tsx`, nullus-plan#66): 스택 설치나 배포를 걸어 두고 다른 화면으로 옮기면 **진행 중이라는 표시가 어디에도 남지 않았다.** 데모(2026-08-22)에서 지적받은 그대로다 — 사용자는 방금 시킨 일이 아직 도는지, 끝났는지, 실패했는지 알 방법이 없어 목록 화면으로 되돌아가 새로고침을 반복했다. 헤더에 종을 두고 도는 동안 흔들리게 한다. 드롭다운은 이름·단계·경과를 보여 주고, 누르면 해당 상세 화면으로 간다.
 
   **새 집계 API 를 만들지 않았다.** 후보는 셋이었다(신규 집계 API · 기존 목록 API 폴링 · WS 구독). WS 를 뺀 이유는 지금의 `/ws/deployments/:id/logs` 가 **배포 하나**의 로그 스트림이라는 데 있다 — 종이 그것을 쓰려면 "지금 뭐가 도는지" 를 먼저 알아야 하므로 **목록 조회가 어차피 선행되고**, 작업 수만큼 소켓을 여는 비용까지 붙는다. 서버 집계 API 는 stack·cicd 두 모듈의 상태를 한 핸들러가 읽어야 해 모듈 경계를 깨는데, 화면 하나를 위해 치를 값이 아직 아니다. 그래서 `GET /stacks` 와 `GET /cicd/deployments` 를 화면에서 합친다 — **서버 변경 0**. 두 엔드포인트 모두 이미 조직 스코프로 걸러 나오므로 화면에서 다시 거르지 않고, 상세 이동은 세 역할이 모두 볼 수 있는 라우트로만 보낸다(스택은 admin·devops 전용인 `/stack/deploy/:id` 대신 `/stack/logs/:id`).
