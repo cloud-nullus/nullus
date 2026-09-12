@@ -127,7 +127,9 @@
       "metrics": "Metrics",
       "logs": "Logs",
       "traces": "Traces",
-      "traceExporter": "Exporter / Agent"
+      "traceExporter": "Exporter / Agent",
+      "imageScanner": "Image Scanner",
+      "imageScannerHint": "Not installed unless selected. Harbor's built-in scanner can serve instead."
     },
     "resourceTotal": {
       "description": "Combined request/limit totals for {{count}} selected OSS"

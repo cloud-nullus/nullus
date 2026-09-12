@@ -408,6 +408,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"provisioning_harbor":        "config.artifacts.container_registry",
 			"installing_nexus":           "config.artifacts.container_registry",
 			"provisioning_nexus":         "config.artifacts.container_registry",
+			"installing_trivy":           "config.security.image_scanner",
 			"installing_argocd":          "config.pipeline.cd_tool",
 			stepInstallingRunner:         "config.pipeline.ci_platform",
 			"installing_jenkins":         "config.pipeline.ci_platform",
@@ -470,6 +471,12 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"provisioning_nexus": func(cfg domain.StackConfig) bool {
 				return isNexusSelection(cfg.Artifacts.ContainerRegistry) ||
 					isNexusSelection(cfg.Artifacts.PackageRegistry)
+			},
+			// 이미지 스캐너는 선택이다. 고르지 않은 스택에 서면 아무도 고르지
+			// 않은 워크로드가 뜬다 — 레지스트리가 Harbor 면 내장 스캐너로
+			// 대신할 수 있어 고르지 않는 편이 정상인 구성도 있다.
+			"installing_trivy": func(cfg domain.StackConfig) bool {
+				return isImageScannerSelection(cfg.Security.ImageScanner)
 			},
 			// 시크릿 평면(installing_openbao / installing_external_secrets /
 			// provisioning_secrets)은 stepConfigEnabled 에 넣지 않는다 — 항상 켜진다.
@@ -586,6 +593,14 @@ func isHarborRegistrySelection(sel domain.ToolSelection) bool {
 		return false
 	}
 	return normalizeToolName(sel.Name) == "harbor"
+}
+
+// isImageScannerSelection 은 스택에 이미지 스캐너를 세울지 본다.
+//
+// 이름을 보지 않는다 — 스캐너 슬롯의 선택지는 현재 Trivy 하나뿐이고, 고른
+// 사실 자체가 곧 설치 여부다. 선택지가 늘면 여기서 갈라야 한다.
+func isImageScannerSelection(sel domain.ToolSelection) bool {
+	return sel.Enabled && !isExternalSelection(sel)
 }
 
 // isGitLabContainerRegistrySelection 은 GitLab 내장 레지스트리를 골랐는지 본다.
@@ -1129,6 +1144,10 @@ func (o *Orchestrator) isStepEnabled(step string) bool {
 func isOptInStep(step string) bool {
 	switch step {
 	case "provisioning_sso", "installing_harbor", "provisioning_harbor", "provisioning_gitea", "installing_nexus", "provisioning_nexus":
+		return true
+	// 이미지 스캐너는 선택 항목이다. 설정을 모를 때 켜 두면 아무도 고르지 않은
+	// 스캐너가 서고, 배포 검증이 없는 릴리스의 상태를 물어 실패한다.
+	case "installing_trivy":
 		return true
 	// Gitea 는 명시적으로 골라야 선다. 소스 저장소 슬롯의 기본값은 GitLab 이므로
 	// (isGitLabSourceRepositorySelection 이 빈 이름에 true 를 돌려준다) 여기 없으면

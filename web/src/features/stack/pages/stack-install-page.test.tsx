@@ -285,6 +285,7 @@ describe('StackInstallPage', () => {
     expect(screen.getByText('Artifacts')).toBeInTheDocument()
     expect(screen.getAllByText('CI/CD')[0]).toBeInTheDocument()
     expect(screen.getByText('Observability')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Security' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Resources' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Storage' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'YAML View' })).toBeInTheDocument()
@@ -343,6 +344,15 @@ describe('StackInstallPage', () => {
     expect(screen.getAllByText('Metrics')[0]).toBeTruthy()
     expect(screen.getAllByText('Logs')[0]).toBeTruthy()
     expect(screen.getAllByText('Traces')[0]).toBeTruthy()
+  })
+
+  // 스캐너 슬롯을 Go 쪽에만 만들면 사용자가 고를 화면이 없어 기능 전체가
+  // 도달 불가 상태로 남는다.
+  it('clicking Security tab shows the image scanner selector', () => {
+    renderWithProviders(<StackInstallPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Security' }))
+    expect(screen.getAllByText('Image Scanner')[0]).toBeTruthy()
+    expect(screen.getAllByText('Trivy')[0]).toBeTruthy()
   })
 
   it('clicking Resources tab shows Resources content', () => {

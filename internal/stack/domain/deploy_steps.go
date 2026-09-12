@@ -35,6 +35,7 @@ var InstallStepOrder = []string{
 	"provisioning_harbor",
 	"installing_nexus",
 	"provisioning_nexus",
+	"installing_trivy",
 	"installing_argocd",
 	"installing_runner",
 	"installing_jenkins",

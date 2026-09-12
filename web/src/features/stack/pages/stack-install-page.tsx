@@ -46,6 +46,7 @@ import {
   MONITORING_OPTIONS,
   AUTHENTICATION_OPTIONS,
   LOGGING_OPTIONS,
+  SECURITY_OPTIONS,
   STORAGE_PLAN_MODE_OPTIONS,
   STORAGE_SIZE_OPTIONS,
   STORAGE_SIZE_RESOURCE_HINTS,
@@ -307,6 +308,7 @@ const TABS: { id: InstallTab; label: string }[] = [
   { id: 'artifacts', label: 'Artifacts' },
   { id: 'pipeline', label: 'CI/CD' },
   { id: 'monitoring', label: 'Observability' },
+  { id: 'security', label: 'Security' },
   { id: 'storage', label: 'Storage' },
   { id: 'resources', label: 'Resources' },
   { id: 'manifests', label: 'YAML View' },
@@ -2804,6 +2806,24 @@ export function StackInstallPage() {
                   value={draft.logging.traceExporter}
                   onChange={(v) => setTool('logging', 'traceExporter', v)}
                 />
+              </>
+            )}
+
+            {activeTab === 'security' && (
+              <>
+                <ToolSelector
+                  label={t('stackInstall.labels.imageScanner', 'Image Scanner')}
+                  options={SECURITY_OPTIONS.imageScanner}
+                  slot="imageScanner"
+                  value={draft.security.imageScanner}
+                  onChange={(v) => setTool('security', 'imageScanner', v)}
+                />
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  {t(
+                    'stackInstall.labels.imageScannerHint',
+                    "Not installed unless selected. Harbor's built-in scanner can serve instead.",
+                  )}
+                </p>
               </>
             )}
 

@@ -63,6 +63,7 @@ CATALOG=(
   # --- platform/optional chart ---
   "keycloak|bitnami|https://charts.bitnami.com/bitnami|bitnami/keycloak|24.4.5"
   "harbor|harbor|https://helm.goharbor.io|harbor/harbor|1.15.0"
+  "trivy|aqua|https://aquasecurity.github.io/helm-charts/|aqua/trivy|0.26.0"
 )
 
 mkdir -p "$CATALOG_DIR"

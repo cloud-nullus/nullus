@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **실제 apply 로 드러난 zCompute 의 AWS 호환 API 차이를 코드에 못박았다.** 보안 그룹 생성 요청의 tags(D7)와 `AssociatePublicIpAddress`(D8) 는 400 으로 거부되고, root 볼륨의 `delete_on_termination=false` 는 무시된 뒤 ModifyInstance 가 끝나지 않는다(D9). 공인 IP 는 `aws_eip.public` 을 `prevent_destroy` 로 보호하고 association 만 VM 에 묶어 **VM 을 교체해도 121.78.39.241 이 유지**되게 했다(D10). SSH 는 운영자가 여럿이라 22 를 전체 개방하되 키 인증만 허용한다.
 
   README 는 현재 아키텍처(Mermaid 다이어그램 포함), INSTALL 은 재실행 가능한 절차, INSTALL_LOG 는 실패 13건의 원인·수정 기록으로 나눴다. `tofu test` 15건은 mock provider 로 테넌트 없이 돈다.
+- **컨테이너 이미지 취약점 스캔 — 스택에서 고르는 선택 항목** (`internal/stack/**`, `internal/cicd/**`, `web/src/features/stack/**`, `airgap/**`, nullus-plan#76): 이미지 스캔 기능이 **전무했다.** 저장소 전수 확인 결과 Trivy 설정 0건이었고, PRD 는 이미 완료 기준으로 "Trivy 스캔 완료" 를 적고 있었다. 설계는 [`docs/11_기능설계/Nullus_컨테이너_이미지_스캔_설계.md`](docs/11_기능설계/Nullus_컨테이너_이미지_스캔_설계.md).
+
+  **차단 게이트를 레지스트리에 두지 않는다.** 지원 레지스트리 5종(`scm_project`·`harbor`·`nexus`·`ghcr`·`external`) 중 자체 스캔 기능이 있는 것은 **Harbor 하나뿐**이다 — GitLab Container Registry 의 Container Scanning 은 CI 잡이지 레지스트리 기능이 아니고, Nexus 는 OSS 에 스캐너가 없으며(Sonatype IQ 는 상용), GHCR 은 네이티브 스캔이 없다. 없는 쪽에 플러그인을 꽂을 확장점도 없다: 확장점이 있는 Harbor 는 이미 스캐너가 있고, 없는 셋은 확장점 자체가 없다. 게이트를 레지스트리에 두면 **5종 중 4종이 게이트 없이 초록불**이 된다.
+
+  **Trivy 를 server 모드로 세운다.** 취약점 DB 를 서버에만 두고 CI 잡은 client 로 붙어 패키지 목록만 보낸다. standalone 이면 파이프라인마다 DB(수백 MB)를 내려받아야 하고, 에어갭에서는 그 반입 지점이 "모든 CI 러너가 닿는 곳" 으로 늘어난다 — 이슈가 파이프라인 스캔의 단점으로 꼽은 바로 그 비용이다. kind 실측에서 client 로그의 DB 다운로드는 **0건**이었고, DB 실크기는 1.3G(PVC 5Gi)였다.
+
+  **기본값은 "고르지 않음" 이다.** 기본으로 켜면 안 쓰는 조직도 스캐너 파드를 떠안는다 — 레지스트리가 Harbor 면 내장 스캐너로 충분하다. 차단 기준은 CRITICAL 차단 · HIGH 경고 · `--ignore-unfixed` 다. 마지막 것이 결정적이다: `debian:11` 은 CRITICAL 5건인데 **전부 수정본이 없어**, 이 옵션이 없으면 평범한 베이스 이미지로 첫 배포가 막힌다(실측).
+
+  **에어갭 반입 경로를 새로 만들었다** (`airgap/images/oci-artifacts.txt`, `scripts/pre/pull-oci-artifacts.sh`, `scripts/14-push-oci-artifacts.sh`). trivy-db 는 컨테이너 이미지가 아니라 **OCI 아티팩트**라 `docker pull` 로 받아지지 않는다. oras 로 OCI layout 을 받아 tar 로 옮기고 내부 레지스트리에 올린다. oras 부재는 경고가 아니라 **실패**로 다룬다 — 조용히 건너뛰면 번들이 초록불인 채로 DB 만 빠진다(`generate-sbom.sh` 가 syft 부재를 `exit 0` 으로 넘겨 SBOM 이 통째로 빠졌던 것과 같은 실패다).
 
 - **상단 내비게이션의 진행 중 작업 알림** (`web/src/features/common/{utils,hooks,components}/` 신규, `components/layout/header.tsx`, nullus-plan#66): 스택 설치나 배포를 걸어 두고 다른 화면으로 옮기면 **진행 중이라는 표시가 어디에도 남지 않았다.** 데모(2026-08-22)에서 지적받은 그대로다 — 사용자는 방금 시킨 일이 아직 도는지, 끝났는지, 실패했는지 알 방법이 없어 목록 화면으로 되돌아가 새로고침을 반복했다. 헤더에 종을 두고 도는 동안 흔들리게 한다. 드롭다운은 이름·단계·경과를 보여 주고, 누르면 해당 상세 화면으로 간다.
 
@@ -64,6 +73,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **아직 아닌 것**: **실환경 리허설이 남았다** — 실제 OSS 데이터(GitLab 커밋 · Harbor digest · Jenkins 빌드) · OpenBao 금고 · RTO/정지 창 실측 · 다중 노드. 축소 리허설은 *메커니즘*을 검증했지 *규모와 도구별 정합성*을 검증하지 않았고, **그것이 끝나야 B4-1 완료다.** 알림은 구조화 로그까지이고 채널 발송은 #63 에 달렸다. UI(B3-2)와 운영 런북(B3-4)도 남아 있다.
 
 ### Fixed
+
+- **두 번째 스택 설치를 매번 막던 ESO 소유권 — 인수 대상을 애노테이션으로 찾는다** (`internal/stack/adapter/helm/external-secrets.go`, `internal/stack/usecase/delete_stack.go`): 스택을 지우고 **다른 네임스페이스에 새로 만들면 그때마다 설치가 죽었다.** 실환경 재설치에서 드러났다.
+
+  **인수 대상이 24분의 2였다.** ESO CRD 는 클러스터 범위라 Helm 이 릴리스 삭제 시 지우지 않는다. 코드는 그 사실을 알고 소유권 인수 로직을 두었는데(주석도 *"멀티 스택 제품에서는 반드시 발생하는 상황"* 이라 적고 있다), 대상 목록에 CRD 두 개만 하드코딩돼 있었다. 차트 2.7.0 이 실제로 만드는 것은 CRD 24개 · ClusterRole 5개 · ClusterRoleBinding 2개 · ValidatingWebhookConfiguration 2개다. 알파벳 순으로 첫 미인수 리소스(`acraccesstokens.generators.external-secrets.io`)에서 `invalid ownership metadata` 로 막혔다.
+
+  종류를 손으로 적는 대신 **Helm 이 소유권 충돌을 판정하는 바로 그 애노테이션**(`meta.helm.sh/release-name`)으로 찾는다. 차트가 리소스를 늘려도 따라가고, 살아 있는 다른 스택의 것을 뺏지 않는 기존 가드는 그대로다. 건별 로그는 30건을 넘겨 설치 흐름을 덮으므로 한 줄로 요약한다.
+
+- **네임스페이스가 영구 Terminating 으로 남던 것 — ESO 웹훅을 커스텀 리소스보다 먼저 지운다** (`internal/stack/usecase/delete_stack.go`): 스택을 지우면 네임스페이스가 삭제되지 않고 **몇 시간이고 Terminating 에 머물렀다.** 사람이 손을 대야만 풀렸다.
+
+  **웹훅과 그것이 검증하는 리소스의 순서 문제다.** 삭제는 ExternalSecret 을 먼저 지우도록 이미 정렬돼 있었지만, 검증 웹훅 설정은 아무도 지우지 않았다. 웹훅이 남은 채 그것을 서빙하던 서비스가 사라지면 남은 ExternalSecret 삭제 요청이 **webhook 호출 실패로 거부되고**, 네임스페이스는 그 리소스를 회수하지 못한다.
+
+  웹훅을 커스텀 리소스보다 **먼저** 지운다. 호출 순서가 곧 규칙이므로 순서 자체를 테스트로 고정했다. 이름으로 찾지 않는다 — 실제 이름이 `externalsecret-validate` / `secretstore-validate` 라 `external-secrets` 로 훑는 코드가 놓친다. ESO CRD 도 Argo CD·Gateway 와 같이 삭제 시 정리한다.
+
+- **게이트웨이 설치가 helm CLI 버전에 묶여 있던 것 — 라이브러리에 레지스트리 클라이언트를 붙인다** (`internal/stack/adapter/helm/installer.go`): `installing_gateway` 가 `missing registry client; fallback helm cli install failed` 로 죽었다.
+
+  `action.Configuration.Init` 은 레지스트리 클라이언트를 만들지 않아 `oci://` 차트 조회가 실패했고, 그동안은 helm CLI 로 폴백해 넘겼다. **그 폴백이 PATH 의 CLI 버전에 묶여 있다** — helm v4 가 잡히면 폴백까지 함께 실패해 게이트웨이가 통째로 막힌다. 런북은 helm 존재만 확인하고 버전은 보지 않는다. `registry.NewClient()` 를 붙여 라이브러리 안에서 해결한다. 폴백 경로는 남겨 두되 이제 타지 않는다.
 
 - **GitLab CI 가 한 건도 돌지 않던 것 — 러너 토큰을 등록 토큰으로 넘긴다** (`internal/stack/adapter/helm/gitlab-runner.go`, `orchestrator.go`): `gitlab-*` 골든패스로 설치한 스택에서 러너가 크래시 루프로 죽어 **파이프라인이 하나도 실행되지 않았다.** 실환경 리허설에서 드러났다.
 

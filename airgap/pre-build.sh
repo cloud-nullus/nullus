@@ -85,6 +85,18 @@ else
   hdr "3/5 카탈로그 단계 — SKIP_CATALOG=1 건너뜀"
 fi
 
+# 컨테이너 이미지가 아닌 OCI 산출물(Trivy 취약점 DB). docker 로는 받을 수 없어
+# 별도 경로를 탄다. 이게 빠지면 에어갭에서 이미지 스캔이 전부 실패한다.
+#
+# 기존 hdr 의 분수 표기(1/4, 2/5, 5/6)는 이미 서로 어긋나 있어 따라가지 않는다.
+SKIP_OCI="${SKIP_OCI:-0}"
+if [[ "$SKIP_OCI" != "1" ]]; then
+  hdr "OCI 아티팩트 반입 (Trivy 취약점 DB)"
+  bash "${SCRIPTS}/pre/pull-oci-artifacts.sh"
+else
+  hdr "OCI 아티팩트 단계 — SKIP_OCI=1 건너뜀"
+fi
+
 if [[ "$SKIP_BIN" != "1" ]]; then
   hdr "4/5 CLI 바이너리 다운로드"
   bash "${SCRIPTS}/pre/pull-binaries.sh"

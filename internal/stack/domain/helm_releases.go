@@ -33,6 +33,10 @@ var InstalledHelmReleaseNames = []string{
 	"gitlab",
 	GiteaReleaseName,
 	"argo-cd",
+	// 이미지 스캐너. 선택 항목이라 안 깔린 스택도 있지만, 삭제는 무엇이
+	// 설치됐는지 모른 채 훑으므로 여기 적어 둔다. 빼면 스캐너를 고른 스택을
+	// 지워도 릴리스와 취약점 DB PVC 가 그대로 남는다.
+	TrivyReleaseName,
 	// installing_runner / installing_jenkins 변형. CI 슬롯도 둘 중 하나만 서지만
 	// 삭제는 어느 쪽인지 모른 채 훑으므로 둘 다 적는다.
 	"gitlab-runner",
