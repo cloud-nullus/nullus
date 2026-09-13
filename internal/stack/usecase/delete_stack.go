@@ -15,6 +15,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	sharedkubeconfig "github.com/cloud-nullus/draft/internal/shared/kubeconfig"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 )
@@ -1484,6 +1485,9 @@ func deleteManifest(ctx context.Context, kubeconfig []byte, namespace, manifest 
 	if strings.TrimSpace(manifest) == "" {
 		return nil
 	}
+	if err := sharedkubeconfig.RequireServer(kubeconfig); err != nil {
+		return err
+	}
 	tmpFile, err := os.CreateTemp("", "nullus-delete-kubeconfig-*.yaml")
 	if err != nil {
 		return fmt.Errorf("create kubeconfig temp file: %w", err)
@@ -1566,7 +1570,15 @@ func deleteResource(ctx context.Context, kubeconfig []byte, namespace, resource 
 	return err
 }
 
+// runKubectlWithKubeconfig 는 주어진 kubeconfig 로 kubectl 을 실행한다.
+//
+// 서버 주소가 없는 kubeconfig 는 실행 전에 거부한다. kubectl 은 이때 오류 없이
+// localhost:8080 으로 폴백해, 삭제 요청이 엉뚱한 곳으로 가거나 응답 없는 포트에
+// 매달린다.
 func runKubectlWithKubeconfig(ctx context.Context, kubeconfig []byte, args ...string) (string, error) {
+	if err := sharedkubeconfig.RequireServer(kubeconfig); err != nil {
+		return "", err
+	}
 	tmpFile, err := os.CreateTemp("", "nullus-delete-kubeconfig-*.yaml")
 	if err != nil {
 		return "", fmt.Errorf("create kubeconfig temp file: %w", err)

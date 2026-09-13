@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	sharedkubeconfig "github.com/cloud-nullus/draft/internal/shared/kubeconfig"
 )
 
 func isKubectlNotFoundError(err error) bool {
@@ -74,9 +76,13 @@ func (o *Orchestrator) applyManifest(ctx context.Context, namespace, manifest st
 	return nil
 }
 
+// writeKubeconfigTempFile 은 kubectl 실행용 kubeconfig 파일을 만든다.
+//
+// 모든 kubectl 실행이 이 함수를 지나므로 여기서 서버 주소를 확인한다.
+// 서버가 없으면 kubectl 은 localhost:8080 으로 폴백해 엉뚱한 곳에 apply 한다.
 func (o *Orchestrator) writeKubeconfigTempFile() (string, error) {
-	if len(o.kubeconfig) == 0 {
-		return "", fmt.Errorf("kubeconfig is empty")
+	if err := sharedkubeconfig.RequireServer(o.kubeconfig); err != nil {
+		return "", err
 	}
 	tmpFile, err := os.CreateTemp("", "nullus-kubeconfig-*.yaml")
 	if err != nil {
