@@ -25,6 +25,9 @@ type SyncPipelineRuns struct {
 	// factory / pipelines 는 파이프라인마다 CI 서버를 찾을 때 쓴다.
 	factory   port.SCMBundleFactory
 	pipelines port.PipelineRepository
+	// imageScans 는 스캔 단계의 게이트 판정을 남긴다. nil 이면 남기지 않는다 —
+	// 스캔 결과 저장이 배선되지 않은 구성에서도 실행 기록 동기화는 돌아야 한다.
+	imageScans port.ImageScanResultRepository
 }
 
 const (
@@ -95,7 +98,62 @@ func (uc *SyncPipelineRuns) Execute(ctx context.Context, input SyncPipelineRunsI
 		}
 		synced++
 	}
+
+	uc.recordImageScans(ctx, pipelineID, builds)
 	return synced, nil
+}
+
+// imageScanStageName 은 스캐폴딩이 만드는 스캔 단계의 표시 이름이다.
+// CI 가 보고한 단계 이름과 대소문자만 다를 수 있다.
+const imageScanStageName = "imagescan"
+
+// recordImageScans 는 스캔 단계가 끝난 실행의 게이트 판정을 남긴다.
+//
+// 리포트는 아직 읽지 않는다 — CI 마다 산출물을 받는 API 가 달라 따로 붙여야 한다.
+// 그래서 건수는 비워 두고 판정만 남긴다. 0 으로 채우면 "취약점 0건" 으로 읽힌다.
+//
+// 기록 실패로 실행 기록 동기화를 실패시키지 않는다. 대시보드 입력이 한 번 빠지는
+// 것보다, 배포 이력 화면이 통째로 멈추는 것이 더 나쁘다.
+func (uc *SyncPipelineRuns) recordImageScans(ctx context.Context, pipelineID string, builds []port.CIBuild) {
+	if uc.imageScans == nil {
+		return
+	}
+	for _, b := range builds {
+		for _, st := range b.Stages {
+			if strings.ToLower(strings.TrimSpace(st.Name)) != imageScanStageName {
+				continue
+			}
+			gate, ok := domain.GateResultFromStageStatus(string(st.Status))
+			if !ok {
+				continue // 도는 중인 것을 통과로 적지 않는다
+			}
+			deploymentID := runDeploymentID(pipelineID, b.Number)
+			scannedAt := st.StartedAt
+			if scannedAt.IsZero() {
+				scannedAt = b.StartedAt
+			}
+			result := &domain.ImageScanResult{
+				// 실행 하나에 스캔 하나다. 같은 실행을 다시 동기화해도 기록이 늘지 않는다.
+				ID:           "scan_" + deploymentID,
+				PipelineID:   pipelineID,
+				DeploymentID: deploymentID,
+				ScanSource:   string(port.ScanSourceCentral),
+				Scanner:      "trivy",
+				GateResult:   gate,
+				ScannedAt:    scannedAt,
+			}
+			if err := uc.imageScans.Upsert(ctx, result); err != nil {
+				slog.Warn("이미지 스캔 결과 기록 실패",
+					"pipeline_id", pipelineID, "deployment_id", deploymentID, "error", err)
+			}
+		}
+	}
+}
+
+// WithImageScans 는 스캔 게이트 판정을 남기도록 배선한다.
+func (uc *SyncPipelineRuns) WithImageScans(repo port.ImageScanResultRepository) *SyncPipelineRuns {
+	uc.imageScans = repo
+	return uc
 }
 
 // deploymentFromBuild 는 CI 빌드를 배포 기록으로 옮긴다.
@@ -211,7 +269,7 @@ func (uc *SyncPipelineRuns) ForPipeline(ctx context.Context, pipelineID string) 
 	if reader == nil {
 		reader = bundle.CIBuilds
 	}
-	sync := NewSyncPipelineRuns(reader, uc.deployments)
+	sync := NewSyncPipelineRuns(reader, uc.deployments).WithImageScans(uc.imageScans)
 	return sync.Execute(ctx, SyncPipelineRunsInput{
 		PipelineID: pipeline.ID,
 		JobName:    pipeline.Name,

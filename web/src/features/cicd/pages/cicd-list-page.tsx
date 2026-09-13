@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { buildStageStates, type StageState } from "../utils/stage-states";
+import { buildStageStates, type StageState, resolvePipelineStages } from "../utils/stage-states";
 import { useTranslation } from "react-i18next";
 import {
   Activity,
@@ -1455,7 +1455,10 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
     string | null
   >(null);
   const deployments = deploymentsData?.items ?? [];
-  const stages = (template?.stages ?? []) as string[];
+  const stages = resolvePipelineStages(
+    pipeline.stages,
+    template?.stages as string[] | undefined,
+  );
 
   useEffect(() => {
     if (deployments.length === 0) {

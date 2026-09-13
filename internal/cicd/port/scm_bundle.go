@@ -86,7 +86,11 @@ type SCMBundle struct {
 	// AccessDomain / GatewayName 은 배포된 앱을 외부에 노출할 때 쓴다.
 	// 비어 있으면 앱은 클러스터 내부에서만 접근 가능하다.
 	AccessDomain string
-	GatewayName  string
+	// ImageScannerEndpoint 는 스택 Trivy 서버의 클러스터 내 주소다.
+	// 스캐너를 고르지 않은 스택에서는 비어 있고, 그때는 스캐폴딩이
+	// 이미지 스캔 단계를 만들지 않는다.
+	ImageScannerEndpoint string
+	GatewayName          string
 }
 
 // PipelineCredentialPlane 은 파이프라인 자격증명을 준비하고 그것을 클러스터에

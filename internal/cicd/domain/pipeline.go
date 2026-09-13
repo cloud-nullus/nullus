@@ -50,6 +50,13 @@ type Pipeline struct {
 	EnvVars        map[string]string `json:"env_vars,omitempty"`
 	Status         PipelineStatus    `json:"status"`
 	CreatedAt      time.Time         `json:"created_at"`
+	// Stages 는 이 파이프라인이 실제로 가진 단계다 (예: Build · ImageScan · Deploy).
+	//
+	// 템플릿의 stages 와 따로 둔다 — 이미지 스캔 같은 선택 단계는 파이프라인
+	// 단위로 켜고 끈다. 템플릿에만 두면 끈 파이프라인이 돌지도 않은 단계를
+	// 보여준다(마이그레이션 000070). 비어 있으면 모른다는 뜻이고, 화면은
+	// 템플릿으로 떨어진다 — 이 칸이 생기기 전에 만든 파이프라인이 그렇다.
+	Stages []string `json:"stages,omitempty"`
 }
 
 // 실행 모드. 어느 쪽이 이미지를 만들고 클러스터에 반영하는지를 가른다.

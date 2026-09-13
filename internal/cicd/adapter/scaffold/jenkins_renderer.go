@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cloud-nullus/draft/internal/cicd/port"
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
@@ -34,7 +33,9 @@ const (
 //
 // 배포는 하지 않는다. 이미지 태그를 매니페스트에 되쓰고 Argo CD 가 그 커밋을
 // 동기화한다 (cicd-golden-path.md 가 고른 Git + Argo CD 방식).
-func renderJenkinsfile(app string, target *port.ImageTarget) string {
+func renderJenkinsfile(in Input) string {
+	app, target := in.AppName, in.ImageTarget
+	opts := stageOptionsFor(in)
 	var b strings.Builder
 
 	b.WriteString("// Nullus 가 생성한 파이프라인입니다.\n")
@@ -59,6 +60,14 @@ func renderJenkinsfile(app string, target *port.ImageTarget) string {
 	b.WriteString("      envFrom:\n")
 	b.WriteString("        # ESO 가 OpenBao 에서 동기화한 파이프라인 자격증명이다.\n")
 	fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
+	if opts.ImageScan {
+		// 스캐너는 별도 컨테이너다. builder 에 trivy 를 설치하면 빌드마다
+		// 내려받게 되고, 이미지에 굽자니 빌더가 스캐너 버전에 묶인다.
+		b.WriteString("    - name: scanner\n")
+		fmt.Fprintf(&b, "      image: %s\n", defaultScannerImage)
+		b.WriteString("      command: [\"cat\"]\n")
+		b.WriteString("      tty: true\n")
+	}
 	b.WriteString("    - name: dind\n")
 	fmt.Fprintf(&b, "      image: %s\n", jenkinsDindImage)
 	b.WriteString("      securityContext: {privileged: true}\n")
@@ -127,6 +136,37 @@ func renderJenkinsfile(app string, target *port.ImageTarget) string {
 	b.WriteString("        }\n")
 	b.WriteString("      }\n")
 	b.WriteString("    }\n\n")
+
+	if opts.ImageScan {
+		// image-scan — 빌드한 이미지를 스택 Trivy 서버로 검사한다.
+		//
+		// 차단 기준은 환경변수로 읽는다. 값을 스크립트에 박으면 정책을 바꿀
+		// 때마다 모든 파이프라인을 다시 스캐폴딩해야 한다.
+		fmt.Fprintf(&b, "    stage('%s') {\n", imageScanStageName)
+		b.WriteString("      environment {\n")
+		fmt.Fprintf(&b, "        %s = %q\n", scanServerVar, in.ImageScannerEndpoint)
+		fmt.Fprintf(&b, "        %s = %q\n", scanSeverityVar, defaultScanSeverity)
+		fmt.Fprintf(&b, "        %s = %q\n", scanIgnoreUnfixedV, "true")
+		b.WriteString("      }\n")
+		b.WriteString("      steps {\n")
+		b.WriteString("        container('scanner') {\n")
+		b.WriteString("          sh '''\n")
+		b.WriteString("            set -eu\n")
+		for _, line := range scanScriptLines() {
+			fmt.Fprintf(&b, "            %s\n", line)
+		}
+		b.WriteString("          '''\n")
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		// 리포트는 실패해도 남긴다. 차단당한 사람이 무엇에 걸렸는지 보려면
+		// 실패한 실행의 산출물이 필요하다.
+		b.WriteString("      post {\n")
+		b.WriteString("        always {\n")
+		fmt.Fprintf(&b, "          archiveArtifacts artifacts: %q, allowEmptyArchive: true\n", scanReportFile)
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("    }\n\n")
+	}
 
 	// deploy — 매니페스트 태그 갱신 후 되커밋
 	b.WriteString("    stage('Deploy') {\n")

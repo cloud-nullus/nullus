@@ -32,6 +32,8 @@ const resourceStatusRunning = "running"
 
 // PipelineHandler handles HTTP requests for pipeline operations.
 type PipelineHandler struct {
+	// imageScans 는 스캔 결과 조회용이다. nil 이면 조회가 503 을 돌려준다.
+	imageScans     port.ImageScanResultRepository
 	createPipeline *usecase.CreatePipeline
 	listPipelines  *usecase.ListPipelines
 	deployPipeline *usecase.DeployPipeline
@@ -78,6 +80,15 @@ func (h *PipelineHandler) WithStackReader(r port.StackReader) *PipelineHandler {
 //
 // 없으면 GitOps 경로(CI 가 빌드하고 Argo CD 가 배포)의 실행 통계가 비어 있는
 // 채로 남는다 — 플랫폼이 직접 실행한 배포만 기록에 남기 때문이다.
+// WithImageScans 는 이미지 스캔 결과 조회를 배선한다.
+//
+// 대시보드(#65)가 읽는 공개 경로다. 스캔 결과 테이블은 cicd 가 소유하므로
+// 다른 모듈이 직접 조회하지 않는다.
+func (h *PipelineHandler) WithImageScans(repo port.ImageScanResultRepository) *PipelineHandler {
+	h.imageScans = repo
+	return h
+}
+
 func (h *PipelineHandler) WithRunSync(uc *usecase.SyncPipelineRuns) *PipelineHandler {
 	h.syncRuns = uc
 	return h
@@ -119,6 +130,7 @@ func (h *PipelineHandler) RegisterRoutes(g *echo.Group) {
 	g.DELETE("/pipelines/:id", h.DeletePipeline)
 	g.POST("/pipelines/:id/deploy", h.DeployPipeline)
 	g.GET("/pipelines/:id/resources", h.GetPipelineResources)
+	g.GET("/pipelines/:id/image-scans", h.ListImageScans)
 	g.GET("/deployments", h.ListDeployments)
 	g.GET("/deployments/:id", h.GetDeployment)
 	g.GET("/app-templates", h.ListAppTemplates)
@@ -1145,4 +1157,40 @@ func (h *PipelineHandler) resolveOrgID(ctx context.Context, headerOrgID, cluster
 		return "", fmt.Errorf("cluster %s not found: %w", clusterID, err)
 	}
 	return orgID, nil
+}
+
+// imageScanView 는 스캔 결과 응답이다.
+//
+// DB 가 낡았는지는 서버가 판정해 내려준다. 화면마다 임계를 따로 두면 어떤
+// 화면은 초록불을, 어떤 화면은 경고를 켠다.
+type imageScanView struct {
+	*domain.ImageScanResult
+	DBStale bool `json:"db_stale"`
+}
+
+// ListImageScans handles GET /pipelines/:id/image-scans.
+func (h *PipelineHandler) ListImageScans(c echo.Context) error {
+	if h.imageScans == nil {
+		// 빈 목록을 돌려주지 않는다 — "스캔한 적 없음" 으로 읽힌다.
+		return errorResponse(c, http.StatusServiceUnavailable, "IMAGE_SCANS_NOT_CONFIGURED",
+			"image scan result store is not configured")
+	}
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		return errorResponse(c, http.StatusBadRequest, "PIPELINE_ID_REQUIRED", "pipeline id is required")
+	}
+	if _, err := h.pipelineRepo.GetByID(c.Request().Context(), id); err != nil {
+		return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
+	}
+
+	results, err := h.imageScans.ListByPipelineID(c.Request().Context(), id)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, "IMAGE_SCANS_LIST_FAILED", err.Error())
+	}
+	now := time.Now()
+	items := make([]imageScanView, 0, len(results))
+	for _, r := range results {
+		items = append(items, imageScanView{ImageScanResult: r, DBStale: domain.IsDBStale(r.DBUpdatedAt, now)})
+	}
+	return c.JSON(http.StatusOK, map[string]any{"items": items, "total": len(items)})
 }

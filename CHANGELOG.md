@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **이미지 스캔을 파이프라인의 실제 차단 게이트로 만들었다** (`internal/cicd/**`, `internal/shared/domain`, `db/migrations/000077`·`000078`, nullus-plan#76): 스캐너는 스택에서 고르면 설치되지만(#250), 스캐폴딩이 만드는 파이프라인에는 **스캔 단계가 없었다.** 차단 게이트가 실제로는 존재하지 않았다는 뜻이다.
+
+  **렌더러 3종이 같은 두 명령을 만든다.** GitLab CI · Jenkins · GitHub Actions 모두 `build → image-scan → deploy` 이고 deploy 를 스캔 잡에 매달아 스캔을 건너뛰고 배포되지 않게 한다. 한 번은 리포트를 남기고 한 번은 `--exit-code 1` 로 판정한다 — 한 번에 하면 차단된 실행에서 무엇에 걸렸는지 알 수 없다. **차단 기준은 스크립트에 박지 않았다.** 심각도와 unfixed 제외를 파이프라인 변수로 두어, 정책을 바꿀 때 재스캐폴딩이 아니라 변수만 갱신하면 된다. kind 에서 **렌더된 명령을 그대로** 돌려 `alpine:3.18` 통과 · `node:16` 차단, client 쪽 DB 다운로드 0건을 확인했다.
+
+  **스캐너 주소는 조립된 값만 받는다.** `OTLPEndpoint` 선례대로 `StackSummary.ImageScannerEndpoint` 로 받고, 주소 규칙은 shared 가 소유한다(`TrivyServerEndpoint`). 설계는 `ScanSourceFor(StackConfig, …)` 로 적었으나 cicd 는 stack 의 `StackConfig` 를 import 할 수 없어 `StackSummary` 를 받도록 고쳤다.
+
+  **단계는 파이프라인 단위로 기록한다** (`pipelines.stages`). 스캔은 파이프라인마다 켜고 끄므로 템플릿이 담을 수 없다 — 템플릿에 두면 끈 파이프라인이 돌지도 않은 단계를 보여준다(000070 이 되돌린 실패). 스캐폴딩이 렌더에 쓴 입력 그대로 단계를 내고, 기존 파이프라인은 지어내지 않고 비워 둬 화면이 템플릿으로 떨어진다.
+
+  **게이트 판정을 남긴다** (`image_scan_results`, `GET /cicd/pipelines/:id/image-scans`). 실행 기록을 동기화할 때 스캔 단계의 성공/실패로 pass/block 을 남긴다. **리포트는 아직 읽지 않아 건수는 NULL 이다** — 0 으로 채우면 "취약점 0건" 으로 읽힌다(설계 초안의 `NOT NULL DEFAULT 0` 에서 바꿨다). 리포트 파서는 kind 에서 실제 스캔한 리포트로 검증했고, client/server 모드 리포트에 **서버의 DB 시각이 실려** DB 나이를 따로 묻지 않아도 된다. 응답은 `db_stale` 을 서버가 판정해 내려준다(30일).
+
+  **아직 안 되는 것.** 실행 기록 동기화는 Jenkins 만 있어 GitLab CI · GitHub Actions 파이프라인의 판정은 아직 남지 않는다. CI 산출물(리포트)을 받아 건수를 채우는 경로와, 설계 §5.4 의 게이트 API 도 후속이다.
+
 - **Zadara PoC 를 OpenTofu + Kubespray 로 재구축했다** (`deploy/csp/zadara/opentofu/` 신규, `deploy/csp/zadara/{README,INSTALL,INSTALL_LOG_2026-09-13}.md`, `docs/50_운영/zadara_{opentofu_design,cloud_deployment_plan}.md`): 손으로 만든 node-10/11/20/21 두 클러스터를 2026-09-13 에 폐기하고 **m1(4vCPU/8GB, control-plane+worker+bastion) + w1(16vCPU/32GB, private+NAT)** 단일 클러스터로 바꿨다. VPC/서브넷/NAT/보안 그룹/EIP/VM 과 Kubespray 인벤토리까지가 IaC 소유이고 Kubernetes·Nullus 는 기존처럼 Kubespray·Helm 이 맡는다.
 
   **실제 apply 로 드러난 zCompute 의 AWS 호환 API 차이를 코드에 못박았다.** 보안 그룹 생성 요청의 tags(D7)와 `AssociatePublicIpAddress`(D8) 는 400 으로 거부되고, root 볼륨의 `delete_on_termination=false` 는 무시된 뒤 ModifyInstance 가 끝나지 않는다(D9). 공인 IP 는 `aws_eip.public` 을 `prevent_destroy` 로 보호하고 association 만 VM 에 묶어 **VM 을 교체해도 121.78.39.241 이 유지**되게 했다(D10). SSH 는 운영자가 여럿이라 22 를 전체 개방하되 키 인증만 허용한다.

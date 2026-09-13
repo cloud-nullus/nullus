@@ -87,6 +87,34 @@ type Input struct {
 	// TemplateID 는 어느 CI/CD 템플릿에서 나온 앱인지 알아보게 한다.
 	// 템플릿별 자원 사용 비교나 템플릿 단위 조회에 쓴다. 비면 라벨을 붙이지 않는다.
 	TemplateID string
+	// ImageScannerEndpoint 는 스택 Trivy 서버의 클러스터 내 주소다.
+	//
+	// 비면 이미지 스캔 단계를 만들지 않는다. 돌지도 않을 단계를 선언하면
+	// 화면이 그것을 성공으로 보여준다(마이그레이션 000070).
+	ImageScannerEndpoint string
+}
+
+// 이미지 스캔 단계의 이름. CI 마다 표기가 달라 둘로 나눈다 —
+// GitLab/GitHub 은 소문자 식별자를, Jenkins 와 화면은 표시용 이름을 쓴다.
+const (
+	imageScanStageID   = "image-scan"
+	imageScanStageName = "ImageScan"
+
+	// 차단 기준을 스크립트에 박지 않는다. 박으면 정책을 바꿀 때마다 모든
+	// 파이프라인을 다시 스캐폴딩해야 한다 — 변수로 두면 파이프라인 변수만
+	// 갱신해 바꿀 수 있다.
+	scanSeverityVar    = "NULLUS_SCAN_SEVERITY"
+	scanIgnoreUnfixedV = "NULLUS_SCAN_IGNORE_UNFIXED"
+	scanServerVar      = "NULLUS_TRIVY_SERVER"
+	scanImageVar       = "NULLUS_TRIVY_IMAGE"
+)
+
+// StageOptions 는 선택적 단계의 on/off 다.
+//
+// 파이프라인 단위 선택이라 템플릿이 아니라 파이프라인이 들고 있어야 한다.
+// #64(SAST) · #79(SCA) · #80(Secret Detection) 도 여기에 자리를 더한다.
+type StageOptions struct {
+	ImageScan bool
 }
 
 // Render 는 앱 프로젝트에 커밋할 파일들을 만든다.
@@ -115,7 +143,7 @@ func Render(in Input) ([]port.CommitFile, error) {
 		replicas = defaultReplicas
 	}
 
-	pipelinePath, pipelineContent := renderPipelineFor(in.Platform, in.CIPlatform, app, in.ImageTarget)
+	pipelinePath, pipelineContent := renderPipelineFor(in)
 
 	files := []port.CommitFile{
 		{Path: pipelinePath, Content: pipelineContent},
@@ -146,23 +174,24 @@ func Render(in Input) ([]port.CommitFile, error) {
 // 분기 기준은 SCM 이 아니라 CI 다. GitLab·GitHub 은 SCM 이 CI 를 겸해 둘이
 // 같아 보이지만, Gitea 는 소스만 담당하고 빌드는 Jenkins 가 한다 — SCM 으로
 // 분기하면 Gitea 스택에 .gitlab-ci.yml 이 깔리고 Jenkins 는 읽을 파일이 없다.
-func renderPipelineFor(
-	platform port.SCMPlatform,
-	ci port.CIPlatform,
-	app string,
-	target *port.ImageTarget,
-) (path, content string) {
+func renderPipelineFor(in Input) (path, content string) {
+	ci := in.CIPlatform
 	if strings.TrimSpace(string(ci)) == "" {
-		ci = port.DefaultCIPlatformFor(platform)
+		ci = port.DefaultCIPlatformFor(in.Platform)
 	}
 	switch ci {
 	case port.CIPlatformJenkins:
-		return JenkinsfilePath, renderJenkinsfile(app, target)
+		return JenkinsfilePath, renderJenkinsfile(in)
 	case port.CIPlatformGitHubActions:
-		return GitHubWorkflowPath, renderGitHubWorkflow(app, target)
+		return GitHubWorkflowPath, renderGitHubWorkflow(in)
 	default:
-		return GitLabPipelinePath, renderPipeline(app, target)
+		return GitLabPipelinePath, renderPipeline(in)
 	}
+}
+
+// stageOptionsFor 는 이 입력이 실제로 만들 선택 단계를 정한다.
+func stageOptionsFor(in Input) StageOptions {
+	return StageOptions{ImageScan: strings.TrimSpace(in.ImageScannerEndpoint) != ""}
 }
 
 // renderGitHubWorkflow 는 build → deploy 2단계 GitHub Actions 워크플로를 만든다.
@@ -176,7 +205,9 @@ func renderPipelineFor(
 //
 // 셋, [skip ci] 가 필요 없다. GITHUB_TOKEN 으로 만든 push 는 워크플로를 다시
 // 트리거하지 않는다 — GitHub 이 무한 루프를 막기 위해 그렇게 정의했다.
-func renderGitHubWorkflow(app string, target *port.ImageTarget) string {
+func renderGitHubWorkflow(in Input) string {
+	app, target := in.AppName, in.ImageTarget
+	opts := stageOptionsFor(in)
 	var b strings.Builder
 
 	b.WriteString("# Nullus 가 생성한 파이프라인입니다.\n")
@@ -218,8 +249,40 @@ func renderGitHubWorkflow(app string, target *port.ImageTarget) string {
 	b.WriteString("          docker build -t \"$IMAGE_REPOSITORY:$IMAGE_TAG\" .\n")
 	b.WriteString("          docker push \"$IMAGE_REPOSITORY:$IMAGE_TAG\"\n\n")
 
+	if opts.ImageScan {
+		fmt.Fprintf(&b, "  %s:\n", imageScanStageID)
+		b.WriteString("    needs: build\n")
+		b.WriteString("    runs-on: ubuntu-latest\n")
+		b.WriteString("    env:\n")
+		fmt.Fprintf(&b, "      %s: %q\n", scanServerVar, in.ImageScannerEndpoint)
+		fmt.Fprintf(&b, "      %s: %q\n", scanSeverityVar, defaultScanSeverity)
+		fmt.Fprintf(&b, "      %s: %q\n", scanIgnoreUnfixedV, "true")
+		b.WriteString("    container:\n")
+		fmt.Fprintf(&b, "      image: %q\n", defaultScannerImage)
+		b.WriteString("    steps:\n")
+		b.WriteString("      - name: Scan image\n")
+		b.WriteString("        run: |\n")
+		for _, line := range scanScriptLines() {
+			fmt.Fprintf(&b, "          %s\n", line)
+		}
+		// 리포트는 실패해도 남긴다. 차단당한 사람이 무엇에 걸렸는지 보려면
+		// 실패한 실행의 산출물이 필요하다.
+		b.WriteString("      - name: Upload report\n")
+		b.WriteString("        if: always()\n")
+		b.WriteString("        uses: actions/upload-artifact@v4\n")
+		b.WriteString("        with:\n")
+		fmt.Fprintf(&b, "          name: %s\n", "trivy-report")
+		fmt.Fprintf(&b, "          path: %s\n", scanReportFile)
+		b.WriteString("\n")
+	}
+
 	b.WriteString("  deploy:\n")
-	b.WriteString("    needs: build\n")
+	if opts.ImageScan {
+		// 스캔을 건너뛰고 배포되지 않도록 스캔 잡에 매단다.
+		fmt.Fprintf(&b, "    needs: %s\n", imageScanStageID)
+	} else {
+		b.WriteString("    needs: build\n")
+	}
 	b.WriteString("    runs-on: ubuntu-latest\n")
 	b.WriteString("    steps:\n")
 	b.WriteString("      - uses: actions/checkout@v4\n")
@@ -257,14 +320,20 @@ func githubExpressionFor(varName string) string {
 //
 // deploy 단계는 배포하지 않는다. 매니페스트의 이미지 태그만 갱신해 커밋하고,
 // 실제 배포는 Argo CD 가 그 커밋을 보고 수행한다(GitOps).
-func renderPipeline(app string, target *port.ImageTarget) string {
+func renderPipeline(in Input) string {
+	target := in.ImageTarget
+	opts := stageOptionsFor(in)
 	var b strings.Builder
 
 	b.WriteString("# Nullus 가 생성한 파이프라인입니다.\n")
 	b.WriteString("# build: 이미지를 만들어 레지스트리에 올립니다.\n")
 	b.WriteString("# deploy: deploy/ 의 이미지 태그를 갱신해 커밋합니다. 배포는 Argo CD 가 합니다.\n\n")
 
-	b.WriteString("stages:\n  - build\n  - deploy\n\n")
+	b.WriteString("stages:\n  - build\n")
+	if opts.ImageScan {
+		fmt.Fprintf(&b, "  - %s\n", imageScanStageID)
+	}
+	b.WriteString("  - deploy\n\n")
 
 	b.WriteString("variables:\n")
 	fmt.Fprintf(&b, "  IMAGE_REPOSITORY: %q\n", target.Repository)
@@ -274,7 +343,17 @@ func renderPipeline(app string, target *port.ImageTarget) string {
 	// Kubernetes executor 는 서비스와 네트워크를 공유하므로 dind 를 TCP 로 가리킨다.
 	// DOCKER_TLS_CERTDIR 를 비우지 않으면 dind 가 TLS(2376)로만 열려 2375 연결이 거부된다.
 	b.WriteString("  DOCKER_HOST: tcp://docker:2375\n")
-	b.WriteString("  DOCKER_TLS_CERTDIR: \"\"\n\n")
+	b.WriteString("  DOCKER_TLS_CERTDIR: \"\"\n")
+	if opts.ImageScan {
+		// 주소는 스택이 정한 값이라 렌더 시점에 박는다. 반면 차단 기준은
+		// 정책이라 변수로 남긴다 — 정책이 바뀔 때 재스캐폴딩하지 않으려면
+		// 파이프라인 변수만 갱신할 수 있어야 한다.
+		fmt.Fprintf(&b, "  %s: %q\n", scanServerVar, in.ImageScannerEndpoint)
+		fmt.Fprintf(&b, "  %s: %q\n", scanImageVar, defaultScannerImage)
+		fmt.Fprintf(&b, "  %s: %q\n", scanSeverityVar, defaultScanSeverity)
+		fmt.Fprintf(&b, "  %s: %q\n", scanIgnoreUnfixedV, "true")
+	}
+	b.WriteString("\n")
 
 	b.WriteString("build:\n")
 	b.WriteString("  stage: build\n")
@@ -297,10 +376,30 @@ func renderPipeline(app string, target *port.ImageTarget) string {
 	})
 	b.WriteString("\n")
 
+	if opts.ImageScan {
+		fmt.Fprintf(&b, "%s:\n", imageScanStageID)
+		fmt.Fprintf(&b, "  stage: %s\n", imageScanStageID)
+		fmt.Fprintf(&b, "  image: $%s\n", scanImageVar)
+		b.WriteString("  needs:\n    - build\n")
+		b.WriteString("  script:\n")
+		writeScriptLines(&b, scanScriptLines())
+		// 리포트는 실패해도 남긴다. 차단당한 사람이 무엇에 걸렸는지 보려면
+		// 실패한 실행의 산출물이 필요하다.
+		b.WriteString("  artifacts:\n")
+		b.WriteString("    when: always\n")
+		b.WriteString("    paths:\n      - trivy-report.json\n")
+		b.WriteString("\n")
+	}
+
 	b.WriteString("deploy:\n")
 	b.WriteString("  stage: deploy\n")
 	b.WriteString("  image: alpine:3.20\n")
-	b.WriteString("  needs:\n    - build\n")
+	if opts.ImageScan {
+		// 스캔을 건너뛰고 배포되지 않도록 스캔 잡에 매단다.
+		fmt.Fprintf(&b, "  needs:\n    - %s\n", imageScanStageID)
+	} else {
+		b.WriteString("  needs:\n    - build\n")
+	}
 	b.WriteString("  script:\n")
 	writeScriptLines(&b, []string{
 		`apk add --no-cache git`,
@@ -553,6 +652,18 @@ spec:
 //
 // GitLab 판과 Jenkins 판이 같은 단계를 만든다. 이름 표기만 다르므로(소문자 대
 // 대문자) 여기서는 표시용 표기를 쓴다.
-func PipelineStageNames() []string {
-	return []string{"Build", "Deploy"}
+func PipelineStageNames(opts StageOptions) []string {
+	names := []string{"Build"}
+	if opts.ImageScan {
+		names = append(names, imageScanStageName)
+	}
+	return append(names, "Deploy")
+}
+
+// PipelineStageNamesFor 는 렌더 입력이 실제로 만들 단계 이름이다.
+//
+// 렌더러와 같은 판단(stageOptionsFor)을 쓴다 — 두 곳이 각자 판단하면
+// 선언과 실제가 어긋나고, 어긋나면 화면이 돌지도 않은 단계를 보여준다.
+func PipelineStageNamesFor(in Input) []string {
+	return PipelineStageNames(stageOptionsFor(in))
 }

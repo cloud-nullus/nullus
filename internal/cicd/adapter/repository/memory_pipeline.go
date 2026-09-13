@@ -154,6 +154,11 @@ func clonePipeline(p *domain.Pipeline) *domain.Pipeline {
 		return nil
 	}
 	cp := *p
+	// 슬라이스를 공유하면 호출부가 고친 값이 저장된 기록까지 바꾼다.
+	// DB 저장소에서는 일어나지 않는 일이라 테스트가 거짓 초록이 된다.
+	if p.Stages != nil {
+		cp.Stages = append([]string(nil), p.Stages...)
+	}
 	return &cp
 }
 

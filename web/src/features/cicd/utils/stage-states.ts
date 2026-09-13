@@ -36,3 +36,21 @@ export function buildStageStates(
     return 'queued'
   })
 }
+
+/**
+ * resolvePipelineStages 는 이력 화면에 그릴 단계 목록을 고른다.
+ *
+ * 이미지 스캔 같은 선택 단계는 파이프라인마다 켜고 끈다. 템플릿은 그것을 알 수
+ * 없으므로, 파이프라인이 기록한 단계가 있으면 그것을 믿는다 — 템플릿을 쓰면
+ * 돌고 있는 스캔 단계가 화면에서 사라진다.
+ *
+ * 기록이 비어 있으면 템플릿으로 떨어진다. 단계 기록이 생기기 전에 만든
+ * 파이프라인이 그렇고, 비었다고 단계가 없는 것으로 그리면 이력이 통째로 빈다.
+ */
+export function resolvePipelineStages(
+  pipelineStages: string[] | undefined,
+  templateStages: string[] | undefined,
+): string[] {
+  if (pipelineStages && pipelineStages.length > 0) return pipelineStages
+  return templateStages ?? []
+}

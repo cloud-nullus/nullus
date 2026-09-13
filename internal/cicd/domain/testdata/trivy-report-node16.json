@@ -1,0 +1,291 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.74.0",
+    "Server": {
+      "Version": "0.74.0",
+      "VulnerabilityDB": {
+        "Version": 2,
+        "NextUpdate": "2026-09-14T01:11:30.263571315Z",
+        "UpdatedAt": "2026-09-13T01:11:30.263571485Z",
+        "DownloadedAt": "2026-09-13T05:01:05.820264625Z"
+      }
+    }
+  },
+  "CreatedAt": "2026-09-13T07:21:18.876037714Z",
+  "ArtifactName": "node:16",
+  "ArtifactType": "container_image",
+  "Metadata": {
+    "RepoTags": [
+      "node:16"
+    ],
+    "RepoDigests": [
+      "node@sha256:f77a1aef2da8d83e45ec990f45df50f1a286c5fe8bbfb8c6e4246c6389705c0b"
+    ]
+  },
+  "Results": [
+    {
+      "Target": "node:16 (debian 10.13)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2021-37600",
+          "PkgName": "bsdutils",
+          "InstalledVersion": "1:2.33.1-0.1",
+          "FixedVersion": "2.33.1-0.1+deb10u1",
+          "Status": "fixed",
+          "Severity": "MEDIUM",
+          "Title": "util-linux: integer overflow can lead to buffer overflow in get_sem_elements() in sys-utils/ipcutils.c",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2021-37600"
+        },
+        {
+          "VulnerabilityID": "CVE-2023-28321",
+          "PkgName": "curl",
+          "InstalledVersion": "7.64.0-4+deb10u6",
+          "FixedVersion": "7.64.0-4+deb10u7",
+          "Status": "fixed",
+          "Severity": "MEDIUM",
+          "Title": "curl: IDN wildcard match may lead to Improper Cerificate Validation",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-28321"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-28085",
+          "PkgName": "bsdutils",
+          "InstalledVersion": "1:2.33.1-0.1",
+          "FixedVersion": "2.33.1-0.1+deb10u1",
+          "Status": "fixed",
+          "Severity": "LOW",
+          "Title": "util-linux: CVE-2024-28085: wall: escape sequence injection",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-28085"
+        },
+        {
+          "VulnerabilityID": "CVE-2023-28322",
+          "PkgName": "curl",
+          "InstalledVersion": "7.64.0-4+deb10u6",
+          "FixedVersion": "7.64.0-4+deb10u8",
+          "Status": "fixed",
+          "Severity": "LOW",
+          "Title": "curl: more POST-after-PUT confusion",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-28322"
+        },
+        {
+          "VulnerabilityID": "CVE-2022-1304",
+          "PkgName": "comerr-dev",
+          "InstalledVersion": "2.1-1.44.5-1+deb10u3",
+          "Status": "affected",
+          "Severity": "HIGH",
+          "Title": "e2fsprogs: out-of-bounds read/write via crafted filesystem",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2022-1304"
+        },
+        {
+          "VulnerabilityID": "CVE-2018-12886",
+          "PkgName": "cpp-8",
+          "InstalledVersion": "8.3.0-6",
+          "Status": "will_not_fix",
+          "Severity": "HIGH",
+          "Title": "gcc: spilling of stack protection address in cfgexpand.c and function.c leads to stack-overflow protection bypass",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2018-12886"
+        },
+        {
+          "VulnerabilityID": "CVE-2016-2781",
+          "PkgName": "coreutils",
+          "InstalledVersion": "8.30-3",
+          "Status": "will_not_fix",
+          "Severity": "LOW",
+          "Title": "coreutils: Non-privileged session can escape to the parent session in chroot",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2016-2781"
+        },
+        {
+          "VulnerabilityID": "CVE-2019-14855",
+          "PkgName": "dirmngr",
+          "InstalledVersion": "2.2.12-1+deb10u2",
+          "Status": "will_not_fix",
+          "Severity": "LOW",
+          "Title": "gnupg2: OpenPGP Key Certification Forgeries with SHA-1",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2019-14855"
+        },
+        {
+          "VulnerabilityID": "CVE-2023-27534",
+          "PkgName": "curl",
+          "InstalledVersion": "7.64.0-4+deb10u6",
+          "FixedVersion": "7.64.0-4+deb10u9",
+          "Status": "fixed",
+          "Severity": "HIGH",
+          "Title": "curl: SFTP path ~ resolving discrepancy",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-27534"
+        },
+        {
+          "VulnerabilityID": "CVE-2019-1387",
+          "PkgName": "git",
+          "InstalledVersion": "1:2.20.1-2+deb10u8",
+          "FixedVersion": "1:2.20.1-2+deb10u9",
+          "Status": "fixed",
+          "Severity": "HIGH",
+          "Title": "git: Remote code execution in recursive clones with nested submodules",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2019-1387"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-2398",
+          "PkgName": "curl",
+          "InstalledVersion": "7.64.0-4+deb10u6",
+          "Status": "fix_deferred",
+          "Severity": "MEDIUM",
+          "Title": "curl: HTTP/2 push headers memory-leak",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-2398"
+        },
+        {
+          "VulnerabilityID": "CVE-2020-25664",
+          "PkgName": "imagemagick",
+          "InstalledVersion": "8:6.9.10.23+dfsg-2.1+deb10u5",
+          "Status": "will_not_fix",
+          "Severity": "MEDIUM",
+          "Title": "ImageMagick: heap-based buffer overflow in PopShortPixel in MagickCore/quantum-private.h",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2020-25664"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-32002",
+          "PkgName": "git",
+          "InstalledVersion": "1:2.20.1-2+deb10u8",
+          "FixedVersion": "1:2.20.1-2+deb10u9",
+          "Status": "fixed",
+          "Severity": "CRITICAL",
+          "Title": "git: Recursive clones RCE",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-32002"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-32002",
+          "PkgName": "git-man",
+          "InstalledVersion": "1:2.20.1-2+deb10u8",
+          "FixedVersion": "1:2.20.1-2+deb10u9",
+          "Status": "fixed",
+          "Severity": "CRITICAL",
+          "Title": "git: Recursive clones RCE",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-32002"
+        },
+        {
+          "VulnerabilityID": "CVE-2019-8457",
+          "PkgName": "libdb5.3",
+          "InstalledVersion": "5.3.28+dfsg1-0.5",
+          "Status": "will_not_fix",
+          "Severity": "CRITICAL",
+          "Title": "sqlite: heap out-of-bound read in function rtreenode()",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2019-8457"
+        },
+        {
+          "VulnerabilityID": "CVE-2019-8457",
+          "PkgName": "libdb5.3-dev",
+          "InstalledVersion": "5.3.28+dfsg1-0.5",
+          "Status": "will_not_fix",
+          "Severity": "CRITICAL",
+          "Title": "sqlite: heap out-of-bound read in function rtreenode()",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2019-8457"
+        },
+        {
+          "VulnerabilityID": "DLA-3684-1",
+          "PkgName": "tzdata",
+          "InstalledVersion": "2021a-0+deb10u11",
+          "FixedVersion": "2021a-0+deb10u12",
+          "Status": "fixed",
+          "Severity": "UNKNOWN",
+          "Title": "tzdata - new timezone database"
+        },
+        {
+          "VulnerabilityID": "DLA-3788-1",
+          "PkgName": "tzdata",
+          "InstalledVersion": "2021a-0+deb10u11",
+          "FixedVersion": "2024a-0+deb10u1",
+          "Status": "fixed",
+          "Severity": "UNKNOWN",
+          "Title": "tzdata - new timezone database"
+        }
+      ]
+    },
+    {
+      "Target": "Node.js",
+      "Class": "lang-pkgs",
+      "Type": "node-pkg",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2026-3449",
+          "PkgName": "@tootallnate/once",
+          "InstalledVersion": "2.0.0",
+          "FixedVersion": "3.0.1, 2.0.1",
+          "Status": "fixed",
+          "Severity": "LOW",
+          "Title": "@tootallnate/once: @tootallnate/once: Denial of Service due to incorrect control flow scoping with AbortSignal",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-3449"
+        },
+        {
+          "VulnerabilityID": "CVE-2025-5889",
+          "PkgName": "brace-expansion",
+          "InstalledVersion": "1.1.11",
+          "FixedVersion": "2.0.2, 1.1.12, 3.0.1, 4.0.1",
+          "Status": "fixed",
+          "Severity": "LOW",
+          "Title": "brace-expansion: juliangruber brace-expansion index.js expand redos",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-5889"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-13149",
+          "PkgName": "brace-expansion",
+          "InstalledVersion": "1.1.11",
+          "FixedVersion": "5.0.7, 1.1.16, 2.1.2",
+          "Status": "fixed",
+          "Severity": "HIGH",
+          "Title": "brace-expansion: Brace-expansion: Denial of Service due to exponential-time complexity",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-13149"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-13149",
+          "PkgName": "brace-expansion",
+          "InstalledVersion": "1.1.11",
+          "FixedVersion": "5.0.7, 1.1.16, 2.1.2",
+          "Status": "fixed",
+          "Severity": "HIGH",
+          "Title": "brace-expansion: Brace-expansion: Denial of Service due to exponential-time complexity",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-13149"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-33750",
+          "PkgName": "brace-expansion",
+          "InstalledVersion": "1.1.11",
+          "FixedVersion": "5.0.5, 3.0.2, 2.0.3, 1.1.13",
+          "Status": "fixed",
+          "Severity": "MEDIUM",
+          "Title": "brace-expansion: brace-expansion: Denial of Service via zero step value in brace pattern",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-33750"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-33750",
+          "PkgName": "brace-expansion",
+          "InstalledVersion": "1.1.11",
+          "FixedVersion": "5.0.5, 3.0.2, 2.0.3, 1.1.13",
+          "Status": "fixed",
+          "Severity": "MEDIUM",
+          "Title": "brace-expansion: brace-expansion: Denial of Service via zero step value in brace pattern",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-33750"
+        },
+        {
+          "VulnerabilityID": "CVE-2024-29415",
+          "PkgName": "ip",
+          "InstalledVersion": "2.0.0",
+          "Status": "affected",
+          "Severity": "HIGH",
+          "Title": "node-ip: Incomplete fix for CVE-2023-42282",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-29415"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-59873",
+          "PkgName": "tar",
+          "InstalledVersion": "6.1.11",
+          "FixedVersion": "7.5.19",
+          "Status": "fixed",
+          "Severity": "CRITICAL",
+          "Title": "tar: node-tar: Denial of Service via crafted gzip bomb",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-59873"
+        }
+      ]
+    }
+  ]
+}

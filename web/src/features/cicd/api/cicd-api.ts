@@ -250,6 +250,7 @@ export const cicdApiCalls = {
       status: (p.status ?? "pending") as Pipeline["status"],
       lastDeployedAt: latestDeployByPipeline.get(p.id) ?? null,
       createdAt: p.created_at ?? "",
+      stages: p.stages ?? [],
     }));
 
     return { items, total: raw.total ?? items.length };
@@ -300,6 +301,7 @@ export const cicdApiCalls = {
       status: (raw.status ?? "active") as Pipeline["status"],
       lastDeployedAt: null,
       createdAt: raw.created_at ?? "",
+      stages: raw.stages ?? [],
     } as Pipeline & { provisioning: PipelineProvisioning };
   },
 

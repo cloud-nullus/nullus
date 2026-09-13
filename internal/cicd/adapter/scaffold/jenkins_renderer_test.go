@@ -26,7 +26,7 @@ func jenkinsTarget() *port.ImageTarget {
 // 축을 하나로 묶어 두면 Gitea 스택에 .gitlab-ci.yml 이 깔리고, Jenkins 는
 // 읽을 Jenkinsfile 이 없어 파이프라인이 영영 돌지 않는다.
 func TestRenderPipelineFor_GiteaWithJenkins_EmitsJenkinsfile(t *testing.T) {
-	path, content := renderPipelineFor(port.SCMPlatformGitea, port.CIPlatformJenkins, "api", jenkinsTarget())
+	path, content := renderPipelineFor(Input{Platform: port.SCMPlatformGitea, CIPlatform: port.CIPlatformJenkins, AppName: "api", ImageTarget: jenkinsTarget()})
 
 	assert.Equal(t, JenkinsfilePath, path)
 	assert.Contains(t, content, "pipeline {")
@@ -35,7 +35,7 @@ func TestRenderPipelineFor_GiteaWithJenkins_EmitsJenkinsfile(t *testing.T) {
 
 // 기존 경로 무회귀 — 축 분리가 GitLab/GitHub 결과를 바꾸면 안 된다.
 func TestRenderPipelineFor_GitLabUnchanged(t *testing.T) {
-	path, content := renderPipelineFor(port.SCMPlatformGitLab, "", "api", jenkinsTarget())
+	path, content := renderPipelineFor(Input{Platform: port.SCMPlatformGitLab, AppName: "api", ImageTarget: jenkinsTarget()})
 
 	assert.Equal(t, GitLabPipelinePath, path)
 	assert.Contains(t, content, "stages:")
@@ -43,7 +43,7 @@ func TestRenderPipelineFor_GitLabUnchanged(t *testing.T) {
 }
 
 func TestRenderPipelineFor_GitHubUnchanged(t *testing.T) {
-	path, content := renderPipelineFor(port.SCMPlatformGitHub, "", "api", jenkinsTarget())
+	path, content := renderPipelineFor(Input{Platform: port.SCMPlatformGitHub, AppName: "api", ImageTarget: jenkinsTarget()})
 
 	assert.Equal(t, GitHubWorkflowPath, path)
 	assert.Contains(t, content, "runs-on: ubuntu-latest")
@@ -52,19 +52,19 @@ func TestRenderPipelineFor_GitHubUnchanged(t *testing.T) {
 
 // CI 를 명시하지 않으면 SCM 의 기본 CI 를 쓴다 — 기존 호출부가 그대로 동작한다.
 func TestRenderPipelineFor_EmptyCIFallsBackToPlatformDefault(t *testing.T) {
-	gitlabPath, _ := renderPipelineFor(port.SCMPlatformGitLab, "", "api", jenkinsTarget())
+	gitlabPath, _ := renderPipelineFor(Input{Platform: port.SCMPlatformGitLab, AppName: "api", ImageTarget: jenkinsTarget()})
 	assert.Equal(t, GitLabPipelinePath, gitlabPath)
 
 	// Gitea 는 자체 CI 를 쓰지 않는다. CI 가 비면 Jenkins 로 본다 —
 	// Gitea 스택에 .gitlab-ci.yml 을 깔면 아무것도 읽지 않는다.
-	giteaPath, _ := renderPipelineFor(port.SCMPlatformGitea, "", "api", jenkinsTarget())
+	giteaPath, _ := renderPipelineFor(Input{Platform: port.SCMPlatformGitea, AppName: "api", ImageTarget: jenkinsTarget()})
 	assert.Equal(t, JenkinsfilePath, giteaPath)
 }
 
 // Jenkinsfile 은 배포하지 않는다. GitLab 판과 같은 GitOps 패턴을 따라야 한다 —
 // 이미지 태그를 매니페스트에 되쓰고 Argo CD 가 그 커밋을 동기화한다.
 func TestJenkinsfile_RewritesTagAndPushesBackInsteadOfDeploying(t *testing.T) {
-	content := renderJenkinsfile("api", jenkinsTarget())
+	content := renderJenkinsfile(Input{AppName: "api", ImageTarget: jenkinsTarget()})
 
 	assert.Contains(t, content, "deploy/deployment.yaml",
 		"매니페스트 태그를 갱신하지 않으면 Argo CD 가 배포할 새 커밋이 없다")
@@ -77,7 +77,7 @@ func TestJenkinsfile_RewritesTagAndPushesBackInsteadOfDeploying(t *testing.T) {
 // GitLab 은 [skip ci] 로 끊는데 Jenkins multibranch 는 이를 자동 인식하지 않으므로
 // 커밋 메시지 규약과 별개로 브랜치 조건을 함께 건다.
 func TestJenkinsfile_GuardsAgainstBuildLoop(t *testing.T) {
-	content := renderJenkinsfile("api", jenkinsTarget())
+	content := renderJenkinsfile(Input{AppName: "api", ImageTarget: jenkinsTarget()})
 
 	assert.Contains(t, content, "[skip ci]")
 	assert.Contains(t, content, "changeset",
@@ -87,7 +87,7 @@ func TestJenkinsfile_GuardsAgainstBuildLoop(t *testing.T) {
 // 자격증명은 K8s Secret 에서 env 로 들어온다(§3.4). Jenkins Credentials 를
 // 1차 저장소로 쓰면 OpenBao 단일 출처가 깨진다.
 func TestJenkinsfile_ReadsRegistryCredentialsFromEnv(t *testing.T) {
-	content := renderJenkinsfile("api", jenkinsTarget())
+	content := renderJenkinsfile(Input{AppName: "api", ImageTarget: jenkinsTarget()})
 
 	assert.Contains(t, content, "HARBOR_USERNAME")
 	assert.Contains(t, content, "HARBOR_PASSWORD")
@@ -128,7 +128,7 @@ func TestCISecretName_MatchesCredentialPlaneContract(t *testing.T) {
 
 // 파이프라인이 읽는 자격증명 변수 이름은 그것을 채우는 쪽과 같아야 한다.
 func TestJenkinsfile_UsesSharedGitCredentialVarNames(t *testing.T) {
-	content := renderJenkinsfile("api", jenkinsTarget())
+	content := renderJenkinsfile(Input{AppName: "api", ImageTarget: jenkinsTarget()})
 
 	assert.Equal(t, "GIT_USERNAME", GitUsernameVar)
 	assert.Equal(t, "GIT_PASSWORD", GitPasswordVar)
@@ -143,7 +143,7 @@ func TestJenkinsfile_UsesSharedGitCredentialVarNames(t *testing.T) {
 // git config 가 "fatal: not in a git directory" 로 죽는다 — 이미지는 올라갔는데
 // 매니페스트 되커밋만 실패해 Argo CD 가 배포할 새 커밋이 영영 없다.
 func TestJenkinsfile_MarksWorkspaceAsSafeDirectory(t *testing.T) {
-	content := renderJenkinsfile("api", jenkinsTarget())
+	content := renderJenkinsfile(Input{AppName: "api", ImageTarget: jenkinsTarget()})
 
 	assert.Contains(t, content, "safe.directory",
 		"소유권 검사를 풀지 않으면 되커밋이 not in a git directory 로 죽는다")
@@ -158,7 +158,7 @@ func TestJenkinsfile_MarksWorkspaceAsSafeDirectory(t *testing.T) {
 // 셸 트레이스에 그대로 찍혀, 빌드 로그를 볼 수 있는 사람이 저장소 쓰기 토큰을
 // 얻는다.
 func TestJenkinsfile_DoesNotLeakCredentialsIntoBuildLog(t *testing.T) {
-	content := renderJenkinsfile("api", jenkinsTarget())
+	content := renderJenkinsfile(Input{AppName: "api", ImageTarget: jenkinsTarget()})
 	idx := strings.Index(content, "stage('Deploy')")
 	require.Positive(t, idx, "deploy 단계를 찾지 못했다")
 	deploy := content[idx:]
@@ -187,12 +187,12 @@ func TestJenkinsfile_DoesNotLeakCredentialsIntoBuildLog(t *testing.T) {
 // Deploy 단계는 git 자격증명 앞에서 이미 트레이스를 끄고 있었다. Build 단계만
 // 빠져 있었다.
 func TestJenkinsfile_DoesNotTraceRegistryPassword(t *testing.T) {
-	pipeline := renderJenkinsfile("orders-api", &port.ImageTarget{
+	pipeline := renderJenkinsfile(Input{AppName: "orders-api", ImageTarget: &port.ImageTarget{
 		Host:        "harbor.nullus.io",
 		Repository:  "harbor.nullus.io/nullus/orders-api",
 		UsernameVar: "HARBOR_USERNAME",
 		PasswordVar: "HARBOR_PASSWORD",
-	})
+	}})
 
 	loginLine := "echo \"$HARBOR_PASSWORD\" | docker login"
 	require.Contains(t, pipeline, loginLine)

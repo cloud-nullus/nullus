@@ -36,16 +36,18 @@ func (r *PostgresStackReader) GetStackSummary(ctx context.Context, stackID strin
 		       COALESCE(config->'artifacts'->'source_repository'->>'name', ''),
 		       COALESCE(config->'artifacts'->'container_registry'->>'name', ''),
 		       COALESCE(config->>'access_domain', ''),
-		       COALESCE(config->'logging'->'trace_exporter'->>'enabled', 'false')
+		       COALESCE(config->'logging'->'trace_exporter'->>'enabled', 'false'),
+		       COALESCE(config->'security'->'image_scanner'->>'enabled', 'false')
 		FROM stacks
 		WHERE id = $1`
 
 	var s port.StackSummary
 	var collectorEnabled string
+	var scannerEnabled string
 	err := r.pool.QueryRow(ctx, q, stackID).Scan(
 		&s.ID, &s.Name, &s.OrgID, &s.ClusterID, &s.State,
 		&s.Namespace, &s.SourceRepository, &s.ContainerRegistry, &s.AccessDomain,
-		&collectorEnabled,
+		&collectorEnabled, &scannerEnabled,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -60,6 +62,11 @@ func (r *PostgresStackReader) GetStackSummary(ctx context.Context, stackID strin
 	// 없으므로 stack 과 cicd 가 같은 함수를 본다.
 	if collectorEnabled == "true" {
 		s.OTLPEndpoint = shareddomain.OTelCollectorOTLPGRPCEndpoint(s.Namespace)
+	}
+	// 스캐너를 고른 스택에만 주소를 준다. 고르지 않은 스택에 주소를 주면
+	// 스캔 단계가 렌더링되고, CI 잡은 없는 서버에 붙어 전부 실패한다.
+	if scannerEnabled == "true" {
+		s.ImageScannerEndpoint = shareddomain.TrivyServerEndpoint(s.Namespace)
 	}
 
 	return &s, nil

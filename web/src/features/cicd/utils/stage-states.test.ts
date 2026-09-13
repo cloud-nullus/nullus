@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildStageStates } from './stage-states'
+import { buildStageStates, resolvePipelineStages } from './stage-states'
 
 describe('buildStageStates', () => {
   // 배포 상태 하나로 모든 단계를 칠하면 돌지도 않은 단계가 성공으로 보인다.
@@ -36,5 +36,26 @@ describe('buildStageStates', () => {
 
   it('단계가 없으면 빈 배열이다', () => {
     expect(buildStageStates([], [{ name: 'Build', status: 'success' }])).toEqual([])
+  })
+})
+
+describe('resolvePipelineStages', () => {
+  // 이미지 스캔 같은 선택 단계는 파이프라인마다 켜고 끈다. 템플릿은 그것을 알 수
+  // 없으므로 파이프라인이 기록한 단계가 있으면 그것을 믿는다.
+  it('파이프라인이 기록한 단계가 있으면 그것을 쓴다', () => {
+    expect(
+      resolvePipelineStages(['Build', 'ImageScan', 'Deploy'], ['Build', 'Deploy']),
+    ).toEqual(['Build', 'ImageScan', 'Deploy'])
+  })
+
+  // 단계 기록이 생기기 전에 만든 파이프라인은 빈 값이다. 비었다고 단계가 없는
+  // 것으로 그리면 이력 화면이 통째로 비어 보인다 — 템플릿으로 떨어진다.
+  it('기록이 없으면 템플릿 단계로 떨어진다', () => {
+    expect(resolvePipelineStages(undefined, ['Build', 'Deploy'])).toEqual(['Build', 'Deploy'])
+    expect(resolvePipelineStages([], ['Build', 'Deploy'])).toEqual(['Build', 'Deploy'])
+  })
+
+  it('둘 다 없으면 빈 배열이다', () => {
+    expect(resolvePipelineStages(undefined, undefined)).toEqual([])
   })
 })

@@ -193,16 +193,17 @@ func (f *BundleFactory) gitLabBundle(
 	}
 
 	return &port.SCMBundle{
-		Provisioner:    client,
-		Pipeline:       client,
-		Registry:       resolver,
-		Platform:       port.SCMPlatformGitLab,
-		GroupPath:      f.opts.GroupPath,
-		CDNamespace:    namespace,
-		CDApplications: kube.NewArgoApplicationDeleter(),
-		ClusterID:      summary.ClusterID,
-		AccessDomain:   summary.AccessDomain,
-		GatewayName:    gatewayNameForStack(summary.Name),
+		Provisioner:          client,
+		Pipeline:             client,
+		Registry:             resolver,
+		Platform:             port.SCMPlatformGitLab,
+		GroupPath:            f.opts.GroupPath,
+		CDNamespace:          namespace,
+		CDApplications:       kube.NewArgoApplicationDeleter(),
+		ClusterID:            summary.ClusterID,
+		AccessDomain:         summary.AccessDomain,
+		ImageScannerEndpoint: summary.ImageScannerEndpoint,
+		GatewayName:          gatewayNameForStack(summary.Name),
 	}, nil
 }
 
@@ -272,11 +273,12 @@ func (f *BundleFactory) gitHubBundle(
 		GroupPath:       conn.Owner,
 		RepoAccessToken: token,
 		// Argo CD 는 여전히 클러스터 안에 있다.
-		CDNamespace:    strings.TrimSpace(summary.Namespace),
-		CDApplications: kube.NewArgoApplicationDeleter(),
-		ClusterID:      summary.ClusterID,
-		AccessDomain:   summary.AccessDomain,
-		GatewayName:    gatewayNameForStack(summary.Name),
+		CDNamespace:          strings.TrimSpace(summary.Namespace),
+		CDApplications:       kube.NewArgoApplicationDeleter(),
+		ClusterID:            summary.ClusterID,
+		AccessDomain:         summary.AccessDomain,
+		ImageScannerEndpoint: summary.ImageScannerEndpoint,
+		GatewayName:          gatewayNameForStack(summary.Name),
 	}, nil
 }
 
@@ -342,10 +344,11 @@ func (f *BundleFactory) giteaBundle(
 		CDNamespace:     namespace,
 		// 지금은 모든 스택이 Argo CD 를 쓴다. 다른 CD 도구를 들이면 그 도구의
 		// CDApplicationDeleter 구현체를 여기서 갈아 끼운다.
-		CDApplications: kube.NewArgoApplicationDeleter(),
-		ClusterID:      summary.ClusterID,
-		AccessDomain:   summary.AccessDomain,
-		GatewayName:    gatewayNameForStack(summary.Name),
+		CDApplications:       kube.NewArgoApplicationDeleter(),
+		ClusterID:            summary.ClusterID,
+		AccessDomain:         summary.AccessDomain,
+		ImageScannerEndpoint: summary.ImageScannerEndpoint,
+		GatewayName:          gatewayNameForStack(summary.Name),
 	}
 
 	// 스택이 설치한 레지스트리의 자격증명은 플랫폼이 이미 갖고 있다. 사용자에게

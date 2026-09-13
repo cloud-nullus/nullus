@@ -182,6 +182,9 @@ func (uc *CreatePipeline) Execute(ctx context.Context, input CreatePipelineInput
 		Status:         domain.PipelineStatusActive,
 		CreatedAt:      time.Now(),
 	}
+	if provisionOut != nil {
+		pipeline.Stages = provisionOut.Stages
+	}
 	if pipeline.ExecutionMode == "" {
 		if pipeline.StackID != "" {
 			pipeline.ExecutionMode = "stack_integrated"
