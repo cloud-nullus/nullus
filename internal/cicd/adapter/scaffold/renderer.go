@@ -259,6 +259,10 @@ func renderGitHubWorkflow(in Input) string {
 		for _, v := range scanPolicyVariableNames {
 			fmt.Fprintf(&b, "      %s: ${{ vars.%s }}\n", v, v)
 		}
+		// 스캐너는 빌드가 올린 이미지를 레지스트리에서 다시 받는다 — 빌드와 같은
+		// 자격증명이다. 빌드가 insecure 로 push 하지 않으므로 인증서는 검증한다.
+		fmt.Fprintf(&b, "      TRIVY_USERNAME: %s\n", githubExpressionFor(target.UsernameVar))
+		fmt.Fprintf(&b, "      TRIVY_PASSWORD: %s\n", githubExpressionFor(target.PasswordVar))
 		b.WriteString("    container:\n")
 		fmt.Fprintf(&b, "      image: %q\n", defaultScannerImage)
 		b.WriteString("    steps:\n")
@@ -381,6 +385,14 @@ func renderPipeline(in Input) string {
 		fmt.Fprintf(&b, "  stage: %s\n", imageScanStageID)
 		fmt.Fprintf(&b, "  image: $%s\n", scanImageVar)
 		b.WriteString("  needs:\n    - build\n")
+		// 스캐너는 빌드가 올린 이미지를 레지스트리에서 다시 받는다. 빌드와 같은
+		// 자격증명을 쓰고, 빌드가 --insecure-registry 로 push 한 레지스트리이므로
+		// 인증서 검증도 같은 수준으로 맞춘다. 둘 중 하나라도 빠지면 스캔이
+		// "이미지를 찾을 수 없음" 으로 끝나 모든 배포가 막힌다(kind 스택에서 실측).
+		b.WriteString("  variables:\n")
+		fmt.Fprintf(&b, "    TRIVY_USERNAME: $%s\n", target.UsernameVar)
+		fmt.Fprintf(&b, "    TRIVY_PASSWORD: $%s\n", target.PasswordVar)
+		b.WriteString("    TRIVY_INSECURE: \"true\"\n")
 		b.WriteString("  script:\n")
 		writeScriptLines(&b, scanScriptLines())
 		// 리포트는 실패해도 남긴다. 차단당한 사람이 무엇에 걸렸는지 보려면

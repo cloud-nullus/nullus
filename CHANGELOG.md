@@ -106,6 +106,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **이미지 스캔 잡이 레지스트리에서 이미지를 받지 못해 배포가 전부 막히던 결함** (`internal/cicd/adapter/scaffold/{renderer,jenkins_renderer}.go`, nullus-plan#76): 머지 후 kind 의 GitLab + Argo CD + Trivy 스택에서 파이프라인을 실제로 돌리자 **스캔 잡이 매번 실패했다.** 스캐너는 빌드가 올린 이미지를 레지스트리에서 다시 받는데, 스캔 잡에 레지스트리 자격증명도 인증서 설정도 없었다(`x509: certificate signed by unknown authority`). 스캔 불가는 기본 정책상 차단이라 **스캐너를 켠 스택의 배포가 전부 막히는** 상태였다. 스캔 잡에 빌드와 같은 자격증명(`TRIVY_USERNAME`·`TRIVY_PASSWORD`)을 넘기고, 빌드가 `--insecure-registry` 로 push 하는 GitLab CI·Jenkins 에서는 `TRIVY_INSECURE` 도 켠다. Jenkins 는 트레이스를 끈 채 넘긴다.
+
+  같은 실측에서 이미지 스캔 흐름을 끝까지 확인했다: 스캔 파이프라인을 만들면 기본 정책이 프로젝트 변수(마스킹·보호 없음)로 실리고 `.gitlab-ci.yml` 에는 정책 값이 없다 → `alpine:3.19.0` 이 경고(HIGH 6)로 통과·배포 → 스택 정책을 HIGH 차단으로 저장하자 변수가 `HIGH,CRITICAL` 로 바뀌고 **커밋 없이 돌린 다음 실행이 차단** → Trivy 를 내리고 allow 로 바꾸자 통과. 동기화는 각 실행을 `error`(리포트 없음)·`warn`·`block`·`error` 로, 리포트가 있는 실행은 건수·다이제스트·DB 시각·스캐너 버전과 함께 기록했다. GitHub 리더는 실제 GitHub API(공개 저장소의 실행·잡·26.5MB 산출물 zip)로 확인했다.
+
+  **아직 남은 것**: 스택 GitLab 이 http 로 설정되면 레지스트리 인증 realm 이 `http://` 인데 게이트웨이는 레지스트리를 https 로도 노출한다. https 로 접속한 Trivy(go-containerregistry)는 이 realm 을 거부한다(`realm scheme "http" not allowed for a secure registry`). 실측은 스캔 잡만 `:80` 으로 읽게 우회했고, 제품 해법은 결정이 필요하다.
+
 - **서버 주소 없는 kubeconfig 로 kubectl 을 실행하지 않는다** (`internal/shared/kubeconfig` 신규, `internal/stack/usecase/delete_stack.go`, `internal/stack/adapter/helm/kubectl.go`): kubectl 은 kubeconfig 에서 API 서버를 못 찾으면 **오류 없이 `http://localhost:8080` 으로 폴백한다.** 스택 삭제·설치 경로는 kubeconfig 가 비었는지만 봤으므로, 형식만 맞고 서버가 없는 값이면 apply·delete 가 그 머신의 8080 으로 갔다 — 응답이 없으면 타임아웃 × 재시도로 매달리고, 응답하는 무언가가 있으면 엉뚱한 곳을 건드린다.
 
   테스트에서 무한 대기로 드러났다. 삭제 유스케이스의 기본 구현 셋(`listNamespaceResources`·`deleteResource`·`deleteManifest`)이 테스트 훅을 거치지 않고 실제 kubectl 을 불렀고, 테스트 kubeconfig 는 `clusters:` 이름만 있고 서버가 없었다. CI 는 8080 이 비어 즉시 실패해 가려졌고, 8080 을 다른 프로세스가 점유한 로컬에서는 `internal/stack/usecase` 가 끝나지 않았다. 실행 직전에 **현재 컨텍스트 → 클러스터 → 서버** 를 네트워크 없이 확인해 막는다. 이제 실제 kubectl 이 PATH 에 있는 채로 `internal/stack/...` 가 66초에 끝난다.

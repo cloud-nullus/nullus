@@ -72,6 +72,9 @@ func renderJenkinsfile(in Input) string {
 		// 기본값을 쓴다.
 		b.WriteString("      envFrom:\n")
 		fmt.Fprintf(&b, "        - configMapRef: {name: %s, optional: true}\n", scanPolicyConfigMap)
+		// 스캐너는 빌드가 올린 이미지를 레지스트리에서 다시 받는다. 자격증명은
+		// 빌더와 같은 파이프라인 Secret 에서 온다.
+		fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
 	}
 	b.WriteString("    - name: dind\n")
 	fmt.Fprintf(&b, "      image: %s\n", jenkinsDindImage)
@@ -157,6 +160,17 @@ func renderJenkinsfile(in Input) string {
 		b.WriteString("        container('scanner') {\n")
 		b.WriteString("          sh '''\n")
 		b.WriteString("            set -eu\n")
+		// 스캐너가 레지스트리에서 이미지를 다시 받을 자격증명이다. 넘기기 전에
+		// 트레이스를 끈다 — Jenkins 는 sh -xe 라 그대로면 비밀번호가 로그에 남는다.
+		b.WriteString("            set +x\n")
+		fmt.Fprintf(&b, "            export TRIVY_USERNAME=\"$%s\" TRIVY_PASSWORD=\"$%s\"\n",
+			target.UsernameVar, target.PasswordVar)
+		if strings.TrimSpace(target.Host) != "" {
+			// 빌드가 --insecure-registry 로 push 하는 레지스트리다. 스캔만 인증서를
+			// 검증하면 같은 레지스트리를 못 읽는다.
+			b.WriteString("            export TRIVY_INSECURE=true\n")
+		}
+		b.WriteString("            set -x\n")
 		for _, line := range scanScriptLines() {
 			fmt.Fprintf(&b, "            %s\n", line)
 		}
