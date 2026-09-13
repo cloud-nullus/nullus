@@ -28,6 +28,14 @@ func (r *MemoryImageScanResultRepository) Upsert(_ context.Context, result *doma
 	return nil
 }
 
+// Delete 는 기록을 지운다. 없으면 아무 일도 하지 않는다.
+func (r *MemoryImageScanResultRepository) Delete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.rows, strings.TrimSpace(id))
+	return nil
+}
+
 // ListByPipelineID 는 최신 결과부터 돌려준다.
 func (r *MemoryImageScanResultRepository) ListByPipelineID(_ context.Context, pipelineID string) ([]*domain.ImageScanResult, error) {
 	r.mu.RLock()

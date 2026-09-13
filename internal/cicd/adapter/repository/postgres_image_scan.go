@@ -68,6 +68,14 @@ func (r *PostgresImageScanResultRepository) Upsert(ctx context.Context, s *domai
 	return nil
 }
 
+// Delete 는 기록을 지운다. 없으면 아무 일도 하지 않는다.
+func (r *PostgresImageScanResultRepository) Delete(ctx context.Context, id string) error {
+	if _, err := r.pool.Exec(ctx, `DELETE FROM image_scan_results WHERE id = $1`, strings.TrimSpace(id)); err != nil {
+		return fmt.Errorf("delete image scan result: %w", err)
+	}
+	return nil
+}
+
 // ListByPipelineID 는 최신 결과부터 돌려준다.
 func (r *PostgresImageScanResultRepository) ListByPipelineID(ctx context.Context, pipelineID string) ([]*domain.ImageScanResult, error) {
 	const q = `

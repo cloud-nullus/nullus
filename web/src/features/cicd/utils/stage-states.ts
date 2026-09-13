@@ -41,7 +41,9 @@ export function buildStageStates(
     const status = byName.get(stageKey(stage))
     if (status === undefined) return 'unknown'
     if (status === 'success' || status === 'completed') return 'completed'
-    if (status === 'failed' || status === 'error') return 'failed'
+    // 취소는 백엔드에서 따로 보고된다(스캔 판정을 남기지 않으려고). 화면에서는
+    // 끝나지 못한 단계로 보여 준다 — 대기 중으로 그리면 아직 돌 것처럼 보인다.
+    if (status === 'failed' || status === 'error' || status === 'canceled') return 'failed'
     if (status === 'running' || status === 'in_progress') return 'in_progress'
     return 'queued'
   })

@@ -144,13 +144,24 @@ func (uc *SyncPipelineRuns) recordImageScans(
 			if port.StageKey(st.Name) != imageScanStageKey {
 				continue
 			}
+			deploymentID := runDeploymentID(pipelineID, b.Number)
+			// 실행 하나에 스캔 하나다. 같은 실행을 다시 동기화해도 기록이 늘지 않는다.
+			id := "scan_" + deploymentID
+
+			if st.Status == port.CIStageCanceled {
+				// 취소는 스캔 실패가 아니다 — 새 커밋이 앞선 실행을 밀어낸 것이다.
+				// 판정을 남기지 않고, 이 규칙이 생기기 전에 error 로 남긴 기록은
+				// 걷어낸다. 남겨 두면 대시보드가 스캐너 장애로 센다.
+				if err := uc.imageScans.Delete(ctx, id); err != nil {
+					slog.Warn("취소된 실행의 스캔 기록 정리 실패",
+						"pipeline_id", pipelineID, "deployment_id", deploymentID, "error", err)
+				}
+				continue
+			}
 			gate, ok := domain.GateResultFromStageStatus(string(st.Status))
 			if !ok {
 				continue // 도는 중인 것을 통과로 적지 않는다
 			}
-			deploymentID := runDeploymentID(pipelineID, b.Number)
-			// 실행 하나에 스캔 하나다. 같은 실행을 다시 동기화해도 기록이 늘지 않는다.
-			id := "scan_" + deploymentID
 			if withReport[id] {
 				// 이미 리포트까지 읽었다. 화면을 열 때마다 동기화가 도는데,
 				// 끝난 실행의 리포트를 매번 다시 내려받을 이유가 없다.

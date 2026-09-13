@@ -27,6 +27,11 @@ func (m *memScanResults) Upsert(_ context.Context, r *domain.ImageScanResult) er
 	return nil
 }
 
+func (m *memScanResults) Delete(_ context.Context, id string) error {
+	delete(m.rows, id)
+	return nil
+}
+
 func (m *memScanResults) ListByPipelineID(_ context.Context, id string) ([]*domain.ImageScanResult, error) {
 	var out []*domain.ImageScanResult
 	for _, r := range m.rows {

@@ -43,6 +43,8 @@ type ImageScanResultRepository interface {
 	Upsert(ctx context.Context, result *domain.ImageScanResult) error
 	// ListByPipelineID 는 최신 결과부터 돌려준다.
 	ListByPipelineID(ctx context.Context, pipelineID string) ([]*domain.ImageScanResult, error)
+	// Delete 는 기록을 지운다. 없으면 오류가 아니다 — 동기화가 반복해서 부른다.
+	Delete(ctx context.Context, id string) error
 }
 
 // CICDGoldenPathRepository defines the interface for CI/CD Golden Path persistence.
