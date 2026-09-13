@@ -86,6 +86,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **서버 주소 없는 kubeconfig 로 kubectl 을 실행하지 않는다** (`internal/shared/kubeconfig` 신규, `internal/stack/usecase/delete_stack.go`, `internal/stack/adapter/helm/kubectl.go`): kubectl 은 kubeconfig 에서 API 서버를 못 찾으면 **오류 없이 `http://localhost:8080` 으로 폴백한다.** 스택 삭제·설치 경로는 kubeconfig 가 비었는지만 봤으므로, 형식만 맞고 서버가 없는 값이면 apply·delete 가 그 머신의 8080 으로 갔다 — 응답이 없으면 타임아웃 × 재시도로 매달리고, 응답하는 무언가가 있으면 엉뚱한 곳을 건드린다.
+
+  테스트에서 무한 대기로 드러났다. 삭제 유스케이스의 기본 구현 셋(`listNamespaceResources`·`deleteResource`·`deleteManifest`)이 테스트 훅을 거치지 않고 실제 kubectl 을 불렀고, 테스트 kubeconfig 는 `clusters:` 이름만 있고 서버가 없었다. CI 는 8080 이 비어 즉시 실패해 가려졌고, 8080 을 다른 프로세스가 점유한 로컬에서는 `internal/stack/usecase` 가 끝나지 않았다. 실행 직전에 **현재 컨텍스트 → 클러스터 → 서버** 를 네트워크 없이 확인해 막는다. 이제 실제 kubectl 이 PATH 에 있는 채로 `internal/stack/...` 가 66초에 끝난다.
+
 - **두 번째 스택 설치를 매번 막던 ESO 소유권 — 인수 대상을 애노테이션으로 찾는다** (`internal/stack/adapter/helm/external-secrets.go`, `internal/stack/usecase/delete_stack.go`): 스택을 지우고 **다른 네임스페이스에 새로 만들면 그때마다 설치가 죽었다.** 실환경 재설치에서 드러났다.
 
   **인수 대상이 24분의 2였다.** ESO CRD 는 클러스터 범위라 Helm 이 릴리스 삭제 시 지우지 않는다. 코드는 그 사실을 알고 소유권 인수 로직을 두었는데(주석도 *"멀티 스택 제품에서는 반드시 발생하는 상황"* 이라 적고 있다), 대상 목록에 CRD 두 개만 하드코딩돼 있었다. 차트 2.7.0 이 실제로 만드는 것은 CRD 24개 · ClusterRole 5개 · ClusterRoleBinding 2개 · ValidatingWebhookConfiguration 2개다. 알파벳 순으로 첫 미인수 리소스(`acraccesstokens.generators.external-secrets.io`)에서 `invalid ownership metadata` 로 막혔다.
