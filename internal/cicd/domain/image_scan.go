@@ -1,10 +1,10 @@
 package domain
 
 import (
-	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
+
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // GateResult 는 이미지 스캔 게이트의 판정이다.
@@ -21,14 +21,9 @@ const (
 	GateResultError GateResult = "error"
 )
 
-// SeverityCounts 는 심각도별 취약점 건수다.
-type SeverityCounts struct {
-	Critical int `json:"critical"`
-	High     int `json:"high"`
-	Medium   int `json:"medium"`
-	Low      int `json:"low"`
-	Unknown  int `json:"unknown"`
-}
+// SeverityCounts 는 심각도별 취약점 건수다. 스택 모듈도 설치 이미지를 같은 어휘로
+// 세므로 shared 가 소유한다.
+type SeverityCounts = shareddomain.SeverityCounts
 
 // ScanPolicy 는 스택 하나의 차단 기준이다.
 //
@@ -57,10 +52,7 @@ func DefaultScanPolicy() ScanPolicy {
 }
 
 // StaleDBAge 는 취약점 DB 를 낡았다고 보는 나이다 (설계 §6.4).
-//
-// 에어갭에서 DB 는 사람이 가져다 넣는 만큼만 새것이다. 강제로 막을 수는 없지만
-// 언제 것인지 숨기지 않는다.
-const StaleDBAge = 30 * 24 * time.Hour
+const StaleDBAge = shareddomain.StaleDBAge
 
 // ImageScanResult 는 이미지 하나에 대한 스캔 결과 기록이다.
 type ImageScanResult struct {
@@ -88,103 +80,11 @@ type ImageScanResult struct {
 }
 
 // TrivyReportSummary 는 Trivy JSON 리포트에서 판정에 필요한 것만 뽑은 것이다.
-type TrivyReportSummary struct {
-	ImageRepository string
-	ImageTag        string
-	ImageDigest     string
-	ScannerVersion  string
-	// DBUpdatedAt 은 서버 모드에서 서버가 알려준 취약점 DB 시각이다.
-	// 리포트에 없으면 nil 이다.
-	DBUpdatedAt *time.Time
-	// All 은 모든 취약점, Fixable 은 수정본이 있는 것만 센 값이다.
-	All     SeverityCounts
-	Fixable SeverityCounts
-}
-
-type trivyReport struct {
-	ArtifactName string `json:"ArtifactName"`
-	Trivy        struct {
-		Version string `json:"Version"`
-		Server  struct {
-			Version         string `json:"Version"`
-			VulnerabilityDB struct {
-				UpdatedAt *time.Time `json:"UpdatedAt"`
-			} `json:"VulnerabilityDB"`
-		} `json:"Server"`
-	} `json:"Trivy"`
-	Metadata struct {
-		RepoDigests []string `json:"RepoDigests"`
-	} `json:"Metadata"`
-	Results []struct {
-		Vulnerabilities []struct {
-			Severity     string `json:"Severity"`
-			FixedVersion string `json:"FixedVersion"`
-		} `json:"Vulnerabilities"`
-	} `json:"Results"`
-}
+type TrivyReportSummary = shareddomain.TrivyReportSummary
 
 // ParseTrivyReport 는 Trivy JSON 리포트(SchemaVersion 2)를 요약한다.
-//
-// 형식은 kind 의 Trivy 서버로 실제 스캔한 리포트에 맞췄다
-// (testdata/trivy-report-node16.json).
 func ParseTrivyReport(raw []byte) (*TrivyReportSummary, error) {
-	var r trivyReport
-	if err := json.Unmarshal(raw, &r); err != nil {
-		return nil, fmt.Errorf("trivy 리포트를 읽지 못했습니다: %w", err)
-	}
-
-	s := &TrivyReportSummary{ScannerVersion: r.Trivy.Version}
-	s.ImageRepository, s.ImageTag = splitImageRef(r.ArtifactName)
-	for _, d := range r.Metadata.RepoDigests {
-		if i := strings.Index(d, "@"); i >= 0 {
-			s.ImageDigest = d[i+1:]
-			break
-		}
-	}
-	if t := r.Trivy.Server.VulnerabilityDB.UpdatedAt; t != nil && !t.IsZero() {
-		updated := *t
-		s.DBUpdatedAt = &updated
-	}
-
-	for _, res := range r.Results {
-		for _, v := range res.Vulnerabilities {
-			addSeverity(&s.All, v.Severity)
-			if strings.TrimSpace(v.FixedVersion) != "" {
-				addSeverity(&s.Fixable, v.Severity)
-			}
-		}
-	}
-	return s, nil
-}
-
-// splitImageRef 는 "repo:tag" 를 나눈다. 레지스트리 포트의 콜론과 헷갈리지 않도록
-// 마지막 슬래시 뒤에서만 태그를 찾는다.
-func splitImageRef(ref string) (repo, tag string) {
-	ref = strings.TrimSpace(ref)
-	if i := strings.Index(ref, "@"); i >= 0 {
-		ref = ref[:i]
-	}
-	slash := strings.LastIndex(ref, "/")
-	if colon := strings.LastIndex(ref, ":"); colon > slash {
-		return ref[:colon], ref[colon+1:]
-	}
-	return ref, ""
-}
-
-func addSeverity(c *SeverityCounts, severity string) {
-	switch strings.ToUpper(strings.TrimSpace(severity)) {
-	case "CRITICAL":
-		c.Critical++
-	case "HIGH":
-		c.High++
-	case "MEDIUM":
-		c.Medium++
-	case "LOW":
-		c.Low++
-	default:
-		// 등급을 매기지 못한 것을 낮음으로 넘겨짚지 않는다.
-		c.Unknown++
-	}
+	return shareddomain.ParseTrivyReport(raw)
 }
 
 // EvaluateGate 는 요약을 정책으로 판정한다.
@@ -228,11 +128,7 @@ func GateResultFromStageStatus(status string) (GateResult, bool) {
 	}
 }
 
-// IsDBStale 은 취약점 DB 가 낡았는지 본다. 시각을 모르면 낡은 것으로 본다 —
-// 모르는 채로 초록불을 켜지 않는다.
+// IsDBStale 은 취약점 DB 가 낡았는지 본다. 시각을 모르면 낡은 것으로 본다.
 func IsDBStale(updatedAt *time.Time, now time.Time) bool {
-	if updatedAt == nil || updatedAt.IsZero() {
-		return true
-	}
-	return now.Sub(*updatedAt) > StaleDBAge
+	return shareddomain.IsDBStale(updatedAt, now)
 }

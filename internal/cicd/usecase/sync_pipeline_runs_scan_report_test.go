@@ -28,7 +28,7 @@ func (s *stubArtifacts) ReadArtifact(_ context.Context, ref port.CIArtifactRef) 
 
 func nodeReport(t *testing.T) ([]byte, *domain.TrivyReportSummary) {
 	t.Helper()
-	raw, err := os.ReadFile("../domain/testdata/trivy-report-node16.json")
+	raw, err := os.ReadFile("../../shared/domain/testdata/trivy-report-node16.json")
 	require.NoError(t, err)
 	summary, err := domain.ParseTrivyReport(raw)
 	require.NoError(t, err)
