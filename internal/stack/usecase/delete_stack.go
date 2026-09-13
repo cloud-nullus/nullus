@@ -97,6 +97,9 @@ type namespacedResource struct {
 	HelmRelease string
 	// StackLabel 은 nullus.io/stack-name 라벨이다.
 	StackLabel string
+	// Labels 는 리소스의 라벨 전체다. 소유 표시가 없는 설치 잔여물을 만든 쪽의
+	// 표시(control-plane=envoy-gateway 등)로 가려낼 때 쓴다.
+	Labels map[string]string
 }
 
 var legacyReleaseArtifactPrefixes = []string{
@@ -399,6 +402,8 @@ func (uc *DeleteStack) cleanupCluster(ctx context.Context, stack *domain.Stack, 
 	// Gitea 의 28P01 과 Harbor 의 401 로 두 번 드러났다. 네임스페이스를 지우면
 	// 그 안의 것은 종류를 몰라도 함께 사라진다.
 	uc.bestEffortDeleteStackNamespace(ctx, kubeconfig, stack, stackID)
+	// 클러스터 범위 훅 리소스는 네임스페이스를 지워도 남는다. 회수 여부와 무관하게 지운다.
+	uc.bestEffortDeleteEnvoyGatewayClusterHookResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeprovisionSSO(ctx, stack, stackID)
 
 	uc.emit(ctx, stackID, "deleted", "info", "stack delete completed")
@@ -1306,7 +1311,7 @@ func shouldDeleteReleaseArtifact(resource namespacedResource, stackName string) 
 		return isStackHelmRelease(release)
 	}
 
-	return matchesLegacyArtifactName(resourceNameFromRef(resource.Ref))
+	return matchesLegacyArtifactName(resourceNameFromRef(resource.Ref)) || isInstallLeftoverArtifact(resource)
 }
 
 // matchesLegacyArtifactName 은 소유자 표시가 없는 고아를 이름으로 알아본다.
@@ -1519,7 +1524,7 @@ func listNamespaceResources(ctx context.Context, kubeconfig []byte, namespace st
 	if strings.TrimSpace(namespace) == "" {
 		return nil, nil
 	}
-	output, err := runKubectlWithKubeconfig(ctx, kubeconfig, "get", "deploy,svc,cm,sa,pod,rs,sts,job,cronjob,secret,pvc", "-n", namespace, "-o", "json")
+	output, err := runKubectlWithKubeconfig(ctx, kubeconfig, "get", namespaceSweepKinds, "-n", namespace, "-o", "json")
 	if err != nil {
 		return nil, err
 	}
@@ -1557,6 +1562,7 @@ func parseNamespaceResources(raw string) ([]namespacedResource, error) {
 			Ref:         kind + "/" + name,
 			HelmRelease: strings.TrimSpace(item.Metadata.Annotations["meta.helm.sh/release-name"]),
 			StackLabel:  strings.TrimSpace(item.Metadata.Labels[stackNameLabelKey]),
+			Labels:      item.Metadata.Labels,
 		})
 	}
 	return out, nil
