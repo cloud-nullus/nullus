@@ -41,6 +41,10 @@ type ProvisionAppProjectInput struct {
 	// SharedAccessToken 은 리포 범위 토큰을 발급할 수 없는 플랫폼에서
 	// Argo CD 인증에 재사용할 토큰이다 (GitHub 의 조직 PAT).
 	SharedAccessToken string
+	// ImageScannerEndpoint 는 스택 Trivy 서버 주소다. 비면 스캔 단계를
+	// 만들지 않는다 — 돌지도 않을 단계를 선언하면 화면이 그것을 성공으로
+	// 보여준다(마이그레이션 000070).
+	ImageScannerEndpoint string
 	// AppType 은 어떤 앱을 스캐폴딩할지다. web 이면 바로 도는 React 앱을 만든다.
 	AppType domain.AppType
 	// AccessDomain / GatewayName / GatewayNamespace 가 있으면
@@ -220,6 +224,8 @@ func (uc *ProvisionAppProject) Execute(
 		GatewayNamespace: input.GatewayNamespace,
 		StackID:          input.StackID,
 		TemplateID:       input.TemplateID,
+
+		ImageScannerEndpoint: input.ImageScannerEndpoint,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("render scaffold for %q: %w", app, err)

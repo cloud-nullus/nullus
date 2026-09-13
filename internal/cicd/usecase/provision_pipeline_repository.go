@@ -125,6 +125,8 @@ func (uc *ProvisionPipelineRepository) Execute(
 			GatewayNamespace:    bundle.CDNamespace,
 			StackID:             stackID,
 			TemplateID:          input.TemplateID,
+
+			ImageScannerEndpoint: bundle.ImageScannerEndpoint,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("provision app project: %w", err)
