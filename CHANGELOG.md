@@ -19,7 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **게이트 판정을 남긴다** (`image_scan_results`, `GET /cicd/pipelines/:id/image-scans`). 실행 기록을 동기화할 때 스캔 단계의 성공/실패로 pass/block 을 남긴다. **리포트는 아직 읽지 않아 건수는 NULL 이다** — 0 으로 채우면 "취약점 0건" 으로 읽힌다(설계 초안의 `NOT NULL DEFAULT 0` 에서 바꿨다). 리포트 파서는 kind 에서 실제 스캔한 리포트로 검증했고, client/server 모드 리포트에 **서버의 DB 시각이 실려** DB 나이를 따로 묻지 않아도 된다. 응답은 `db_stale` 을 서버가 판정해 내려준다(30일).
 
-  **아직 안 되는 것.** 설계 §5.4 의 게이트 API 는 후속이다 — 플랫폼에 기계 인증 경로가 없어 인바운드 API 를 여는 방식부터 정해야 한다.
+- **이미지 스캔 정책을 스택 단위로 저장하고 CI 에 푸시한다** (`GET·PUT /stacks/:stackId/image-scan-policy`, `db/migrations/000080`, `internal/cicd/**`, nullus-plan#76): 차단 기준(CRITICAL 등)이 **파이프라인 파일에 박혀 있어** 바꿀 방법이 재스캐폴딩뿐이었다. 설계 §5.4 의 게이트 API(`nullus-ci scan-gate`)는 버렸다 — 플랫폼 인증이 사용자 JWT 뿐이라 CI 가 부를 기계 인증과 CI→플랫폼 인바운드 경로를 새로 만들어야 하고, 플랫폼이 죽으면 모든 스택의 배포가 멈춘다. 대신 **판정은 CI 가 푸시받은 정책으로 스스로 한다.**
+
+  **정책을 싣는 자리는 CI 마다 다르다.** GitLab 은 앱 프로젝트 CI/CD 변수(`.gitlab-ci.yml` 보다 앞서 이미 만든 파이프라인도 재커밋 없이 바뀐다), GitHub 은 리포 Actions **변수**(시크릿이면 `vars` 로 읽히지 않고 로그에서 가려진다), CI 변수 저장소가 없는 Jenkins 는 스택 네임스페이스의 ConfigMap 하나(`envFrom`, optional)다. 정책을 저장할 때 그 스택의 스캔 파이프라인 전체에, 스캔 파이프라인을 새로 만들 때 그 하나에 싣는다. 푸시가 일부 실패해도 저장은 되돌리지 않고 파이프라인별 결과를 돌려준다. 동기화도 같은 스택 정책으로 판정한다 — CI 가 HIGH 로 막았는데 기본 정책(CRITICAL)으로 읽으면 "차단 사유 없는 실패 = 스캔 오류" 로 잘못 센다.
+
+  **정책 항목**: 차단 심각도(CRITICAL·HIGH·MEDIUM·LOW, 바로 아래 등급은 경고), unfixed 제외, 스캔 불가 시 동작(block·allow). 모르는 값은 기본값으로 바꿔 받지 않고 거부한다 — `HIGHT` 오타가 조용히 CRITICAL 로 바뀌면 운영자는 HIGH 를 막는 줄 안다. 요청에서 필드를 빠뜨려도 거부한다(`ignore_unfixed` 누락을 false 로 받으면 수정본 없는 CVE 가 차단 사유가 된다).
+
+  **스캐너 장애 허용(allow)을 스크립트가 실제로 한다.** 리포트 명령이 실패하면(스캔 불가) 기본은 멈추고, allow 면 통과시킨다. 리포트 없이 끝난 실행은 성공이어도 `error` 로 기록한다 — 스캔하지 않은 이미지를 "통과" 로 적지 않는다.
+
+  kind 가 아니라 **실제 Trivy 서버에 렌더된 스크립트를 그대로** 돌려 확인했다: `alpine:3.18` 통과, `node:16` 차단(리포트에 HIGH 256건), HIGH 차단 정책으로도 차단, 서버 도달 불가 시 기본 차단 · allow 통과. 000080 은 Postgres 18 에서 up/down, CHECK 제약, 스택 삭제 CASCADE, 저장소 왕복을 확인했다. 정책 편집 화면은 후속이다.
 
 - **GitLab CI · GitHub Actions 파이프라인도 실행 기록과 스캔 판정을 남긴다** (`internal/cicd/adapter/{gitlab,github}/build_reader.go`, `bundle_factory.go`, nullus-plan#76): 실행 기록을 읽는 경로가 Jenkins 에만 있어, **같은 스캔 단계가 돌아도 GitLab·GitHub 쪽은 이력도 판정도 영원히 비어 있었다.** 두 CI 의 파이프라인/워크플로 실행과 잡을 읽어 공통 단계 어휘로 옮긴다. 화면의 실행 번호는 프로젝트 안의 번호(GitLab `iid`, GitHub `run_number`)이고, 잡·산출물 조회에 쓰는 전역 id 는 따로 싣는다.
 

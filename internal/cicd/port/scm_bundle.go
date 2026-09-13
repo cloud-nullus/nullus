@@ -37,6 +37,9 @@ type SCMBundle struct {
 	// CIArtifacts 는 실행이 남긴 산출물(스캔 리포트)을 읽는다. 지원하지 않으면 nil —
 	// 스캔 판정은 단계 결과만으로 남고 건수는 비어 있다.
 	CIArtifacts CIArtifactReader
+	// ScanPolicy 는 스캔 정책을 파이프라인이 읽는 자리에 싣는다. 정책을 실을
+	// 경로가 배선되지 않은 스택에서는 nil 이다.
+	ScanPolicy ScanPolicyPublisher
 	// CIBaseURL 은 CI 서버의 주소다. webhook 대상 주소를 만드는 데 쓴다.
 	CIBaseURL string
 	// SCMInClusterURL 은 클러스터 안에서 SCM 에 닿는 주소다.

@@ -18,11 +18,13 @@
 | 6 | **렌더러와 템플릿 `stages` 를 같은 PR 에서 바꾼다.** 파이프라인별 실효 stages 를 저장한다 | 마이그레이션 `000070` 이 정확히 이 실패를 되돌린 이력이다 |
 | 7 | 기본값: CRITICAL 차단 · HIGH 경고 · `--ignore-unfixed` · **스캐너 도달 불가는 차단** | 수정본 없는 CVE 로 막으면 사용자가 할 수 있는 일이 없다. 반면 스캔이 못 돈 것을 통과로 넘기면 거짓말이 된다 |
 | 8 | **취약점 DB 나이(`db_updated_at`)를 결과와 함께 저장하고 화면에 노출한다** | 에어갭에서 낡은 DB 의 "0건" 은 거짓말에 가깝다 |
+| 9 | **정책은 스택 단위로 저장하고 CI 에 푸시한다.** 판정은 CI 가 스스로 한다 (§5.4) | 플랫폼 인증은 사용자 JWT 뿐이라 CI 가 플랫폼에 되물을 기계 인증 경로가 없다. 인바운드 게이트 API 는 토큰 발급·회전과 CI→플랫폼 네트워크 경로를 새로 요구한다 |
 
 > **개정 이력**
 > - **초안(09-08)** — CI 잡이 Trivy 를 통째로 실행. 이슈 본문이 이미 지적한 *"DB 갱신·캐시를 파이프라인마다 감당"* 을 그대로 떠안는다.
 > - **1차 개정(09-10)** — client/server 모드로 DB 를 한 곳에 모음. 다만 스캐너를 **플랫폼 고정 컴포넌트**로 뒀다.
-> - **2차 개정(09-10, 현재)** — 스캐너를 **Stack 구성의 선택 항목**으로 내림. §3 이 새로 생기고 §2.3·§4.1·§9 가 함께 바뀌었다.
+> - **2차 개정(09-10)** — 스캐너를 **Stack 구성의 선택 항목**으로 내림. §3 이 새로 생기고 §2.3·§4.1·§9 가 함께 바뀌었다.
+> - **3차 개정(09-13, 현재)** — §5.4 의 게이트 API(`nullus-ci scan-gate`)를 버리고 **정책 푸시**로 바꿈. 결정 9 가 새로 생기고 §5.4·§6 이 함께 바뀌었다.
 
 ---
 
@@ -386,30 +388,50 @@ ALTER TABLE pipelines ADD COLUMN IF NOT EXISTS stages JSONB NOT NULL DEFAULT '[]
 
 > **#76 단독 요구가 아니다.** #64(SAST) · #79(SCA) · #80(Secret Detection) 이 전부 선택적 단계를 하나씩 더한다 (§10).
 
-### 5.4 잡 모양 — 얇은 client 호출
+### 5.4 잡 모양 — 얇은 client 호출, 정책은 푸시받은 변수로
 
-DB 를 내려받지 않는다. 정책도 스크립트에 박지 않는다.
+DB 를 내려받지 않는다. 정책도 파이프라인 파일에 박지 않는다 — **CI 가 푸시받은 변수로 스스로 판정한다.**
 
 ```yaml
 image-scan:
   stage: image-scan
-  image: "$NULLUS_TRIVY_IMAGE"        # CLI 만. DB 없음
+  image: $NULLUS_TRIVY_IMAGE           # CLI 만. DB 없음
   needs: [build]
   script:
-    # 1) 스택의 서버에 매칭을 맡긴다. DB 는 서버에만 있다.
-    - trivy image --server "$NULLUS_TRIVY_SERVER" --token "$NULLUS_TRIVY_TOKEN"
-        --scanners vuln --format json --output report.json
-        "$IMAGE_REPOSITORY:$IMAGE_TAG"
-    # 2) 판정은 Nullus 가 한다 — 정책이 플랫폼에 있어 재스캐폴딩 없이 바뀐다.
-    - nullus-ci scan-gate --pipeline "$NULLUS_PIPELINE_ID" --report report.json
+    # 1) 리포트. 심각도를 거르지 않는다 — 거르면 HIGH 가 리포트에 없어 경고가 영원히 안 나온다.
+    #    스캔 자체를 못 하면 정책(NULLUS_SCAN_ON_UNREACHABLE)에 따라 멈추거나 통과시킨다.
+    - 'if ! trivy image --server "$NULLUS_TRIVY_SERVER" --scanners vuln <unfixed> --format json
+         --output trivy-report.json "$IMAGE_REPOSITORY:$IMAGE_TAG"; then
+         if [ "${NULLUS_SCAN_ON_UNREACHABLE:-block}" = "allow" ]; then exit 0; fi; exit 1; fi'
+    # 2) 게이트. 변수가 없으면(한 번도 푸시하지 않은 파이프라인) 기본 정책으로 판정한다.
+    - 'trivy image --server "$NULLUS_TRIVY_SERVER" --scanners vuln
+         --severity "${NULLUS_SCAN_SEVERITY:-CRITICAL}" <unfixed> --exit-code 1 --quiet "$IMAGE_REPOSITORY:$IMAGE_TAG"'
   artifacts:
     when: always
-    paths: [report.json]
+    paths: [trivy-report.json]
 ```
 
-Jenkins · GitHub Actions 판도 **같은 두 명령**으로 맞춘다.
+Jenkins · GitHub Actions 판도 **같은 두 명령**이다. `<unfixed>` 는 `NULLUS_SCAN_IGNORE_UNFIXED`(기본 true)를 읽는다.
 
-> `--severity` · `--ignore-unfixed` 를 잡에 적지 않는 것이 핵심이다. 초안은 이 값들을 렌더링해 넣었는데, 그러면 정책을 바꿀 때마다 모든 파이프라인을 다시 스캐폴딩해야 한다.
+#### 정책을 CI 에 싣는 자리
+
+| CI | 자리 | 파일에서 읽는 방식 |
+|---|---|---|
+| GitLab CI | 앱 프로젝트 CI/CD 변수 | `.gitlab-ci.yml` 의 variables 보다 **앞선다** — 이미 스캐폴딩한 파이프라인도 재커밋 없이 바뀐다 |
+| GitHub Actions | 리포 Actions **변수**(vars) | `env: NULLUS_SCAN_SEVERITY: ${{ vars.NULLUS_SCAN_SEVERITY }}` — 시크릿이 아니다(시크릿이면 `vars` 로 읽히지 않고 로그에서 가려진다) |
+| Jenkins | 스택 네임스페이스의 ConfigMap `nullus-scan-policy` | 스캐너 컨테이너 `envFrom: configMapRef (optional)` — 스택 하나에 하나라 한 번 적용하면 그 스택의 Jenkins 파이프라인 전체가 따른다 |
+
+푸시 시점은 둘이다. **정책을 저장할 때**(`PUT /stacks/:stackId/image-scan-policy`, 그 스택의 스캔 파이프라인 전체)와 **스캔 파이프라인을 새로 만들 때**(그 파이프라인 하나). 푸시 실패로 저장을 되돌리지 않고 파이프라인별 결과를 돌려준다.
+
+#### 게이트 API 를 버린 이유
+
+초안은 판정을 플랫폼이 하는 `nullus-ci scan-gate` 였다. 정책이 플랫폼에만 있어 실시간으로 바뀐다는 장점이 있지만,
+
+- 플랫폼 인증은 Keycloak 사용자 JWT 뿐이다. CI 잡이 부를 **기계 인증**(파이프라인별 토큰 발급·회전·폐기)을 새로 만들어야 한다.
+- CI 러너 → 플랫폼 API 의 **인바운드 네트워크 경로**가 필요하다. 에어갭·사설망 설치에서 가장 먼저 막히는 곳이다.
+- 플랫폼이 죽으면 모든 스택의 배포가 멈춘다 — 스택 단위로 장애를 가둔 §6.1 의 이득이 사라진다.
+
+정책 푸시는 반영이 **다음 실행부터**라는 비용만 진다. 결과 수집은 실행 기록 동기화(§8)가 이미 한다.
 
 ---
 

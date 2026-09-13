@@ -35,16 +35,15 @@ func GateFromStageAndReport(stageStatus string, report *TrivyReportSummary, poli
 
 // GateWhenReportMissing 은 리포트가 확실히 없을 때의 판정이다.
 //
-// 스캔 명령은 리포트부터 쓴다. 실패했는데 리포트가 없으면 스캐너에 닿지 못한
-// 것이다 — 차단으로 세면 스캐너 장애가 "취약한 배포" 로 보인다. 성공했는데
-// 없으면 게이트는 통과했고 업로드만 빠진 것이다.
+// 스캔 명령은 리포트부터 쓴다. 리포트가 없으면 스캔을 수행하지 못한 것이다.
+//   - 실패: 스캐너에 닿지 못해 멈췄다 — 차단으로 세면 스캐너 장애가 "취약한 배포" 로 보인다.
+//   - 성공: 스캐너 장애를 허용(allow)한 정책이 통과시켰다 — 통과로 적으면
+//     스캔하지 않은 이미지가 "통과" 로 보인다.
+//
+// 어느 쪽이든 스캔했다는 근거가 없으므로 error 다.
 func GateWhenReportMissing(stageStatus string) (GateResult, bool) {
-	fromStage, ok := GateResultFromStageStatus(stageStatus)
-	if !ok {
+	if _, ok := GateResultFromStageStatus(stageStatus); !ok {
 		return "", false
 	}
-	if fromStage == GateResultBlock {
-		return GateResultError, true
-	}
-	return fromStage, true
+	return GateResultError, true
 }

@@ -67,6 +67,11 @@ func renderJenkinsfile(in Input) string {
 		fmt.Fprintf(&b, "      image: %s\n", defaultScannerImage)
 		b.WriteString("      command: [\"cat\"]\n")
 		b.WriteString("      tty: true\n")
+		// Jenkins 에는 CI 변수 저장소가 없다. 플랫폼이 스택 네임스페이스의 ConfigMap
+		// 으로 정책을 푸시한다. 한 번도 푸시하지 않았으면 없으므로 optional — 스크립트가
+		// 기본값을 쓴다.
+		b.WriteString("      envFrom:\n")
+		fmt.Fprintf(&b, "        - configMapRef: {name: %s, optional: true}\n", scanPolicyConfigMap)
 	}
 	b.WriteString("    - name: dind\n")
 	fmt.Fprintf(&b, "      image: %s\n", jenkinsDindImage)
@@ -144,9 +149,9 @@ func renderJenkinsfile(in Input) string {
 		// 때마다 모든 파이프라인을 다시 스캐폴딩해야 한다.
 		fmt.Fprintf(&b, "    stage('%s') {\n", imageScanStageName)
 		b.WriteString("      environment {\n")
+		// 정책은 여기 두지 않는다. environment 의 값은 스캐너 컨테이너가 읽는
+		// ConfigMap(envFrom)보다 앞서 푸시한 정책을 가린다.
 		fmt.Fprintf(&b, "        %s = %q\n", scanServerVar, in.ImageScannerEndpoint)
-		fmt.Fprintf(&b, "        %s = %q\n", scanSeverityVar, defaultScanSeverity)
-		fmt.Fprintf(&b, "        %s = %q\n", scanIgnoreUnfixedV, "true")
 		b.WriteString("      }\n")
 		b.WriteString("      steps {\n")
 		b.WriteString("        container('scanner') {\n")

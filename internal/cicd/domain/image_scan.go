@@ -30,19 +30,30 @@ type SeverityCounts struct {
 	Unknown  int `json:"unknown"`
 }
 
-// ScanPolicy 는 차단 기준이다.
+// ScanPolicy 는 스택 하나의 차단 기준이다.
+//
+// 스캐너가 스택마다 서고 장애 영향도 스택 하나로 막히므로 정책도 스택 단위다.
+// 플랫폼이 CI 변수로 푸시하고, CI 가 그 값으로 스스로 판정한다.
 type ScanPolicy struct {
+	// BlockSeverity 이상의 취약점이 있으면 차단한다. 바로 아래 등급은 경고로 남긴다.
+	BlockSeverity Severity `json:"block_severity"`
 	// IgnoreUnfixed 가 참이면 수정본이 없는 취약점은 판정에서 뺀다.
-	IgnoreUnfixed bool
+	IgnoreUnfixed bool `json:"ignore_unfixed"`
+	// OnScannerUnreachable 은 스캔을 수행하지 못했을 때의 동작이다.
+	OnScannerUnreachable UnreachableAction `json:"on_scanner_unreachable"`
 }
 
 // DefaultScanPolicy 는 기본 차단 기준이다 (설계 §6).
 //
-// CRITICAL 차단 · HIGH 경고 · 수정본 없는 것 제외. HIGH 까지 막으면 흔한 베이스
-// 이미지로 첫 배포가 안 되고, 수정본 없는 CVE 로 막으면 사용자가 할 수 있는
-// 일이 없다 — debian:11 은 CRITICAL 5건이 전부 unfixed 였다(실측).
+// CRITICAL 차단 · HIGH 경고 · 수정본 없는 것 제외 · 스캔 불가 시 차단. HIGH 까지
+// 막으면 흔한 베이스 이미지로 첫 배포가 안 되고, 수정본 없는 CVE 로 막으면
+// 사용자가 할 수 있는 일이 없다 — debian:11 은 CRITICAL 5건이 전부 unfixed 였다(실측).
 func DefaultScanPolicy() ScanPolicy {
-	return ScanPolicy{IgnoreUnfixed: true}
+	return ScanPolicy{
+		BlockSeverity:        SeverityCritical,
+		IgnoreUnfixed:        true,
+		OnScannerUnreachable: UnreachableBlock,
+	}
 }
 
 // StaleDBAge 는 취약점 DB 를 낡았다고 보는 나이다 (설계 §6.4).
@@ -187,14 +198,18 @@ func EvaluateGate(s *TrivyReportSummary, policy ScanPolicy) GateResult {
 	if policy.IgnoreUnfixed {
 		counts = s.Fixable
 	}
-	switch {
-	case counts.Critical > 0:
-		return GateResultBlock
-	case counts.High > 0:
-		return GateResultWarn
-	default:
-		return GateResultPass
+
+	// 차단 등급 이상이 하나라도 있으면 차단, 바로 아래 등급이 있으면 경고다.
+	block := policy.blockRank()
+	for i := 0; i <= block; i++ {
+		if countAt(counts, severityOrder[i]) > 0 {
+			return GateResultBlock
+		}
 	}
+	if warn := block + 1; warn < len(severityOrder) && countAt(counts, severityOrder[warn]) > 0 {
+		return GateResultWarn
+	}
+	return GateResultPass
 }
 
 // GateResultFromStageStatus 는 리포트 없이 CI 단계 상태만으로 판정을 남긴다.

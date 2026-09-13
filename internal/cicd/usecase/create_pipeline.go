@@ -75,6 +75,8 @@ type CreatePipeline struct {
 	templateRepo port.PipelineTemplateRepository
 	stackReader  port.StackReader // optional — nil disables stack validation
 	provisioner  RepositoryProvisioner
+	// scanPolicies 는 새 스캔 파이프라인에 스택 정책을 싣는다. nil 이면 싣지 않는다.
+	scanPolicies ScanPolicyPipelinePublisher
 }
 
 // WithRepositoryProvisioner 는 저장소 프로비저닝 기능을 켠다.
@@ -208,6 +210,8 @@ func (uc *CreatePipeline) Execute(ctx context.Context, input CreatePipelineInput
 		out.Warnings = provisionOut.Warnings
 		out.ScaffoldSkipped = provisionOut.ScaffoldSkipped
 	}
+	// 단계가 기록된 뒤에 싣는다 — 스캔 파이프라인인지는 기록된 단계로 안다.
+	uc.publishScanPolicy(ctx, pipeline, out)
 	return out, nil
 }
 

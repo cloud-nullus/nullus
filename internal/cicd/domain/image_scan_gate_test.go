@@ -48,9 +48,11 @@ func TestGateWhenReportMissing(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, GateResultError, got)
 
+	// 스캐너 장애를 허용(allow)한 정책에서는 스캔을 못 돌리고도 단계가 성공한다.
+	// 리포트 없는 성공을 통과로 적으면 스캔하지 않은 이미지가 "통과" 로 보인다.
 	got, ok = GateWhenReportMissing("success")
 	assert.True(t, ok)
-	assert.Equal(t, GateResultPass, got, "게이트는 통과했다 — 리포트 업로드만 빠졌다")
+	assert.Equal(t, GateResultError, got, "리포트가 없으면 스캔했다는 근거가 없다")
 
 	_, ok = GateWhenReportMissing("running")
 	assert.False(t, ok)
