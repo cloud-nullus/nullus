@@ -233,7 +233,7 @@ GA 릴리스 이후 4주 단위 피드백 사이클로 지속 개선합니다.
 
 - [ ] Golden Path 2~3종 추가 (Gitea 기반 경량 조합 등)
 - [ ] 플러그인 시스템 기반 설계
-- [ ] Stack 업그레이드 전략 (canary, blue-green)
+- [ ] 설치 OSS 업그레이드 — [요구사항·설계](../11_기능설계/Nullus_OSS_업그레이드_설계.md) (우선: Argo CD 단일 도구, 후속: fleet canary/blue-green)
 - [ ] known-issues.yaml 패턴 70+ → 100+ 확장
 
 #### Cycle 3: v1.3 (W21~W24, 7/21~8/17)

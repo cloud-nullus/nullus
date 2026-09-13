@@ -2,10 +2,25 @@ package helm
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
+
+var defaultNamespaceLine = regexp.MustCompile(`(?m)^(\s*namespace:\s*)nullus(\s*(?:#.*)?)$`)
+
+// normalizeManifestNamespace rewrites the legacy "nullus" placeholder used by
+// saved Gateway YAML. Stack namespaces are generated per stack, so applying a
+// persisted preview verbatim makes kubectl reject every namespaced object.
+func normalizeManifestNamespace(manifest, namespace string) (string, bool) {
+	namespace = strings.TrimSpace(namespace)
+	if namespace == "" || namespace == "nullus" {
+		return manifest, false
+	}
+	normalized := defaultNamespaceLine.ReplaceAllString(manifest, `${1}`+namespace+`${2}`)
+	return normalized, normalized != manifest
+}
 
 func (o *Orchestrator) stepManifestForStep(step string) (string, bool) {
 	// installing_openbao 는 더 이상 자체 매니페스트를 쓰지 않는다.
