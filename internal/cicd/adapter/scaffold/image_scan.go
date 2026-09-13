@@ -1,6 +1,10 @@
 package scaffold
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/cloud-nullus/draft/internal/cicd/port"
+)
 
 const (
 	// defaultScannerImage 는 CI 잡이 쓸 Trivy CLI 이미지다.
@@ -15,7 +19,8 @@ const (
 	// 막고 HIGH 는 결과에 남긴다.
 	defaultScanSeverity = "CRITICAL"
 
-	scanReportFile = "trivy-report.json"
+	// scanReportFile 은 실행 기록 동기화가 같은 이름으로 찾는다.
+	scanReportFile = port.ImageScanReportFile
 )
 
 // scanScriptLines 는 CI 3종이 공통으로 실행하는 스캔 명령이다.

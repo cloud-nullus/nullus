@@ -192,9 +192,16 @@ func (f *BundleFactory) gitLabBundle(
 		return nil, fmt.Errorf("resolve image registry for stack %s: %w", summary.ID, err)
 	}
 
+	// GitLab CI 는 SCM 과 한 몸이다. 같은 토큰으로 그룹 아래 앱 프로젝트의
+	// 파이프라인 이력과 잡 산출물을 읽는다 — 없으면 스캔 게이트가 돌아도 판정이
+	// 기록되지 않는다.
+	runs := gitlab.NewBuildReader(client, f.opts.GroupPath)
+
 	return &port.SCMBundle{
 		Provisioner:          client,
 		Pipeline:             client,
+		CIBuilds:             runs,
+		CIArtifacts:          runs,
 		Registry:             resolver,
 		Platform:             port.SCMPlatformGitLab,
 		GroupPath:            f.opts.GroupPath,
@@ -261,9 +268,14 @@ func (f *BundleFactory) gitHubBundle(
 		return nil, fmt.Errorf("resolve image registry for stack %s: %w", summary.ID, err)
 	}
 
+	runs := github.NewBuildReader(client, conn.Owner)
+
 	return &port.SCMBundle{
 		Provisioner: client,
 		Pipeline:    client,
+		// GitHub Actions 실행 이력과 산출물도 같은 PAT 로 organization 아래 리포에서 읽는다.
+		CIBuilds:    runs,
+		CIArtifacts: runs,
 		Registry:    resolver,
 		// GHCR 패키지는 같은 PAT 로 지운다(delete:packages 스코프 필요).
 		Images:   client,
@@ -391,6 +403,8 @@ func (f *BundleFactory) giteaBundle(
 			// 같은 클라이언트가 빌드 이력도 읽는다 — GitOps 경로의 실행 기록은
 			// CI 서버에만 있어서, 들이지 않으면 화면 통계가 0 으로 남는다.
 			bundle.CIBuilds = client
+			// 스캔 단계가 archiveArtifacts 로 남긴 리포트도 같은 클라이언트로 읽는다.
+			bundle.CIArtifacts = client
 			// 같은 클라이언트가 실행 트리거도 맡는다 — 스택에 묶인 파이프라인의
 			// "배포 실행" 은 플랫폼이 빌드하지 않고 이 job 을 실행시킨다.
 			bundle.CITrigger = client

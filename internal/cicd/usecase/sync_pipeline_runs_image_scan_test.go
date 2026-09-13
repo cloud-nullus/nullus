@@ -94,6 +94,26 @@ func TestSyncPipelineRuns_SkipsUnfinishedImageScan(t *testing.T) {
 	assert.Empty(t, scans.rows)
 }
 
+// GitLab·GitHub 은 스캔 단계를 잡 키 image-scan 으로 보고한다. Jenkins 의
+// ImageScan 과 같은 단계다 — 대소문자만 맞추면 판정이 기록되지 않는다.
+func TestSyncPipelineRuns_RecordsImageScanGateFromJobKeyName(t *testing.T) {
+	scans := newMemScanResults()
+	uc := NewSyncPipelineRuns(&stubBuildReader{builds: []port.CIBuild{
+		{Number: 3, Result: "FAILURE", StartedAt: started(), Duration: time.Minute,
+			Stages: []port.CIStage{
+				{Name: "build", Status: port.CIStageSuccess},
+				{Name: "image-scan", Status: port.CIStageFailed},
+			}},
+	}}, newMemDeployments()).WithImageScans(scans)
+
+	_, err := uc.Execute(context.Background(), SyncPipelineRunsInput{PipelineID: "pip_1", JobName: "app"})
+	require.NoError(t, err)
+	require.Len(t, scans.rows, 1)
+	for _, r := range scans.rows {
+		assert.Equal(t, domain.GateResultBlock, r.GateResult)
+	}
+}
+
 // 스캔 단계가 없는 파이프라인에는 아무것도 남기지 않는다.
 func TestSyncPipelineRuns_NoScanStageNoRecord(t *testing.T) {
 	scans := newMemScanResults()

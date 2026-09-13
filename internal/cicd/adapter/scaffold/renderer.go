@@ -271,7 +271,8 @@ func renderGitHubWorkflow(in Input) string {
 		b.WriteString("        if: always()\n")
 		b.WriteString("        uses: actions/upload-artifact@v4\n")
 		b.WriteString("        with:\n")
-		fmt.Fprintf(&b, "          name: %s\n", "trivy-report")
+		// 이름은 실행 기록 동기화가 리포트를 찾는 열쇠다(port.ImageScanReportArtifact).
+		fmt.Fprintf(&b, "          name: %s\n", port.ImageScanReportArtifact)
 		fmt.Fprintf(&b, "          path: %s\n", scanReportFile)
 		b.WriteString("\n")
 	}
@@ -387,7 +388,7 @@ func renderPipeline(in Input) string {
 		// 실패한 실행의 산출물이 필요하다.
 		b.WriteString("  artifacts:\n")
 		b.WriteString("    when: always\n")
-		b.WriteString("    paths:\n      - trivy-report.json\n")
+		fmt.Fprintf(&b, "    paths:\n      - %s\n", scanReportFile)
 		b.WriteString("\n")
 	}
 

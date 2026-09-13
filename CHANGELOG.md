@@ -19,7 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **게이트 판정을 남긴다** (`image_scan_results`, `GET /cicd/pipelines/:id/image-scans`). 실행 기록을 동기화할 때 스캔 단계의 성공/실패로 pass/block 을 남긴다. **리포트는 아직 읽지 않아 건수는 NULL 이다** — 0 으로 채우면 "취약점 0건" 으로 읽힌다(설계 초안의 `NOT NULL DEFAULT 0` 에서 바꿨다). 리포트 파서는 kind 에서 실제 스캔한 리포트로 검증했고, client/server 모드 리포트에 **서버의 DB 시각이 실려** DB 나이를 따로 묻지 않아도 된다. 응답은 `db_stale` 을 서버가 판정해 내려준다(30일).
 
-  **아직 안 되는 것.** 실행 기록 동기화는 Jenkins 만 있어 GitLab CI · GitHub Actions 파이프라인의 판정은 아직 남지 않는다. CI 산출물(리포트)을 받아 건수를 채우는 경로와, 설계 §5.4 의 게이트 API 도 후속이다.
+  **아직 안 되는 것.** 설계 §5.4 의 게이트 API 는 후속이다 — 플랫폼에 기계 인증 경로가 없어 인바운드 API 를 여는 방식부터 정해야 한다.
+
+- **GitLab CI · GitHub Actions 파이프라인도 실행 기록과 스캔 판정을 남긴다** (`internal/cicd/adapter/{gitlab,github}/build_reader.go`, `bundle_factory.go`, nullus-plan#76): 실행 기록을 읽는 경로가 Jenkins 에만 있어, **같은 스캔 단계가 돌아도 GitLab·GitHub 쪽은 이력도 판정도 영원히 비어 있었다.** 두 CI 의 파이프라인/워크플로 실행과 잡을 읽어 공통 단계 어휘로 옮긴다. 화면의 실행 번호는 프로젝트 안의 번호(GitLab `iid`, GitHub `run_number`)이고, 잡·산출물 조회에 쓰는 전역 id 는 따로 싣는다.
+
+  **단계 이름을 CI 어휘와 무관한 키로 맞춘다** (`port.StageKey`, `web/.../stage-states.ts`). Jenkins 는 `ImageScan`, GitLab·GitHub 은 잡 키 `image-scan` 으로 보고한다. 대소문자만 맞추던 비교는 둘을 다른 단계로 봐서 스캔 판정이 기록되지 않았고, 이력 화면에서도 돌고 있는 스캔 단계가 "모름" 으로 그려졌다.
+
+- **스캔 리포트를 읽어 건수를 채우고, 스캐너 장애를 차단과 가른다** (`port.CIArtifactReader`, 어댑터 3종의 `ReadArtifact`, `domain.GateFromStageAndReport`, nullus-plan#76): CI 가 남긴 `trivy-report.json` 을 Jenkins(빌드 산출물) · GitLab(잡 산출물) · GitHub(실행의 zip 묶음)에서 받아 건수·다이제스트·스캐너 버전·DB 시각을 채운다. 건수는 판정이 본 것과 같게 `--ignore-unfixed` 기준으로 센다.
+
+  **단계 실패가 곧 차단은 아니다.** Trivy 는 서버에 닿지 못해도 게이트와 같은 exit 1 로 끝난다. 그래서 리포트에 차단 사유(CRITICAL)가 있을 때만 block 이고, 실패했는데 사유가 없거나 리포트 자체가 없으면 **error** 다 — 스캐너 장애가 "취약한 배포" 로 세지면 대시보드가 거짓말을 한다. 리포트를 일시적으로 못 읽으면 단계 결과로 남기고 다음 동기화 때 다시 읽으며, 이미 읽은 리포트는 다시 받지 않는다.
+
+  **산출물은 사용자 파이프라인이 만든 입력으로 다룬다.** 파일은 32MiB 까지만 읽고, GitHub zip 은 헤더 크기와 실제 해제 크기를 모두 거른다. 다운로드 주소는 API 응답 본문에서 오므로 **API 와 다른 호스트면 토큰을 붙여 보내지 않는다.**
 
 - **Zadara PoC 를 OpenTofu + Kubespray 로 재구축했다** (`deploy/csp/zadara/opentofu/` 신규, `deploy/csp/zadara/{README,INSTALL,INSTALL_LOG_2026-09-13}.md`, `docs/50_운영/zadara_{opentofu_design,cloud_deployment_plan}.md`): 손으로 만든 node-10/11/20/21 두 클러스터를 2026-09-13 에 폐기하고 **m1(4vCPU/8GB, control-plane+worker+bastion) + w1(16vCPU/32GB, private+NAT)** 단일 클러스터로 바꿨다. VPC/서브넷/NAT/보안 그룹/EIP/VM 과 Kubespray 인벤토리까지가 IaC 소유이고 Kubernetes·Nullus 는 기존처럼 Kubespray·Helm 이 맡는다.
 

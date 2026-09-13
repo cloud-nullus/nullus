@@ -37,6 +37,21 @@ describe('buildStageStates', () => {
   it('단계가 없으면 빈 배열이다', () => {
     expect(buildStageStates([], [{ name: 'Build', status: 'success' }])).toEqual([])
   })
+
+  // GitLab·GitHub 은 잡 키(image-scan)로 보고하고 파이프라인 단계는 ImageScan 이다.
+  // 대소문자만 맞추면 돌고 있는 스캔 단계가 "모름" 으로 그려진다.
+  it('CI 마다 다른 단계 이름 표기를 같은 단계로 맞춘다', () => {
+    expect(
+      buildStageStates(
+        ['Build', 'ImageScan', 'Deploy'],
+        [
+          { name: 'build', status: 'success' },
+          { name: 'image-scan', status: 'failed' },
+          { name: 'deploy', status: 'running' },
+        ],
+      ),
+    ).toEqual(['completed', 'failed', 'in_progress'])
+  })
 })
 
 describe('resolvePipelineStages', () => {
