@@ -81,11 +81,41 @@ func wrapRunnerTokenDiscoveryError(err error) error {
 		ErrRunnerTokenDiscovery, err)
 }
 
+// gitLabMigrationsJobSelector 는 GitLab 차트의 DB 마이그레이션 잡이다.
+const gitLabMigrationsJobSelector = "app=migrations,release=gitlab"
+
+// gitLabMigrationsWaitTimeout 은 마이그레이션 완료를 기다리는 상한이다. 첫 설치의
+// 마이그레이션은 kind 에서 2분 안팎이지만 느린 스토리지에서는 훨씬 길다.
+const gitLabMigrationsWaitTimeout = 15 * time.Minute
+
+// waitForGitLabMigrations 는 GitLab DB 마이그레이션이 끝날 때까지 기다린다.
+//
+// 마이그레이션은 끝날 때 러너 등록 토큰을 차트 Secret 값으로 다시 넣는다. 그 전에
+// 토큰을 읽으면 곧 무효가 될 값을 러너에 넘긴다 — kind 스택에서 러너가
+// "403 invalid token" 으로 등록에 실패해 CI 가 한 건도 돌지 않았다.
+//
+// 기다릴 잡이 없거나(이미 정리됨, 외부 GitLab) 확인에 실패하면 경고만 남기고
+// 진행한다. 없는 잡을 기다리다 설치가 멈추면 안 된다.
+func (o *Orchestrator) waitForGitLabMigrations(ctx context.Context, namespace string) {
+	output, err := o.runKubectl(ctx, "wait", "-n", namespace,
+		"--for=condition=complete", "job", "-l", gitLabMigrationsJobSelector,
+		fmt.Sprintf("--timeout=%ds", int(gitLabMigrationsWaitTimeout.Seconds())))
+	if err != nil {
+		slog.Warn("gitlab migrations completion not confirmed; reading runner token anyway",
+			"namespace", namespace,
+			"output", strings.TrimSpace(string(output)),
+			"error", err,
+		)
+	}
+}
+
 func (o *Orchestrator) discoverGitLabRunnerRegistrationToken(ctx context.Context, namespace string) (runnerToken, error) {
 	const (
 		maxAttempts = 24
 		retryDelay  = 10 * time.Second
 	)
+
+	o.waitForGitLabMigrations(ctx, namespace)
 
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
@@ -131,7 +161,6 @@ func (o *Orchestrator) discoverGitLabRunnerRegistrationTokenOnce(ctx context.Con
 	}
 	return token, nil
 }
-
 
 func (o *Orchestrator) runGitLabRails(ctx context.Context, namespace, script string) (string, error) {
 	if !looksLikeKubeconfig(o.kubeconfig) {
@@ -190,7 +219,6 @@ func isRetryableRunnerTokenDiscoveryError(err error) bool {
 
 	return false
 }
-
 
 // runnerTokenKind 는 토큰의 종류다. 차트에서 쓰는 자리가 다르므로 값만
 // 들고 다니면 안 된다 — 자리를 잘못 잡으면 러너가 조용히 죽는다.

@@ -106,6 +106,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **새 GitLab 스택에서 러너가 등록되지 않아 CI 가 한 건도 돌지 않던 결함** (`internal/stack/adapter/helm/gitlab-runner.go`): 러너 등록 토큰을 **GitLab DB 마이그레이션이 끝나기 전에** 읽었다. 마이그레이션은 끝날 때 등록 토큰을 차트 Secret 값으로 다시 넣으므로, 러너가 받은 토큰은 곧 무효가 되어 `403 invalid token supplied` 로 등록에 실패했다. kind 실측에서 설치가 넘긴 토큰(20자)은 GitLab 의 현재 토큰(차트 Secret 과 같은 64자)과 달랐고, 마이그레이션 완료(10:26:41) 6초 뒤에 러너가 배포됐다. 토큰을 읽기 전에 마이그레이션 잡(`app=migrations,release=gitlab`) 완료를 기다린다. 잡이 없거나 확인에 실패하면 경고만 남기고 진행한다 — 없는 잡을 기다리다 설치가 멈추면 안 된다.
+
 - **이미지 스캔 잡이 레지스트리에서 이미지를 받지 못해 배포가 전부 막히던 결함** (`internal/cicd/adapter/scaffold/{renderer,jenkins_renderer}.go`, nullus-plan#76): 머지 후 kind 의 GitLab + Argo CD + Trivy 스택에서 파이프라인을 실제로 돌리자 **스캔 잡이 매번 실패했다.** 스캐너는 빌드가 올린 이미지를 레지스트리에서 다시 받는데, 스캔 잡에 레지스트리 자격증명도 인증서 설정도 없었다(`x509: certificate signed by unknown authority`). 스캔 불가는 기본 정책상 차단이라 **스캐너를 켠 스택의 배포가 전부 막히는** 상태였다. 스캔 잡에 빌드와 같은 자격증명(`TRIVY_USERNAME`·`TRIVY_PASSWORD`)을 넘기고, 빌드가 `--insecure-registry` 로 push 하는 GitLab CI·Jenkins 에서는 `TRIVY_INSECURE` 도 켠다. Jenkins 는 트레이스를 끈 채 넘긴다.
 
   같은 실측에서 이미지 스캔 흐름을 끝까지 확인했다: 스캔 파이프라인을 만들면 기본 정책이 프로젝트 변수(마스킹·보호 없음)로 실리고 `.gitlab-ci.yml` 에는 정책 값이 없다 → `alpine:3.19.0` 이 경고(HIGH 6)로 통과·배포 → 스택 정책을 HIGH 차단으로 저장하자 변수가 `HIGH,CRITICAL` 로 바뀌고 **커밋 없이 돌린 다음 실행이 차단** → Trivy 를 내리고 allow 로 바꾸자 통과. 동기화는 각 실행을 `error`(리포트 없음)·`warn`·`block`·`error` 로, 리포트가 있는 실행은 건수·다이제스트·DB 시각·스캐너 버전과 함께 기록했다. GitHub 리더는 실제 GitHub API(공개 저장소의 실행·잡·26.5MB 산출물 zip)로 확인했다.
