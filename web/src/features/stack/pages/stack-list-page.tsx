@@ -23,6 +23,9 @@ import {
 	useImportStackConfig,
 	usePreviewImportStackConfig,
 	useStackHistory,
+	useStackUpgrades,
+	usePreflightUpgrade,
+	useStartUpgrade,
 	useStacks,
 } from "../api/stack-api";
 import { useScopedClusters } from "../../admin/api/admin-api";
@@ -57,6 +60,14 @@ import { Badge } from "../../../components/ui/badge"
 import { TOOL_BRAND_GRADIENT } from "../../../lib/tool-brand-colors";
 
 type InnerTab = "info" | "workloads" | "config" | "monitoring" | "history" | "version-upgrade";
+
+function apiErrorMessage(error: unknown, fallback: string): string {
+	if (error instanceof Error) return error.message;
+	if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+		return error.message;
+	}
+	return fallback;
+}
 
 
 function StackMonitoringTab({ stackId }: { stackId: string }) {
@@ -158,53 +169,41 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 	);
 }
 
-const UPGRADE_ITEMS = [
-	{
-		name: "GitLab",
-		iconBg: TOOL_BRAND_GRADIENT.gitlab,
-		current: "v16.7",
-		latest: "v16.9",
-		tag: "Minor Update",
-		tagBg: "color-mix(in srgb, var(--color-warning) 15%, transparent)",
-		tagColor: "var(--color-warning)",
-		upToDate: false,
-	},
-	{
-		name: "Prometheus",
-		iconBg: TOOL_BRAND_GRADIENT.nexus,
-		current: "v2.48.1",
-		latest: "v2.50.1",
-		tag: "Patch Update",
-		tagBg: "color-mix(in srgb, var(--color-success) 15%, transparent)",
-		tagColor: "var(--color-success)",
-		upToDate: false,
-	},
-	{
-		name: "Grafana",
-		iconBg: TOOL_BRAND_GRADIENT.argocd,
-		current: "v10.3",
-		latest: "v10.4",
-		tag: "Minor Update",
-		tagBg: "color-mix(in srgb, var(--color-warning) 15%, transparent)",
-		tagColor: "var(--color-warning)",
-		upToDate: false,
-	},
-	{
+function StackVersionUpgradeTab({ stackId }: { stackId: string }) {
+	const { t } = useTranslation();
+	const upgrades = useStackUpgrades(stackId);
+	const preflight = usePreflightUpgrade();
+	const startUpgrade = useStartUpgrade();
+	const upgradeItems = (upgrades.data?.items ?? []).map((candidate) => ({
 		name: "Argo CD",
 		iconBg: TOOL_BRAND_GRADIENT.kubernetes,
-		current: "v2.9.3",
-		latest: null,
-		tag: null,
-		tagBg: "",
-		tagColor: "",
-		upToDate: true,
-	},
-];
-
-function StackVersionUpgradeTab() {
-	const { t } = useTranslation();
-	const handleUpgradeClick = () => {
-		toast.info(t("stackList.toast.upgradeInProgress", "개발중인 기능입니다."));
+		current: `${candidate.current_chart_version} (${candidate.current_app_version || "app unknown"})`,
+		latest: candidate.bundle?.target_chart_version ?? null,
+		tag: candidate.bundle ? `${candidate.bundle.risk_level} risk` : null,
+		tagBg: "color-mix(in srgb, var(--color-warning) 15%, transparent)",
+		tagColor: "var(--color-warning)",
+		upToDate: !candidate.bundle,
+		bundleId: candidate.bundle?.id,
+		blockedReason: candidate.blocked_reason,
+	}));
+	const handleUpgradeClick = async (bundleId?: string) => {
+		if (!bundleId) return;
+		try {
+			const result = await preflight.mutateAsync({ stackId, bundleId });
+			const blocked = result.checks.find((check) => check.status === "blocked");
+			if (blocked) {
+				toast.error(`${blocked.message}${blocked.remediation ? ` — ${blocked.remediation}` : ""}`);
+				return;
+			}
+			const reason = window.prompt(t("stackList.upgrade.reasonPrompt", "업그레이드 사유를 입력하세요."));
+			if (!reason?.trim()) return;
+			const run = await startUpgrade.mutateAsync({ stackId, bundleId, reason: reason.trim() });
+			if (run.status === "succeeded") toast.success(t("stackList.upgrade.success", "업그레이드가 완료되었습니다."));
+			else if (run.status === "rolled_back") toast.warning(t("stackList.upgrade.rolledBack", "실패하여 이전 버전으로 복구했습니다."));
+			else toast.error(run.error || t("stackList.upgrade.failed", "업그레이드에 실패했습니다."));
+		} catch (error) {
+			toast.error(apiErrorMessage(error, t("stackList.upgrade.failed", "업그레이드에 실패했습니다.")));
+		}
 	};
 
 	return (
@@ -215,11 +214,14 @@ function StackVersionUpgradeTab() {
 					Available Version Upgrades
 				</h3>
 				<span className="rounded-full bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--color-primary)]">
-					3 updates available
+					{upgradeItems.filter((item) => !item.upToDate && !item.blockedReason).length} updates available
 				</span>
 			</div>
+			{upgrades.isLoading && <div className="mb-3 text-[13px] text-[var(--color-text-secondary)]">Checking installed releases...</div>}
+			{upgrades.isError && <div className="mb-3 rounded-lg border border-[var(--color-danger)] p-4 text-[13px] text-[var(--color-danger)]">Unable to inspect installed releases.</div>}
+			{!upgrades.isLoading && !upgrades.isError && upgradeItems.length === 0 && <div className="mb-3 rounded-lg border border-[var(--color-border-default)] p-4 text-[13px] text-[var(--color-text-secondary)]">No Nullus-managed Argo CD release was found.</div>}
 			<div className="flex flex-col gap-3">
-				{UPGRADE_ITEMS.map((item) => (
+				{upgradeItems.map((item) => (
 					<div
 						key={item.name}
 						className={cn(
@@ -241,7 +243,7 @@ function StackVersionUpgradeTab() {
 								{item.upToDate ? (
 									<div className="text-[12px] text-[var(--color-text-secondary)]">
 										Current: {item.current} →{" "}
-										<strong className="text-[var(--color-success)]">Up to date</strong>
+										<strong className="text-[var(--color-success)]">No verified update</strong>
 									</div>
 								) : (
 									<div className="text-[12px] text-[var(--color-text-secondary)]">
@@ -249,6 +251,7 @@ function StackVersionUpgradeTab() {
 										<strong className="text-[var(--color-success)]">{item.latest}</strong>
 									</div>
 								)}
+								{item.blockedReason && <div className="text-[12px] text-[var(--color-danger)]">{item.blockedReason}</div>}
 							</div>
 						</div>
 						<div className="flex items-center gap-2.5">
@@ -272,10 +275,16 @@ function StackVersionUpgradeTab() {
 									</button>
 									<button
 										type="button"
-										onClick={handleUpgradeClick}
-										className="flex items-center gap-1.5 rounded-md bg-[linear-gradient(135deg,var(--color-primary),var(--color-accent-alt))] px-2.5 py-1.5 text-[12px] font-semibold text-white"
+										disabled={Boolean(item.blockedReason) || preflight.isPending || startUpgrade.isPending}
+										onClick={() => void handleUpgradeClick(item.bundleId)}
+										className="flex items-center gap-1.5 rounded-md bg-[linear-gradient(135deg,var(--color-primary),var(--color-accent-alt))] px-2.5 py-1.5 text-[12px] font-semibold text-white disabled:cursor-wait disabled:opacity-60"
 									>
-										<ArrowUpCircle {...iconProps('xs')} /> Upgrade
+										<ArrowUpCircle {...iconProps('xs')} />
+										{preflight.isPending
+											? t("stackList.upgrade.checking", "Checking…")
+											: startUpgrade.isPending
+												? t("stackList.upgrade.running", "Upgrading…")
+												: "Upgrade"}
 									</button>
 								</>
 							)}
@@ -395,7 +404,7 @@ function StackDetailPanel({
 				{innerTab === "config" && <StackConfigTab stackId={stack.id} />}
 				{innerTab === "monitoring" && canShowMonitoring && <StackMonitoringTab stackId={stack.id} />}
 				{innerTab === "history" && <StackHistoryTab stack={stack} />}
-				{innerTab === "version-upgrade" && <StackVersionUpgradeTab />}
+				{innerTab === "version-upgrade" && <StackVersionUpgradeTab stackId={stack.id} />}
 			</div>
 		</div>
 	);

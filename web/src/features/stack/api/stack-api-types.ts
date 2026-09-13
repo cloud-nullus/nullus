@@ -29,6 +29,45 @@ export interface ClusterSummary {
   connection_status: ClusterStatus;
 }
 
+export interface UpgradeBundle {
+  id: string;
+  tool: string;
+  target_chart_version: string;
+  target_app_version: string;
+  risk_level: "low" | "medium" | "high";
+  expected_disruption: string;
+  release_notes?: string;
+  requires_backup: boolean;
+}
+
+export interface UpgradeCandidate {
+  tool: string;
+  release_name: string;
+  current_chart_version: string;
+  current_app_version: string;
+  current_revision: number;
+  release_status: string;
+  bundle?: UpgradeBundle;
+  up_to_date: boolean;
+  blocked_reason?: string;
+  checked_at: string;
+}
+
+export interface UpgradeCheck {
+  name: string;
+  status: "pass" | "warning" | "blocked";
+  message: string;
+  remediation?: string;
+}
+
+export interface UpgradeRun {
+  id: string;
+  status: string;
+  current_step: string;
+  checks: UpgradeCheck[];
+  error?: string;
+}
+
 export interface PodMonitoringStatus {
   name: string;
   phase: string;

@@ -29,6 +29,9 @@ import type {
   ReleaseValuesResponse,
   ApplyReleaseValuesInput,
   ApplyReleaseValuesResponse,
+  UpgradeCandidate,
+  UpgradeCheck,
+  UpgradeRun,
 } from "./stack-api-types";
 import type {
   ClusterStatus,
@@ -92,6 +95,7 @@ const queryKeys = {
   releases: (stackId: string) => ["stacks", "releases", stackId] as const,
   releaseValues: (stackId: string, releaseName: string, mode: string) =>
     ["stacks", "release-values", stackId, releaseName, mode] as const,
+  upgrades: (stackId: string) => ["stacks", "upgrades", stackId] as const,
 };
 
 const ACTIVE_DEPLOYMENT_STATES = new Set([
@@ -102,6 +106,13 @@ const ACTIVE_DEPLOYMENT_STATES = new Set([
   "health_check",
   "rolling_back",
 ]);
+
+function createIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}-${Math.random().toString(16).slice(2, 10)}`;
+}
 
 export function stackListRefetchInterval(
   data: { items?: Array<{ status?: string }> } | undefined,
@@ -175,6 +186,17 @@ const stackApiCalls = {
 
   delete: (stackId: string) =>
     api.delete("/stacks/" + stackId).then((r) => r.data),
+
+  getUpgrades: (stackId: string) =>
+    api.get<{ items: UpgradeCandidate[] }>(`/stacks/${stackId}/upgrades`).then((r) => r.data),
+
+  preflightUpgrade: (stackId: string, bundleId: string) =>
+    api.post<{ checks: UpgradeCheck[] }>(`/stacks/${stackId}/upgrades/preflight`, { bundle_id: bundleId }).then((r) => r.data),
+
+  startUpgrade: (stackId: string, bundleId: string, reason: string) =>
+    api.post<UpgradeRun>(`/stacks/${stackId}/upgrade-runs`, { bundle_id: bundleId, reason }, {
+      headers: { "Idempotency-Key": createIdempotencyKey() },
+    }).then((r) => r.data),
 
   saveDraft: (request: import("../../../types").CreateStackRequest) =>
     api.post<{ draftId: string }>("/stacks/draft", request).then((r) => r.data),
@@ -511,6 +533,22 @@ export function useStackHistory(stackId: string) {
     queryKey: queryKeys.history(stackId),
     queryFn: () => stackApiCalls.getHistory(stackId),
     enabled: !!stackId,
+  });
+}
+
+export function useStackUpgrades(stackId: string) {
+  return useQuery({ queryKey: queryKeys.upgrades(stackId), queryFn: () => stackApiCalls.getUpgrades(stackId), enabled: !!stackId });
+}
+
+export function usePreflightUpgrade() {
+  return useMutation({ mutationFn: ({ stackId, bundleId }: { stackId: string; bundleId: string }) => stackApiCalls.preflightUpgrade(stackId, bundleId) });
+}
+
+export function useStartUpgrade() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ stackId, bundleId, reason }: { stackId: string; bundleId: string; reason: string }) => stackApiCalls.startUpgrade(stackId, bundleId, reason),
+    onSuccess: (_run, input) => { void qc.invalidateQueries({ queryKey: queryKeys.upgrades(input.stackId) }); },
   });
 }
 

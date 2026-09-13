@@ -282,6 +282,18 @@ func main() {
 		stackuc.WithReleaseValuesHistory(manageHistoryUC),
 	)
 	releaseValuesHandler := stackhandler.NewReleaseValuesHandler(manageReleaseValuesUC, auditLogger)
+	upgradeRepo := stackrepo.NewPostgresUpgradeRepository(pool)
+	upgradeUC := stackuc.NewUpgradeStack(
+		pgStackRepo,
+		upgradeRepo,
+		kubeconfigProvider,
+		func(kubeconfig []byte) stackport.HelmReleaseManager { return stackhelm.NewHelmInstaller(kubeconfig) },
+		func(kubeconfig []byte) stackport.ChartUpgradeExecutor { return stackhelm.NewHelmInstaller(kubeconfig) },
+	).WithSafetyChecks(
+		stackrepo.NewPostgresUpgradeBackupVerifier(pool, 24*time.Hour),
+		stackhelm.ArgoCDUpgradeHealthVerifier{},
+	)
+	upgradeHandler := stackhandler.NewUpgradeHandler(upgradeUC)
 
 	// CI/CD: postgres repos
 	pgCICDTemplateRepo := cicdrepo.NewPostgresCICDTemplateRepository(pool)
@@ -545,6 +557,7 @@ func main() {
 	historyHandler.RegisterRoutes(stacks)
 	monitoringHandler.RegisterRoutes(stacks)
 	releaseValuesHandler.RegisterRoutes(stacks)
+	upgradeHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
 	retryHistoryHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
