@@ -32,6 +32,7 @@ import {
   useDeploymentStatus,
   useDeployments,
   useDeployPipeline,
+  usePipelineImageScans,
   usePipelines,
   useRollbackDeployment,
   useUpdateCicdTemplate,
@@ -175,6 +176,130 @@ describe('cicd-api hooks and exports', () => {
         logs: ['line-1', 'line-2'],
       }),
     ])
+  })
+})
+
+describe('파이프라인 이미지 스캔', () => {
+  const rawScan = {
+    id: 'scan_dep_ci_pip_x_2',
+    pipeline_id: 'pip_x',
+    deployment_id: 'dep_ci_pip_x_2',
+    image_repository: 'harbor.example/nullus/app',
+    image_tag: '09b48b6e',
+    image_digest: 'sha256:0c92',
+    scan_source: 'central',
+    scanner: 'trivy',
+    scanner_version: '0.74.0',
+    db_updated_at: '2026-09-13T07:13:14Z',
+    counts: { critical: 0, high: 6, medium: 23, low: 19, unknown: 0 },
+    gate_result: 'warn',
+    report_uri: 'https://gitlab.example/nullus/app/-/jobs/11/artifacts/file/trivy-report.json',
+    scanned_at: '2026-09-13T13:29:51Z',
+    db_stale: false,
+  }
+
+  beforeEach(() => {
+    mockUseQuery.mockReset()
+    mockUseQuery.mockReturnValue({})
+    vi.mocked(mockApi.get).mockReset()
+  })
+
+  it('응답을 화면 모델로 옮긴다', () => {
+    expect(cicdApiCalls.mapPipelineImageScan(rawScan)).toEqual({
+      id: 'scan_dep_ci_pip_x_2',
+      pipelineId: 'pip_x',
+      deploymentId: 'dep_ci_pip_x_2',
+      imageRepository: 'harbor.example/nullus/app',
+      imageTag: '09b48b6e',
+      imageDigest: 'sha256:0c92',
+      scanSource: 'central',
+      scanner: 'trivy',
+      scannerVersion: '0.74.0',
+      dbUpdatedAt: '2026-09-13T07:13:14Z',
+      counts: { critical: 0, high: 6, medium: 23, low: 19, unknown: 0 },
+      gateResult: 'warn',
+      reportUri: 'https://gitlab.example/nullus/app/-/jobs/11/artifacts/file/trivy-report.json',
+      scannedAt: '2026-09-13T13:29:51Z',
+      dbStale: false,
+    })
+  })
+
+  it('camelCase 표기도 받는다', () => {
+    const scan = cicdApiCalls.mapPipelineImageScan({
+      id: 's1',
+      pipelineId: 'pip_x',
+      deploymentId: 'dep_1',
+      gateResult: 'block',
+      dbStale: true,
+      reportUri: 'https://x/report.json',
+    })
+
+    expect(scan.deploymentId).toBe('dep_1')
+    expect(scan.gateResult).toBe('block')
+    expect(scan.dbStale).toBe(true)
+    expect(scan.reportUri).toBe('https://x/report.json')
+  })
+
+  // counts 가 없다는 건 건수를 모른다는 뜻이다. 0 으로 채우면 스캔 오류가 "취약점 0" 으로 보인다.
+  it('counts 가 없으면 undefined 로 남긴다', () => {
+    const withoutCounts: Record<string, unknown> = { ...rawScan, gate_result: 'error' }
+    delete withoutCounts.counts
+    const scan = cicdApiCalls.mapPipelineImageScan(withoutCounts)
+
+    expect(scan.counts).toBeUndefined()
+    expect(scan.gateResult).toBe('error')
+  })
+
+  it('빈 선택 필드는 없음으로, db_stale 은 불리언으로 옮긴다', () => {
+    const scan = cicdApiCalls.mapPipelineImageScan({
+      id: 's1',
+      pipeline_id: 'pip_x',
+      report_uri: '',
+      deployment_id: '',
+      db_stale: true,
+      gate_result: 'pass',
+    })
+
+    expect(scan.reportUri).toBeUndefined()
+    expect(scan.deploymentId).toBeUndefined()
+    expect(scan.dbStale).toBe(true)
+  })
+
+  // 모르는 판정 값을 pass 로 떨어뜨리면 초록 통과로 보인다. 판정 불가(error)로 둔다.
+  it('모르는 gate_result 는 error 로 둔다', () => {
+    const scan = cicdApiCalls.mapPipelineImageScan({ id: 's1', gate_result: 'maybe' })
+
+    expect(scan.gateResult).toBe('error')
+    expect(scan.dbStale).toBe(false)
+  })
+
+  it('파이프라인의 스캔 목록 경로를 부른다', async () => {
+    vi.mocked(mockApi.get).mockResolvedValueOnce({ data: { items: [rawScan], total: 1 } } as never)
+
+    const result = await cicdApiCalls.getPipelineImageScans('pip_x')
+
+    expect(vi.mocked(mockApi.get)).toHaveBeenCalledWith('/cicd/pipelines/pip_x/image-scans')
+    expect(result.total).toBe(1)
+    expect(result.items[0].gateResult).toBe('warn')
+  })
+
+  // 실행 목록 조회가 서버에서 스캔 기록을 만든다. 실행 목록이 새로 오면 스캔도
+  // 다시 읽도록 그 갱신 시각을 키에 넣는다.
+  it('실행 목록 갱신 시각을 키에 넣고, 실행 목록을 받기 전에는 조회하지 않는다', () => {
+    usePipelineImageScans('pip_x', 1234)
+    expect(mockUseQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['cicd', 'pipelineImageScans', 'pip_x', 1234],
+        enabled: true,
+        retry: false,
+      }),
+    )
+
+    usePipelineImageScans('pip_x', 0)
+    expect(mockUseQuery).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }))
+
+    usePipelineImageScans('', 1234)
+    expect(mockUseQuery).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }))
   })
 })
 

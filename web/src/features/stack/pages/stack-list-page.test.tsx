@@ -37,6 +37,7 @@ vi.mock("../api/stack-api", () => ({
   useStackMonitoring: (...args: unknown[]) => mockUseStackMonitoring(...args),
   useClusters: (...args: unknown[]) => mockUseClusters(...args),
   useRetryStack: () => ({ mutate: vi.fn(), isPending: false }),
+  useStackImageScans: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
 
 vi.mock("../../../stores/auth-store", () => ({
@@ -110,6 +111,18 @@ describe("StackListPage", () => {
     expect(
       screen.getByText(/Loading stacks\.\.\.|스택을 불러오는 중\.\.\./),
     ).not.toBeNull();
+  });
+
+  // 설치된 OSS 이미지의 취약점 보고는 상세 패널의 별도 탭에 있다.
+  it("shows the installed image vulnerabilities tab in the detail panel", () => {
+    renderWithProviders(<StackListPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Image Vulnerabilities/ }));
+
+    expect(screen.getByText("Installed image vulnerabilities")).toBeTruthy();
+    expect(
+      screen.getByText("No image scan data is available for this stack."),
+    ).toBeTruthy();
   });
 
   it("renders stack data rows", () => {

@@ -27,6 +27,7 @@ vi.mock('../api/stack-api', () => ({
   useStackMonitoring: (...args: unknown[]) => mockUseStackMonitoring(...args),
   useClusters: (...args: unknown[]) => mockUseClusters(...args),
   useRetryStack: () => ({ mutate: vi.fn(), isPending: false }),
+  useStackImageScans: () => ({ data: undefined, isLoading: false, isError: false }),
 }))
 
 vi.mock('../../../stores/auth-store', () => ({

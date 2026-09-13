@@ -50,6 +50,7 @@ import {
   useDeploymentStatus,
   useDeployPipeline,
   usePipelineDeployments,
+  usePipelineImageScans,
   usePipelineResources,
   usePipelines,
   useTemplateById,
@@ -58,7 +59,11 @@ import {
   DeletePipelineDialog,
   type DeletePipelineSelection,
 } from "../components/delete-pipeline-dialog";
-import type { Pipeline } from "../api/cicd-api";
+import {
+  ImageScanDetail,
+  ImageScanRowSummary,
+} from "../components/image-scan-summary";
+import type { Pipeline, PipelineImageScan } from "../api/cicd-api";
 import { useScopedClusters as useClusters } from "../../admin/api/admin-api";
 import { useStacks } from "../../stack/api/stack-api";
 import { Button } from "../../../components/ui/button";
@@ -1444,12 +1449,39 @@ function PipelineMonitoringTab({ pipeline }: { pipeline: Pipeline }) {
   );
 }
 
+// 실행 하나에 스캔은 하나다(scan_<실행 id>). 그래도 같은 실행에 기록이 둘 이상 오면
+// 가장 최근 스캔을 쓴다 — 다시 돈 스캔 job 이 이전 결과를 대체한다.
+function indexScansByDeployment(scans: PipelineImageScan[] | undefined) {
+  const byDeployment = new Map<string, PipelineImageScan>();
+  for (const scan of scans ?? []) {
+    if (!scan.deploymentId) continue;
+    const existing = byDeployment.get(scan.deploymentId);
+    if (!existing || scan.scannedAt > existing.scannedAt) {
+      byDeployment.set(scan.deploymentId, scan);
+    }
+  }
+  return byDeployment;
+}
+
 function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
   const { t, i18n } = useTranslation();
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language);
   const { data: template } = useTemplateById(pipeline.templateId);
-  const { data: deploymentsData, isLoading } = usePipelineDeployments(
+  const {
+    data: deploymentsData,
+    isLoading,
+    dataUpdatedAt: deploymentsUpdatedAt,
+  } = usePipelineDeployments(pipeline.id);
+  // 실행 목록을 불러오는 요청이 서버에서 스캔 기록을 만든다. 갱신 시각을 넘겨 실행
+  // 목록이 새로 올 때마다 스캔도 다시 읽게 한다. 조회가 실패해도(미배선 503 등) 스캔
+  // 표시만 빠지고 이력은 그대로 뜬다. 취소된 실행처럼 스캔이 없는 실행에는 아무것도 붙지 않는다.
+  const { data: imageScansData } = usePipelineImageScans(
     pipeline.id,
+    deploymentsUpdatedAt,
+  );
+  const scanByDeployment = useMemo(
+    () => indexScansByDeployment(imageScansData?.items),
+    [imageScansData],
   );
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<
     string | null
@@ -1475,6 +1507,9 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
 
   const selectedDeployment =
     deployments.find((d) => d.id === selectedDeploymentId) ?? null;
+  const selectedScan = selectedDeployment
+    ? scanByDeployment.get(selectedDeployment.id)
+    : undefined;
   const { data: deploymentStatus, isLoading: isDeploymentStatusLoading } =
     useDeploymentStatus(selectedDeploymentId);
   const stepDetails = deploymentStatus?.steps ?? [];
@@ -1518,6 +1553,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
               ? "running"
               : "-";
         const isSelected = d.id === selectedDeploymentId;
+        const rowScan = scanByDeployment.get(d.id);
 
         return (
           <div
@@ -1541,6 +1577,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
             >
               {d.version}
             </button>
+            {rowScan && <ImageScanRowSummary scan={rowScan} />}
             <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">
               {d.triggeredBy || "-"}
             </span>
@@ -1569,6 +1606,10 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
               {selectedDeployment.triggeredBy || "-"}
             </span>
           </div>
+
+          {selectedScan && (
+            <ImageScanDetail scan={selectedScan} locale={locale} />
+          )}
 
           {stages.length > 0 && (
             <div className="mt-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-2">

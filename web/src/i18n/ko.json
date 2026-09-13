@@ -37,7 +37,15 @@
     "notFound": "페이지를 찾을 수 없습니다",
     "notFoundDesc": "요청하신 페이지가 존재하지 않거나 이동되었습니다.",
     "close": "닫기",
-    "dismiss": "닫기"
+    "dismiss": "닫기",
+    "vulnerability": {
+      "critical": "치명",
+      "high": "높음",
+      "medium": "중간",
+      "low": "낮음",
+      "unknown": "심각도 미상",
+      "countsUnknown": "건수 모름"
+    }
   },
   "header": {
     "roles": {
@@ -800,7 +808,26 @@
     "deleteWarnings": {
       "title": "삭제했지만 남은 자원이 있습니다"
     },
-    "accessUrl": "접속 주소"
+    "accessUrl": "접속 주소",
+    "imageScan": {
+      "title": "이미지 스캔",
+      "gate": {
+        "pass": "통과",
+        "warn": "경고와 함께 통과",
+        "block": "정책 차단",
+        "error": "스캔 오류"
+      },
+      "dbStale": "DB 오래됨",
+      "dbStaleHint": "취약점 DB 가 30일보다 오래됐거나 날짜를 알 수 없습니다. 최근 취약점이 이 결과에서 빠졌을 수 있습니다.",
+      "errorHint": "스캔을 수행하거나 평가하지 못했습니다. 취약점이 발견됐다는 뜻이 아닙니다.",
+      "viewReport": "리포트 보기",
+      "image": "이미지",
+      "digest": "다이제스트",
+      "scanner": "스캐너",
+      "dbUpdatedAt": "취약점 DB",
+      "scannedAt": "스캔 시각",
+      "unknown": "알 수 없음"
+    }
   },
   "cicdHistoryPage": {
     "title": "CI/CD 이력",
@@ -925,7 +952,8 @@
       "history": "이력",
       "version-upgrade": "버전 업그레이드",
       "workloads": "워크로드",
-      "config": "설정"
+      "config": "설정",
+      "image-scans": "이미지 취약점"
     },
     "status": {
       "pending": "대기 중",
@@ -995,6 +1023,35 @@
       "summary": "{{total}}개 중 {{ready}}개 준비됨",
       "loading": "클러스터에서 파드를 읽는 중...",
       "empty": "이 스택의 파드를 클러스터에서 찾지 못했습니다."
+    },
+    "imageScans": {
+      "title": "설치 이미지 취약점",
+      "reportOnly": "설치를 막지 않는 보고용 결과입니다.",
+      "loading": "이미지 스캔 결과를 불러오는 중...",
+      "noData": "이 스택의 이미지 스캔 데이터가 없습니다.",
+      "pending": "첫 스캔을 기다리는 중입니다. 설치 이미지는 설치 직후와 이후 주기적으로 스캔합니다.",
+      "notScanned": {
+        "scannerNotInstalled": "이 스택에는 Trivy 가 선택되지 않아 설치 이미지를 스캔하지 않습니다. 취약점이 없다는 뜻이 아닙니다.",
+        "airgap": "폐쇄망(에어갭) 설치는 설치 이미지를 스캔하지 않습니다. 취약점이 없다는 뜻이 아닙니다.",
+        "unknown": "설치 이미지를 스캔하지 않았습니다."
+      },
+      "lastScannedAt": "마지막 스캔 {{time}}",
+      "summaryHint": "합계에는 아직 수정 버전이 없는 취약점도 포함됩니다.",
+      "empty": "이 스택에서 보고된 설치 이미지가 없습니다.",
+      "dbStale": "DB 오래됨",
+      "dbStaleHint": "30일 초과 또는 날짜 모름",
+      "item": {
+        "failed": "스캔 실패",
+        "failedNoReason": "스캐너가 실패 이유를 알려 주지 않았습니다.",
+        "fixable": "수정 가능: 치명 {{critical}} · 높음 {{high}} · 중간 {{medium}} · 낮음 {{low}}",
+        "release": "릴리스",
+        "workloads": "워크로드",
+        "digest": "다이제스트",
+        "scanner": "스캐너",
+        "dbUpdatedAt": "취약점 DB",
+        "scannedAt": "스캔 시각",
+        "unknown": "알 수 없음"
+      }
     }
   },
   "deploy": {

@@ -417,6 +417,48 @@ export interface Deployment {
   completedAt: string | null;
 }
 
+/**
+ * 이미지 스캔의 심각도별 취약점 건수. 건수를 모르면 이 객체 자체가 없다(undefined) —
+ * 모르는 값을 0 으로 채우면 "취약점 없음" 으로 읽힌다.
+ */
+export interface VulnerabilityCounts {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  unknown: number;
+}
+
+/**
+ * 파이프라인 이미지 스캔의 정책 판정.
+ * - pass: 통과 · warn: 경고와 함께 통과 · block: 정책으로 차단
+ * - error: 스캔을 수행하거나 평가하지 못했다. 취약점 판정이 아니다.
+ */
+export type ImageScanGateResult = "pass" | "warn" | "block" | "error";
+
+/** 파이프라인 실행이 만든 이미지 한 개의 스캔 결과(GET /cicd/pipelines/{id}/image-scans). */
+export interface PipelineImageScan {
+  id: string;
+  pipelineId: string;
+  /** 스캔한 이미지를 만든 실행. 실행과 이어지지 않은 스캔이면 없다. */
+  deploymentId?: string;
+  imageRepository?: string;
+  imageTag?: string;
+  imageDigest?: string;
+  scanSource: string;
+  scanner: string;
+  scannerVersion?: string;
+  dbUpdatedAt?: string;
+  /** 없으면 건수를 모른다. 0 이 아니다. */
+  counts?: VulnerabilityCounts;
+  gateResult: ImageScanGateResult;
+  /** 원본 리포트 주소. 비어 있으면 없다. */
+  reportUri?: string;
+  scannedAt: string;
+  /** 취약점 DB 가 30일보다 오래됐거나 날짜를 모른다. 통과여도 깨끗한 통과로 보이면 안 된다. */
+  dbStale: boolean;
+}
+
 export interface PipelineResource {
   kind: string;
   name: string;

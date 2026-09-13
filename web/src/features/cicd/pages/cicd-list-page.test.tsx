@@ -13,6 +13,7 @@ const mockUseTemplateById = vi.fn();
 const mockUsePipelineDeployments = vi.fn();
 const mockUsePipelineResources = vi.fn();
 const mockUseDeploymentStatus = vi.fn();
+const mockUsePipelineImageScans = vi.fn();
 const mockDeployPipeline = vi.fn();
 
 vi.mock("react-router-dom", async () => {
@@ -42,6 +43,8 @@ vi.mock("../api/cicd-api", () => ({
   usePipelineResources: (...args: unknown[]) =>
     mockUsePipelineResources(...args),
   useDeploymentStatus: (...args: unknown[]) => mockUseDeploymentStatus(...args),
+  usePipelineImageScans: (...args: unknown[]) =>
+    mockUsePipelineImageScans(...args),
 }));
 
 const pipelines = [
@@ -67,7 +70,9 @@ describe("CicdListPage", () => {
     mockUsePipelineDeployments.mockReset();
     mockUsePipelineResources.mockReset();
     mockUseDeploymentStatus.mockReset();
+    mockUsePipelineImageScans.mockReset();
     mockDeployPipeline.mockReset();
+    mockUsePipelineImageScans.mockReturnValue({ data: undefined, isError: false });
     mockUsePipelines.mockReturnValue({
       data: { items: pipelines, total: pipelines.length },
       isLoading: false,
@@ -230,6 +235,126 @@ describe("CicdListPage", () => {
       openMonitoring();
 
       expect(screen.getAllByText(/스택에 연결되어야/).length).toBeGreaterThan(0);
+    });
+  });
+
+  // 실행 이력에서 그 실행이 만든 이미지가 스캔에서 어떻게 판정됐는지 보여야 한다.
+  // 예전에는 ImageScan 단계가 돌았는지만 보였고, 차단·경고·오류가 구분되지 않았다.
+  describe("실행 이력의 이미지 스캔", () => {
+    const deployments = [
+      {
+        id: "dep_ci_pip_x_2",
+        pipelineId: "pipeline-1",
+        pipelineName: "frontend-web",
+        version: "v0.1.2",
+        status: "success",
+        triggeredBy: "kim.dev",
+        startedAt: "2026-09-13T13:20:00Z",
+        completedAt: "2026-09-13T13:30:00Z",
+      },
+      {
+        // 취소된 실행에는 스캔이 없다.
+        id: "dep_ci_pip_x_1",
+        pipelineId: "pipeline-1",
+        pipelineName: "frontend-web",
+        version: "v0.1.1",
+        status: "failed",
+        triggeredBy: "kim.dev",
+        startedAt: "2026-09-12T13:20:00Z",
+        completedAt: "2026-09-12T13:21:00Z",
+      },
+    ];
+
+    const blockedScan = {
+      id: "scan_dep_ci_pip_x_2",
+      pipelineId: "pipeline-1",
+      deploymentId: "dep_ci_pip_x_2",
+      imageRepository: "harbor.example/nullus/app",
+      imageTag: "09b48b6e",
+      imageDigest: "sha256:0c92aaaaaaaaaaaaaaaa",
+      scanSource: "central",
+      scanner: "trivy",
+      scannerVersion: "0.74.0",
+      dbUpdatedAt: "2026-09-13T07:13:14Z",
+      counts: { critical: 2, high: 6, medium: 23, low: 19, unknown: 0 },
+      gateResult: "block",
+      reportUri: "",
+      scannedAt: "2026-09-13T13:29:51Z",
+      dbStale: false,
+    };
+
+    function rowOf(version: string) {
+      return screen.getByRole("button", { name: version }).parentElement!;
+    }
+
+    function openHistory() {
+      renderWithProviders(<CicdListPage />);
+      fireEvent.click(screen.getByRole("button", { name: /^History$/ }));
+    }
+
+    beforeEach(() => {
+      mockUsePipelineDeployments.mockReturnValue({
+        data: { items: deployments, total: deployments.length },
+        isLoading: false,
+        dataUpdatedAt: 1234,
+      });
+    });
+
+    // 실행 목록을 불러오는 요청이 서버에서 스캔 기록을 만든다. 실행 목록이
+    // 새로 올 때마다 스캔도 다시 읽어야 방금 끝난 실행의 결과가 보인다.
+    it("실행 목록이 갱신된 시각과 함께 스캔을 조회한다", () => {
+      mockUsePipelineImageScans.mockReturnValue({
+        data: { items: [blockedScan], total: 1 },
+      });
+
+      openHistory();
+
+      const calls = mockUsePipelineImageScans.mock.calls;
+      expect(calls[calls.length - 1]).toEqual(["pipeline-1", 1234]);
+    });
+
+    it("deployment_id 로 이어진 실행 행에만 게이트 배지를 붙인다", () => {
+      mockUsePipelineImageScans.mockReturnValue({
+        data: { items: [blockedScan], total: 1 },
+      });
+
+      openHistory();
+
+      expect(within(rowOf("v0.1.2")).getByText("Blocked by policy")).toBeTruthy();
+      expect(within(rowOf("v0.1.2")).getByLabelText("Critical 2")).toBeTruthy();
+      expect(within(rowOf("v0.1.1")).queryByText("Blocked by policy")).toBeNull();
+      expect(within(rowOf("v0.1.1")).queryByText("Counts unknown")).toBeNull();
+      // 선택된(첫) 실행의 상세에 스캔 블록이 붙는다.
+      expect(screen.getByText("Image scan")).toBeTruthy();
+    });
+
+    it("건수가 없는 스캔은 0 이 아니라 모름으로 보인다", () => {
+      mockUsePipelineImageScans.mockReturnValue({
+        data: {
+          items: [{ ...blockedScan, counts: undefined, gateResult: "error" }],
+          total: 1,
+        },
+      });
+
+      openHistory();
+
+      const row = rowOf("v0.1.2");
+      expect(within(row).getByText("Scan error")).toBeTruthy();
+      expect(within(row).getByText("Counts unknown")).toBeTruthy();
+      expect(within(row).queryByLabelText(/Critical/)).toBeNull();
+    });
+
+    // 스캔 API 가 아직 배선되지 않은 환경(503)에서도 이력 탭은 그대로 떠야 한다.
+    it("스캔 조회가 실패해도 이력은 그대로 보인다", () => {
+      mockUsePipelineImageScans.mockReturnValue({
+        data: undefined,
+        isError: true,
+      });
+
+      openHistory();
+
+      expect(screen.getByRole("button", { name: "v0.1.2" })).toBeTruthy();
+      expect(screen.queryByText("Image scan")).toBeNull();
     });
   });
 

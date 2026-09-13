@@ -8,6 +8,7 @@ import {
   normalizeCompatibilityValidationResult,
   matrixInputToPayload,
   toCreateStackBody,
+  normalizeStackImageScanReport,
 } from "./stack-normalizers";
 import type {
   RawTemplate,
@@ -92,6 +93,7 @@ const queryKeys = {
   releases: (stackId: string) => ["stacks", "releases", stackId] as const,
   releaseValues: (stackId: string, releaseName: string, mode: string) =>
     ["stacks", "release-values", stackId, releaseName, mode] as const,
+  imageScans: (stackId: string) => ["stacks", "image-scans", stackId] as const,
 };
 
 const ACTIVE_DEPLOYMENT_STATES = new Set([
@@ -337,6 +339,11 @@ const stackApiCalls = {
 
   getWorkloads: (stackId: string) =>
     api.get<StackWorkloads>(`/stacks/${stackId}/workloads`).then((r) => r.data),
+
+  getImageScans: (stackId: string) =>
+    api
+      .get<unknown>(`/stacks/${stackId}/image-scans`)
+      .then((r) => normalizeStackImageScanReport(r.data)),
 
   getWorkloadLogs: (stackId: string, tailLines: number) =>
     api
@@ -718,6 +725,27 @@ export function useStackWorkloadLogs(
     queryFn: () => stackApiCalls.getWorkloadLogs(stackId, tailLines),
     enabled: !!stackId,
     refetchInterval: pollMs,
+  });
+}
+
+/**
+ * 스택에 설치된 OSS 이미지의 취약점 보고. 설치를 막지 않는 보고용 결과다.
+ *
+ * 스캔은 설치 직후와 이후 주기적으로 서버가 돌린다. 아직 결과가 없으면(pending) 1분마다
+ * 다시 읽어, 탭을 열어 둔 사람이 첫 결과를 새로고침 없이 보게 한다.
+ *
+ * 404(모르는 스택)·503(스캐너 미배선)은 재시도해도 바뀌지 않는다. 재시도 없이 오류로
+ * 끝내고 화면은 "데이터 없음" 으로 그린다.
+ */
+export function useStackImageScans(stackId: string) {
+  return useQuery({
+    queryKey: queryKeys.imageScans(stackId),
+    queryFn: () => stackApiCalls.getImageScans(stackId),
+    enabled: !!stackId,
+    retry: false,
+    staleTime: 30_000,
+    refetchInterval: (query) =>
+      query.state.data?.status === "pending" ? 60_000 : false,
   });
 }
 

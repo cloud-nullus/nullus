@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   cicd 저장소 통합 테스트는 000006 이 만드는 테이블을 미리 만들어 두어 마이그레이션이 `already exists` 로 전부 실패하고 있었다. 낡은 사전 생성을 지웠다.
 
+- **파이프라인 실행 이력과 스택 상세에 이미지 스캔 결과를 보인다** (`web/src/features/{cicd,stack}/**`, `web/src/components/shared/severity-counts.tsx`, nullus-plan#76): 스캔 결과는 저장만 되고 어느 화면에도 뜨지 않았다. 파이프라인 실행 이력의 실행마다 게이트 판정과 심각도 건수를, 선택한 실행에는 이미지·digest·취약점 DB 날짜와 CI 리포트 링크를 보인다. 스택 상세에 **이미지 취약점** 탭을 두어 설치 이미지 보고서(보고용)를 보인다. 건수를 모르는 결과는 0 으로 그리지 않고, `error` 판정과 DB 가 오래된 결과는 초록불로 보이지 않으며, 스캔하지 않는 스택은 이유를 보인다. http(s) 가 아닌 리포트 주소는 링크로 만들지 않는다.
+
 - **이미지 스캔을 파이프라인의 실제 차단 게이트로 만들었다** (`internal/cicd/**`, `internal/shared/domain`, `db/migrations/000077`·`000078`, nullus-plan#76): 스캐너는 스택에서 고르면 설치되지만(#250), 스캐폴딩이 만드는 파이프라인에는 **스캔 단계가 없었다.** 차단 게이트가 실제로는 존재하지 않았다는 뜻이다.
 
   **렌더러 3종이 같은 두 명령을 만든다.** GitLab CI · Jenkins · GitHub Actions 모두 `build → image-scan → deploy` 이고 deploy 를 스캔 잡에 매달아 스캔을 건너뛰고 배포되지 않게 한다. 한 번은 리포트를 남기고 한 번은 `--exit-code 1` 로 판정한다 — 한 번에 하면 차단된 실행에서 무엇에 걸렸는지 알 수 없다. **차단 기준은 스크립트에 박지 않았다.** 심각도와 unfixed 제외를 파이프라인 변수로 두어, 정책을 바꿀 때 재스캐폴딩이 아니라 변수만 갱신하면 된다. kind 에서 **렌더된 명령을 그대로** 돌려 `alpine:3.18` 통과 · `node:16` 차단, client 쪽 DB 다운로드 0건을 확인했다.
