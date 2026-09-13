@@ -30,6 +30,8 @@ type SyncPipelineRuns struct {
 	imageScans port.ImageScanResultRepository
 	// artifacts 는 스캔 리포트를 읽는다. nil 이면 단계 결과만으로 판정한다.
 	artifacts port.CIArtifactReader
+	// policies 는 파이프라인이 속한 스택의 스캔 정책을 찾는다. nil 이면 기본 정책이다.
+	policies port.ScanPolicyRepository
 }
 
 const (
@@ -50,6 +52,9 @@ type SyncPipelineRunsInput struct {
 	JobName    string
 	Branch     string
 	Limit      int
+	// Policy 는 판정에 쓸 스택 정책이다. nil 이면 기본 정책이다 — CI 는 푸시된 정책으로
+	// 막으므로, 동기화도 같은 정책으로 읽어야 차단과 스캔 오류를 바르게 가른다.
+	Policy *domain.ScanPolicy
 }
 
 // runDeploymentID 는 빌드 하나에 대응하는 배포 기록 ID 다.
@@ -130,6 +135,9 @@ func (uc *SyncPipelineRuns) recordImageScans(
 	}
 	withReport := uc.scansWithReport(ctx, pipelineID)
 	policy := domain.DefaultScanPolicy()
+	if input.Policy != nil {
+		policy = *input.Policy
+	}
 
 	for _, b := range builds {
 		for _, st := range b.Stages {
@@ -260,6 +268,12 @@ func (uc *SyncPipelineRuns) WithArtifacts(reader port.CIArtifactReader) *SyncPip
 	return uc
 }
 
+// WithScanPolicies 는 파이프라인의 스택 정책으로 판정하도록 배선한다.
+func (uc *SyncPipelineRuns) WithScanPolicies(repo port.ScanPolicyRepository) *SyncPipelineRuns {
+	uc.policies = repo
+	return uc
+}
+
 // deploymentFromBuild 는 CI 빌드를 배포 기록으로 옮긴다.
 func deploymentFromBuild(pipelineID string, b port.CIBuild) *domain.Deployment {
 	deployment := &domain.Deployment{
@@ -387,5 +401,23 @@ func (uc *SyncPipelineRuns) ForPipeline(ctx context.Context, pipelineID string) 
 		// (Jenkinsfile 의 when { branch 'main' }, 워크플로의 on.push.branches).
 		Branch: defaultRunBranch,
 		Limit:  runSyncLimit,
+		Policy: uc.stackPolicy(ctx, pipeline.StackID),
 	})
+}
+
+// stackPolicy 는 스택에 저장된 정책이다. 저장한 적 없거나 읽지 못하면 nil(기본 정책)이다.
+func (uc *SyncPipelineRuns) stackPolicy(ctx context.Context, stackID string) *domain.ScanPolicy {
+	if uc.policies == nil {
+		return nil
+	}
+	policy, found, err := uc.policies.Get(ctx, stackID)
+	if err != nil {
+		slog.Warn("CI 실행 기록: 스택 스캔 정책을 읽지 못해 기본 정책으로 판정합니다",
+			"stack_id", stackID, "error", err)
+		return nil
+	}
+	if !found {
+		return nil
+	}
+	return &policy
 }

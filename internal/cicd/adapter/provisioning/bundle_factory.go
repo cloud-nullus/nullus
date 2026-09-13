@@ -83,6 +83,10 @@ type BundleFactory struct {
 	// registrySecrets 는 스택이 설치한 레지스트리의 관리자 자격증명을 읽는다.
 	// 배선되지 않으면 CI 레지스트리 변수는 사용자가 준 값만 쓴다(종전 동작).
 	registrySecrets registrycreds.SecretStore
+	// applier / kubeconfigs 는 CI 변수 저장소가 없는 스택(Gitea + Jenkins)에 스캔 정책
+	// ConfigMap 을 적용한다(scan_policy_publisher.go).
+	applier     port.ManifestApplier
+	kubeconfigs port.KubeconfigProvider
 }
 
 // WithRegistrySecrets 는 스택이 설치한 레지스트리의 자격증명 저장소를 배선한다.
@@ -146,18 +150,26 @@ func (f *BundleFactory) For(ctx context.Context, stackID string) (*port.SCMBundl
 			port.ErrStackToolsUnavailable, stackID, summary.State)
 	}
 
+	var bundle *port.SCMBundle
 	switch platformFor(summary.SourceRepository) {
 	case port.SCMPlatformGitLab:
-		return f.gitLabBundle(ctx, summary)
+		bundle, err = f.gitLabBundle(ctx, summary)
 	case port.SCMPlatformGitHub:
-		return f.gitHubBundle(ctx, summary)
+		bundle, err = f.gitHubBundle(ctx, summary)
 	case port.SCMPlatformGitea:
-		return f.giteaBundle(ctx, summary)
+		bundle, err = f.giteaBundle(ctx, summary)
 	default:
 		return nil, fmt.Errorf(
 			"소스 저장소 %q 는 아직 지원하지 않습니다 (GitLab·GitHub·Gitea 스택에서만 프로젝트를 만들 수 있습니다)",
 			summary.SourceRepository)
 	}
+	if err != nil {
+		return nil, err
+	}
+	// 정책을 실을 자리는 번들이 다 만들어진 뒤에 고른다 — CI 가 어느 쪽인지(변수
+	// 저장소가 있는지, Jenkins 인지)가 번들 조립 결과에 달려 있다.
+	bundle.ScanPolicy = f.scanPolicyPublisherFor(bundle)
+	return bundle, nil
 }
 
 // gitLabBundle 은 스택 안에 설치된 GitLab 을 향하는 묶음을 만든다.

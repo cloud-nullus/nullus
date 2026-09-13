@@ -100,13 +100,12 @@ const (
 	imageScanStageID   = "image-scan"
 	imageScanStageName = "ImageScan"
 
-	// 차단 기준을 스크립트에 박지 않는다. 박으면 정책을 바꿀 때마다 모든
-	// 파이프라인을 다시 스캐폴딩해야 한다 — 변수로 두면 파이프라인 변수만
-	// 갱신해 바꿀 수 있다.
-	scanSeverityVar    = "NULLUS_SCAN_SEVERITY"
-	scanIgnoreUnfixedV = "NULLUS_SCAN_IGNORE_UNFIXED"
-	scanServerVar      = "NULLUS_TRIVY_SERVER"
-	scanImageVar       = "NULLUS_TRIVY_IMAGE"
+	// 스캔 변수 이름은 정책 푸시와 같은 곳(port)에서 온다. 차단 기준은 파일에
+	// 박지 않는다 — 박힌 값은 플랫폼이 푸시한 값보다 앞서 정책 변경이 반영되지 않는다.
+	scanSeverityVar     = port.ScanSeverityVariable
+	scanServerVar       = port.ScanServerVariable
+	scanImageVar        = port.ScanImageVariable
+	scanPolicyConfigMap = port.ScanPolicyConfigMapName
 )
 
 // StageOptions 는 선택적 단계의 on/off 다.
@@ -255,8 +254,11 @@ func renderGitHubWorkflow(in Input) string {
 		b.WriteString("    runs-on: ubuntu-latest\n")
 		b.WriteString("    env:\n")
 		fmt.Fprintf(&b, "      %s: %q\n", scanServerVar, in.ImageScannerEndpoint)
-		fmt.Fprintf(&b, "      %s: %q\n", scanSeverityVar, defaultScanSeverity)
-		fmt.Fprintf(&b, "      %s: %q\n", scanIgnoreUnfixedV, "true")
+		// 정책은 플랫폼이 리포 Actions 변수로 푸시한다. 없으면 빈 값이고 스크립트가
+		// 기본값을 쓴다. env 에 값을 박으면 푸시한 변수보다 앞선다.
+		for _, v := range scanPolicyVariableNames {
+			fmt.Fprintf(&b, "      %s: ${{ vars.%s }}\n", v, v)
+		}
 		b.WriteString("    container:\n")
 		fmt.Fprintf(&b, "      image: %q\n", defaultScannerImage)
 		b.WriteString("    steps:\n")
@@ -346,13 +348,10 @@ func renderPipeline(in Input) string {
 	b.WriteString("  DOCKER_HOST: tcp://docker:2375\n")
 	b.WriteString("  DOCKER_TLS_CERTDIR: \"\"\n")
 	if opts.ImageScan {
-		// 주소는 스택이 정한 값이라 렌더 시점에 박는다. 반면 차단 기준은
-		// 정책이라 변수로 남긴다 — 정책이 바뀔 때 재스캐폴딩하지 않으려면
-		// 파이프라인 변수만 갱신할 수 있어야 한다.
+		// 주소는 스택이 정한 값이라 렌더 시점에 박는다. 차단 기준은 적지 않는다 —
+		// 플랫폼이 프로젝트 CI/CD 변수로 푸시하고, 없으면 스크립트가 기본값을 쓴다.
 		fmt.Fprintf(&b, "  %s: %q\n", scanServerVar, in.ImageScannerEndpoint)
 		fmt.Fprintf(&b, "  %s: %q\n", scanImageVar, defaultScannerImage)
-		fmt.Fprintf(&b, "  %s: %q\n", scanSeverityVar, defaultScanSeverity)
-		fmt.Fprintf(&b, "  %s: %q\n", scanIgnoreUnfixedV, "true")
 	}
 	b.WriteString("\n")
 

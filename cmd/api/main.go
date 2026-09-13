@@ -337,17 +337,29 @@ func main() {
 		// 스택이 설치한 Harbor·Nexus 의 관리자 자격증명은 설치 과정이 이미
 		// OpenBao 에 만들어 두었다. 배선하지 않으면 CI 레지스트리 변수가 비어
 		// 스캐폴딩된 파이프라인의 docker login 이 죽는다.
-		WithRegistrySecrets(secretRouter)
+		WithRegistrySecrets(secretRouter).
+		// Gitea + Jenkins 스택은 CI 변수 저장소가 없어 스캔 정책을 스택 네임스페이스의
+		// ConfigMap 으로 싣는다. 배선하지 않으면 그 스택은 정책을 실을 경로가 없다.
+		WithManifestApplier(manifestApplier, kubeconfigProvider)
+	// 스택별 이미지 스캔 정책. 판정은 CI 가 푸시받은 값으로 스스로 한다(설계 §5.4) —
+	// CI 가 플랫폼에 되묻는 인바운드 경로와 기계 인증을 두지 않는다.
+	pgScanPolicyRepo := cicdrepo.NewPostgresScanPolicyRepository(pool)
+	scanPolicyUC := cicduc.NewScanPolicyService(pgScanPolicyRepo, pgPipelineRepo, cicdBundleFactory)
+	scanPolicyHandler := cicdhandler.NewScanPolicyHandler(scanPolicyUC)
 	runSyncUC := cicduc.NewSyncPipelineRuns(nil, pgDeploymentRepo).
 		WithBundleFactory(cicdBundleFactory, pgPipelineRepo).
 		// 실행 기록을 들이면서 스캔 단계의 게이트 판정도 남긴다. 배선하지 않으면
 		// 차단된 배포가 어디에도 기록되지 않는다.
-		WithImageScans(pgImageScanRepo)
+		WithImageScans(pgImageScanRepo).
+		// CI 는 스택 정책으로 막는다. 동기화도 같은 정책으로 읽어야 차단과 스캔 오류를 가른다.
+		WithScanPolicies(pgScanPolicyRepo)
 	provisionRepoUC := cicduc.NewProvisionPipelineRepository(
 		cicdBundleFactory, manifestApplier, kubeconfigProvider)
 
 	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo, cicdStackReader).
-		WithRepositoryProvisioner(provisionRepoUC)
+		WithRepositoryProvisioner(provisionRepoUC).
+		// 새 스캔 파이프라인에 스택 정책을 싣는다. 빠지면 새 파이프라인만 기본 정책으로 판정한다.
+		WithScanPolicyPublisher(scanPolicyUC)
 	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
 	// 이미지 준비기와 클러스터 타깃 제공자를 배선한다.
 	//
@@ -541,6 +553,9 @@ func main() {
 	// 스택별 파이프라인 조회는 /stacks 그룹 아래에 붙는다. 핸들러는 처음부터 있었는데
 	// 이 호출이 빠져 있어 GET /api/v1/stacks/:stackId/pipelines 가 404 였다.
 	pipelineHandler.RegisterStackRoutes(stacks)
+	// 스캔 정책은 스택의 모든 스캔 파이프라인의 차단 여부를 바꾼다 — 개발자 권한인
+	// /cicd 가 아니라 /stacks(admin·devops) 아래에 붙인다.
+	scanPolicyHandler.RegisterStackRoutes(stacks)
 	dashboardHandler.RegisterRoutes(observability)
 	alertHandler.RegisterRoutes(observability)
 
