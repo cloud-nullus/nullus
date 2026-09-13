@@ -287,6 +287,8 @@ func main() {
 	pgCICDTemplateRepo := cicdrepo.NewPostgresCICDTemplateRepository(pool)
 	pgPipelineRepo := cicdrepo.NewPostgresPipelineRepository(pool)
 	pgDeploymentRepo := cicdrepo.NewPostgresDeploymentRepository(pool)
+	// 이미지 스캔 게이트 판정. 대시보드(#65)가 cicd 의 공개 경로로 읽는다.
+	pgImageScanRepo := cicdrepo.NewPostgresImageScanResultRepository(pool)
 	memGoldenPathRepo := cicdrepo.NewMemoryCICDGoldenPathRepository()
 	manifestApplier := cicdkube.NewManifestApplier()
 
@@ -337,7 +339,10 @@ func main() {
 		// 스캐폴딩된 파이프라인의 docker login 이 죽는다.
 		WithRegistrySecrets(secretRouter)
 	runSyncUC := cicduc.NewSyncPipelineRuns(nil, pgDeploymentRepo).
-		WithBundleFactory(cicdBundleFactory, pgPipelineRepo)
+		WithBundleFactory(cicdBundleFactory, pgPipelineRepo).
+		// 실행 기록을 들이면서 스캔 단계의 게이트 판정도 남긴다. 배선하지 않으면
+		// 차단된 배포가 어디에도 기록되지 않는다.
+		WithImageScans(pgImageScanRepo)
 	provisionRepoUC := cicduc.NewProvisionPipelineRepository(
 		cicdBundleFactory, manifestApplier, kubeconfigProvider)
 
@@ -386,7 +391,9 @@ func main() {
 		WithManifestApplier(manifestApplier).
 		// 직접 배포(POST /deploy-app)도 파이프라인 배포와 같은 수집기 주소를
 		// 넣어야 한다 — 한쪽만 배선하면 경로에 따라 추적이 갈린다.
-		WithStackReader(cicdStackReader)
+		WithStackReader(cicdStackReader).
+		// 스캔 결과 조회. 빠지면 503 으로 알린다 — 빈 목록은 "스캔한 적 없음" 으로 읽힌다.
+		WithImageScans(pgImageScanRepo)
 
 	// Observability: Prometheus with in-memory fallback
 	var dashboardRepo obsport.DashboardRepository

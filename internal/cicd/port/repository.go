@@ -33,6 +33,18 @@ type DeploymentRepository interface {
 	Update(ctx context.Context, deployment *domain.Deployment) error
 }
 
+// ImageScanResultRepository 는 이미지 스캔 결과를 보관한다.
+//
+// cicd 모듈이 소유한다. 대시보드(#65)는 이 테이블을 직접 조회하지 않고 cicd 의
+// 공개 경로로 읽는다.
+type ImageScanResultRepository interface {
+	// Upsert 는 같은 ID 면 덮어쓴다. 같은 실행을 여러 번 동기화해도 기록이
+	// 늘지 않아야 한다.
+	Upsert(ctx context.Context, result *domain.ImageScanResult) error
+	// ListByPipelineID 는 최신 결과부터 돌려준다.
+	ListByPipelineID(ctx context.Context, pipelineID string) ([]*domain.ImageScanResult, error)
+}
+
 // CICDGoldenPathRepository defines the interface for CI/CD Golden Path persistence.
 type CICDGoldenPathRepository interface {
 	GetByID(ctx context.Context, id string) (*domain.CICDGoldenPath, error)
