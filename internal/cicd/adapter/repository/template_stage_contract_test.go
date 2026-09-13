@@ -23,7 +23,7 @@ func TestSeededTemplateStages_MatchScaffold(t *testing.T) {
 	templates, err := repo.List(context.Background())
 	require.NoError(t, err)
 
-	want := scaffold.PipelineStageNames()
+	want := scaffold.PipelineStageNames(scaffold.StageOptions{})
 	scaffoldBacked := map[string]bool{"web-backend-v1": true, "batch-job-v1": true}
 
 	found := 0
@@ -46,7 +46,7 @@ func TestMigrationStages_MatchScaffold(t *testing.T) {
 	require.NoError(t, err)
 
 	var quoted []string
-	for _, stage := range scaffold.PipelineStageNames() {
+	for _, stage := range scaffold.PipelineStageNames(scaffold.StageOptions{}) {
 		quoted = append(quoted, `"`+stage+`"`)
 	}
 	want := "[" + strings.Join(quoted, ", ") + "]"

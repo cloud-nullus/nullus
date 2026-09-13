@@ -38,7 +38,29 @@ const (
 	// OTLP 수신 포트. 차트 기본값이며 애플리케이션이 붙는 지점이다.
 	OTelCollectorOTLPGRPCPort = 4317
 	OTelCollectorOTLPHTTPPort = 4318
+
+	// TrivyReleaseName 은 이미지 취약점 스캐너의 릴리스명이다.
+	//
+	// stack 은 이 이름으로 차트를 설치하고, cicd 는 CI 잡이 붙을 주소를 만든다.
+	// OTLP 와 같은 이유로 규칙을 여기 둔다.
+	TrivyReleaseName = "trivy"
+	// TrivyServicePort 는 client 가 CVE 매칭을 요청하는 포트다.
+	// aqua/trivy 차트의 service.port 기본값과 같아야 한다.
+	TrivyServicePort = 4954
 )
+
+// TrivyServerEndpoint 는 CI 잡의 trivy client 가 붙을 주소다.
+//
+// 스캐너를 고르지 않은 스택에서는 네임스페이스만으로 주소를 만들면 안 된다 —
+// 호출부가 "스캐너 있음" 으로 오해한다. 네임스페이스가 비면 빈 문자열이다.
+func TrivyServerEndpoint(namespace string) string {
+	ns := strings.TrimSpace(namespace)
+	if ns == "" {
+		return ""
+	}
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d",
+		TrivyReleaseName, ns, TrivyServicePort)
+}
 
 // OTelCollectorServiceName 은 수집기 Service 이름이다.
 // 차트의 fullname 규칙이 "<릴리스>-<차트>" 라 릴리스명만으로는 맞지 않는다.

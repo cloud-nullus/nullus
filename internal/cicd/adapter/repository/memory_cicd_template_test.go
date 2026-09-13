@@ -28,7 +28,7 @@ func TestMemoryCICDTemplateRepository_GetByID_WebBackend(t *testing.T) {
 	assert.Equal(t, "web-backend-v1", tmpl.ID)
 	assert.Equal(t, "User Custom Pipeline", tmpl.Name)
 	// 단계 목록의 출처는 스캐폴딩이다 — 손으로 적으면 실제 파이프라인과 어긋난다.
-	assert.Equal(t, scaffold.PipelineStageNames(), tmpl.Stages)
+	assert.Equal(t, scaffold.PipelineStageNames(scaffold.StageOptions{}), tmpl.Stages)
 }
 
 func TestMemoryCICDTemplateRepository_DoesNotReturnRemovedWebFrontend(t *testing.T) {
@@ -48,7 +48,7 @@ func TestMemoryCICDTemplateRepository_GetByID_BatchJob(t *testing.T) {
 	assert.Equal(t, "Batch Job Pipeline", tmpl.Name)
 	// 스캐폴딩은 app_type 과 무관하게 같은 파이프라인을 만든다.
 	// CronJob 배포는 아직 구현돼 있지 않아 선언만 남기면 없는 기능을 약속한다.
-	assert.Equal(t, scaffold.PipelineStageNames(), tmpl.Stages)
+	assert.Equal(t, scaffold.PipelineStageNames(scaffold.StageOptions{}), tmpl.Stages)
 }
 
 func TestMemoryCICDTemplateRepository_GetByID_NotFound(t *testing.T) {

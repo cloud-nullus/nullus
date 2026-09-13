@@ -91,11 +91,14 @@ const (
 	// server 모드로 선다 — 취약점 DB 를 이 서버에만 두고, CI 잡은 client 로
 	// 붙어 패키지 목록만 보낸다. 클라이언트는 DB 를 내려받지 않으므로
 	// 에어갭 반입 지점이 파이프라인마다가 아니라 이 서버 하나로 줄어든다.
-	TrivyReleaseName = "trivy"
+	//
+	// 이름과 포트는 shared 가 소유한다 — cicd 가 CI 잡이 붙을 주소를 만들 때
+	// 같은 값을 봐야 하는데, 모듈끼리 서로의 internal 을 참조할 수 없다.
+	TrivyReleaseName = shareddomain.TrivyReleaseName
 	TrivyServiceName = TrivyReleaseName
 	// TrivyServicePort 는 client 가 CVE 매칭을 요청하는 포트다.
 	// 차트 기본 service.port 와 같아야 한다.
-	TrivyServicePort = 4954
+	TrivyServicePort = shareddomain.TrivyServicePort
 	// 호환성 매트릭스가 선언한 버전과 같아야 한다. 화면은 매트릭스 값을
 	// 보여주고 설치는 차트 스펙을 쓰므로, 갈라지면 안내와 실제가 어긋난다.
 	// (고정: TestChartVersionsMatchCompatibilityMatrix)

@@ -32,6 +32,14 @@ type StackSummary struct {
 	// 주소를 조립하는 규칙은 Stack 컨텍스트의 것이다. 그래서 조립된 결과만
 	// 받아 온다 — 여기서 규칙을 흉내 내면 차트가 바뀔 때 조용히 어긋난다.
 	OTLPEndpoint string `json:"otlp_endpoint"`
+
+	// ImageScannerEndpoint 는 스택 Trivy 서버의 클러스터 내 주소다
+	// (http://host:port). 스캐너를 고르지 않은 스택에서는 비어 있다.
+	//
+	// OTLPEndpoint 와 같은 이유로 조립된 결과만 받는다 — 릴리스명·포트로
+	// 주소를 만드는 규칙은 shared 가 소유하고, 여기서 흉내 내면 차트가 바뀔 때
+	// 조용히 어긋난다.
+	ImageScannerEndpoint string `json:"image_scanner_endpoint"`
 }
 
 // StackReader provides read-only access to Stack context data.
