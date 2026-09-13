@@ -48,6 +48,8 @@ type ProvisionPipelineRepositoryOutput struct {
 	Warnings               []string
 	// ScaffoldSkipped 는 이미 있던 저장소라 스캐폴딩을 쓰지 않았음을 알린다.
 	ScaffoldSkipped bool
+	// Stages 는 파이프라인 레코드에 남길 실효 단계다. 스캐폴딩을 건너뛰었으면 비어 있다.
+	Stages []string
 }
 
 // ProvisionPipelineRepository 는 파이프라인 하나가 돌기 위한 저장소 일체를 만든다.
@@ -144,6 +146,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 		MissingVariables: appOut.MissingVariables,
 		Warnings:         appOut.Warnings,
 		ScaffoldSkipped:  appOut.ScaffoldSkipped,
+		Stages:           appOut.Stages,
 	}
 	if memberWarning != "" {
 		out.Warnings = append(out.Warnings, memberWarning)

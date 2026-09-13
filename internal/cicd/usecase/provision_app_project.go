@@ -111,6 +111,11 @@ type ProvisionAppProjectOutput struct {
 	// CIJobURL 은 만들어진 CI job 의 주소다. CI 가 SCM 과 분리된 플랫폼
 	// (Jenkins)에서만 채워진다.
 	CIJobURL string
+	// Stages 는 스캐폴딩이 실제로 만든 파이프라인 단계다.
+	//
+	// 이미 있던 저장소라 스캐폴딩을 건너뛰었으면 비어 있다 — 그 안의 파이프라인
+	// 파일은 우리가 만든 것이 아니므로 단계를 안다고 말하면 안 된다.
+	Stages []string
 	// CredentialManifests 는 파이프라인 자격증명 ExternalSecret 이다.
 	//
 	// 여기서 적용하지 않는다 — 클러스터 접근은 상위 유스케이스가 한곳에서
@@ -211,7 +216,7 @@ func (uc *ProvisionAppProject) Execute(
 		return nil, fmt.Errorf("resolve image target for %q: %w", app, err)
 	}
 
-	files, err := scaffold.Render(scaffold.Input{
+	scaffoldInput := scaffold.Input{
 		AppName:          app,
 		AppType:          input.AppType,
 		Namespace:        input.Namespace,
@@ -226,7 +231,8 @@ func (uc *ProvisionAppProject) Execute(
 		TemplateID:       input.TemplateID,
 
 		ImageScannerEndpoint: input.ImageScannerEndpoint,
-	})
+	}
+	files, err := scaffold.Render(scaffoldInput)
 	if err != nil {
 		return nil, fmt.Errorf("render scaffold for %q: %w", app, err)
 	}
@@ -252,6 +258,10 @@ func (uc *ProvisionAppProject) Execute(
 		Project:         project,
 		ImageTarget:     target,
 		ScaffoldSkipped: scaffoldSkipped,
+	}
+	if !scaffoldSkipped {
+		// 렌더에 쓴 입력 그대로 단계를 낸다. 따로 판단하면 선언과 실제가 갈린다.
+		out.Stages = scaffold.PipelineStageNamesFor(scaffoldInput)
 	}
 	if scaffoldSkipped {
 		out.Warnings = append(out.Warnings, fmt.Sprintf(

@@ -399,6 +399,11 @@ export interface Pipeline {
   status: PipelineStatus;
   lastDeployedAt: string | null;
   createdAt: string;
+  /**
+   * 이 파이프라인이 실제로 가진 단계(예: Build · ImageScan · Deploy).
+   * 비어 있으면 모른다는 뜻이다 — 화면은 템플릿 단계로 떨어진다.
+   */
+  stages?: string[];
 }
 
 export interface Deployment {

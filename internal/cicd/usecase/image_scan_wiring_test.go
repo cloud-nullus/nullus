@@ -23,6 +23,9 @@ func TestImageScannerEndpoint_IsWiredToScaffold(t *testing.T) {
 	}{
 		{"provision_pipeline_repository.go", "ImageScannerEndpoint: bundle.ImageScannerEndpoint"},
 		{"provision_app_project.go", "ImageScannerEndpoint: input.ImageScannerEndpoint"},
+		// 실효 단계는 반대 방향으로 흐른다 — 스캐폴딩 → 출력 → 파이프라인 레코드.
+		{"provision_pipeline_repository.go", "Stages: appOut.Stages"},
+		{"create_pipeline.go", "pipeline.Stages = provisionOut.Stages"},
 	}
 	for _, h := range hops {
 		raw, err := os.ReadFile(h.file)
