@@ -101,10 +101,15 @@ export function buildInstallOverridesFromTemplate(template: StackTemplate): Part
     authentication: {
       provider: '',
     },
+    // 다른 섹션처럼 템플릿이 고른 것만 남긴다. 빠뜨리면 앞서 고른 스캐너가
+    // 남거나, 템플릿에 넣은 스캐너가 설치에서 빠진다.
+    security: {
+      imageScanner: { tool: '', version: '' },
+    },
   }
 
   const apply = (
-    target: 'artifacts' | 'pipeline' | 'monitoring' | 'logging',
+    target: 'artifacts' | 'pipeline' | 'monitoring' | 'logging' | 'security',
     field: string,
     name: string,
     appVersion?: string
@@ -156,6 +161,9 @@ export function buildInstallOverridesFromTemplate(template: StackTemplate): Part
         break
       case 'agent':
         apply('logging', 'traceExporter', tool.name, tool.app_version)
+        break
+      case 'image_scanner':
+        apply('security', 'imageScanner', tool.name, tool.app_version)
         break
       default:
         break
