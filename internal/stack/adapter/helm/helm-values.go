@@ -107,14 +107,11 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 		return base
 	}
 
-	if step == "installing_gitlab" && strings.TrimSpace(cfg.AccessDomain) != "" {
-		base = mergeMaps(base, map[string]any{
-			"global": map[string]any{
-				"hosts": map[string]any{
-					"domain": cfg.AccessDomain,
-				},
-			},
-		})
+	// override 가 없는 분기와 같은 공용 값을 준다. 여기에 도메인만 두었더니 다른
+	// 도구 하나만 손봐도 registry.authEndpoint(https realm)와 global.hosts.https 가
+	// 빠져, 이미지 스캔이 http realm 에서 다시 거부됐다.
+	if step == "installing_gitlab" {
+		base = mergeMaps(base, o.gitlabSharedServiceValues())
 	}
 
 	if step == "installing_postgresql" {
@@ -272,15 +269,19 @@ func (o *Orchestrator) sharedPostgresValues(cfg *domain.StackConfig) map[string]
 func (o *Orchestrator) harborExternalURLValues(cfg *domain.StackConfig) map[string]any {
 	if cfg != nil {
 		if accessDomain := strings.TrimSpace(cfg.AccessDomain); accessDomain != "" {
-			// Harbor 는 redirect_uri 도 이 값에서 만든다. SSO 를 켠 설치에서는
-			// Keycloak 에 등록된 redirect(https://harbor.<도메인>/c/oidc/callback)와
-			// 스킴이 같아야 한다 — 다르면 로그인이 "Invalid parameter: redirect_uri"
-			// 로 막힌다.
+			// 항상 https 다. SSO·TLS 설정과 무관하다.
 			//
-			// SSO 를 쓰지 않으면 http 그대로 둔다. 이 값은 docker login/push 의
-			// 토큰 realm 이기도 해서, 스킴을 바꾸면 클라이언트(containerd 포함)가
-			// 게이트웨이 인증서의 CA 를 신뢰해야 한다.
-			return map[string]any{"externalURL": fmt.Sprintf("%s://harbor.%s", o.toolURLScheme(), accessDomain)}
+			// Harbor 는 레지스트리 토큰 realm 을 따로 정하는 설정이 없어
+			// <externalURL>/service/token 을 광고한다. 게이트웨이는 HTTPS 리스너를
+			// 늘 열므로 스캐너(Trivy 등 go-containerregistry)는 https 로 붙는데,
+			// http realm 을 받으면 "realm scheme "http" not allowed for a secure
+			// registry" 로 거부해 스캔 잡이 매번 실패한다(GitLab 레지스트리에서 실측).
+			//
+			// 같은 값에서 나오는 것들도 https 여야 맞는다: OIDC redirect_uri 는
+			// Keycloak 에 https 로 등록되고, 화면의 도구 링크(domain.ToolAccessURL)도
+			// https 다. blob 업로드 Location 은 registry.relativeurls 로 스킴이 나가지
+			// 않는다. Harbor UI 의 CSRF 쿠키가 Secure 가 되므로 UI 는 https 로 연다.
+			return map[string]any{"externalURL": fmt.Sprintf("https://harbor.%s", accessDomain)}
 		}
 	}
 

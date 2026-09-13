@@ -147,12 +147,16 @@ func TestHarborExternalURL_MatchesRegisteredRedirectSchemeWhenSSOEnabled(t *test
 		"등록된 redirect(https://harbor.<도메인>/c/oidc/callback)와 스킴이 같아야 한다")
 }
 
-// SSO 를 쓰지 않는 설치는 예전 그대로다. externalURL 은 docker login/push 의 토큰
-// realm 이기도 해서, 스킴을 바꾸면 클라이언트가 CA 를 신뢰해야 한다.
-func TestHarborExternalURL_StaysHTTPWithoutSSO(t *testing.T) {
+// SSO 를 쓰지 않아도 https 다. Harbor 는 레지스트리 토큰 realm 만 따로 정하는
+// 설정이 없어 <externalURL>/service/token 을 그대로 광고한다. 게이트웨이는 설정과
+// 무관하게 HTTPS 리스너를 열므로 스캐너(Trivy 등 go-containerregistry)는 https 로
+// 붙고, http realm 을 받으면 "realm scheme "http" not allowed for a secure
+// registry" 로 거부한다 — GitLab 레지스트리에서 실측한 실패와 같은 구조다.
+func TestHarborExternalURL_IsHTTPSWithoutSSO(t *testing.T) {
 	o := harborOrchestrator(t, "", false)
 	cfg := domain.StackConfig{AccessDomain: "nullus.local"}
 
 	values := o.harborExternalURLValues(&cfg)
-	assert.Equal(t, "http://harbor.nullus.local", values["externalURL"])
+	assert.Equal(t, "https://harbor.nullus.local", values["externalURL"],
+		"http 로 두면 스캔 잡이 토큰 realm 에서 거부된다")
 }
