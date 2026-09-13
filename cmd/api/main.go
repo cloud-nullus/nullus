@@ -369,7 +369,10 @@ func main() {
 		// 차단된 배포가 어디에도 기록되지 않는다.
 		WithImageScans(pgImageScanRepo).
 		// CI 는 스택 정책으로 막는다. 동기화도 같은 정책으로 읽어야 차단과 스캔 오류를 가른다.
-		WithScanPolicies(pgScanPolicyRepo)
+		WithScanPolicies(pgScanPolicyRepo).
+		// 주기 동기화가 돌 파이프라인 목록. 화면을 열 때만 들이면 아무도 보지 않는
+		// 파이프라인의 스캔 결과가 쌓이지 않는다.
+		WithSyncablePipelines(pgPipelineRepo)
 	provisionRepoUC := cicduc.NewProvisionPipelineRepository(
 		cicdBundleFactory, manifestApplier, kubeconfigProvider)
 
@@ -701,6 +704,17 @@ func main() {
 			}
 		}
 	}()
+
+	// 파이프라인 실행 기록과 스캔 결과를 주기적으로 들인다.
+	//
+	// 레플리카가 여럿이면 각자 돈다. 기록은 upsert 라 겹쳐도 결과는 같고 CI 조회만 는다.
+	go runEvery(rotationCtx, durationFromEnv("CICD_RUN_SYNC_INTERVAL", 10*time.Minute), func(ctx context.Context) {
+		if synced, err := runSyncUC.SyncAll(ctx); err != nil {
+			slog.Warn("pipeline run sync failed", "error", err)
+		} else if synced > 0 {
+			slog.Debug("pipeline runs synced", "pipelines", synced)
+		}
+	})
 
 	// 스택이 설치한 OSS 이미지를 주기적으로 다시 스캔한다. 설치 뒤에 공개된 CVE 는
 	// 다시 스캔해야 보인다. 에어갭 설치는 스캔하지 않는다.

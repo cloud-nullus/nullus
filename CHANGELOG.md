@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   kind(arm64) `harbor-e2e` 스택에서 실측: 이미지 33개 스캔·실패 0, DB 날짜·스캐너 버전 기록, GitLab CE 이미지(`gitlab-toolbox` CRITICAL 61 · HIGH 1569)가 가장 심각했다.
 
+- **파이프라인 스캔 결과에 CI 리포트 링크를 남기고, 실행 기록을 주기적으로 동기화한다** (`internal/cicd/**`, nullus-plan#76): `report_uri` 칼럼은 있었지만 채우는 곳이 없어 무엇에 걸렸는지 보려면 CI 를 직접 뒤져야 했다. 산출물 조회기가 스택 접속 도메인(https)으로 브라우저 링크를 만든다 — GitLab 잡 산출물 파일, GitHub Actions 실행 페이지, Jenkins 빌드 산출물. API 클라이언트의 클러스터 내부 주소로는 만들지 않는다. 리포트를 읽은 실행에만 걸고, 링크 전에 기록한 실행은 리포트를 다시 받지 않고 링크만 채운다.
+
+  실행 기록은 화면 조회 때만 들여, 아무도 보지 않는 파이프라인의 스캔 결과가 쌓이지 않았다. `CICD_RUN_SYNC_INTERVAL`(기본 10m)마다 스택에 묶인 모든 파이프라인을 들인다. CI 클라이언트 번들은 스택마다 한 번만 만들고, 설치 중인 스택은 건너뛴다. kind 실측에서 기존 `harbor-app2` 실행에 GitLab 리포트 링크가 채워졌다.
+
+  cicd 저장소 통합 테스트는 000006 이 만드는 테이블을 미리 만들어 두어 마이그레이션이 `already exists` 로 전부 실패하고 있었다. 낡은 사전 생성을 지웠다.
+
 - **이미지 스캔을 파이프라인의 실제 차단 게이트로 만들었다** (`internal/cicd/**`, `internal/shared/domain`, `db/migrations/000077`·`000078`, nullus-plan#76): 스캐너는 스택에서 고르면 설치되지만(#250), 스캐폴딩이 만드는 파이프라인에는 **스캔 단계가 없었다.** 차단 게이트가 실제로는 존재하지 않았다는 뜻이다.
 
   **렌더러 3종이 같은 두 명령을 만든다.** GitLab CI · Jenkins · GitHub Actions 모두 `build → image-scan → deploy` 이고 deploy 를 스캔 잡에 매달아 스캔을 건너뛰고 배포되지 않게 한다. 한 번은 리포트를 남기고 한 번은 `--exit-code 1` 로 판정한다 — 한 번에 하면 차단된 실행에서 무엇에 걸렸는지 알 수 없다. **차단 기준은 스크립트에 박지 않았다.** 심각도와 unfixed 제외를 파이프라인 변수로 두어, 정책을 바꿀 때 재스캐폴딩이 아니라 변수만 갱신하면 된다. kind 에서 **렌더된 명령을 그대로** 돌려 `alpine:3.18` 통과 · `node:16` 차단, client 쪽 DB 다운로드 0건을 확인했다.

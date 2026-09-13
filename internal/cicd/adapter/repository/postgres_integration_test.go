@@ -242,10 +242,6 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	sort.Strings(upFiles)
 
-	if err := ensurePreMigrationTables(ctx, pool); err != nil {
-		return err
-	}
-
 	for _, filename := range upFiles {
 		path := filepath.Join(migrationsDir, filename)
 		sqlBytes, err := os.ReadFile(path)
@@ -255,27 +251,6 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
 			return fmt.Errorf("apply migration %s: %w", filename, err)
 		}
-	}
-
-	return nil
-}
-
-func ensurePreMigrationTables(ctx context.Context, pool *pgxpool.Pool) error {
-	const q = `
-		CREATE TABLE IF NOT EXISTS golden_path_templates (
-			id VARCHAR(100) PRIMARY KEY,
-			name VARCHAR(255) NOT NULL,
-			description TEXT,
-			tools JSONB NOT NULL DEFAULT '[]',
-			estimated_install_time BIGINT NOT NULL DEFAULT 0,
-			recommended_use_case TEXT,
-			min_resources TEXT,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		)`
-
-	if _, err := pool.Exec(ctx, q); err != nil {
-		return fmt.Errorf("ensure golden_path_templates table: %w", err)
 	}
 
 	return nil

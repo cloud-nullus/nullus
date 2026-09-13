@@ -30,6 +30,20 @@ func (c *Client) ReadArtifact(ctx context.Context, ref port.CIArtifactRef) ([]by
 	return c.getRaw(ctx, path)
 }
 
+// ArtifactWebURL 은 빌드 산출물 파일을 Jenkins 화면에서 여는 주소다.
+func (c *Client) ArtifactWebURL(ref port.CIArtifactRef) string {
+	job := strings.TrimSpace(ref.JobName)
+	file := strings.Trim(strings.TrimSpace(ref.Path), "/")
+	if c.webBaseURL == "" || job == "" || file == "" || ref.Build.Number <= 0 {
+		return ""
+	}
+	path := "/job/" + url.PathEscape(job)
+	if b := strings.TrimSpace(ref.Branch); b != "" {
+		path += "/job/" + url.PathEscape(b)
+	}
+	return c.webBaseURL + path + fmt.Sprintf("/%d/artifact/%s", ref.Build.Number, escapeSegments(file))
+}
+
 // getRaw 는 JSON 이 아닌 응답 본문을 상한까지만 읽는다. 404 는 found=false 다.
 func (c *Client) getRaw(ctx context.Context, path string) ([]byte, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)

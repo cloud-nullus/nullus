@@ -63,6 +63,18 @@ func (r *BuildReader) ReadArtifact(ctx context.Context, ref port.CIArtifactRef) 
 	return nil, false, nil
 }
 
+// ArtifactWebURL 은 실행 페이지 주소다. GitHub 은 산출물 파일 주소를 주지 않고,
+// 실행 페이지가 산출물 목록을 보여 준다.
+func (r *BuildReader) ArtifactWebURL(ref port.CIArtifactRef) string {
+	repo, owner := strings.TrimSpace(ref.JobName), strings.TrimSpace(r.owner)
+	runID := strings.TrimSpace(ref.Build.ID)
+	if repo == "" || owner == "" || runID == "" || r.client == nil {
+		return ""
+	}
+	return WebBaseURLFor(r.client.baseURL) + "/" + url.PathEscape(owner) + "/" + url.PathEscape(repo) +
+		"/actions/runs/" + url.PathEscape(runID)
+}
+
 // download 는 API 가 알려준 절대 주소에서 내려받는다.
 //
 // 주소는 응답 본문에서 왔다. API 와 다른 호스트면 토큰을 붙여 보내지 않는다.

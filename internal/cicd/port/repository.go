@@ -16,6 +16,12 @@ type PipelineRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// SyncablePipelineLister 는 스택에 묶인 파이프라인을 조직과 무관하게 돌려준다.
+// 실행 기록 주기 동기화가 쓴다 — 그것은 조직 경계와 무관한 일이다.
+type SyncablePipelineLister interface {
+	ListWithStack(ctx context.Context) ([]*domain.Pipeline, error)
+}
+
 // PipelineTemplateRepository defines the interface for pipeline template persistence.
 type PipelineTemplateRepository interface {
 	GetByID(ctx context.Context, id string) (*domain.PipelineTemplate, error)

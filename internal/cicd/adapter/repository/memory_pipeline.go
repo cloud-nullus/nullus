@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
@@ -44,6 +45,20 @@ func (r *MemoryPipelineRepository) GetByID(_ context.Context, id string) (*domai
 }
 
 // List returns all pipelines for an organization.
+// ListWithStack 은 스택에 묶인 파이프라인을 조직과 무관하게 돌려준다(주기 동기화용).
+func (r *MemoryPipelineRepository) ListWithStack(_ context.Context) ([]*domain.Pipeline, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []*domain.Pipeline
+	for _, p := range r.pipelines {
+		if strings.TrimSpace(p.StackID) == "" {
+			continue
+		}
+		result = append(result, clonePipeline(p))
+	}
+	return result, nil
+}
+
 func (r *MemoryPipelineRepository) List(_ context.Context, orgID string) ([]*domain.Pipeline, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

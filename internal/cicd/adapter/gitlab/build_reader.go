@@ -19,6 +19,14 @@ import (
 type BuildReader struct {
 	client    *Client
 	groupPath string
+	// webBaseURL 은 브라우저가 여는 GitLab 주소다(리포트 링크용). 비면 링크를 만들지 않는다.
+	webBaseURL string
+}
+
+// WithWebBaseURL 은 리포트 링크에 쓸 외부 주소를 정한다.
+func (r *BuildReader) WithWebBaseURL(base string) *BuildReader {
+	r.webBaseURL = strings.TrimRight(strings.TrimSpace(base), "/")
+	return r
 }
 
 // NewBuildReader 는 groupPath 아래 프로젝트의 실행 이력을 읽는 BuildReader 를 만든다.
