@@ -18,8 +18,11 @@ type CIStageStatus string
 const (
 	CIStageSuccess CIStageStatus = "success"
 	CIStageFailed  CIStageStatus = "failed"
-	CIStageRunning CIStageStatus = "running"
-	CIStageQueued  CIStageStatus = "queued"
+	// CIStageCanceled 는 취소된 단계다. 실패와 구분한다 — 새 커밋이 앞선 실행을
+	// 밀어내면 CI 가 취소하는데, 그것을 실패로 세면 스캔 판정이 error 로 남는다.
+	CIStageCanceled CIStageStatus = "canceled"
+	CIStageRunning  CIStageStatus = "running"
+	CIStageQueued   CIStageStatus = "queued"
 	// CIStageSkipped 는 조건 때문에 실행되지 않은 단계다.
 	// 실패와 구분해야 한다 — 건너뛴 것은 잘못된 것이 아니다.
 	CIStageSkipped CIStageStatus = "skipped"
@@ -61,8 +64,10 @@ func NormalizeStageStatus(raw string) CIStageStatus {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "success", "successful", "completed", "passed":
 		return CIStageSuccess
-	case "failed", "failure", "error", "unstable", "aborted", "canceled", "cancelled":
+	case "failed", "failure", "error", "unstable":
 		return CIStageFailed
+	case "aborted", "canceled", "cancelled":
+		return CIStageCanceled
 	case "running", "in_progress", "in progress", "started":
 		return CIStageRunning
 	case "queued", "pending", "waiting", "created", "not_built":

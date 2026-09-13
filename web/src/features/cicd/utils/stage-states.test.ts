@@ -38,6 +38,17 @@ describe('buildStageStates', () => {
     expect(buildStageStates([], [{ name: 'Build', status: 'success' }])).toEqual([])
   })
 
+  // 취소는 백엔드에서 실패와 따로 보고된다(스캔 판정을 남기지 않기 위해). 화면은
+  // 지금처럼 끝나지 못한 단계로 보여 준다 — 대기 중으로 그리면 아직 돌 것처럼 보인다.
+  it('취소된 단계는 실패로 표시한다', () => {
+    expect(
+      buildStageStates(['Build', 'ImageScan'], [
+        { name: 'build', status: 'success' },
+        { name: 'image-scan', status: 'canceled' },
+      ]),
+    ).toEqual(['completed', 'failed'])
+  })
+
   // GitLab·GitHub 은 잡 키(image-scan)로 보고하고 파이프라인 단계는 ImageScan 이다.
   // 대소문자만 맞추면 돌고 있는 스캔 단계가 "모름" 으로 그려진다.
   it('CI 마다 다른 단계 이름 표기를 같은 단계로 맞춘다', () => {

@@ -720,5 +720,16 @@ func (o *Orchestrator) gitlabSharedServiceValues() map[string]any {
 				"https":  o.toolURLScheme() == "https",
 			},
 		},
+		// 레지스트리 인증 realm 은 항상 https 다. 게이트웨이는 설정과 무관하게
+		// HTTPS 리스너를 열고(defaultGatewayBundleManifest), https 로 접속한 엄격한
+		// 클라이언트(Trivy·crane 등 go-containerregistry)는 http realm 을 "not allowed
+		// for a secure registry" 로 거부한다 — kind 스택에서 이미지 스캔이 매번 실패했다.
+		//
+		// GitLab 외부 주소 전체(global.hosts.https)는 건드리지 않는다. 그것을 바꾸면
+		// 러너 clone 과 deploy 잡의 push 가 내부 CA 신뢰 문제에 걸린다. 차트가
+		// 뒤에 /jwt/auth 를 붙이므로 스킴과 호스트만 준다.
+		"registry": map[string]any{
+			"authEndpoint": fmt.Sprintf("https://gitlab.%s", accessDomain),
+		},
 	}
 }

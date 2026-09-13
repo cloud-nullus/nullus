@@ -13,17 +13,27 @@ func TestNormalizeStageStatus_AcrossVocabularies(t *testing.T) {
 		// Jenkins
 		"SUCCESS": CIStageSuccess, "FAILED": CIStageFailed,
 		"IN_PROGRESS": CIStageRunning, "NOT_EXECUTED": CIStageSkipped,
-		"ABORTED": CIStageFailed, "UNSTABLE": CIStageFailed,
+		"ABORTED": CIStageCanceled, "UNSTABLE": CIStageFailed,
 		// GitLab CI
 		"success": CIStageSuccess, "failed": CIStageFailed,
 		"running": CIStageRunning, "pending": CIStageQueued,
 		"skipped": CIStageSkipped, "manual": CIStageSkipped,
+		"canceled": CIStageCanceled,
 		// GitHub Actions
 		"completed": CIStageSuccess, "queued": CIStageQueued,
 		"in_progress": CIStageRunning, "failure": CIStageFailed,
+		"cancelled": CIStageCanceled,
 	}
 	for raw, want := range cases {
 		assert.Equalf(t, want, NormalizeStageStatus(raw), "raw=%q", raw)
+	}
+}
+
+// 취소는 실패가 아니다 — 새 커밋이 앞선 실행을 밀어낸 것이다. 실패로 옮기면
+// 스캔 판정이 error 로 남고 대시보드가 스캐너 장애로 센다.
+func TestNormalizeStageStatus_CanceledIsNotFailure(t *testing.T) {
+	for _, raw := range []string{"ABORTED", "canceled", "cancelled"} {
+		assert.NotEqual(t, CIStageFailed, NormalizeStageStatus(raw), raw)
 	}
 }
 

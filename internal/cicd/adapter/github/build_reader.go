@@ -164,9 +164,12 @@ func jobStatus(status, conclusion string) port.CIStageStatus {
 		return port.CIStageSuccess
 	case "skipped":
 		return port.CIStageSkipped
+	case "cancelled":
+		// 취소는 실패가 아니다 — 새 커밋이 앞선 실행을 밀어낸 것이다.
+		return port.CIStageCanceled
 	case "":
 		return port.CIStageUnknown
-	default: // failure, cancelled, timed_out, startup_failure, action_required, stale
+	default: // failure, timed_out, startup_failure, action_required, stale
 		return port.CIStageFailed
 	}
 }
