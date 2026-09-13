@@ -10,8 +10,9 @@
 
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { CircleAlert, Info, ShieldAlert, TriangleAlert } from "lucide-react";
+import { CircleAlert, Info, ShieldAlert } from "lucide-react";
 import { iconProps } from "../../../components/ui/icon";
+import { StatusIcon } from "../../../components/ui/status-icon";
 import { Badge } from "../../../components/ui/badge";
 import { SeverityCounts } from "../../../components/shared/severity-counts";
 import { formatDate, formatDateTime, resolveLocale } from "../../../lib/locale";
@@ -84,7 +85,7 @@ function ImageScanItemCard({
         )}
         {item.dbStale && (
           <Badge pill className={WARNING_BADGE}>
-            <TriangleAlert {...iconProps("xs")} />
+            <StatusIcon tone="warning" size="xs" inheritColor />
             {t("stackList.imageScans.dbStale")}
           </Badge>
         )}

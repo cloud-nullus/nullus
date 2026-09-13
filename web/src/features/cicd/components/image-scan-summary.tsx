@@ -18,10 +18,10 @@ import {
   ShieldAlert,
   ShieldCheck,
   ShieldX,
-  TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
 import { iconProps } from "../../../components/ui/icon";
+import { StatusIcon } from "../../../components/ui/status-icon";
 import { Badge } from "../../../components/ui/badge";
 import { SeverityCounts } from "../../../components/shared/severity-counts";
 import { formatDate, formatDateTime } from "../../../lib/locale";
@@ -68,7 +68,8 @@ export function ImageScanGateBadge({ scan }: { scan: PipelineImageScan }) {
       </Badge>
       {scan.dbStale && (
         <Badge pill className={TONE_CLASS.warning}>
-          <TriangleAlert {...iconProps("xs")} />
+          {/* 경고 글리프는 상태 아이콘 단일 출처에서 받는다. 배지가 이미 경고색을 칠했다. */}
+          <StatusIcon tone="warning" size="xs" inheritColor />
           {t("cicdListPage.imageScan.dbStale")}
         </Badge>
       )}
