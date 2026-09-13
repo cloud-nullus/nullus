@@ -1024,6 +1024,10 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		if strings.TrimSpace(manifestNamespace) == "" {
 			manifestNamespace = namespace
 		}
+		if normalizedManifest, normalizedAny := normalizeManifestNamespace(manifest, manifestNamespace); normalizedAny {
+			manifest = normalizedManifest
+			slog.Warn("normalized legacy gateway manifest namespace", "namespace", manifestNamespace)
+		}
 		if looksLikeKubeconfig(o.kubeconfig) {
 			filteredManifest, skippedBackendTLSPolicy, filterErr := o.filterOptionalGatewayPolicies(ctx, manifest)
 			if filterErr != nil {
