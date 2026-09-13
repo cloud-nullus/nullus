@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **스택이 설치한 OSS 이미지의 취약점을 스캔해 보고한다** (`internal/stack/**`, `internal/shared/domain`, `db/migrations/000081`, nullus-plan#76·#78): 파이프라인 게이트는 사용자 앱 이미지만 보고, 스택이 설치한 GitLab·Harbor·Argo CD 등의 이미지는 아무도 보지 않았다. 설치 완료 직후 한 번, 이후 `STACK_IMAGE_RESCAN_INTERVAL`(기본 24h)마다 스택 네임스페이스에서 실행 중인 이미지를 digest 단위로 스택 Trivy 서버에 스캔한다. **보고용이라 설치를 막지 않는다** — 업스트림 이미지의 CVE 는 사용자가 고칠 수 없는 경우가 많다. 결과는 `GET /api/v1/stacks/:stackId/image-scans` 와 스택 상세 화면으로 보인다.
+
+  **스캔하지 않는 경우를 숨기지 않는다.** Trivy 를 고르지 않은 스택은 `scanner_not_installed`, 에어갭 설치(`NULLUS_HELM_OCI_REGISTRY`)는 `airgap` 사유로 `not_scanned` 를 돌려준다 — "0건" 으로 보이면 안 된다. 스캔 자체가 실패하면 이전 결과를 지우지 않고, 이미지 하나를 못 스캔하면 `failed` 와 오류를 남기며 건수는 비운다.
+
+  **스택 네임스페이스의 Job 이 스캔한다.** 멀티아치 이미지는 파드가 도는 노드 아키텍처로 스캔한다(Trivy 기본값은 amd64). 결과는 JSON 이 아니라 취약점 하나당 `심각도[+]` 토큰으로 로그에 받는다 — JSON 리포트는 큰 이미지 몇 개만으로 kubelet 로그 상한(10Mi)에서 잘린다. DB 날짜는 서버의 `metadata.json` 에서 읽는다. 결과는 stack 모듈이 소유한 `stack_image_scans` 에 스택 단위로 통째로 교체 저장한다. Trivy 리포트 요약·심각도 건수·DB 신선도는 `internal/shared/domain` 으로 옮겨 cicd 와 같은 방식으로 센다.
+
+  kind(arm64) `harbor-e2e` 스택에서 실측: 이미지 33개 스캔·실패 0, DB 날짜·스캐너 버전 기록, GitLab CE 이미지(`gitlab-toolbox` CRITICAL 61 · HIGH 1569)가 가장 심각했다.
+
 - **이미지 스캔을 파이프라인의 실제 차단 게이트로 만들었다** (`internal/cicd/**`, `internal/shared/domain`, `db/migrations/000077`·`000078`, nullus-plan#76): 스캐너는 스택에서 고르면 설치되지만(#250), 스캐폴딩이 만드는 파이프라인에는 **스캔 단계가 없었다.** 차단 게이트가 실제로는 존재하지 않았다는 뜻이다.
 
   **렌더러 3종이 같은 두 명령을 만든다.** GitLab CI · Jenkins · GitHub Actions 모두 `build → image-scan → deploy` 이고 deploy 를 스캔 잡에 매달아 스캔을 건너뛰고 배포되지 않게 한다. 한 번은 리포트를 남기고 한 번은 `--exit-code 1` 로 판정한다 — 한 번에 하면 차단된 실행에서 무엇에 걸렸는지 알 수 없다. **차단 기준은 스크립트에 박지 않았다.** 심각도와 unfixed 제외를 파이프라인 변수로 두어, 정책을 바꿀 때 재스캐폴딩이 아니라 변수만 갱신하면 된다. kind 에서 **렌더된 명령을 그대로** 돌려 `alpine:3.18` 통과 · `node:16` 차단, client 쪽 DB 다운로드 0건을 확인했다.

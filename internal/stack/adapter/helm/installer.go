@@ -45,6 +45,14 @@ func airgapOCIRegistry() string {
 	return os.Getenv("NULLUS_HELM_OCI_REGISTRY")
 }
 
+// AirgapMode 는 플랫폼이 에어갭 모드로 설치하는지 본다.
+//
+// 차트를 내부 OCI 레지스트리에서 받는 설치가 곧 에어갭 설치다. 설치 이미지 스캔처럼
+// 외부 레지스트리에 닿아야 하는 일은 이 값으로 끈다 — 판단 근거를 한 곳에 둔다.
+func AirgapMode() bool {
+	return airgapOCIRegistry() != ""
+}
+
 // chartBaseName extracts the final path segment of a chart name, stripping any oci:// prefix and host.
 // Examples:
 //

@@ -49,6 +49,13 @@ const (
 	TrivyServicePort = 4954
 )
 
+// TrivyClientImage 는 스택 서버에 붙는 trivy client 이미지다. 서버(스택 차트)와
+// 버전을 맞춘다 — client 와 server 의 버전이 갈리면 스캔 요청이 거절될 수 있다.
+//
+// RuntimeImages 에는 넣지 않는다. 이 이미지를 쓰는 설치 이미지 스캔 Job 은
+// 에어갭에서 돌지 않는다.
+const TrivyClientImage = "aquasec/trivy:0.74.0"
+
 // TrivyServerEndpoint 는 CI 잡의 trivy client 가 붙을 주소다.
 //
 // 스캐너를 고르지 않은 스택에서는 네임스페이스만으로 주소를 만들면 안 된다 —

@@ -29,6 +29,10 @@ var envoyGatewayCertSecretNames = map[string]struct{}{
 	"envoy-rate-limit": {},
 }
 
+// imageScanJobName 은 설치 이미지 스캔 Job 의 이름이자 그 Job 에 붙는
+// app.kubernetes.io/managed-by 값이다(adapter/imagescan).
+const imageScanJobName = "nullus-image-scan"
+
 // openBaoBootstrapLeftovers 는 OpenBao 부트스트랩이 kubectl 로 만드는 것들이다.
 // 소유 표시가 없어 고아로 남는다. 이름만으로 지우지 않고 종류까지 맞춘다 —
 // 사용자가 고른 네임스페이스는 다른 것과 함께 쓰일 수 있다.
@@ -43,6 +47,11 @@ func isInstallLeftoverArtifact(resource namespacedResource) bool {
 	kind, name := splitResourceRef(resource.Ref)
 	if want, ok := openBaoBootstrapLeftovers[name]; ok {
 		return kind == want
+	}
+	// 설치 이미지 스캔 Job. 스캔 도중 API 가 내려가면 끝난 Job 이 남는다. 흔한 이름은
+	// 아니지만 사용자가 고른 네임스페이스라 스캔 Job 표시가 있을 때만 지운다.
+	if kind == "job" && name == imageScanJobName {
+		return resource.Labels["app.kubernetes.io/managed-by"] == imageScanJobName
 	}
 	if kind != "secret" {
 		return false
