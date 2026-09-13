@@ -209,7 +209,7 @@ func (f *BundleFactory) gitLabBundle(
 	// 기록되지 않는다.
 	runs := gitlab.NewBuildReader(client, f.opts.GroupPath)
 
-	return &port.SCMBundle{
+	bundle := &port.SCMBundle{
 		Provisioner:          client,
 		Pipeline:             client,
 		CIBuilds:             runs,
@@ -223,7 +223,36 @@ func (f *BundleFactory) gitLabBundle(
 		AccessDomain:         summary.AccessDomain,
 		ImageScannerEndpoint: summary.ImageScannerEndpoint,
 		GatewayName:          gatewayNameForStack(summary.Name),
-	}, nil
+	}
+	// GitLab 스택도 Harbor·Nexus 를 레지스트리로 고를 수 있다. 빠뜨리면 CI 변수가
+	// 등록되지 않아 build 가 docker login 에서 죽는다.
+	f.attachRegistryCredentials(ctx, bundle, resolver, summary)
+	return bundle, nil
+}
+
+// attachRegistryCredentials 는 스택이 설치한 레지스트리의 자격증명과, 같은
+// 자격증명을 쓰는 이미지 저장소 삭제기를 번들에 붙인다.
+//
+// 자격증명은 플랫폼이 이미 갖고 있다. 사용자에게 다시 받아 적게 하지 않는다 —
+// 화면은 묻지도 않으므로, 받지 못하면 CI 의 docker login 이 빈 변수로 죽는다.
+//
+// 삭제기는 플랫폼이 Harbor 프로젝트를 만들고 이미지를 밀어 넣으면서 정리는 못
+// 하던 것을 메운다. 자격증명을 못 풀면 Images 를 비워 두고, 호출부가 "지우지
+// 못했다" 를 경고로 남긴다 — 조용히 넘기면 사용자는 이미지가 사라진 줄 안다.
+func (f *BundleFactory) attachRegistryCredentials(
+	ctx context.Context,
+	bundle *port.SCMBundle,
+	resolver port.ImageRegistryResolver,
+	summary *port.StackSummary,
+) {
+	if f.registrySecrets == nil {
+		return
+	}
+	creds := registrycreds.New(f.registrySecrets, f.opts.Env, summary.OrgID, summary.ID)
+	bundle.RegistryCredentials = creds
+	if deleter := f.imageDeleterFor(ctx, resolver, creds, summary); deleter != nil {
+		bundle.Images = deleter
+	}
 }
 
 // gitHubBundle 은 외부 GitHub 을 향하는 묶음을 만든다.
@@ -375,24 +404,7 @@ func (f *BundleFactory) giteaBundle(
 		GatewayName:          gatewayNameForStack(summary.Name),
 	}
 
-	// 스택이 설치한 레지스트리의 자격증명은 플랫폼이 이미 갖고 있다. 사용자에게
-	// 다시 받아 적게 하지 않는다 — 화면은 묻지도 않으므로, 받지 못하면 CI 의
-	// docker login 이 빈 변수로 죽는다.
-	if f.registrySecrets != nil {
-		creds := registrycreds.New(f.registrySecrets, f.opts.Env, summary.OrgID, summary.ID)
-		bundle.RegistryCredentials = creds
-
-		// 같은 자격증명으로 이미지 저장소도 지운다.
-		//
-		// 플랫폼이 Harbor 프로젝트를 만들고 이미지를 밀어 넣으면서 정리는 못
-		// 했다. 파이프라인을 지워도 이미지가 남아 디스크는 아무도 안 보는
-		// 사이에 찬다. 자격증명을 못 풀면 Images 를 비워 두고, 호출부가
-		// "지우지 못했다" 를 경고로 남긴다 — 조용히 넘기면 사용자는 이미지가
-		// 사라진 줄 안다.
-		if deleter := f.imageDeleterFor(ctx, resolver, creds, summary); deleter != nil {
-			bundle.Images = deleter
-		}
-	}
+	f.attachRegistryCredentials(ctx, bundle, resolver, summary)
 
 	// Jenkins 가 배선돼 있어야 job 을 만들 수 있다. 없으면 CIJobs 를 비워 두고
 	// 리포·스캐폴딩까지만 진행한다 — 조용히 성공한 것처럼 보이지 않도록
