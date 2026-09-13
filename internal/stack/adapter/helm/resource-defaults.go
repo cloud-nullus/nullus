@@ -252,6 +252,11 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 		return map[string]any{
 			"resources": resources,
 		}
+	// Trivy 서버는 파드 하나다(StatefulSet trivy-0). 벡터를 나누지 않는다.
+	case "installing_trivy":
+		return map[string]any{
+			"resources": resources,
+		}
 	case "installing_prometheus":
 		return map[string]any{
 			"prometheus": map[string]any{
@@ -334,6 +339,10 @@ func (o *Orchestrator) resourceDefaultKeyForStep(step string, cfg *domain.StackC
 		return "jenkins"
 	case "installing_argocd":
 		return "argocd"
+	// 키가 없으면 trivy 시드(000079)와 계획값이 한 줄도 실리지 않고 차트 기본값
+	// (메모리 상한 1Gi)으로 깔려 취약점 DB 캐시가 밀려난다.
+	case "installing_trivy":
+		return "trivy"
 	case stepInstallingRunner:
 		return "gitlab-runner"
 	case "installing_prometheus":

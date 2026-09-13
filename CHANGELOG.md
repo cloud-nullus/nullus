@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **산출물은 사용자 파이프라인이 만든 입력으로 다룬다.** 파일은 32MiB 까지만 읽고, GitHub zip 은 헤더 크기와 실제 해제 크기를 모두 거른다. 다운로드 주소는 API 응답 본문에서 오므로 **API 와 다른 호스트면 토큰을 붙여 보내지 않는다.**
 
+- **Trivy 서버 자원 기본값을 실측으로 넣었다** (`db/migrations/000079`, `resource-defaults.go`, nullus-plan#76): 스캐너 단계는 자원 기본값 키가 없어 **계획을 세워도 차트 기본값(메모리 상한 1Gi)으로 깔렸다.** kind 에서 4 동시 스캔 × 2회를 cgroup v2 로 직접 읽었다 — anon 317Mi, 취약점 DB 파일 캐시 1.3Gi, CPU 1초 최대 927m(스로틀 0), DB 디스크 1.3G. 첫 측정은 상한(1Gi/1core)에 눌린 값이라 버리고 상한을 풀어 다시 쟀다. 기본값은 0.25/1 core · 0.5/2 Gi · 5/10 Gi 이고, 2Gi 는 anon 과 DB 캐시가 함께 들어가는 크기다(1Gi 로도 OOM 은 없지만 캐시가 밀려난다). 관리자가 먼저 넣은 값은 덮지 않는다(`ON CONFLICT DO NOTHING`, 실제 Postgres 18 에서 up/down/보존 확인).
+
 - **Zadara PoC 를 OpenTofu + Kubespray 로 재구축했다** (`deploy/csp/zadara/opentofu/` 신규, `deploy/csp/zadara/{README,INSTALL,INSTALL_LOG_2026-09-13}.md`, `docs/50_운영/zadara_{opentofu_design,cloud_deployment_plan}.md`): 손으로 만든 node-10/11/20/21 두 클러스터를 2026-09-13 에 폐기하고 **m1(4vCPU/8GB, control-plane+worker+bastion) + w1(16vCPU/32GB, private+NAT)** 단일 클러스터로 바꿨다. VPC/서브넷/NAT/보안 그룹/EIP/VM 과 Kubespray 인벤토리까지가 IaC 소유이고 Kubernetes·Nullus 는 기존처럼 Kubespray·Helm 이 맡는다.
 
   **실제 apply 로 드러난 zCompute 의 AWS 호환 API 차이를 코드에 못박았다.** 보안 그룹 생성 요청의 tags(D7)와 `AssociatePublicIpAddress`(D8) 는 400 으로 거부되고, root 볼륨의 `delete_on_termination=false` 는 무시된 뒤 ModifyInstance 가 끝나지 않는다(D9). 공인 IP 는 `aws_eip.public` 을 `prevent_destroy` 로 보호하고 association 만 VM 에 묶어 **VM 을 교체해도 121.78.39.241 이 유지**되게 했다(D10). SSH 는 운영자가 여럿이라 22 를 전체 개방하되 키 인증만 허용한다.
