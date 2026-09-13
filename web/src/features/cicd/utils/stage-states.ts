@@ -15,6 +15,16 @@ export type StageState =
  *
  * 스텝 정보가 없으면 'unknown' 이다 — 초록 체크 대신 모른다고 말한다.
  */
+/**
+ * stageKey 는 CI 마다 다르게 적는 단계 이름을 비교용 키로 만든다.
+ *
+ * Jenkins 는 stage('ImageScan'), GitLab·GitHub 은 잡 키 image-scan 으로 보고한다.
+ * 대소문자만 맞추면 같은 단계가 "모름" 으로 그려진다. 서버의 port.StageKey 와 같은 규칙이다.
+ */
+function stageKey(name: string): string {
+  return name.trim().toLowerCase().replace(/[\s_-]/g, '')
+}
+
 export function buildStageStates(
   stages: string[],
   steps: { name?: string; status?: string }[],
@@ -24,11 +34,11 @@ export function buildStageStates(
 
   const byName = new Map<string, string>()
   for (const step of steps) {
-    if (step.name) byName.set(step.name.toLowerCase(), (step.status ?? '').toLowerCase())
+    if (step.name) byName.set(stageKey(step.name), (step.status ?? '').toLowerCase())
   }
 
   return stages.map((stage) => {
-    const status = byName.get(stage.toLowerCase())
+    const status = byName.get(stageKey(stage))
     if (status === undefined) return 'unknown'
     if (status === 'success' || status === 'completed') return 'completed'
     if (status === 'failed' || status === 'error') return 'failed'

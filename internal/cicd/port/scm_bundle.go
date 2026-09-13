@@ -34,6 +34,9 @@ type SCMBundle struct {
 	CITrigger CIBuildTrigger
 	// CIBuilds 는 CI 서버의 빌드 이력을 읽는다. 지원하지 않으면 nil.
 	CIBuilds CIBuildReader
+	// CIArtifacts 는 실행이 남긴 산출물(스캔 리포트)을 읽는다. 지원하지 않으면 nil —
+	// 스캔 판정은 단계 결과만으로 남고 건수는 비어 있다.
+	CIArtifacts CIArtifactReader
 	// CIBaseURL 은 CI 서버의 주소다. webhook 대상 주소를 만드는 데 쓴다.
 	CIBaseURL string
 	// SCMInClusterURL 은 클러스터 안에서 SCM 에 닿는 주소다.
