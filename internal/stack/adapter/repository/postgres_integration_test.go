@@ -136,6 +136,47 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 		assert.NotEmpty(t, tool.AppVersion)
 	})
 
+	// 설치 시간 컬럼은 분 단위다 — 시드가 110 같은 분 값을 넣는다. 저장소가
+	// time.Duration 을 나노초 그대로 쓰고 읽어서, 화면에서 템플릿을 만들면 int4 를
+	// 넘쳐 "greater than maximum value for int4" 로 거절됐고 시드 템플릿은 110ns 로
+	// 읽혔다.
+	t.Run("template repository stores estimated install time in minutes", func(t *testing.T) {
+		repo := NewPostgresTemplateRepository(pool)
+
+		seeded, err := repo.GetByID(ctx, "gitlab-harbor-v1")
+		require.NoError(t, err)
+		assert.Equal(t, 110*time.Minute, seeded.EstimatedInstallTime)
+
+		id := "tpl-" + uuid.NewString()
+		require.NoError(t, repo.Create(ctx, &domain.Template{
+			ID:          id,
+			Name:        "GitLab + Harbor + Trivy",
+			Description: "integration",
+			Tools: []domain.ToolConfig{
+				{Category: "image_scanner", Name: "Trivy", HelmVersion: "0.26.0", AppVersion: "0.74.0"},
+			},
+			EstimatedInstallTime: 110 * time.Minute,
+			RecommendedUseCase:   "integration",
+			MinResources:         "integration",
+		}))
+		t.Cleanup(func() { _ = repo.Delete(context.Background(), id) })
+
+		got, err := repo.GetByID(ctx, id)
+		require.NoError(t, err)
+		assert.Equal(t, 110*time.Minute, got.EstimatedInstallTime)
+
+		var stored int
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT estimated_install_time FROM golden_path_templates WHERE id = $1`, id).Scan(&stored))
+		assert.Equal(t, 110, stored, "시드와 같은 분 단위로 저장해야 한다")
+
+		got.EstimatedInstallTime = 45 * time.Minute
+		require.NoError(t, repo.Update(ctx, got))
+		updated, err := repo.GetByID(ctx, id)
+		require.NoError(t, err)
+		assert.Equal(t, 45*time.Minute, updated.EstimatedInstallTime)
+	})
+
 	t.Run("history repository save list and get versions", func(t *testing.T) {
 		repo := NewPostgresHistoryRepository(pool)
 
