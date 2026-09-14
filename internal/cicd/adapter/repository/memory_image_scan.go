@@ -51,6 +51,13 @@ func (r *MemoryImageScanResultRepository) ListByPipelineID(_ context.Context, pi
 	return out, nil
 }
 
+// GetByID 는 결과 하나다. 없으면 nil, nil 이다.
+func (r *MemoryImageScanResultRepository) GetByID(_ context.Context, id string) (*domain.ImageScanResult, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return cloneImageScanResult(r.rows[strings.TrimSpace(id)]), nil
+}
+
 // cloneImageScanResult 는 포인터 필드까지 복제한다. 공유하면 호출부가 고친 값이
 // 저장된 기록까지 바꾸고, DB 저장소에서는 일어나지 않는 이유로 테스트가 초록이 된다.
 func cloneImageScanResult(in *domain.ImageScanResult) *domain.ImageScanResult {
@@ -65,6 +72,10 @@ func cloneImageScanResult(in *domain.ImageScanResult) *domain.ImageScanResult {
 	if in.DBUpdatedAt != nil {
 		t := *in.DBUpdatedAt
 		cp.DBUpdatedAt = &t
+	}
+	if in.ReportRef != nil {
+		ref := *in.ReportRef
+		cp.ReportRef = &ref
 	}
 	return &cp
 }

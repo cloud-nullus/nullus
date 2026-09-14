@@ -418,6 +418,8 @@ func main() {
 		// GitOps 경로의 실행 기록은 CI 서버에만 있다. 들이지 않으면 빌드가
 		// 성공해도 화면의 실행 통계가 0 으로 남는다.
 		WithRunSync(runSyncUC).
+		// 스캔 결과의 취약점 목록. 저장하지 않고 볼 때 CI 리포트를 다시 읽는다.
+		WithScanVulnerabilities(cicduc.NewScanVulnerabilities(pgPipelineRepo, pgImageScanRepo, cicdBundleFactory)).
 		// 직접 배포가 실제로 클러스터에 적용하도록 한다. 없으면 배포가
 		// 실패한다 — 적용 없이 성공으로 기록하는 것보다 낫다.
 		WithManifestApplier(manifestApplier).

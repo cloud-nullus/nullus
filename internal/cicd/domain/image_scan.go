@@ -77,6 +77,25 @@ type ImageScanResult struct {
 	GateResult GateResult `json:"gate_result"`
 	ReportURI  string     `json:"report_uri,omitempty"`
 	ScannedAt  time.Time  `json:"scanned_at"`
+
+	// ReportRef 는 CI 리포트를 다시 읽을 위치다. 취약점 목록은 볼 때 리포트를 다시
+	// 내려받아 만든다(원본은 DB 에 넣지 않는다, 설계 §8). 화면에는 내보내지 않는다.
+	ReportRef *ScanReportRef `json:"-"`
+}
+
+// ScanReportRef 는 CI 가 남긴 스캔 리포트의 위치다.
+//
+// CI 마다 산출물을 묶는 단위가 달라(GitLab 잡, GitHub 실행, Jenkins 빌드) 셋에 필요한
+// 식별자를 모두 담는다.
+type ScanReportRef struct {
+	JobName     string `json:"job_name"`
+	Branch      string `json:"branch,omitempty"`
+	BuildID     string `json:"build_id,omitempty"`
+	BuildNumber int    `json:"build_number"`
+	StageID     string `json:"stage_id,omitempty"`
+	StageName   string `json:"stage_name,omitempty"`
+	Artifact    string `json:"artifact,omitempty"`
+	Path        string `json:"path"`
 }
 
 // TrivyReportSummary 는 Trivy JSON 리포트에서 판정에 필요한 것만 뽑은 것이다.

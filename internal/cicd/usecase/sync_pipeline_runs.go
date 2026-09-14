@@ -174,15 +174,23 @@ func (uc *SyncPipelineRuns) recordImageScans(
 			}
 			if existing := withReport[id]; existing != nil {
 				// 이미 리포트까지 읽었다. 화면을 열 때마다 동기화가 도는데,
-				// 끝난 실행의 리포트를 매번 다시 내려받을 이유가 없다. 링크 기능 전에
-				// 기록한 실행이면 링크만 채운다.
+				// 끝난 실행의 리포트를 매번 다시 내려받을 이유가 없다. 링크·리포트 위치
+				// 기능 전에 기록한 실행이면 그것만 채운다.
+				changed := false
 				if existing.ReportURI == "" {
 					if link := uc.reportLink(ref); link != "" {
 						existing.ReportURI = link
-						if err := uc.imageScans.Upsert(ctx, existing); err != nil {
-							slog.Warn("이미지 스캔 리포트 링크 기록 실패",
-								"pipeline_id", pipelineID, "deployment_id", deploymentID, "error", err)
-						}
+						changed = true
+					}
+				}
+				if existing.ReportRef == nil {
+					existing.ReportRef = reportRefFrom(ref)
+					changed = true
+				}
+				if changed {
+					if err := uc.imageScans.Upsert(ctx, existing); err != nil {
+						slog.Warn("이미지 스캔 리포트 위치 기록 실패",
+							"pipeline_id", pipelineID, "deployment_id", deploymentID, "error", err)
 					}
 				}
 				continue
@@ -205,6 +213,7 @@ func (uc *SyncPipelineRuns) recordImageScans(
 			// 리포트를 읽은 실행에만 링크를 건다 — 리포트가 없으면 열어도 없는 파일이다.
 			if result.Counts != nil {
 				result.ReportURI = uc.reportLink(ref)
+				result.ReportRef = reportRefFrom(ref)
 			}
 
 			if err := uc.imageScans.Upsert(ctx, result); err != nil {
