@@ -1044,14 +1044,16 @@
         "failed": "스캔 실패",
         "failedNoReason": "스캐너가 실패 이유를 알려 주지 않았습니다.",
         "fixable": "수정 가능: 치명 {{critical}} · 높음 {{high}} · 중간 {{medium}} · 낮음 {{low}}",
+        "unknown": "알 수 없음",
+        "scanned": "스캔됨"
+      },
+      "columns": {
+        "image": "이미지",
         "release": "릴리스",
-        "workloads": "워크로드",
-        "digest": "다이제스트",
-        "scanner": "스캐너",
-        "dbUpdatedAt": "취약점 DB",
-        "scannedAt": "스캔 시각",
-        "unknown": "알 수 없음"
-      }
+        "fixable": "수정 가능",
+        "status": "상태"
+      },
+      "summaryScanner": "스캐너 {{scanner}} · 취약점 DB {{db}}"
     }
   },
   "deploy": {

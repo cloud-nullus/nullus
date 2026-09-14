@@ -7,16 +7,22 @@
 // "스캔하지 않음" 과 "취약점 0" 을 섞지 않는 것이 이 화면의 핵심이다. Trivy 를 고르지 않은
 // 스택이나 폐쇄망 설치는 스캔 자체를 안 한다 — 그때 요약 자리에 0 을 그리면 안전한 스택으로
 // 읽힌다. 건수를 모르는 항목도 같은 이유로 0 대신 "건수 모름" 을 보여준다.
+//
+// 이미지는 그리드로 보인다. 스택 하나가 수십 개의 이미지를 돌린다(GitLab 스택 33개) —
+// 카드를 세로로 쌓으면 어느 이미지가 더 위험한지 건수를 나란히 비교할 수 없다.
 
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { CircleAlert, Info, ShieldAlert } from "lucide-react";
 import { iconProps } from "../../../components/ui/icon";
-import { StatusIcon } from "../../../components/ui/status-icon";
 import { Badge } from "../../../components/ui/badge";
+import { StatusIcon } from "../../../components/ui/status-icon";
 import { SeverityCounts } from "../../../components/shared/severity-counts";
+import { tableHeadRowClass, tdClass, thClass } from "../../../components/shared/table-chrome";
 import { formatDate, formatDateTime, resolveLocale } from "../../../lib/locale";
+import { cn } from "../../../lib/utils";
 import { shortImageDigest } from "../../../lib/vulnerability-counts";
+import type { VulnerabilityCounts } from "../../../types";
 import { useStackImageScans } from "../api/stack-api";
 import type {
   StackImageScanItem,
@@ -29,6 +35,17 @@ const WARNING_BADGE =
 // 스캔 실패는 취약점이 아니다. 위험색을 쓰면 실패한 이미지가 가장 위험해 보인다.
 const NEUTRAL_BADGE =
   "bg-[color-mix(in_srgb,_var(--color-text-secondary)_15%,_transparent)] text-[var(--color-text-secondary)]";
+
+// 건수 열. 색은 건수가 있는 칸에만 준다 — 모든 칸이 빨강이면 색이 뜻을 잃는다.
+const SEVERITY_COLUMNS: { key: keyof VulnerabilityCounts; activeClass: string }[] = [
+  { key: "critical", activeClass: "font-semibold text-[var(--color-error)]" },
+  { key: "high", activeClass: "font-semibold text-[var(--color-warning)]" },
+  { key: "medium", activeClass: "text-[var(--color-text-primary)]" },
+  { key: "low", activeClass: "text-[var(--color-text-primary)]" },
+  { key: "unknown", activeClass: "text-[var(--color-text-primary)]" },
+];
+// 건수 열 전부와 수정 가능 열. 실패·건수 모름 행은 이 칸들을 합쳐 한 번만 설명한다.
+const COUNT_SPAN = SEVERITY_COLUMNS.length + 1;
 
 function Notice({ children }: { children: ReactNode }) {
   return (
@@ -53,99 +70,146 @@ function statusNoticeKey(report: StackImageScanReport): string | null {
   }
 }
 
-function ImageScanItemCard({
-  item,
-  locale,
-}: {
-  item: StackImageScanItem;
-  locale: string;
-}) {
+// 스캐너 버전과 취약점 DB 날짜는 한 번의 스캔에서 모든 이미지가 같다. 행마다 되풀이하지
+// 않고 요약에 한 번 둔다. 드물게 섞여 있으면 모두 적는다.
+function scanSource(items: StackImageScanItem[], locale: string, unknown: string) {
+  const scanners = [...new Set(items.map((i) => i.scannerVersion).filter(Boolean))];
+  const dbDates = items.map((i) => i.dbUpdatedAt).filter((d): d is string => Boolean(d)).sort();
+  return {
+    scanner: scanners.length > 0 ? scanners.map((v) => `trivy ${v}`).join(", ") : unknown,
+    db: dbDates.length > 0 ? formatDate(dbDates[dbDates.length - 1], locale) : unknown,
+  };
+}
+
+function ImageScanRow({ item }: { item: StackImageScanItem }) {
   const { t } = useTranslation();
   const failed = item.status === "failed";
-  const labelClass = "text-[var(--color-text-secondary)]";
-  const valueClass = "m-0 min-w-0 text-[var(--color-text-primary)]";
+  const counts = failed ? undefined : item.counts;
+  const fixable = counts ? item.fixableCounts : undefined;
+  const fixableTotal = fixable
+    ? fixable.critical + fixable.high + fixable.medium + fixable.low + fixable.unknown
+    : undefined;
 
   return (
-    <li
-      data-testid="stack-image-scan-item"
-      className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3"
-    >
-      <div className="flex flex-wrap items-center gap-2">
+    <tr data-testid="stack-image-scan-item" className="align-top">
+      <td className={cn(tdClass, "min-w-[240px]")}>
         <span
           data-testid="stack-image-scan-image"
-          className="min-w-0 break-all font-mono text-[12px] font-semibold text-[var(--color-text-primary)]"
+          className="block break-all font-mono text-[12px] font-semibold text-[var(--color-text-primary)]"
         >
           {item.image}
         </span>
-        {failed && (
-          <Badge pill className={NEUTRAL_BADGE}>
-            <CircleAlert {...iconProps("xs")} />
-            {t("stackList.imageScans.item.failed")}
-          </Badge>
+        {item.imageDigest && (
+          <code
+            title={item.imageDigest}
+            className="mt-0.5 block font-mono text-[11px] text-[var(--color-text-secondary)]"
+          >
+            {shortImageDigest(item.imageDigest)}
+          </code>
         )}
-        {item.dbStale && (
-          <Badge pill className={WARNING_BADGE}>
-            <StatusIcon tone="warning" size="xs" inheritColor />
-            {t("stackList.imageScans.dbStale")}
-          </Badge>
+      </td>
+      <td className={cn(tdClass, "min-w-[140px]")}>
+        <span className="block text-[12px] text-[var(--color-text-primary)]">{item.release ?? "-"}</span>
+        {item.workloads.length > 0 && (
+          <span className="mt-0.5 block break-all font-mono text-[11px] text-[var(--color-text-secondary)]">
+            {item.workloads.join(", ")}
+          </span>
         )}
-      </div>
+      </td>
 
-      {/* 실패한 스캔의 건수는 없다. 오류를 대신 보여준다. */}
       {failed ? (
-        <p className="mb-0 mt-2 break-all text-[12px] text-[var(--color-text-secondary)]">
+        // 실패한 스캔의 건수는 없다. 건수 칸을 합쳐 오류를 대신 보여준다.
+        <td colSpan={COUNT_SPAN} className={cn(tdClass, "break-all text-[12px] text-[var(--color-text-secondary)]")}>
           {item.error || t("stackList.imageScans.item.failedNoReason")}
-        </p>
+        </td>
+      ) : !counts ? (
+        <td colSpan={COUNT_SPAN} className={tdClass}>
+          <SeverityCounts counts={undefined} />
+        </td>
       ) : (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <SeverityCounts counts={item.counts} />
-          {item.counts && item.fixableCounts && (
-            <span className="text-[11px] text-[var(--color-text-secondary)]">
-              {t("stackList.imageScans.item.fixable", { ...item.fixableCounts })}
-            </span>
-          )}
-        </div>
+        <>
+          {SEVERITY_COLUMNS.map(({ key, activeClass }) => {
+            const label = `${t(`common.vulnerability.${key}`)} ${counts[key]}`;
+            return (
+              <td key={key} className={cn(tdClass, "text-right tabular-nums")}>
+                <span
+                  aria-label={label}
+                  title={label}
+                  className={counts[key] > 0 ? activeClass : "text-[var(--color-text-muted)]"}
+                >
+                  {counts[key]}
+                </span>
+              </td>
+            );
+          })}
+          <td className={cn(tdClass, "text-right tabular-nums")}>
+            {fixable ? (
+              <span title={t("stackList.imageScans.item.fixable", { ...fixable })}>{fixableTotal}</span>
+            ) : (
+              "-"
+            )}
+          </td>
+        </>
       )}
 
-      <dl className="mb-0 mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[12px]">
-        <dt className={labelClass}>{t("stackList.imageScans.item.release")}</dt>
-        <dd className={valueClass}>{item.release ?? "-"}</dd>
-        <dt className={labelClass}>{t("stackList.imageScans.item.workloads")}</dt>
-        <dd className={`${valueClass} break-all font-mono`}>
-          {item.workloads.length > 0 ? item.workloads.join(", ") : "-"}
-        </dd>
-        <dt className={labelClass}>{t("stackList.imageScans.item.digest")}</dt>
-        <dd className={valueClass}>
-          {item.imageDigest ? (
-            <code title={item.imageDigest} className="font-mono">
-              {shortImageDigest(item.imageDigest)}
-            </code>
+      <td className={tdClass}>
+        <span className="inline-flex flex-wrap items-center gap-1">
+          {failed ? (
+            <Badge pill className={NEUTRAL_BADGE}>
+              <CircleAlert {...iconProps("xs")} />
+              {t("stackList.imageScans.item.failed")}
+            </Badge>
           ) : (
-            "-"
-          )}
-        </dd>
-        <dt className={labelClass}>{t("stackList.imageScans.item.scanner")}</dt>
-        {/* 설치 이미지 스캔은 스택의 Trivy 로만 돈다(reason 이 scanner_not_installed 인 이유). */}
-        <dd className={valueClass}>
-          {item.scannerVersion ? `trivy ${item.scannerVersion}` : "-"}
-        </dd>
-        <dt className={labelClass}>{t("stackList.imageScans.item.dbUpdatedAt")}</dt>
-        <dd className={valueClass}>
-          {item.dbUpdatedAt
-            ? formatDate(item.dbUpdatedAt, locale)
-            : t("stackList.imageScans.item.unknown")}
-          {item.dbStale && (
-            <span className="ml-2 text-[11px] text-[var(--color-warning)]">
-              {t("stackList.imageScans.dbStaleHint")}
+            <span className="text-[12px] text-[var(--color-text-secondary)]">
+              {t("stackList.imageScans.item.scanned")}
             </span>
           )}
-        </dd>
-        <dt className={labelClass}>{t("stackList.imageScans.item.scannedAt")}</dt>
-        <dd className={valueClass}>
-          {item.scannedAt ? formatDateTime(item.scannedAt, locale) : "-"}
-        </dd>
-      </dl>
-    </li>
+          {item.dbStale && (
+            <Badge pill className={WARNING_BADGE} title={t("stackList.imageScans.dbStaleHint")}>
+              <StatusIcon tone="warning" size="xs" inheritColor />
+              {t("stackList.imageScans.dbStale")}
+            </Badge>
+          )}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
+function ImageScanGrid({ items }: { items: StackImageScanItem[] }) {
+  const { t } = useTranslation();
+  const headers = [
+    { key: "image", label: t("stackList.imageScans.columns.image"), numeric: false },
+    { key: "release", label: t("stackList.imageScans.columns.release"), numeric: false },
+    ...SEVERITY_COLUMNS.map(({ key }) => ({
+      key,
+      label: t(`common.vulnerability.${key}`),
+      numeric: true,
+    })),
+    { key: "fixable", label: t("stackList.imageScans.columns.fixable"), numeric: true },
+    { key: "status", label: t("stackList.imageScans.columns.status"), numeric: false },
+  ];
+
+  return (
+    // 좁은 화면에서는 표가 가로로 스크롤된다. 열을 접으면 건수를 나란히 비교할 수 없다.
+    <div className="overflow-x-auto rounded-lg border border-[var(--color-border-default)]">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className={tableHeadRowClass}>
+            {headers.map((h) => (
+              <th key={h.key} scope="col" className={cn(thClass, h.numeric && "text-right")}>
+                {h.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, index) => (
+            <ImageScanRow key={`${item.release ?? ""}|${item.image}|${index}`} item={item} />
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -163,6 +227,7 @@ function ReportBody({
   // not_scanned 인데 요약이 실려 와도 그리지 않는다. 스캔하지 않은 스택에 숫자가
   // 보이면 그 숫자를 믿게 된다.
   const summary = report.status === "not_scanned" ? undefined : report.summary;
+  const source = scanSource(items, locale, t("stackList.imageScans.item.unknown"));
 
   return (
     <>
@@ -186,20 +251,15 @@ function ReportBody({
           <p className="mb-0 mt-2 text-[11px] text-[var(--color-text-secondary)]">
             {t("stackList.imageScans.summaryHint")}
           </p>
+          {items.length > 0 && (
+            <p className="mb-0 mt-1 text-[11px] text-[var(--color-text-secondary)]">
+              {t("stackList.imageScans.summaryScanner", source)}
+            </p>
+          )}
         </div>
       )}
 
-      {report.status !== "not_scanned" && items.length > 0 && (
-        <ul className="m-0 flex list-none flex-col gap-2 p-0">
-          {items.map((item, index) => (
-            <ImageScanItemCard
-              key={`${item.release ?? ""}|${item.image}|${index}`}
-              item={item}
-              locale={locale}
-            />
-          ))}
-        </ul>
-      )}
+      {report.status !== "not_scanned" && items.length > 0 && <ImageScanGrid items={items} />}
 
       {report.status === "scanned" && items.length === 0 && (
         <Notice>{t("stackList.imageScans.empty")}</Notice>

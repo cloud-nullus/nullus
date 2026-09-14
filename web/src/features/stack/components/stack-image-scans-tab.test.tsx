@@ -97,6 +97,25 @@ describe('StackImageScansTab', () => {
     expect(within(summary).getByLabelText('Unknown severity 2')).toBeTruthy()
     expect(within(summary).getByText(/include vulnerabilities without an available fix/)).toBeTruthy()
     expect(within(summary).getByText(/Last scanned/)).toBeTruthy()
+    // 스캐너와 DB 날짜는 이미지마다 같다. 행마다 되풀이하지 않고 요약에 한 번 둔다.
+    expect(within(summary).getByText(/trivy 0\.74\.0/)).toBeTruthy()
+    expect(within(summary).getByText(/Vulnerability DB/)).toBeTruthy()
+  })
+
+  // 이미지가 수십 개다(GitLab 스택 33개). 카드 목록은 건수를 나란히 비교할 수 없어 그리드로 보인다.
+  it('이미지를 그리드로 보이고 심각도별 열을 둔다', () => {
+    mockReport(report({ items: [item('docker.io/bitnami/postgresql:16.4.0')], total: 1 }))
+
+    render(<StackImageScansTab stackId="stk_1" />)
+
+    const grid = screen.getByRole('table')
+    for (const name of ['Image', 'Release', 'Critical', 'High', 'Medium', 'Low', 'Fixable', 'Status']) {
+      expect(within(grid).getByRole('columnheader', { name }), name).toBeTruthy()
+    }
+    const row = screen.getByTestId('stack-image-scan-item')
+    expect(row.tagName).toBe('TR')
+    expect(within(row).getByText('sha256:abcdef012345')).toBeTruthy()
+    expect(within(row).getByText('nullus-postgresql-0')).toBeTruthy()
   })
 
   it('항목을 심각도 순(Critical, High 많은 순)으로 보여준다', () => {
@@ -153,8 +172,8 @@ describe('StackImageScansTab', () => {
     expect(within(unknown).getByText('Counts unknown')).toBeTruthy()
     expect(within(unknown).queryByLabelText(/Critical/)).toBeNull()
     expect(within(known).getByLabelText('High 2')).toBeTruthy()
-    expect(within(known).getByText(/Fixable/)).toBeTruthy()
-    expect(within(known).getByText('trivy 0.74.0')).toBeTruthy()
+    // 고칠 수 있는 건수는 합계를 칸에, 심각도별 내역은 툴팁에 둔다.
+    expect(within(known).getByTitle('Fixable: Critical 0 · High 1 · Medium 2 · Low 0')).toBeTruthy()
   })
 
   it('취약점 DB 가 오래됐으면 경고를 붙인다', () => {

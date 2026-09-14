@@ -1044,14 +1044,16 @@
         "failed": "Scan failed",
         "failedNoReason": "The scanner did not report a reason.",
         "fixable": "Fixable: Critical {{critical}} · High {{high}} · Medium {{medium}} · Low {{low}}",
+        "unknown": "Unknown",
+        "scanned": "Scanned"
+      },
+      "columns": {
+        "image": "Image",
         "release": "Release",
-        "workloads": "Workloads",
-        "digest": "Digest",
-        "scanner": "Scanner",
-        "dbUpdatedAt": "Vulnerability DB",
-        "scannedAt": "Scanned",
-        "unknown": "Unknown"
-      }
+        "fixable": "Fixable",
+        "status": "Status"
+      },
+      "summaryScanner": "Scanner {{scanner}} · Vulnerability DB {{db}}"
     }
   },
   "deploy": {
