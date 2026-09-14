@@ -47,6 +47,30 @@ const SEVERITY_COLUMNS: { key: keyof VulnerabilityCounts; activeClass: string }[
 // 건수 열 전부와 수정 가능 열. 실패·건수 모름 행은 이 칸들을 합쳐 한 번만 설명한다.
 const COUNT_SPAN = SEVERITY_COLUMNS.length + 1;
 
+// 열 너비(px). 이미지 열은 정하지 않는다 — 남는 폭을 전부 가져간다.
+//
+// 브라우저에 맡기면 내용 길이로 폭을 나눈다. 워크로드 이름이 긴 릴리스 열이 이미지보다
+// 넓어지고, 레지스트리 경로가 긴 이미지 이름은 두세 줄로 접히고, 상태 열은 "스캔됨" 이
+// 두 줄로 꺾일 만큼(약 50px) 좁아졌다.
+//
+// 기준은 표 폭 약 1080px 화면이다. 릴리스는 가장 긴 워크로드 이름
+// (gitlab-sidekiq-all-in-1-v2)이 한 줄에 들어가는 폭, 상태는 그때의 1.5배다.
+// 건수 열은 한국어 머리글과 네 자리 숫자가 한 줄에 들어가는 폭이다.
+const COLUMN_WIDTH: Record<string, number> = {
+  release: 200,
+  critical: 64,
+  high: 72,
+  medium: 64,
+  low: 64,
+  unknown: 96,
+  fixable: 88,
+  status: 75,
+};
+// 이미지 열이 이보다 좁아지면 표 전체가 가로로 스크롤된다. 기준 화면에서는 스크롤이 없다.
+const IMAGE_MIN_WIDTH = 320;
+const TABLE_MIN_WIDTH =
+  IMAGE_MIN_WIDTH + Object.values(COLUMN_WIDTH).reduce((sum, w) => sum + w, 0);
+
 function Notice({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-start gap-2 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-sunken)] px-3 py-2.5 text-[12px] text-[var(--color-text-secondary)]">
@@ -92,7 +116,7 @@ function ImageScanRow({ item }: { item: StackImageScanItem }) {
 
   return (
     <tr data-testid="stack-image-scan-item" className="align-top">
-      <td className={cn(tdClass, "min-w-[240px]")}>
+      <td className={tdClass}>
         <span
           data-testid="stack-image-scan-image"
           className="block break-all font-mono text-[12px] font-semibold text-[var(--color-text-primary)]"
@@ -108,10 +132,15 @@ function ImageScanRow({ item }: { item: StackImageScanItem }) {
           </code>
         )}
       </td>
-      <td className={cn(tdClass, "min-w-[140px]")}>
+      <td className={tdClass}>
         <span className="block text-[12px] text-[var(--color-text-primary)]">{item.release ?? "-"}</span>
+        {/* 공통 베이스 이미지는 워크로드 여러 개가 함께 쓴다(gitlab-base 7개, argocd 6개).
+            좁은 릴리스 열에서 전부 펼치면 행이 여덟 줄로 늘어나므로 두 줄로 줄이고 전체는 툴팁에 둔다. */}
         {item.workloads.length > 0 && (
-          <span className="mt-0.5 block break-all font-mono text-[11px] text-[var(--color-text-secondary)]">
+          <span
+            title={item.workloads.join(", ")}
+            className="mt-0.5 line-clamp-2 break-all font-mono text-[11px] text-[var(--color-text-secondary)]"
+          >
             {item.workloads.join(", ")}
           </span>
         )}
@@ -155,8 +184,9 @@ function ImageScanRow({ item }: { item: StackImageScanItem }) {
       <td className={tdClass}>
         <span className="inline-flex flex-wrap items-center gap-1">
           {failed ? (
-            <Badge pill className={NEUTRAL_BADGE}>
-              <CircleAlert {...iconProps("xs")} />
+            // 상태 열은 좁다. 배지 글자는 칸을 넘치지 않고 줄바꿈한다.
+            <Badge pill className={cn(NEUTRAL_BADGE, "whitespace-normal text-left")}>
+              <CircleAlert {...iconProps("xs")} className="shrink-0" />
               {t("stackList.imageScans.item.failed")}
             </Badge>
           ) : (
@@ -165,8 +195,12 @@ function ImageScanRow({ item }: { item: StackImageScanItem }) {
             </span>
           )}
           {item.dbStale && (
-            <Badge pill className={WARNING_BADGE} title={t("stackList.imageScans.dbStaleHint")}>
-              <StatusIcon tone="warning" size="xs" inheritColor />
+            <Badge
+              pill
+              className={cn(WARNING_BADGE, "whitespace-normal text-left")}
+              title={t("stackList.imageScans.dbStaleHint")}
+            >
+              <StatusIcon tone="warning" size="xs" inheritColor className="shrink-0" />
               {t("stackList.imageScans.dbStale")}
             </Badge>
           )}
@@ -193,7 +227,12 @@ function ImageScanGrid({ items }: { items: StackImageScanItem[] }) {
   return (
     // 좁은 화면에서는 표가 가로로 스크롤된다. 열을 접으면 건수를 나란히 비교할 수 없다.
     <div className="overflow-x-auto rounded-lg border border-[var(--color-border-default)]">
-      <table className="w-full border-collapse">
+      <table className="w-full table-fixed border-collapse" style={{ minWidth: TABLE_MIN_WIDTH }}>
+        <colgroup>
+          {headers.map((h) => (
+            <col key={h.key} style={COLUMN_WIDTH[h.key] ? { width: COLUMN_WIDTH[h.key] } : undefined} />
+          ))}
+        </colgroup>
         <thead>
           <tr className={tableHeadRowClass}>
             {headers.map((h) => (
