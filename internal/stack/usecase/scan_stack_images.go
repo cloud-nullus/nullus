@@ -8,9 +8,13 @@ import (
 	"strings"
 	"sync"
 
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 )
+
+// ErrStackImageScanNotFound 는 그 이미지의 스캔 결과가 없다는 뜻이다.
+var ErrStackImageScanNotFound = errors.New("이 스택에서 그 이미지의 스캔 결과를 찾지 못했습니다")
 
 // ErrImageScanInProgress 는 같은 스택의 스캔이 이미 돌고 있다는 뜻이다.
 var ErrImageScanInProgress = errors.New("이 스택의 설치 이미지 스캔이 이미 진행 중입니다")
@@ -115,6 +119,38 @@ func (uc *ScanStackImages) Report(ctx context.Context, stackID string) (*domain.
 	}
 	report := domain.BuildImageScanReport(stack.ID, reason, scans)
 	return &report, nil
+}
+
+// Vulnerabilities 는 설치 이미지 하나의 취약점 목록을 조건에 맞춰 한 쪽씩 돌려준다.
+//
+// 스캔하지 않는 스택이면 그 이유로, 목록을 저장하지 않은 스캔이면 not_recorded 로
+// 목록을 보일 수 없다고 답한다 — 빈 목록을 돌려주면 취약점 0건으로 읽힌다.
+func (uc *ScanStackImages) Vulnerabilities(
+	ctx context.Context,
+	stackID, digest string,
+	filter shareddomain.VulnerabilityFilter,
+) (*shareddomain.VulnerabilityPage, error) {
+	stack, err := uc.stacks.GetByID(ctx, strings.TrimSpace(stackID))
+	if err != nil {
+		return nil, err
+	}
+	if reason := uc.skipReason(stack); reason != "" {
+		page := shareddomain.UnavailableVulnerabilityPage(string(reason), filter)
+		return &page, nil
+	}
+	record, err := uc.results.ListVulnerabilities(ctx, stack.ID, strings.TrimSpace(digest))
+	if err != nil {
+		return nil, fmt.Errorf("스택 %s 설치 이미지 취약점 목록 조회 실패: %w", stack.ID, err)
+	}
+	if !record.Found {
+		return nil, ErrStackImageScanNotFound
+	}
+	if !record.Recorded {
+		page := shareddomain.UnavailableVulnerabilityPage(shareddomain.VulnerabilityReasonNotRecorded, filter)
+		return &page, nil
+	}
+	page := shareddomain.NewVulnerabilityPage(record.Items, filter)
+	return &page, nil
 }
 
 // RescanAll 은 스캔할 수 있는 모든 완료 스택을 다시 스캔하고, 성공한 수를 돌려준다.

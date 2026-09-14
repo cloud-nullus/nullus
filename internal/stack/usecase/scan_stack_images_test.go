@@ -66,6 +66,19 @@ func (r *fakeImageScanResults) ListByStack(_ context.Context, stackID string) ([
 	return append([]domain.StackImageScan(nil), r.rows[stackID]...), nil
 }
 
+func (r *fakeImageScanResults) ListVulnerabilities(_ context.Context, stackID, digest string) (domain.StackImageVulnerabilities, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, s := range r.rows[stackID] {
+		if s.ImageDigest == digest {
+			return domain.StackImageVulnerabilities{
+				Found: true, Recorded: s.VulnerabilitiesRecorded, Items: s.Vulnerabilities,
+			}, nil
+		}
+	}
+	return domain.StackImageVulnerabilities{}, nil
+}
+
 type fakeCompletedStacks struct{ stacks []*domain.Stack }
 
 func (f fakeCompletedStacks) ListCompleted(context.Context) ([]*domain.Stack, error) {

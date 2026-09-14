@@ -637,7 +637,7 @@ CI API 클라이언트는 클러스터 내부 주소로 붙는다. 그 주소는
 
 **실행** — 스택 네임스페이스에 Job `nullus-image-scan` 을 세운다. `aquasec/trivy` client 가 스택 Trivy 서버(§2.3)에 붙는다.
 
-- 결과를 JSON 이 아니라 **취약점 하나당 `심각도[+]` 토큰 하나**(`+` 는 수정본 있음)로 로그에 찍는다. JSON 리포트를 로그로 받으면 큰 이미지 몇 개만으로 kubelet 컨테이너 로그 상한(기본 10Mi)을 넘어 앞부분이 잘린다. kind 실측에서 같은 이미지의 JSON 리포트와 건수가 일치했다.
+- 결과를 JSON 리포트가 아니라 **취약점 하나당 탭으로 나눈 한 줄**(심각도 · ID · 패키지 · 설치/수정 버전 · Trivy Class · 대상 · 링크)로 만들고, 이미지마다 **gzip+base64 한 줄**로 싸서 로그에 찍는다. GitLab 이미지 하나에 수천 건이라 그대로 찍으면 kubelet 컨테이너 로그 상한(기본 10Mi)을 넘어 앞부분이 잘린다. kind 실측에서 alpine 48건이 7.2KB → 784B 로 줄었고, 건수는 같은 이미지의 JSON 리포트와 일치했다(§12.5).
 - 서버 모드 client 는 템플릿 출력에 DB 시각을 싣지 않는다. DB 날짜는 서버의 `metadata.json` 에서 읽는다.
 - 이미지 참조는 셸 스크립트에 들어가므로 `저장소@sha256:` 모양이 아니면 넣지 않는다.
 
@@ -651,6 +651,29 @@ CI API 클라이언트는 클러스터 내부 주소로 붙는다. 그 주소는
 **노출** — `GET /api/v1/stacks/:stackId/image-scans`(상태 · 사유 · 요약 · 이미지별 결과), 스택 상세 화면.
 
 **공용 어휘** — Trivy 리포트 요약 · 심각도 건수 · DB 신선도는 `internal/shared/domain` 으로 옮겼다. 모듈끼리 import 할 수 없는데 각자 세면 같은 이미지가 화면마다 다른 건수로 보인다.
+
+
+### 12.5 취약점 목록 — 베이스 이미지와 앱 의존성
+
+건수와 리포트 링크만으로는 무엇을 고쳐야 하는지 화면에서 알 수 없다. 파이프라인 실행과 스택 설치 이미지 모두 **취약점 목록**(CVE · 패키지 · 설치/수정 버전 · 심각도 · 링크)을 보인다.
+
+**공용 모델** — `internal/shared/domain` 의 `ImageVulnerability`. Trivy 리포트의 결과 묶음은 `Class` 로 갈린다 — `os-pkgs` 는 **베이스 이미지의 OS 패키지**(`os`), `lang-pkgs` 는 **앱이 넣은 의존성**(`library`), 나머지는 `other`. 이 구분으로 "베이스 이미지 취약점" 을 따로 보인다.
+
+**조회 조건** — `severity`(쉼표 구분) · `class` · `fixable=true` · `q`(ID·패키지 검색) · `limit`(기본 50, 최대 200) · `offset`. 심각한 순으로 정렬한다. 응답의 `targets`(대상별 전체 건수)는 필터와 무관하다.
+
+**못 보일 때는 이유를 담는다** — 200 과 `status: unavailable`, `reason`. 빈 목록은 취약점 0건으로 읽히기 때문이다.
+
+| reason | 뜻 |
+|---|---|
+| `report_expired` | CI 리포트가 보관 기간이 지나 사라졌다. 건수는 기록에 남아 있다 |
+| `report_missing` | 이 스캔에 리포트 위치가 없다(리포트를 쓰기 전에 스캔이 실패했거나 위치 기록 전의 기록) |
+| `ci_unreachable` | CI 서버에 닿지 못했다 |
+| `not_recorded` | (스택) 목록 기능 전에 스캔했다. 다음 스캔 뒤에 보인다 |
+| `scanner_not_installed` · `airgap` | (스택) 설치 이미지를 스캔하지 않는 스택이다(§12.4) |
+
+**파이프라인 — 저장하지 않는다** — `GET /api/v1/cicd/pipelines/:id/image-scans/:scanId/vulnerabilities`. §8 의 결정(원본 리포트는 DB 에 넣지 않는다)을 지킨다. 동기화가 리포트를 읽을 때 **리포트 위치**(`image_scan_results.report_ref`, 000082 — GitLab 잡 id · GitHub 실행 id · Jenkins 빌드 번호)를 남기고, 볼 때 그 위치로 CI 리포트를 다시 읽어 목록을 만든다. 목록이 리포트와 어긋날 일이 없는 대신, CI 가 보관 기간(GitLab 인스턴스 기본값 등)이 지나 산출물을 지우면 목록은 볼 수 없고 건수만 남는다. 다른 파이프라인의 스캔 id 로는 읽을 수 없다. 위치 기록 전의 결과는 다음 동기화 때 리포트를 다시 받지 않고 위치만 채운다.
+
+**스택 설치 이미지 — 스캔할 때 저장한다** — `GET /api/v1/stacks/:stackId/image-scans/vulnerabilities?digest=`. 설치 이미지는 다시 읽을 CI 리포트가 없다. 스캔 Job 의 결과 줄(§12.4)을 풀어 `stack_image_vulnerabilities`(000083, stack 모듈 소유)에 COPY 로 넣는다. 스캔 결과 행과 함께 교체되고(ON DELETE CASCADE), 이미지별로만 읽는다. `stack_image_scans.vulnerabilities_recorded` 로 "목록 기능 전에 스캔한 이미지" 와 "취약점 0건인 이미지" 를 가른다 — 둘 다 목록 행이 없다.
 
 ---
 

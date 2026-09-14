@@ -1,7 +1,10 @@
 package imagescan
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"os"
 	"strings"
 	"sync"
@@ -46,6 +49,17 @@ const podsJSON = `{"items":[
   "status":{"phase":"Running","containerStatuses":[{"image":"aquasec/trivy:0.74.0","imageID":"docker.io/aquasec/trivy@sha256:fff"}]}}
 ]}`
 
+// vulnLog 는 스캔 Job 이 이미지 하나에 대해 찍는 결과 줄이다(탭 구분 줄 → gzip → base64).
+func vulnLog(t *testing.T, lines ...string) string {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, err := zw.Write([]byte(strings.Join(lines, "\n")))
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+	return "@@VULNS_GZ " + base64.StdEncoding.EncodeToString(buf.Bytes())
+}
+
 func TestInstalledImagesFromPods(t *testing.T) {
 	arch, err := nodeArchitectures([]byte(nodesJSON))
 	require.NoError(t, err)
@@ -72,12 +86,20 @@ func TestParseScanLog(t *testing.T) {
 	log := strings.Join([]string{
 		"@@VERSION 0.74.0",
 		"@@IMAGE quay.io/argoproj/argocd@sha256:aaa",
-		"@@VULNS HIGH+ CRITICAL MEDIUM+ LOW UNKNOWN ",
+		vulnLog(t,
+			"HIGH\tCVE-1\topenssl\t3.0.1\t3.0.2\tos-pkgs\tubuntu 22.04\thttps://avd.aquasec.com/nvd/cve-1",
+			"CRITICAL\tCVE-2\tlibc\t2.35\t\tos-pkgs\tubuntu 22.04\t",
+			"MEDIUM\tGHSA-3\tgolang.org/x/net\t0.1\t0.2\tlang-pkgs\tusr/local/bin/argocd\t",
+			"LOW\tCVE-4\tzlib\t1.2\t\tos-pkgs\tubuntu 22.04\t",
+			"UNKNOWN\tCVE-5\tfoo\t1\t\tos-pkgs\tubuntu 22.04\t",
+		),
 		"@@IMAGE docker.io/bitnami/postgresql@sha256:ccc",
-		"@@VULNS",
+		"@@VULNS_GZ ",
 		"@@IMAGE docker.io/bitnami/os-shell@sha256:bbb",
 		"@@ERROR MANIFEST_UNKNOWN: manifest unknown",
 		"@@IMAGE docker.io/library/redis@sha256:ggg",
+		"@@IMAGE docker.io/library/broken@sha256:hhh",
+		"@@VULNS_GZ not-base64!!",
 	}, "\n")
 
 	version, outcomes := parseScanLog(log)
@@ -87,11 +109,21 @@ func TestParseScanLog(t *testing.T) {
 	require.NotNil(t, argocd)
 	assert.Equal(t, shareddomain.SeverityCounts{Critical: 1, High: 1, Medium: 1, Low: 1, Unknown: 1}, argocd.all)
 	assert.Equal(t, shareddomain.SeverityCounts{High: 1, Medium: 1}, argocd.fixable)
+	require.Len(t, argocd.vulns, 5)
+	// Class 로 베이스 이미지 OS 패키지와 앱 의존성이 갈린다.
+	assert.Equal(t, shareddomain.VulnerabilityClassOS, argocd.vulns[0].Class)
+	assert.Equal(t, shareddomain.VulnerabilityClassLibrary, argocd.vulns[2].Class)
 	// 취약점이 없는 이미지는 0건이다 — 결과가 없는 것과 다르다.
-	assert.True(t, outcomes["docker.io/bitnami/postgresql@sha256:ccc"].done)
+	postgres := outcomes["docker.io/bitnami/postgresql@sha256:ccc"]
+	assert.True(t, postgres.done)
+	assert.Empty(t, postgres.err)
+	assert.NotNil(t, postgres.vulns)
+	assert.Empty(t, postgres.vulns)
 	assert.Equal(t, "MANIFEST_UNKNOWN: manifest unknown", outcomes["docker.io/bitnami/os-shell@sha256:bbb"].err)
 	// Job 이 끝까지 가지 못한 이미지는 결과가 없다.
 	assert.False(t, outcomes["docker.io/library/redis@sha256:ggg"].done)
+	// 결과를 풀지 못하면 실패로 남긴다 — 0건으로 읽히면 안 된다.
+	assert.NotEmpty(t, outcomes["docker.io/library/broken@sha256:hhh"].err)
 }
 
 // 이미지 참조는 셸 스크립트에 들어간다. 파드 상태에서 온 값이라도 모양을 확인한다.
@@ -108,6 +140,8 @@ func TestScanJobManifest_ExcludesUnsafeRefs(t *testing.T) {
 	assert.Contains(t, manifest, `"http://trivy.harbor-e2e.svc.cluster.local:4954"`)
 	assert.Contains(t, manifest, "linux/arm64 quay.io/argoproj/argocd@sha256:aaa")
 	assert.Contains(t, manifest, "activeDeadlineSeconds: 3600")
+	// 취약점 목록은 로그 상한(10Mi)을 넘지 않게 압축해 찍는다.
+	assert.Contains(t, manifest, "gzip -c </tmp/out | base64 -w 0")
 	assert.NotContains(t, manifest, "rm -rf")
 	assert.NotContains(t, manifest, "$(id)")
 }
@@ -145,8 +179,16 @@ func TestScanner_ScanInstalledImages(t *testing.T) {
 		"get nodes": nodesJSON,
 		"get pods":  podsJSON,
 		"get job":   "1 ",
-		"logs":      "@@VERSION 0.74.0\n@@IMAGE quay.io/argoproj/argocd@sha256:aaa\n@@VULNS HIGH+ HIGH\n@@IMAGE docker.io/bitnami/postgresql@sha256:ccc\n@@ERROR timeout\n",
-		"exec":      `{"Version":2,"UpdatedAt":"2026-09-13T07:13:14.295197098Z"}`,
+		"logs": strings.Join([]string{
+			"@@VERSION 0.74.0",
+			"@@IMAGE quay.io/argoproj/argocd@sha256:aaa",
+			vulnLog(t,
+				"HIGH\tCVE-1\topenssl\t3.0.1\t3.0.2\tos-pkgs\tubuntu 22.04\t",
+				"HIGH\tCVE-2\tlibc\t2.35\t\tos-pkgs\tubuntu 22.04\t"),
+			"@@IMAGE docker.io/bitnami/postgresql@sha256:ccc",
+			"@@ERROR timeout",
+		}, "\n"),
+		"exec": `{"Version":2,"UpdatedAt":"2026-09-13T07:13:14.295197098Z"}`,
 	}}
 	s := NewScanner(WithKubectl(kubectl.run), WithClock(func() time.Time { return now }), WithPollInterval(time.Millisecond))
 
@@ -162,6 +204,10 @@ func TestScanner_ScanInstalledImages(t *testing.T) {
 	assert.Equal(t, domain.ImageScanStatusScanned, argocd.Status)
 	assert.Equal(t, &shareddomain.SeverityCounts{High: 2}, argocd.Counts)
 	assert.Equal(t, &shareddomain.SeverityCounts{High: 1}, argocd.FixableCounts)
+	// 목록도 함께 남긴다. 스캔에 성공한 이미지만 목록이 기록된 것으로 본다.
+	assert.True(t, argocd.VulnerabilitiesRecorded)
+	require.Len(t, argocd.Vulnerabilities, 2)
+	assert.Equal(t, "CVE-1", argocd.Vulnerabilities[0].ID)
 	assert.Equal(t, "0.74.0", argocd.ScannerVersion)
 	require.NotNil(t, argocd.DBUpdatedAt)
 	assert.Equal(t, 2026, argocd.DBUpdatedAt.Year())
@@ -170,6 +216,7 @@ func TestScanner_ScanInstalledImages(t *testing.T) {
 	assert.Equal(t, domain.ImageScanStatusFailed, byDigest["sha256:ccc"].Status)
 	assert.Equal(t, "timeout", byDigest["sha256:ccc"].Error)
 	assert.Nil(t, byDigest["sha256:ccc"].Counts)
+	assert.False(t, byDigest["sha256:ccc"].VulnerabilitiesRecorded)
 	// 로그에 없는 이미지도 빠뜨리지 않고 실패로 남긴다.
 	assert.Equal(t, domain.ImageScanStatusFailed, byDigest["sha256:bbb"].Status)
 

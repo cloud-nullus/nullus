@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
@@ -36,8 +38,9 @@ func (r *PostgresStackImageScanRepository) ReplaceForStack(ctx context.Context, 
 	const q = `
 		INSERT INTO stack_image_scans (
 			stack_id, image_digest, image, release_name, workloads, status, error,
-			counts, fixable_counts, scanner, scanner_version, db_updated_at, scanned_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'trivy', $10, $11, $12)
+			counts, fixable_counts, scanner, scanner_version, db_updated_at, scanned_at,
+			vulnerabilities_recorded
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'trivy', $10, $11, $12, $13)
 		ON CONFLICT (stack_id, image_digest) DO NOTHING`
 	for _, s := range scans {
 		workloads := s.Workloads
@@ -58,9 +61,35 @@ func (r *PostgresStackImageScanRepository) ReplaceForStack(ctx context.Context, 
 		}
 		if _, err := tx.Exec(ctx, q,
 			stackID, s.ImageDigest, s.Image, s.Release, workloadsJSON, string(s.Status), s.Error,
-			counts, fixable, s.ScannerVersion, s.DBUpdatedAt, s.ScannedAt,
+			counts, fixable, s.ScannerVersion, s.DBUpdatedAt, s.ScannedAt, s.VulnerabilitiesRecorded,
 		); err != nil {
 			return fmt.Errorf("insert stack image scan (%s): %w", s.ImageDigest, err)
+		}
+	}
+
+	// 취약점 목록. GitLab 스택은 이미지 서른 개에 수만 건이라 COPY 로 한 번에 넣는다.
+	// 스캔 결과 행을 지우면 목록은 함께 지워진다(ON DELETE CASCADE).
+	var vulnRows [][]any
+	seen := map[string]bool{}
+	for _, s := range scans {
+		if !s.VulnerabilitiesRecorded || seen[s.ImageDigest] {
+			continue
+		}
+		seen[s.ImageDigest] = true
+		for _, v := range s.Vulnerabilities {
+			vulnRows = append(vulnRows, []any{
+				stackID, s.ImageDigest, v.ID, v.PkgName, v.InstalledVersion, v.FixedVersion,
+				v.Severity, string(v.Class), v.Target, v.PrimaryURL,
+			})
+		}
+	}
+	if len(vulnRows) > 0 {
+		if _, err := tx.CopyFrom(ctx, pgx.Identifier{"stack_image_vulnerabilities"},
+			[]string{"stack_id", "image_digest", "vulnerability_id", "pkg_name", "installed_version",
+				"fixed_version", "severity", "class", "target", "primary_url"},
+			pgx.CopyFromRows(vulnRows),
+		); err != nil {
+			return fmt.Errorf("copy stack image vulnerabilities: %w", err)
 		}
 	}
 	return tx.Commit(ctx)
@@ -70,7 +99,7 @@ func (r *PostgresStackImageScanRepository) ReplaceForStack(ctx context.Context, 
 func (r *PostgresStackImageScanRepository) ListByStack(ctx context.Context, stackID string) ([]domain.StackImageScan, error) {
 	const q = `
 		SELECT stack_id, image_digest, image, release_name, workloads, status, error,
-			counts, fixable_counts, scanner_version, db_updated_at, scanned_at
+			counts, fixable_counts, scanner_version, db_updated_at, scanned_at, vulnerabilities_recorded
 		FROM stack_image_scans
 		WHERE stack_id = $1
 		ORDER BY image_digest`
@@ -89,7 +118,7 @@ func (r *PostgresStackImageScanRepository) ListByStack(ctx context.Context, stac
 			counts, fixableCounts []byte
 		)
 		if err := rows.Scan(&s.StackID, &s.ImageDigest, &s.Image, &s.Release, &workloads, &status, &s.Error,
-			&counts, &fixableCounts, &s.ScannerVersion, &s.DBUpdatedAt, &s.ScannedAt); err != nil {
+			&counts, &fixableCounts, &s.ScannerVersion, &s.DBUpdatedAt, &s.ScannedAt, &s.VulnerabilitiesRecorded); err != nil {
 			return nil, fmt.Errorf("scan stack image scan: %w", err)
 		}
 		s.Status = domain.ImageScanStatus(status)
@@ -103,6 +132,47 @@ func (r *PostgresStackImageScanRepository) ListByStack(ctx context.Context, stac
 			return nil, err
 		}
 		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// ListVulnerabilities 는 이미지 하나의 저장된 취약점 목록이다.
+func (r *PostgresStackImageScanRepository) ListVulnerabilities(ctx context.Context, stackID, digest string) (domain.StackImageVulnerabilities, error) {
+	var out domain.StackImageVulnerabilities
+	err := r.pool.QueryRow(ctx,
+		`SELECT vulnerabilities_recorded FROM stack_image_scans WHERE stack_id = $1 AND image_digest = $2`,
+		stackID, digest).Scan(&out.Recorded)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return out, nil
+	}
+	if err != nil {
+		return out, fmt.Errorf("query stack image scan: %w", err)
+	}
+	out.Found = true
+	out.Items = []shareddomain.ImageVulnerability{}
+	if !out.Recorded {
+		return out, nil
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT vulnerability_id, pkg_name, installed_version, fixed_version, severity, class, target, primary_url
+		FROM stack_image_vulnerabilities
+		WHERE stack_id = $1 AND image_digest = $2`, stackID, digest)
+	if err != nil {
+		return out, fmt.Errorf("query stack image vulnerabilities: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			v     shareddomain.ImageVulnerability
+			class string
+		)
+		if err := rows.Scan(&v.ID, &v.PkgName, &v.InstalledVersion, &v.FixedVersion, &v.Severity, &class,
+			&v.Target, &v.PrimaryURL); err != nil {
+			return out, fmt.Errorf("scan stack image vulnerability: %w", err)
+		}
+		v.Class = shareddomain.VulnerabilityClass(class)
+		out.Items = append(out.Items, v)
 	}
 	return out, rows.Err()
 }

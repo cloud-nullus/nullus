@@ -15,15 +15,31 @@ import (
 
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
+	"github.com/cloud-nullus/draft/internal/stack/usecase"
 )
 
 type fakeImageScanReporter struct {
-	report *domain.StackImageScanReport
-	err    error
+	report  *domain.StackImageScanReport
+	err     error
+	vulnErr error
 }
 
 func (f fakeImageScanReporter) Report(context.Context, string) (*domain.StackImageScanReport, error) {
 	return f.report, f.err
+}
+
+func (f fakeImageScanReporter) Vulnerabilities(_ context.Context, _ string, digest string, filter shareddomain.VulnerabilityFilter) (*shareddomain.VulnerabilityPage, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.vulnErr != nil {
+		return nil, f.vulnErr
+	}
+	page := shareddomain.NewVulnerabilityPage([]shareddomain.ImageVulnerability{
+		{ID: "CVE-1", PkgName: "openssl", Severity: "critical", Class: shareddomain.VulnerabilityClassOS, Target: digest},
+		{ID: "CVE-2", PkgName: "lodash", Severity: "high", Class: shareddomain.VulnerabilityClassLibrary, Target: "app"},
+	}, filter)
+	return &page, nil
 }
 
 func getImageScans(t *testing.T, reporter fakeImageScanReporter, now time.Time) (int, map[string]any) {
@@ -97,4 +113,39 @@ func TestImageScanHandler_StackNotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, code)
 	assert.NotNil(t, body["error"])
+}
+
+func getImageVulnerabilities(t *testing.T, reporter fakeImageScanReporter, query string) (int, map[string]any) {
+	t.Helper()
+	e := echo.New()
+	NewImageScanHandler(reporter).RegisterRoutes(e.Group("/api/v1/stacks"))
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/stacks/stk_1/image-scans/vulnerabilities"+query, nil))
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	return rec.Code, body
+}
+
+func TestImageScanHandler_Vulnerabilities(t *testing.T) {
+	code, body := getImageVulnerabilities(t, fakeImageScanReporter{}, "?digest=sha256:abc&class=os&limit=10")
+
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "available", body["status"])
+	assert.Equal(t, float64(1), body["total"])
+	assert.Equal(t, float64(10), body["limit"])
+	item := body["items"].([]any)[0].(map[string]any)
+	assert.Equal(t, "CVE-1", item["id"])
+	assert.Equal(t, "os", item["class"])
+	assert.Equal(t, "sha256:abc", item["target"])
+}
+
+func TestImageScanHandler_Vulnerabilities_RequiresDigest(t *testing.T) {
+	code, _ := getImageVulnerabilities(t, fakeImageScanReporter{}, "")
+	assert.Equal(t, http.StatusBadRequest, code)
+}
+
+func TestImageScanHandler_Vulnerabilities_UnknownImage(t *testing.T) {
+	code, body := getImageVulnerabilities(t, fakeImageScanReporter{vulnErr: usecase.ErrStackImageScanNotFound}, "?digest=sha256:nope")
+	assert.Equal(t, http.StatusNotFound, code)
+	assert.Equal(t, "IMAGE_SCAN_NOT_FOUND", body["error"].(map[string]any)["code"])
 }

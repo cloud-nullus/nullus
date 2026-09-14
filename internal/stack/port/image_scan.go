@@ -19,6 +19,8 @@ type StackImageScanRepository interface {
 	// 이미지의 결과가 남아 현재 상태처럼 보이지 않게 한다.
 	ReplaceForStack(ctx context.Context, stackID string, scans []domain.StackImageScan) error
 	ListByStack(ctx context.Context, stackID string) ([]domain.StackImageScan, error)
+	// ListVulnerabilities 는 이미지 하나의 저장된 취약점 목록이다.
+	ListVulnerabilities(ctx context.Context, stackID, digest string) (domain.StackImageVulnerabilities, error)
 }
 
 // CompletedStackLister 는 설치가 끝난 스택을 조직과 무관하게 돌려준다.

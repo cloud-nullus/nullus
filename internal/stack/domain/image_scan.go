@@ -63,6 +63,20 @@ type StackImageScan struct {
 	ScannerVersion string
 	DBUpdatedAt    *time.Time
 	ScannedAt      time.Time
+
+	// Vulnerabilities 는 취약점 목록이다. VulnerabilitiesRecorded 가 거짓이면 목록을
+	// 모른다(스캔 실패, 목록 기능 전 스캔) — 빈 목록과 다르다.
+	Vulnerabilities         []shareddomain.ImageVulnerability
+	VulnerabilitiesRecorded bool
+}
+
+// StackImageVulnerabilities 는 설치 이미지 하나의 저장된 취약점 목록이다.
+type StackImageVulnerabilities struct {
+	// Found 는 그 이미지의 스캔 결과가 있는지다.
+	Found bool
+	// Recorded 는 목록을 저장했는지다. 거짓이면 Items 가 비어도 0건이 아니다.
+	Recorded bool
+	Items    []shareddomain.ImageVulnerability
 }
 
 // StackImageScanReport 는 스택 하나의 설치 이미지 스캔 보고서다.

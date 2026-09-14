@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -10,10 +11,12 @@ import (
 
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
+	"github.com/cloud-nullus/draft/internal/stack/usecase"
 )
 
 type stackImageScanReporter interface {
 	Report(ctx context.Context, stackID string) (*domain.StackImageScanReport, error)
+	Vulnerabilities(ctx context.Context, stackID, digest string, filter shareddomain.VulnerabilityFilter) (*shareddomain.VulnerabilityPage, error)
 }
 
 // ImageScanHandler 는 스택이 설치한 OSS 이미지의 취약점 보고서를 내보낸다.
@@ -30,6 +33,35 @@ func NewImageScanHandler(reporter stackImageScanReporter) *ImageScanHandler {
 // RegisterRoutes 는 /stacks 그룹에 붙는다.
 func (h *ImageScanHandler) RegisterRoutes(stacks *echo.Group) {
 	stacks.GET("/:stackId/image-scans", h.GetImageScans)
+	stacks.GET("/:stackId/image-scans/vulnerabilities", h.GetImageVulnerabilities)
+}
+
+// GetImageVulnerabilities handles GET /api/v1/stacks/:stackId/image-scans/vulnerabilities?digest=...
+//
+// 설치 이미지 하나의 취약점 목록을 한 쪽씩 돌려준다. 목록을 보일 수 없으면 200 과 함께
+// 이유(status=unavailable)를 담는다 — 빈 목록은 0건으로 읽힌다.
+func (h *ImageScanHandler) GetImageVulnerabilities(c echo.Context) error {
+	stackID := strings.TrimSpace(c.Param("stackId"))
+	digest := strings.TrimSpace(c.QueryParam("digest"))
+	if stackID == "" {
+		return errorResponse(c, http.StatusBadRequest, "STACK_ID_REQUIRED", "stack id is required")
+	}
+	if digest == "" {
+		return errorResponse(c, http.StatusBadRequest, "IMAGE_DIGEST_REQUIRED", "digest query parameter is required")
+	}
+	filter := shareddomain.NewVulnerabilityFilter(c.QueryParam("severity"), c.QueryParam("class"),
+		c.QueryParam("fixable"), c.QueryParam("q"), c.QueryParam("limit"), c.QueryParam("offset"))
+
+	page, err := h.reporter.Vulnerabilities(c.Request().Context(), stackID, digest, filter)
+	switch {
+	case errors.Is(err, usecase.ErrStackImageScanNotFound):
+		return errorResponse(c, http.StatusNotFound, "IMAGE_SCAN_NOT_FOUND", err.Error())
+	case err != nil && strings.Contains(strings.ToLower(err.Error()), "not found"):
+		return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", err.Error())
+	case err != nil:
+		return errorResponse(c, http.StatusInternalServerError, "STACK_IMAGE_VULNERABILITIES_FAILED", err.Error())
+	}
+	return c.JSON(http.StatusOK, page)
 }
 
 type stackImageScanItem struct {

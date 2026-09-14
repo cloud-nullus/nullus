@@ -5,9 +5,13 @@
 package imagescan
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -33,11 +37,18 @@ const (
 	defaultPollInterval = 5 * time.Second
 )
 
-// vulnTemplate 은 취약점 하나를 "심각도[+]" 토큰 하나로 찍는다(+ 는 수정본 있음).
+// vulnTemplate 은 취약점 하나를 탭으로 나눈 한 줄로 찍는다.
 //
-// JSON 리포트를 로그로 받으면 큰 이미지 몇 개만으로 kubelet 의 컨테이너 로그 상한
-// (기본 10Mi)을 넘어 앞부분이 잘린다. 건수에 필요한 것만 남긴다.
-const vulnTemplate = `{{- range . }}{{- range .Vulnerabilities }}{{ .Severity }}{{ if .FixedVersion }}+{{ end }} {{ end }}{{- end }}`
+// 필드: 심각도, ID, 패키지, 설치 버전, 수정 버전, Trivy Class, 대상, 링크
+// (shareddomain.ParseVulnerabilityLines 가 읽는 순서). Class 로 베이스 이미지의 OS 패키지와
+// 앱 의존성을 가른다.
+//
+// 스크립트가 이 출력을 이미지마다 gzip+base64 한 줄로 싸서 로그로 낸다. JSON 리포트는
+// 물론 이 줄도 GitLab 이미지 하나에 수천 줄이라, 그대로 찍으면 kubelet 의 컨테이너 로그
+// 상한(기본 10Mi)을 넘어 앞부분이 잘린다. 압축하면 10분의 1 로 준다(kind 실측).
+const vulnTemplate = "{{- range . }}{{- $class := .Class }}{{- $target := .Target }}{{- range .Vulnerabilities }}" +
+	"{{ .Severity }}\t{{ .VulnerabilityID }}\t{{ .PkgName }}\t{{ .InstalledVersion }}\t{{ .FixedVersion }}\t" +
+	"{{ $class }}\t{{ $target }}\t{{ .PrimaryURL }}\n{{ end }}{{- end }}"
 
 // KubectlFunc 는 kubeconfig 로 kubectl 을 실행한다.
 type KubectlFunc func(ctx context.Context, kubeconfig []byte, args ...string) (string, error)
@@ -159,6 +170,8 @@ func (s *Scanner) ScanInstalledImages(ctx context.Context, kubeconfig []byte, na
 			scan.Status = domain.ImageScanStatusScanned
 			scan.Counts = &all
 			scan.FixableCounts = &fixable
+			scan.Vulnerabilities = o.vulns
+			scan.VulnerabilitiesRecorded = true
 		}
 		scans = append(scans, scan)
 	}
@@ -354,7 +367,7 @@ while read -r platform ref; do
   [ -n "$ref" ] || continue
   echo "@@IMAGE $ref"
   if trivy image --server "$NULLUS_TRIVY_SERVER" --scanners vuln --platform "$platform" --quiet --timeout 15m --cache-dir /tmp/trivy --format template --template "$NULLUS_TRIVY_TEMPLATE" "$ref" >/tmp/out 2>/tmp/err; then
-    echo "@@VULNS $(tr '\n' ' ' </tmp/out)"
+    echo "@@VULNS_GZ $(gzip -c </tmp/out | base64 -w 0)"
   else
     echo "@@ERROR $(tail -n 3 /tmp/err | tr '\n' ' ' | cut -c1-400)"
   fi
@@ -405,6 +418,7 @@ spec:
 type scanOutcome struct {
 	all     shareddomain.SeverityCounts
 	fixable shareddomain.SeverityCounts
+	vulns   []shareddomain.ImageVulnerability
 	err     string
 	done    bool
 }
@@ -422,14 +436,16 @@ func parseScanLog(log string) (string, map[string]*scanOutcome) {
 		case strings.HasPrefix(line, "@@IMAGE "):
 			current = &scanOutcome{}
 			outcomes[strings.TrimSpace(strings.TrimPrefix(line, "@@IMAGE "))] = current
-		case strings.HasPrefix(line, "@@VULNS") && current != nil:
-			for _, tok := range strings.Fields(strings.TrimPrefix(line, "@@VULNS")) {
-				severity := strings.TrimSuffix(tok, "+")
-				current.all.Add(severity)
-				if strings.HasSuffix(tok, "+") {
-					current.fixable.Add(severity)
-				}
+		case strings.HasPrefix(line, "@@VULNS_GZ") && current != nil:
+			vulns, err := decodeVulnerabilities(strings.TrimSpace(strings.TrimPrefix(line, "@@VULNS_GZ")))
+			if err != nil {
+				// 풀지 못한 결과를 0건으로 두지 않는다.
+				current.err = "스캔 결과를 해석하지 못했습니다: " + err.Error()
+				current.done = true
+				continue
 			}
+			current.vulns = vulns
+			current.all, current.fixable = shareddomain.CountVulnerabilities(vulns)
 			current.done = true
 		case strings.HasPrefix(line, "@@ERROR") && current != nil:
 			current.err = strings.TrimSpace(strings.TrimPrefix(line, "@@ERROR"))
@@ -440,6 +456,28 @@ func parseScanLog(log string) (string, map[string]*scanOutcome) {
 		}
 	}
 	return version, outcomes
+}
+
+// decodeVulnerabilities 는 base64 로 싼 gzip 의 취약점 줄을 푼다. 빈 값은 0건이다.
+func decodeVulnerabilities(encoded string) ([]shareddomain.ImageVulnerability, error) {
+	if encoded == "" {
+		return []shareddomain.ImageVulnerability{}, nil
+	}
+	compressed, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("base64: %w", err)
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		return nil, fmt.Errorf("gzip: %w", err)
+	}
+	defer func() { _ = zr.Close() }()
+	// 한 이미지의 목록이 수 MB 를 넘을 일은 없다. 상한을 두어 망가진 입력이 메모리를 채우지 않게 한다.
+	raw, err := io.ReadAll(io.LimitReader(zr, 64<<20))
+	if err != nil {
+		return nil, fmt.Errorf("gzip: %w", err)
+	}
+	return shareddomain.ParseVulnerabilityLines(string(raw)), nil
 }
 
 func parseDBUpdatedAt(raw string) *time.Time {

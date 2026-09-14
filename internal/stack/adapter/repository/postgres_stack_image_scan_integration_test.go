@@ -69,6 +69,41 @@ func TestPostgresStackImageScanRepository_ReplaceAndList(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 
+	// 취약점 목록을 함께 저장하고 이미지별로 읽는다.
+	vulns := []shareddomain.ImageVulnerability{
+		{ID: "CVE-1", PkgName: "openssl", InstalledVersion: "3.0.1", FixedVersion: "3.0.2", Severity: "critical",
+			Class: shareddomain.VulnerabilityClassOS, Target: "debian 12", PrimaryURL: "https://avd.aquasec.com/nvd/cve-1"},
+		{ID: "GHSA-2", PkgName: "x/net", InstalledVersion: "0.1", Severity: "medium",
+			Class: shareddomain.VulnerabilityClassLibrary, Target: "app"},
+	}
+	withList := first[0]
+	withList.VulnerabilitiesRecorded = true
+	withList.Vulnerabilities = vulns
+	require.NoError(t, repo.ReplaceForStack(ctx, stackID, []domain.StackImageScan{withList, first[1]}))
+
+	record, err := repo.ListVulnerabilities(ctx, stackID, "sha256:r")
+	require.NoError(t, err)
+	assert.True(t, record.Found)
+	assert.True(t, record.Recorded)
+	assert.ElementsMatch(t, vulns, record.Items)
+
+	failedRecord, err := repo.ListVulnerabilities(ctx, stackID, "sha256:a")
+	require.NoError(t, err)
+	assert.True(t, failedRecord.Found)
+	assert.False(t, failedRecord.Recorded)
+	assert.Empty(t, failedRecord.Items)
+
+	unknown, err := repo.ListVulnerabilities(ctx, stackID, "sha256:nope")
+	require.NoError(t, err)
+	assert.False(t, unknown.Found)
+
+	// 다시 스캔하면 목록도 이번 스캔으로 바뀐다.
+	require.NoError(t, repo.ReplaceForStack(ctx, stackID, first[:1]))
+	record, err = repo.ListVulnerabilities(ctx, stackID, "sha256:r")
+	require.NoError(t, err)
+	assert.False(t, record.Recorded)
+	assert.Empty(t, record.Items)
+
 	completed, err := stacks.ListCompleted(ctx)
 	require.NoError(t, err)
 	ids := make([]string, 0, len(completed))
