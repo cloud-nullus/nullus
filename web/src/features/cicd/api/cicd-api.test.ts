@@ -33,11 +33,14 @@ import {
   useDeployments,
   useDeployPipeline,
   usePipelineImageScans,
+  usePipelineScanVulnerabilities,
   usePipelines,
   useRollbackDeployment,
   useUpdateCicdTemplate,
 } from './cicd-api'
 import { api as mockApi } from '../../../lib/api'
+import { DEFAULT_VULNERABILITY_FILTER } from '../../../lib/vulnerability-list'
+import type { VulnerabilityListFilter } from '../../../types'
 
 describe('cicd-api hooks and exports', () => {
   const latestMutationConfig = () => {
@@ -300,6 +303,76 @@ describe('파이프라인 이미지 스캔', () => {
 
     usePipelineImageScans('', 1234)
     expect(mockUseQuery).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }))
+  })
+})
+
+describe('파이프라인 스캔 취약점 목록', () => {
+  beforeEach(() => {
+    mockUseQuery.mockReset()
+    mockUseQuery.mockReturnValue({})
+    vi.mocked(mockApi.get).mockReset()
+  })
+
+  function lastQueryOptions() {
+    const calls = mockUseQuery.mock.calls
+    return calls[calls.length - 1]?.[0]
+  }
+
+  it('스캔 id 경로에 필터를 쿼리로 붙여 부르고 응답을 정규화한다', async () => {
+    vi.mocked(mockApi.get).mockResolvedValueOnce({
+      data: { status: 'unavailable', reason: 'report_expired', targets: null, items: null, total: 0, limit: 50, offset: 0 },
+    } as never)
+    const filter: VulnerabilityListFilter = {
+      ...DEFAULT_VULNERABILITY_FILTER,
+      severities: ['critical'],
+      vulnerabilityClass: 'os',
+      query: ' openssl ',
+      offset: 50,
+    }
+
+    const result = await cicdApiCalls.getPipelineScanVulnerabilities('pip_x', 'scan_dep_ci_pip_x_2', filter)
+
+    expect(vi.mocked(mockApi.get)).toHaveBeenCalledWith(
+      '/cicd/pipelines/pip_x/image-scans/scan_dep_ci_pip_x_2/vulnerabilities',
+      { params: { severity: 'critical', class: 'os', q: 'openssl', limit: 50, offset: 50 } },
+    )
+    expect(result.status).toBe('unavailable')
+    expect(result.reason).toBe('report_expired')
+    expect(result.items).toEqual([])
+  })
+
+  it('필터를 키에 넣고 펼쳤을 때만 조회하며, 404 는 재시도하지 않는다', () => {
+    usePipelineScanVulnerabilities('pip_x', 'scan_1', DEFAULT_VULNERABILITY_FILTER, true)
+    expect(mockUseQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['cicd', 'pipelineScanVulnerabilities', 'pip_x', 'scan_1', DEFAULT_VULNERABILITY_FILTER],
+        enabled: true,
+      }),
+    )
+    expect(lastQueryOptions().retry(0, { status: 404, message: 'IMAGE_SCAN_NOT_FOUND' })).toBe(false)
+
+    usePipelineScanVulnerabilities('pip_x', 'scan_1', DEFAULT_VULNERABILITY_FILTER, false)
+    expect(mockUseQuery).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }))
+
+    usePipelineScanVulnerabilities('pip_x', '', DEFAULT_VULNERABILITY_FILTER, true)
+    expect(mockUseQuery).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }))
+  })
+
+  it('페이지를 넘기는 동안 같은 스캔의 직전 결과만 잠시 둔다', () => {
+    usePipelineScanVulnerabilities('pip_x', 'scan_1', DEFAULT_VULNERABILITY_FILTER, true)
+    const { placeholderData } = lastQueryOptions()
+    const previous = { status: 'available' }
+
+    expect(
+      placeholderData(previous, {
+        queryKey: ['cicd', 'pipelineScanVulnerabilities', 'pip_x', 'scan_1', { ...DEFAULT_VULNERABILITY_FILTER, offset: 50 }],
+      }),
+    ).toBe(previous)
+    expect(
+      placeholderData(previous, {
+        queryKey: ['cicd', 'pipelineScanVulnerabilities', 'pip_x', 'scan_2', DEFAULT_VULNERABILITY_FILTER],
+      }),
+    ).toBeUndefined()
   })
 })
 

@@ -48,6 +48,22 @@ interface SeverityCountsProps {
   className?: string
 }
 
+/**
+ * 취약점 한 건의 심각도. 목록의 행에 쓴다.
+ *
+ * 건수 칩과 같은 색을 쓴다 — 같은 "치명" 이 요약과 목록에서 다른 색이면 둘을 잇기 어렵다.
+ * 건수가 아니라 실제로 있는 한 건이므로 0 처럼 흐리게 두지 않는다.
+ */
+export function SeverityBadge({ severity, className }: { severity: keyof VulnerabilityCounts; className?: string }) {
+  const { t } = useTranslation()
+  const style = SEVERITY_STYLE[severity] ?? SEVERITY_STYLE.unknown
+  return (
+    <span className={cn(CHIP_CLASS, 'font-semibold', style.className, className)}>
+      {t(`common.vulnerability.${severity}`)}
+    </span>
+  )
+}
+
 export function SeverityCounts({ counts, compact = false, className }: SeverityCountsProps) {
   const { t } = useTranslation()
 

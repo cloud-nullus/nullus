@@ -14,6 +14,7 @@ const mockUsePipelineDeployments = vi.fn();
 const mockUsePipelineResources = vi.fn();
 const mockUseDeploymentStatus = vi.fn();
 const mockUsePipelineImageScans = vi.fn();
+const mockUsePipelineScanVulnerabilities = vi.fn();
 const mockDeployPipeline = vi.fn();
 
 vi.mock("react-router-dom", async () => {
@@ -45,6 +46,8 @@ vi.mock("../api/cicd-api", () => ({
   useDeploymentStatus: (...args: unknown[]) => mockUseDeploymentStatus(...args),
   usePipelineImageScans: (...args: unknown[]) =>
     mockUsePipelineImageScans(...args),
+  usePipelineScanVulnerabilities: (...args: unknown[]) =>
+    mockUsePipelineScanVulnerabilities(...args),
 }));
 
 const pipelines = [
@@ -73,6 +76,13 @@ describe("CicdListPage", () => {
     mockUsePipelineImageScans.mockReset();
     mockDeployPipeline.mockReset();
     mockUsePipelineImageScans.mockReturnValue({ data: undefined, isError: false });
+    mockUsePipelineScanVulnerabilities.mockReset();
+    mockUsePipelineScanVulnerabilities.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+    });
     mockUsePipelines.mockReturnValue({
       data: { items: pipelines, total: pipelines.length },
       isLoading: false,
@@ -342,6 +352,30 @@ describe("CicdListPage", () => {
       expect(within(row).getByText("Scan error")).toBeTruthy();
       expect(within(row).getByText("Counts unknown")).toBeTruthy();
       expect(within(row).queryByLabelText(/Critical/)).toBeNull();
+    });
+
+    // 건수만으로는 무엇을 고쳐야 하는지 알 수 없다. 선택한 실행의 스캔 상세에서 목록을 펼친다.
+    it("선택한 실행의 스캔 상세에서 취약점 목록을 펼치면 그 스캔으로 조회한다", () => {
+      mockUsePipelineImageScans.mockReturnValue({
+        data: { items: [blockedScan], total: 1 },
+      });
+
+      openHistory();
+
+      const before = mockUsePipelineScanVulnerabilities.mock.calls;
+      expect(before[before.length - 1]?.[3]).toBe(false);
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "View vulnerability list" }),
+      );
+
+      const calls = mockUsePipelineScanVulnerabilities.mock.calls;
+      expect(calls[calls.length - 1]).toEqual([
+        "pipeline-1",
+        "scan_dep_ci_pip_x_2",
+        expect.objectContaining({ offset: 0, severities: [] }),
+        true,
+      ]);
     });
 
     // 스캔 API 가 아직 배선되지 않은 환경(503)에서도 이력 탭은 그대로 떠야 한다.

@@ -13,8 +13,16 @@ import type {
   Pipeline,
   PipelineImageScan,
   PipelineResource,
+  VulnerabilityListFilter,
+  VulnerabilityListResult,
 } from "../../../types";
 import { normalizeVulnerabilityCounts } from "../../../lib/vulnerability-counts";
+import {
+  normalizeVulnerabilityList,
+  placeholderFromSameSource,
+  retryVulnerabilityList,
+  vulnerabilityListParams,
+} from "../../../lib/vulnerability-list";
 
 export type {
   AppTemplate,
@@ -32,6 +40,8 @@ export type {
   PipelineResource,
   PipelineStatus,
   VulnerabilityCounts,
+  VulnerabilityListFilter,
+  VulnerabilityListResult,
 } from "../../../types";
 
 // --- Types ---
@@ -109,6 +119,15 @@ const queryKeys = {
     ["cicd", "pipelineResources", pipelineId] as const,
   pipelineImageScans: (pipelineId: string, deploymentsUpdatedAt: number) =>
     ["cicd", "pipelineImageScans", pipelineId, deploymentsUpdatedAt] as const,
+  // 필터 앞까지가 출처(어느 스캔인가)다. 페이지를 넘길 때 같은 출처의 결과만 잠시 둔다.
+  pipelineScanVulnerabilitiesSource: (pipelineId: string, scanId: string) =>
+    ["cicd", "pipelineScanVulnerabilities", pipelineId, scanId] as const,
+  pipelineScanVulnerabilities: (
+    pipelineId: string,
+    scanId: string,
+    filter: VulnerabilityListFilter,
+  ) =>
+    ["cicd", "pipelineScanVulnerabilities", pipelineId, scanId, filter] as const,
 };
 
 // --- API functions ---
@@ -527,6 +546,23 @@ export const cicdApiCalls = {
     const items = (raw?.items ?? []).map((item) => mapPipelineImageScan(item));
     return { items, total: raw?.total ?? items.length };
   },
+
+  // 목록은 서버가 CI 리포트를 읽어 만든다. 리포트가 만료됐거나 CI 에 닿지 못하면 오류가
+  // 아니라 status "unavailable" 과 이유로 온다 — 화면이 이유를 설명한다. 모르는 파이프라인·
+  // 스캔(404)만 오류다.
+  getPipelineScanVulnerabilities: async (
+    pipelineId: string,
+    scanId: string,
+    filter: VulnerabilityListFilter,
+  ): Promise<VulnerabilityListResult> => {
+    const raw = await api
+      .get<unknown>(
+        `/cicd/pipelines/${encodeURIComponent(pipelineId)}/image-scans/${encodeURIComponent(scanId)}/vulnerabilities`,
+        { params: vulnerabilityListParams(filter) },
+      )
+      .then((r) => r.data);
+    return normalizeVulnerabilityList(raw);
+  },
 };
 
 // --- Hooks ---
@@ -702,6 +738,32 @@ export function usePipelineImageScans(
     // 키가 바뀌는 사이 배지가 깜빡이지 않게 직전 결과를 잠시 둔다. 실행 id 로
     // 이어 붙이므로 다른 파이프라인의 결과가 이 파이프라인 실행에 붙지는 않는다.
     placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * 파이프라인 스캔 하나의 취약점 목록.
+ *
+ * 펼쳤을 때(enabled)만 읽는다. 목록 한 번이 CI 리포트 한 번이라 실행을 고를 때마다 읽으면
+ * CI 에 부담을 준다. 필터는 키에 들어가므로 필터·페이지마다 따로 캐시된다. 리포트는
+ * 스캔이 끝나면 바뀌지 않으니 잠시 신선한 것으로 둔다.
+ */
+export function usePipelineScanVulnerabilities(
+  pipelineId: string,
+  scanId: string,
+  filter: VulnerabilityListFilter,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: queryKeys.pipelineScanVulnerabilities(pipelineId, scanId, filter),
+    queryFn: () =>
+      cicdApiCalls.getPipelineScanVulnerabilities(pipelineId, scanId, filter),
+    enabled: enabled && !!pipelineId && !!scanId,
+    retry: retryVulnerabilityList,
+    staleTime: 60_000,
+    placeholderData: placeholderFromSameSource<VulnerabilityListResult>(
+      queryKeys.pipelineScanVulnerabilitiesSource(pipelineId, scanId),
+    ),
   });
 }
 

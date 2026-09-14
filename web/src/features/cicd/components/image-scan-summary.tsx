@@ -11,6 +11,7 @@
 //   - 취약점 DB 가 오래됐으면(db_stale) pass 라도 초록을 쓰지 않고 "DB 오래됨" 을 붙인다.
 //     최근 취약점을 모르는 DB 로 얻은 통과는 깨끗한 통과가 아니다.
 
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CircleAlert,
@@ -87,13 +88,20 @@ export function ImageScanRowSummary({ scan }: { scan: PipelineImageScan }) {
   );
 }
 
-/** 선택한 실행의 상세. 판정의 근거(이미지·스캐너·DB 날짜)와 원본 리포트까지 보여준다. */
+/**
+ * 선택한 실행의 상세. 판정의 근거(이미지·스캐너·DB 날짜)와 원본 리포트까지 보여준다.
+ *
+ * children 은 상세 아래에 붙는다(취약점 목록). 목록은 조회 훅을 쓰므로 여기에 넣지 않고
+ * 호출부가 끼운다 — 이 컴포넌트는 받은 스캔만 그리는 채로 둔다.
+ */
 export function ImageScanDetail({
   scan,
   locale,
+  children,
 }: {
   scan: PipelineImageScan;
   locale: string;
+  children?: ReactNode;
 }) {
   const { t } = useTranslation();
   const href = reportHref(scan.reportUri);
@@ -166,6 +174,7 @@ export function ImageScanDetail({
           {scan.scannedAt ? formatDateTime(scan.scannedAt, locale) : "-"}
         </dd>
       </dl>
+      {children}
     </div>
   );
 }

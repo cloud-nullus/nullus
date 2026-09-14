@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **파이프라인 실행과 스택 설치 이미지의 취약점 목록을 보인다 — 베이스 이미지와 앱 의존성을 가른다** (`internal/shared/domain`, `internal/cicd/**`, `internal/stack/**`, `db/migrations/000082`·`000083`, `web/src/components/shared`, nullus-plan#76·#78): 건수와 리포트 링크만으로는 무엇을 고쳐야 하는지 화면에서 알 수 없었다. CVE · 패키지 · 설치/수정 버전 · 심각도 · 링크를 목록으로 보이고, Trivy 결과의 Class 로 **베이스 이미지 OS 패키지**와 **앱 의존성**을 나눈다. 심각도 · 구분 · 수정 가능 · 검색 조건과 쪽 나눔을 받는다. 목록을 보일 수 없으면 빈 목록 대신 이유(`report_expired` · `report_missing` · `ci_unreachable` · `not_recorded`)를 돌려준다.
+
+  **파이프라인은 저장하지 않는다**(`GET /api/v1/cicd/pipelines/:id/image-scans/:scanId/vulnerabilities`). 원본 리포트를 DB 에 넣지 않는다는 결정을 지키고, 동기화가 리포트 위치(`report_ref` — GitLab 잡 id · GitHub 실행 id · Jenkins 빌드 번호)만 남긴 뒤 볼 때 CI 리포트를 다시 읽는다. CI 보관 기간이 지나면 목록은 사라지고 건수는 남는다. **스택 설치 이미지는 스캔할 때 저장한다**(`GET /api/v1/stacks/:stackId/image-scans/vulnerabilities?digest=`) — 다시 읽을 CI 리포트가 없다. 스캔 Job 이 이미지마다 취약점 줄을 gzip+base64 한 줄로 찍어 kubelet 로그 상한(10Mi)을 피하고(kind 실측 alpine 48건 7.2KB → 784B), `stack_image_vulnerabilities` 에 COPY 로 넣는다.
+
+  kind(arm64) `harbor-e2e` 스택에서 실측: 설치 이미지 33개 전부 목록 저장(취약점 40,284건), `gitlab-toolbox` 7,374건이 건수 합계와 일치했고 베이스 이미지 OS 패키지 6,607건 · 앱 의존성(Node.js 27 · Python 68 · Ruby 146)으로 갈렸다. 파이프라인 `harbor-app2` 실행은 주기 동기화가 리포트 위치(GitLab 잡 11)를 채운 뒤 GitLab 리포트를 다시 읽어 48건(alpine OS 패키지)을 보였다. 모르는 이미지·다른 파이프라인의 스캔은 404 다.
+
 - **스택이 설치한 OSS 이미지의 취약점을 스캔해 보고한다** (`internal/stack/**`, `internal/shared/domain`, `db/migrations/000081`, nullus-plan#76·#78): 파이프라인 게이트는 사용자 앱 이미지만 보고, 스택이 설치한 GitLab·Harbor·Argo CD 등의 이미지는 아무도 보지 않았다. 설치 완료 직후 한 번, 이후 `STACK_IMAGE_RESCAN_INTERVAL`(기본 24h)마다 스택 네임스페이스에서 실행 중인 이미지를 digest 단위로 스택 Trivy 서버에 스캔한다. **보고용이라 설치를 막지 않는다** — 업스트림 이미지의 CVE 는 사용자가 고칠 수 없는 경우가 많다. 결과는 `GET /api/v1/stacks/:stackId/image-scans` 와 스택 상세 화면으로 보인다.
 
   **스캔하지 않는 경우를 숨기지 않는다.** Trivy 를 고르지 않은 스택은 `scanner_not_installed`, 에어갭 설치(`NULLUS_HELM_OCI_REGISTRY`)는 `airgap` 사유로 `not_scanned` 를 돌려준다 — "0건" 으로 보이면 안 된다. 스캔 자체가 실패하면 이전 결과를 지우지 않고, 이미지 하나를 못 스캔하면 `failed` 와 오류를 남기며 건수는 비운다.

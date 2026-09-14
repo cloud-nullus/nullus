@@ -63,6 +63,7 @@ import {
   ImageScanDetail,
   ImageScanRowSummary,
 } from "../components/image-scan-summary";
+import { PipelineScanVulnerabilities } from "../components/pipeline-scan-vulnerabilities";
 import type { Pipeline, PipelineImageScan } from "../api/cicd-api";
 import { useScopedClusters as useClusters } from "../../admin/api/admin-api";
 import { useStacks } from "../../stack/api/stack-api";
@@ -1608,7 +1609,15 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
           </div>
 
           {selectedScan && (
-            <ImageScanDetail scan={selectedScan} locale={locale} />
+            <ImageScanDetail scan={selectedScan} locale={locale}>
+              {/* 실행을 바꾸면 펼침·필터를 처음으로 되돌린다. 앞 실행에서 건 필터가 남으면
+                  이 스캔의 목록이 까닭 없이 비어 보인다. */}
+              <PipelineScanVulnerabilities
+                key={selectedScan.id}
+                pipelineId={pipeline.id}
+                scanId={selectedScan.id}
+              />
+            </ImageScanDetail>
           )}
 
           {stages.length > 0 && (

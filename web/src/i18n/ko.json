@@ -45,6 +45,49 @@
       "low": "낮음",
       "unknown": "심각도 미상",
       "countsUnknown": "건수 모름"
+    },
+    "vulnerabilityList": {
+      "show": "취약점 목록 보기",
+      "hide": "취약점 목록 접기",
+      "loading": "취약점 목록을 불러오는 중...",
+      "error": "취약점 목록을 불러오지 못했습니다.",
+      "empty": "이 이미지에서 발견된 취약점이 없습니다.",
+      "emptyFiltered": "현재 필터에 맞는 취약점이 없습니다.",
+      "resetFilters": "필터 해제",
+      "classFilterLabel": "패키지 분류",
+      "severityFilterLabel": "심각도",
+      "allClasses": "전체",
+      "fixableOnly": "수정 가능한 것만",
+      "searchLabel": "취약점 검색",
+      "searchPlaceholder": "CVE 또는 패키지 검색",
+      "targetsLabel": "스캔 대상",
+      "targetTotal": "{{count}}건",
+      "class": {
+        "os": "베이스 이미지 OS 패키지",
+        "library": "앱 의존성",
+        "other": "기타"
+      },
+      "columns": {
+        "severity": "심각도",
+        "id": "취약점",
+        "package": "패키지",
+        "installed": "설치 버전",
+        "fixed": "수정 버전",
+        "target": "대상"
+      },
+      "noFix": "수정 버전 없음",
+      "range": "{{from}}–{{to}} / {{total}}",
+      "rangeUnknownTotal": "{{from}}–{{to}}",
+      "pagination": "취약점 목록 페이지",
+      "previous": "이전",
+      "next": "다음",
+      "unavailable": {
+        "reportExpired": "CI 리포트 보관 기간이 지나 목록을 보여줄 수 없습니다. 심각도별 건수는 기록되어 있습니다.",
+        "reportMissing": "이 스캔에는 CI 리포트가 기록되지 않았습니다. 리포트를 쓰기 전에 스캔이 실패했을 수 있습니다.",
+        "ciUnreachable": "CI 서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.",
+        "notRecorded": "목록 기능이 생기기 전에 스캔한 이미지입니다. 다음 스캔 후에 목록이 보입니다.",
+        "unknown": "취약점 목록을 볼 수 없습니다."
+      }
     }
   },
   "header": {
@@ -1045,7 +1088,9 @@
         "failedNoReason": "스캐너가 실패 이유를 알려 주지 않았습니다.",
         "fixable": "수정 가능: 치명 {{critical}} · 높음 {{high}} · 중간 {{medium}} · 낮음 {{low}}",
         "unknown": "알 수 없음",
-        "scanned": "스캔됨"
+        "scanned": "스캔됨",
+        "vulnerabilityList": "취약점 목록",
+        "vulnerabilityListFor": "취약점 목록 — {{image}}"
       },
       "columns": {
         "image": "이미지",

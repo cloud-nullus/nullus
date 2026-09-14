@@ -1,13 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import type { StackImageScanItem, StackImageScanReport } from '../api/stack-api-types'
+import type { VulnerabilityListResult } from '../../../types'
 import { StackImageScansTab } from './stack-image-scans-tab'
 
 const mockUseStackImageScans = vi.fn()
+const mockUseStackImageVulnerabilities = vi.fn()
 
 vi.mock('../api/stack-api', () => ({
   useStackImageScans: (...args: unknown[]) => mockUseStackImageScans(...args),
+  useStackImageVulnerabilities: (...args: unknown[]) => mockUseStackImageVulnerabilities(...args),
 }))
+
+const vulnerabilityList: VulnerabilityListResult = {
+  status: 'available',
+  reason: '',
+  targets: [{ target: 'debian 12.7', class: 'os', total: 1 }],
+  items: [
+    {
+      id: 'CVE-2024-6119',
+      pkg: 'libssl3',
+      installed: '3.0.14-1~deb12u1',
+      fixed: '3.0.14-1~deb12u2',
+      severity: 'high',
+      class: 'os',
+      target: 'debian 12.7',
+      url: 'https://avd.aquasec.com/nvd/cve-2024-6119',
+    },
+  ],
+  total: 1,
+  limit: 50,
+  offset: 0,
+}
 
 function report(overrides: Partial<StackImageScanReport> = {}): StackImageScanReport {
   return {
@@ -46,6 +70,13 @@ function mockReport(data: StackImageScanReport) {
 describe('StackImageScansTab', () => {
   beforeEach(() => {
     mockUseStackImageScans.mockReset()
+    mockUseStackImageVulnerabilities.mockReset()
+    mockUseStackImageVulnerabilities.mockReturnValue({
+      data: vulnerabilityList,
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+    })
   })
 
   it('스택 id 로 조회하고 보고용 결과임을 밝힌다', () => {
@@ -183,6 +214,78 @@ describe('StackImageScansTab', () => {
 
     const card = screen.getByTestId('stack-image-scan-item')
     expect(within(card).getByText('Stale DB')).toBeTruthy()
+  })
+
+  // 건수만으로는 무엇을 고쳐야 하는지 알 수 없다. 행을 펼쳐 그 이미지의 취약점 목록을 본다.
+  it('스캔된 이미지 행을 펼치면 모든 열을 가로지르는 상세 행에 목록을 보이고, 펼치기 전에는 조회하지 않는다', () => {
+    mockReport(report({ items: [item('docker.io/bitnami/postgresql:16.4.0')], total: 1 }))
+
+    render(<StackImageScansTab stackId="stk_1" />)
+
+    const row = screen.getByTestId('stack-image-scan-item')
+    const toggle = within(row).getByRole('button', { name: /Vulnerability list/ })
+    // 네이티브 버튼이라 키보드(Tab·Enter·Space)로 펼칠 수 있다.
+    expect(toggle.tagName).toBe('BUTTON')
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(mockUseStackImageVulnerabilities).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('stack-image-scan-detail')).toBeNull()
+
+    fireEvent.click(toggle)
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    const detail = screen.getByTestId('stack-image-scan-detail')
+    expect(detail.tagName).toBe('TR')
+    expect(detail.querySelector('td')?.getAttribute('colspan')).toBe('9')
+    expect(toggle.getAttribute('aria-controls')).toBe(detail.querySelector('td > div')?.id)
+    expect(mockUseStackImageVulnerabilities).toHaveBeenLastCalledWith(
+      'stk_1',
+      'sha256:abcdef0123456789abcdef',
+      expect.objectContaining({ offset: 0, severities: [] }),
+      true,
+    )
+    expect(within(detail).getByText('libssl3')).toBeTruthy()
+  })
+
+  it('펼친 뒤에도 그리드의 열 너비는 그대로다', () => {
+    mockReport(report({ items: [item('docker.io/bitnami/postgresql:16.4.0')], total: 1 }))
+
+    render(<StackImageScansTab stackId="stk_1" />)
+    fireEvent.click(screen.getByRole('button', { name: /Vulnerability list/ }))
+
+    const [grid] = screen.getAllByRole('table')
+    const widths = Array.from(grid.querySelectorAll(':scope > colgroup > col')).map(
+      (col) => (col as HTMLElement).style.width,
+    )
+    expect(widths).toEqual(['', '200px', '64px', '72px', '64px', '64px', '96px', '88px', '75px'])
+  })
+
+  it('다시 누르면 상세 행을 접는다', () => {
+    mockReport(report({ items: [item('docker.io/bitnami/postgresql:16.4.0')], total: 1 }))
+
+    render(<StackImageScansTab stackId="stk_1" />)
+    const toggle = screen.getByRole('button', { name: /Vulnerability list/ })
+    fireEvent.click(toggle)
+    fireEvent.click(toggle)
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByTestId('stack-image-scan-detail')).toBeNull()
+  })
+
+  // 실패한 스캔에는 목록이 없다. 다이제스트가 없으면 어느 이미지를 물을지 모른다.
+  it('실패했거나 다이제스트가 없는 행은 펼칠 수 없다', () => {
+    mockReport(
+      report({
+        items: [
+          item('quay.io/broken:1', { status: 'failed', error: 'manifest unknown', counts: undefined, fixableCounts: undefined }),
+          item('quay.io/nodigest:1', { imageDigest: undefined }),
+        ],
+        total: 2,
+      }),
+    )
+
+    render(<StackImageScansTab stackId="stk_1" />)
+
+    expect(screen.queryByRole('button', { name: /Vulnerability list/ })).toBeNull()
   })
 
   // 404(모르는 스택)·503(배선 전)은 화면을 깨지 않고 중립 안내로 끝난다.

@@ -3,7 +3,9 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../../../lib/api'
-import { useStackImageScans } from './stack-api'
+import { DEFAULT_VULNERABILITY_FILTER } from '../../../lib/vulnerability-list'
+import type { VulnerabilityListFilter } from '../../../types'
+import { useStackImageScans, useStackImageVulnerabilities } from './stack-api'
 import { normalizeStackImageScanReport } from './stack-normalizers'
 
 vi.mock('../../../lib/api', () => ({
@@ -146,5 +148,86 @@ describe('useStackImageScans', () => {
     renderHook(() => useStackImageScans(''), { wrapper })
 
     expect(vi.mocked(api.get)).not.toHaveBeenCalled()
+  })
+})
+
+describe('useStackImageVulnerabilities', () => {
+  const wrapper = ({ children }: { children: ReactNode }) => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  }
+
+  const listResponse = {
+    status: 'available',
+    reason: '',
+    targets: [
+      { target: 'debian 12.7', class: 'os', total: 48 },
+      { target: 'Java', class: 'library', total: 8 },
+    ],
+    items: [
+      {
+        id: 'CVE-2024-6119',
+        pkg: 'libssl3',
+        installed: '3.0.14-1~deb12u1',
+        fixed: '',
+        severity: 'high',
+        class: 'os',
+        target: 'debian 12.7',
+        url: 'https://avd.aquasec.com/nvd/cve-2024-6119',
+      },
+    ],
+    total: 56,
+    limit: 50,
+    offset: 0,
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('다이제스트와 필터를 쿼리로 넘겨 이미지의 취약점 목록을 읽는다', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: listResponse } as never)
+    const filter: VulnerabilityListFilter = {
+      ...DEFAULT_VULNERABILITY_FILTER,
+      severities: ['high', 'critical'],
+      fixableOnly: true,
+    }
+
+    const { result } = renderHook(
+      () => useStackImageVulnerabilities('stk_1', 'sha256:abc', filter, true),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(vi.mocked(api.get)).toHaveBeenCalledWith('/stacks/stk_1/image-scans/vulnerabilities', {
+      params: { digest: 'sha256:abc', severity: 'critical,high', fixable: 'true', limit: 50, offset: 0 },
+    })
+    expect(result.current.data?.items[0].fixed).toBe('')
+    expect(result.current.data?.targets[1]).toEqual({ target: 'Java', class: 'library', total: 8 })
+    expect(result.current.data?.total).toBe(56)
+  })
+
+  it('펼치기 전이거나 다이제스트가 없으면 조회하지 않는다', () => {
+    renderHook(() => useStackImageVulnerabilities('stk_1', 'sha256:abc', DEFAULT_VULNERABILITY_FILTER, false), {
+      wrapper,
+    })
+    renderHook(() => useStackImageVulnerabilities('stk_1', '', DEFAULT_VULNERABILITY_FILTER, true), { wrapper })
+
+    expect(vi.mocked(api.get)).not.toHaveBeenCalled()
+  })
+
+  // 모르는 스택(404)은 다시 물어도 바뀌지 않는다.
+  it('404 는 재시도 없이 오류 상태가 된다', async () => {
+    vi.mocked(api.get).mockRejectedValue({ status: 404, message: 'STACK_NOT_FOUND' })
+
+    const { result } = renderHook(
+      () => useStackImageVulnerabilities('stk_1', 'sha256:abc', DEFAULT_VULNERABILITY_FILTER, true),
+      { wrapper },
+    )
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(vi.mocked(api.get)).toHaveBeenCalledTimes(1)
   })
 })

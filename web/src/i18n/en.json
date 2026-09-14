@@ -45,6 +45,49 @@
       "low": "Low",
       "unknown": "Unknown severity",
       "countsUnknown": "Counts unknown"
+    },
+    "vulnerabilityList": {
+      "show": "View vulnerability list",
+      "hide": "Hide vulnerability list",
+      "loading": "Loading vulnerabilities...",
+      "error": "Couldn't load the vulnerability list.",
+      "empty": "No vulnerabilities were found in this image.",
+      "emptyFiltered": "No vulnerabilities match the current filters.",
+      "resetFilters": "Clear filters",
+      "classFilterLabel": "Package type",
+      "severityFilterLabel": "Severity",
+      "allClasses": "All",
+      "fixableOnly": "Fixable only",
+      "searchLabel": "Search vulnerabilities",
+      "searchPlaceholder": "Search CVE or package",
+      "targetsLabel": "Scan targets",
+      "targetTotal": "{{count}} found",
+      "class": {
+        "os": "Base image OS packages",
+        "library": "App dependencies",
+        "other": "Other"
+      },
+      "columns": {
+        "severity": "Severity",
+        "id": "Vulnerability",
+        "package": "Package",
+        "installed": "Installed",
+        "fixed": "Fixed in",
+        "target": "Target"
+      },
+      "noFix": "No fixed version",
+      "range": "{{from}}–{{to}} / {{total}}",
+      "rangeUnknownTotal": "{{from}}–{{to}}",
+      "pagination": "Vulnerability list pages",
+      "previous": "Previous",
+      "next": "Next",
+      "unavailable": {
+        "reportExpired": "The CI report is past its retention period, so the list can't be shown. Severity counts are still recorded.",
+        "reportMissing": "No CI report was recorded for this scan. The scan may have failed before writing its report.",
+        "ciUnreachable": "Couldn't reach the CI server. Try again later.",
+        "notRecorded": "This image was scanned before the vulnerability list was available. The list appears after the next scan.",
+        "unknown": "The vulnerability list is not available."
+      }
     }
   },
   "header": {
@@ -1045,7 +1088,9 @@
         "failedNoReason": "The scanner did not report a reason.",
         "fixable": "Fixable: Critical {{critical}} · High {{high}} · Medium {{medium}} · Low {{low}}",
         "unknown": "Unknown",
-        "scanned": "Scanned"
+        "scanned": "Scanned",
+        "vulnerabilityList": "Vulnerability list",
+        "vulnerabilityListFor": "Vulnerability list — {{image}}"
       },
       "columns": {
         "image": "Image",

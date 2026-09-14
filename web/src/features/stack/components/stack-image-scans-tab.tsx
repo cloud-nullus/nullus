@@ -10,20 +10,25 @@
 //
 // 이미지는 그리드로 보인다. 스택 하나가 수십 개의 이미지를 돌린다(GitLab 스택 33개) —
 // 카드를 세로로 쌓으면 어느 이미지가 더 위험한지 건수를 나란히 비교할 수 없다.
+//
+// 건수만으로는 무엇을 고쳐야 하는지 알 수 없다. 행을 펼치면 그 이미지의 취약점 목록이
+// 모든 열을 가로지르는 상세 행에 뜬다. 목록 칸을 따로 두면 고정 열 너비가 흔들린다.
 
-import { useMemo, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { CircleAlert, Info, ShieldAlert } from "lucide-react";
+import { ChevronRight, CircleAlert, Info, ShieldAlert } from "lucide-react";
 import { iconProps } from "../../../components/ui/icon";
 import { Badge } from "../../../components/ui/badge";
 import { StatusIcon } from "../../../components/ui/status-icon";
 import { SeverityCounts } from "../../../components/shared/severity-counts";
 import { tableHeadRowClass, tdClass, thClass } from "../../../components/shared/table-chrome";
+import { VulnerabilityList } from "../../../components/shared/vulnerability-list";
 import { formatDate, formatDateTime, resolveLocale } from "../../../lib/locale";
 import { cn } from "../../../lib/utils";
 import { shortImageDigest } from "../../../lib/vulnerability-counts";
-import type { VulnerabilityCounts } from "../../../types";
-import { useStackImageScans } from "../api/stack-api";
+import { DEFAULT_VULNERABILITY_FILTER } from "../../../lib/vulnerability-list";
+import type { VulnerabilityCounts, VulnerabilityListFilter } from "../../../types";
+import { useStackImageScans, useStackImageVulnerabilities } from "../api/stack-api";
 import type {
   StackImageScanItem,
   StackImageScanReport,
@@ -105,9 +110,37 @@ function scanSource(items: StackImageScanItem[], locale: string, unknown: string
   };
 }
 
-function ImageScanRow({ item }: { item: StackImageScanItem }) {
+// 펼친 행에서만 마운트된다. 펼치지 않은 이미지마다 목록을 조회하지 않는다.
+function StackImageVulnerabilities({ stackId, digest }: { stackId: string; digest: string }) {
+  const [filter, setFilter] = useState<VulnerabilityListFilter>(DEFAULT_VULNERABILITY_FILTER);
+  const { data, isLoading, isError, isFetching } = useStackImageVulnerabilities(stackId, digest, filter, true);
+  return (
+    <VulnerabilityList
+      data={data}
+      isLoading={isLoading}
+      isError={isError}
+      isFetching={isFetching}
+      filter={filter}
+      onFilterChange={setFilter}
+    />
+  );
+}
+
+function ImageScanRow({
+  item,
+  stackId,
+  columnCount,
+}: {
+  item: StackImageScanItem;
+  stackId: string;
+  columnCount: number;
+}) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const detailId = useId();
   const failed = item.status === "failed";
+  // 실패한 스캔에는 목록이 없다. 다이제스트가 없으면 어느 이미지를 물을지 모른다.
+  const digest = failed ? undefined : item.imageDigest;
   const counts = failed ? undefined : item.counts;
   const fixable = counts ? item.fixableCounts : undefined;
   const fixableTotal = fixable
@@ -115,102 +148,131 @@ function ImageScanRow({ item }: { item: StackImageScanItem }) {
     : undefined;
 
   return (
-    <tr data-testid="stack-image-scan-item" className="align-top">
-      <td className={tdClass}>
-        <span
-          data-testid="stack-image-scan-image"
-          className="block break-all font-mono text-[12px] font-semibold text-[var(--color-text-primary)]"
-        >
-          {item.image}
-        </span>
-        {item.imageDigest && (
-          <code
-            title={item.imageDigest}
-            className="mt-0.5 block font-mono text-[11px] text-[var(--color-text-secondary)]"
-          >
-            {shortImageDigest(item.imageDigest)}
-          </code>
-        )}
-      </td>
-      <td className={tdClass}>
-        <span className="block text-[12px] text-[var(--color-text-primary)]">{item.release ?? "-"}</span>
-        {/* 공통 베이스 이미지는 워크로드 여러 개가 함께 쓴다(gitlab-base 7개, argocd 6개).
-            좁은 릴리스 열에서 전부 펼치면 행이 여덟 줄로 늘어나므로 두 줄로 줄이고 전체는 툴팁에 둔다. */}
-        {item.workloads.length > 0 && (
+    <>
+      <tr data-testid="stack-image-scan-item" className="align-top">
+        <td className={tdClass}>
           <span
-            title={item.workloads.join(", ")}
-            className="mt-0.5 line-clamp-2 break-all font-mono text-[11px] text-[var(--color-text-secondary)]"
+            data-testid="stack-image-scan-image"
+            className="block break-all font-mono text-[12px] font-semibold text-[var(--color-text-primary)]"
           >
-            {item.workloads.join(", ")}
+            {item.image}
           </span>
-        )}
-      </td>
-
-      {failed ? (
-        // 실패한 스캔의 건수는 없다. 건수 칸을 합쳐 오류를 대신 보여준다.
-        <td colSpan={COUNT_SPAN} className={cn(tdClass, "break-all text-[12px] text-[var(--color-text-secondary)]")}>
-          {item.error || t("stackList.imageScans.item.failedNoReason")}
+          {item.imageDigest && (
+            <code
+              title={item.imageDigest}
+              className="mt-0.5 block font-mono text-[11px] text-[var(--color-text-secondary)]"
+            >
+              {shortImageDigest(item.imageDigest)}
+            </code>
+          )}
+          {digest && (
+            // 네이티브 버튼이라 키보드로 펼칠 수 있다. 행마다 같은 글자라 이미지 이름을 이름에 붙인다.
+            <button
+              type="button"
+              aria-expanded={expanded}
+              aria-controls={expanded ? detailId : undefined}
+              aria-label={t("stackList.imageScans.item.vulnerabilityListFor", { image: item.image })}
+              onClick={() => setExpanded((open) => !open)}
+              className="mt-1 inline-flex items-center gap-1 rounded-[var(--radius-sm)] text-[11px] font-semibold text-[var(--color-primary)] hover:underline"
+            >
+              <ChevronRight
+                {...iconProps("xs")}
+                className={cn("shrink-0 transition-transform", expanded && "rotate-90")}
+              />
+              {t("stackList.imageScans.item.vulnerabilityList")}
+            </button>
+          )}
         </td>
-      ) : !counts ? (
-        <td colSpan={COUNT_SPAN} className={tdClass}>
-          <SeverityCounts counts={undefined} />
-        </td>
-      ) : (
-        <>
-          {SEVERITY_COLUMNS.map(({ key, activeClass }) => {
-            const label = `${t(`common.vulnerability.${key}`)} ${counts[key]}`;
-            return (
-              <td key={key} className={cn(tdClass, "text-right tabular-nums")}>
-                <span
-                  aria-label={label}
-                  title={label}
-                  className={counts[key] > 0 ? activeClass : "text-[var(--color-text-muted)]"}
-                >
-                  {counts[key]}
-                </span>
-              </td>
-            );
-          })}
-          <td className={cn(tdClass, "text-right tabular-nums")}>
-            {fixable ? (
-              <span title={t("stackList.imageScans.item.fixable", { ...fixable })}>{fixableTotal}</span>
-            ) : (
-              "-"
-            )}
-          </td>
-        </>
-      )}
-
-      <td className={tdClass}>
-        <span className="inline-flex flex-wrap items-center gap-1">
-          {failed ? (
-            // 상태 열은 좁다. 배지 글자는 칸을 넘치지 않고 줄바꿈한다.
-            <Badge pill className={cn(NEUTRAL_BADGE, "whitespace-normal text-left")}>
-              <CircleAlert {...iconProps("xs")} className="shrink-0" />
-              {t("stackList.imageScans.item.failed")}
-            </Badge>
-          ) : (
-            <span className="text-[12px] text-[var(--color-text-secondary)]">
-              {t("stackList.imageScans.item.scanned")}
+        <td className={tdClass}>
+          <span className="block text-[12px] text-[var(--color-text-primary)]">{item.release ?? "-"}</span>
+          {/* 공통 베이스 이미지는 워크로드 여러 개가 함께 쓴다(gitlab-base 7개, argocd 6개).
+              좁은 릴리스 열에서 전부 펼치면 행이 여덟 줄로 늘어나므로 두 줄로 줄이고 전체는 툴팁에 둔다. */}
+          {item.workloads.length > 0 && (
+            <span
+              title={item.workloads.join(", ")}
+              className="mt-0.5 line-clamp-2 break-all font-mono text-[11px] text-[var(--color-text-secondary)]"
+            >
+              {item.workloads.join(", ")}
             </span>
           )}
-          {item.dbStale && (
-            <Badge
-              pill
-              className={cn(WARNING_BADGE, "whitespace-normal text-left")}
-              title={t("stackList.imageScans.dbStaleHint")}
-            >
-              <StatusIcon tone="warning" size="xs" inheritColor className="shrink-0" />
-              {t("stackList.imageScans.dbStale")}
-            </Badge>
-          )}
-        </span>
-      </td>
-    </tr>
+        </td>
+
+        {failed ? (
+          // 실패한 스캔의 건수는 없다. 건수 칸을 합쳐 오류를 대신 보여준다.
+          <td colSpan={COUNT_SPAN} className={cn(tdClass, "break-all text-[12px] text-[var(--color-text-secondary)]")}>
+            {item.error || t("stackList.imageScans.item.failedNoReason")}
+          </td>
+        ) : !counts ? (
+          <td colSpan={COUNT_SPAN} className={tdClass}>
+            <SeverityCounts counts={undefined} />
+          </td>
+        ) : (
+          <>
+            {SEVERITY_COLUMNS.map(({ key, activeClass }) => {
+              const label = `${t(`common.vulnerability.${key}`)} ${counts[key]}`;
+              return (
+                <td key={key} className={cn(tdClass, "text-right tabular-nums")}>
+                  <span
+                    aria-label={label}
+                    title={label}
+                    className={counts[key] > 0 ? activeClass : "text-[var(--color-text-muted)]"}
+                  >
+                    {counts[key]}
+                  </span>
+                </td>
+              );
+            })}
+            <td className={cn(tdClass, "text-right tabular-nums")}>
+              {fixable ? (
+                <span title={t("stackList.imageScans.item.fixable", { ...fixable })}>{fixableTotal}</span>
+              ) : (
+                "-"
+              )}
+            </td>
+          </>
+        )}
+
+        <td className={tdClass}>
+          <span className="inline-flex flex-wrap items-center gap-1">
+            {failed ? (
+              // 상태 열은 좁다. 배지 글자는 칸을 넘치지 않고 줄바꿈한다.
+              <Badge pill className={cn(NEUTRAL_BADGE, "whitespace-normal text-left")}>
+                <CircleAlert {...iconProps("xs")} className="shrink-0" />
+                {t("stackList.imageScans.item.failed")}
+              </Badge>
+            ) : (
+              <span className="text-[12px] text-[var(--color-text-secondary)]">
+                {t("stackList.imageScans.item.scanned")}
+              </span>
+            )}
+            {item.dbStale && (
+              <Badge
+                pill
+                className={cn(WARNING_BADGE, "whitespace-normal text-left")}
+                title={t("stackList.imageScans.dbStaleHint")}
+              >
+                <StatusIcon tone="warning" size="xs" inheritColor className="shrink-0" />
+                {t("stackList.imageScans.dbStale")}
+              </Badge>
+            )}
+          </span>
+        </td>
+      </tr>
+      {expanded && digest && (
+        <tr data-testid="stack-image-scan-detail">
+          {/* 모든 열을 가로지른다. colgroup 의 열 너비는 건드리지 않는다. */}
+          <td colSpan={columnCount} className={cn(tdClass, "h-auto bg-[var(--color-surface-sunken)] py-3")}>
+            <div id={detailId}>
+              <StackImageVulnerabilities stackId={stackId} digest={digest} />
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
-function ImageScanGrid({ items }: { items: StackImageScanItem[] }) {
+function ImageScanGrid({ items, stackId }: { items: StackImageScanItem[]; stackId: string }) {
   const { t } = useTranslation();
   const headers = [
     { key: "image", label: t("stackList.imageScans.columns.image"), numeric: false },
@@ -244,7 +306,12 @@ function ImageScanGrid({ items }: { items: StackImageScanItem[] }) {
         </thead>
         <tbody>
           {items.map((item, index) => (
-            <ImageScanRow key={`${item.release ?? ""}|${item.image}|${index}`} item={item} />
+            <ImageScanRow
+              key={`${item.release ?? ""}|${item.image}|${index}`}
+              item={item}
+              stackId={stackId}
+              columnCount={headers.length}
+            />
           ))}
         </tbody>
       </table>
@@ -256,10 +323,12 @@ function ReportBody({
   report,
   items,
   locale,
+  stackId,
 }: {
   report: StackImageScanReport;
   items: StackImageScanItem[];
   locale: string;
+  stackId: string;
 }) {
   const { t } = useTranslation();
   const noticeKey = statusNoticeKey(report);
@@ -298,7 +367,7 @@ function ReportBody({
         </div>
       )}
 
-      {report.status !== "not_scanned" && items.length > 0 && <ImageScanGrid items={items} />}
+      {report.status !== "not_scanned" && items.length > 0 && <ImageScanGrid items={items} stackId={stackId} />}
 
       {report.status === "scanned" && items.length === 0 && (
         <Notice>{t("stackList.imageScans.empty")}</Notice>
@@ -334,7 +403,7 @@ export function StackImageScansTab({ stackId }: { stackId: string }) {
       ) : isError || !data ? (
         <Notice>{t("stackList.imageScans.noData")}</Notice>
       ) : (
-        <ReportBody report={data} items={items} locale={locale} />
+        <ReportBody report={data} items={items} locale={locale} stackId={stackId} />
       )}
     </div>
   );
