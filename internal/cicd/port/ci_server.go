@@ -130,6 +130,14 @@ type CIArtifactRef struct {
 }
 
 // CIArtifactReader 는 실행이 남긴 산출물 파일을 읽는다.
+// CIArtifactLinker 는 산출물을 브라우저로 여는 주소를 만든다.
+//
+// 선택 기능이다. API 클라이언트는 클러스터 내부 주소로 붙으므로, 사람이 열 수 있는
+// 외부 주소를 모르는 조회기는 빈 문자열을 돌려준다 — 죽은 링크보다 없는 편이 낫다.
+type CIArtifactLinker interface {
+	ArtifactWebURL(ref CIArtifactRef) string
+}
+
 type CIArtifactReader interface {
 	// ReadArtifact 는 파일 내용을 돌려준다. 없으면 found=false 이고 오류가 아니다 —
 	// 리포트가 없는 실행(스캐너에 닿지 못함, 보존 기간 만료)은 정상 경로다.

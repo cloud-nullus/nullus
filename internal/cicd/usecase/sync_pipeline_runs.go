@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -20,6 +21,7 @@ import (
 // 멱등하다. 배포 ID 를 job 과 빌드 번호에서 만들어, 같은 빌드를 여러 번 동기화해도
 // 기록이 늘지 않고 상태만 갱신된다(실행 중 → 성공).
 type SyncPipelineRuns struct {
+	syncable    port.SyncablePipelineLister
 	builds      port.CIBuildReader
 	deployments port.DeploymentRepository
 	// factory / pipelines 는 파이프라인마다 CI 서버를 찾을 때 쓴다.
@@ -162,9 +164,35 @@ func (uc *SyncPipelineRuns) recordImageScans(
 			if !ok {
 				continue // 도는 중인 것을 통과로 적지 않는다
 			}
-			if withReport[id] {
+			ref := port.CIArtifactRef{
+				JobName: input.JobName,
+				Branch:  input.Branch,
+				Build:   b,
+				Stage:   st,
+				Name:    port.ImageScanReportArtifact,
+				Path:    port.ImageScanReportFile,
+			}
+			if existing := withReport[id]; existing != nil {
 				// 이미 리포트까지 읽었다. 화면을 열 때마다 동기화가 도는데,
-				// 끝난 실행의 리포트를 매번 다시 내려받을 이유가 없다.
+				// 끝난 실행의 리포트를 매번 다시 내려받을 이유가 없다. 링크·리포트 위치
+				// 기능 전에 기록한 실행이면 그것만 채운다.
+				changed := false
+				if existing.ReportURI == "" {
+					if link := uc.reportLink(ref); link != "" {
+						existing.ReportURI = link
+						changed = true
+					}
+				}
+				if existing.ReportRef == nil {
+					existing.ReportRef = reportRefFrom(ref)
+					changed = true
+				}
+				if changed {
+					if err := uc.imageScans.Upsert(ctx, existing); err != nil {
+						slog.Warn("이미지 스캔 리포트 위치 기록 실패",
+							"pipeline_id", pipelineID, "deployment_id", deploymentID, "error", err)
+					}
+				}
 				continue
 			}
 
@@ -181,14 +209,12 @@ func (uc *SyncPipelineRuns) recordImageScans(
 				GateResult:   gate,
 				ScannedAt:    scannedAt,
 			}
-			uc.applyScanReport(ctx, result, port.CIArtifactRef{
-				JobName: input.JobName,
-				Branch:  input.Branch,
-				Build:   b,
-				Stage:   st,
-				Name:    port.ImageScanReportArtifact,
-				Path:    port.ImageScanReportFile,
-			}, policy)
+			uc.applyScanReport(ctx, result, ref, policy)
+			// 리포트를 읽은 실행에만 링크를 건다 — 리포트가 없으면 열어도 없는 파일이다.
+			if result.Counts != nil {
+				result.ReportURI = uc.reportLink(ref)
+				result.ReportRef = reportRefFrom(ref)
+			}
 
 			if err := uc.imageScans.Upsert(ctx, result); err != nil {
 				slog.Warn("이미지 스캔 결과 기록 실패",
@@ -202,7 +228,7 @@ func (uc *SyncPipelineRuns) recordImageScans(
 //
 // 조회에 실패하면 비어 있다 — 리포트를 한 번 더 내려받는 편이 기록을 빠뜨리는
 // 것보다 낫다. 리포트가 없던 실행은 여기 들지 않아 다음 동기화 때 다시 확인한다.
-func (uc *SyncPipelineRuns) scansWithReport(ctx context.Context, pipelineID string) map[string]bool {
+func (uc *SyncPipelineRuns) scansWithReport(ctx context.Context, pipelineID string) map[string]*domain.ImageScanResult {
 	if uc.artifacts == nil {
 		return nil
 	}
@@ -210,13 +236,22 @@ func (uc *SyncPipelineRuns) scansWithReport(ctx context.Context, pipelineID stri
 	if err != nil {
 		return nil
 	}
-	out := make(map[string]bool, len(existing))
+	out := make(map[string]*domain.ImageScanResult, len(existing))
 	for _, r := range existing {
 		if r != nil && r.Counts != nil {
-			out[r.ID] = true
+			out[r.ID] = r
 		}
 	}
 	return out
+}
+
+// reportLink 는 리포트를 브라우저로 여는 주소다. 링크를 만들 수 없는 조회기면 비어 있다.
+func (uc *SyncPipelineRuns) reportLink(ref port.CIArtifactRef) string {
+	linker, ok := uc.artifacts.(port.CIArtifactLinker)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(linker.ArtifactWebURL(ref))
 }
 
 // applyScanReport 는 리포트를 읽어 판정과 건수를 채운다.
@@ -388,6 +423,70 @@ func (uc *SyncPipelineRuns) ForPipeline(ctx context.Context, pipelineID string) 
 			"pipeline_id", pipeline.ID, "stack_id", pipeline.StackID, "error", err)
 		return 0, nil
 	}
+	return uc.syncWithBundle(ctx, pipeline, bundle)
+}
+
+// WithSyncablePipelines 는 주기 동기화가 돌 파이프라인 목록을 배선한다.
+func (uc *SyncPipelineRuns) WithSyncablePipelines(lister port.SyncablePipelineLister) *SyncPipelineRuns {
+	uc.syncable = lister
+	return uc
+}
+
+// SyncAll 은 스택에 묶인 모든 파이프라인의 실행 기록과 스캔 결과를 들이고, 동기화한
+// 파이프라인 수를 돌려준다.
+//
+// 화면을 열 때만 들이면 아무도 보지 않는 파이프라인의 스캔 결과가 쌓이지 않는다.
+// 번들은 스택마다 한 번만 만든다 — 조립마다 SCM 인증 확인이 따른다. 한 스택의
+// 실패로 나머지를 멈추지 않는다.
+func (uc *SyncPipelineRuns) SyncAll(ctx context.Context) (int, error) {
+	if uc == nil || uc.factory == nil || uc.syncable == nil {
+		return 0, nil
+	}
+	pipelines, err := uc.syncable.ListWithStack(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("동기화할 파이프라인 목록 조회 실패: %w", err)
+	}
+
+	byStack := map[string][]*domain.Pipeline{}
+	var stacks []string
+	for _, p := range pipelines {
+		if p == nil || strings.TrimSpace(p.StackID) == "" {
+			continue
+		}
+		if _, seen := byStack[p.StackID]; !seen {
+			stacks = append(stacks, p.StackID)
+		}
+		byStack[p.StackID] = append(byStack[p.StackID], p)
+	}
+
+	synced := 0
+	for _, stackID := range stacks {
+		if ctx.Err() != nil {
+			break
+		}
+		bundle, err := uc.factory.For(ctx, stackID)
+		if err != nil {
+			if errors.Is(err, port.ErrStackToolsUnavailable) {
+				// 설치 중이거나 사라진 스택이다. 주기마다 경고로 쌓지 않는다.
+				slog.Debug("CI 실행 기록 주기 동기화: 스택 도구를 쓸 수 없어 건너뜁니다", "stack_id", stackID, "error", err)
+			} else {
+				slog.Warn("CI 실행 기록 주기 동기화: 스택 번들을 만들지 못했습니다", "stack_id", stackID, "error", err)
+			}
+			continue
+		}
+		for _, p := range byStack[stackID] {
+			if _, err := uc.syncWithBundle(ctx, p, bundle); err != nil {
+				slog.Warn("CI 실행 기록 주기 동기화 실패", "pipeline_id", p.ID, "stack_id", stackID, "error", err)
+				continue
+			}
+			synced++
+		}
+	}
+	return synced, nil
+}
+
+// syncWithBundle 은 이미 조립한 번들로 파이프라인 하나의 실행 기록을 들인다.
+func (uc *SyncPipelineRuns) syncWithBundle(ctx context.Context, pipeline *domain.Pipeline, bundle *port.SCMBundle) (int, error) {
 	if bundle == nil || bundle.CIBuilds == nil {
 		slog.Warn("CI 실행 기록: 이 스택에는 빌드 이력을 읽을 CI 가 배선되지 않았습니다",
 			"pipeline_id", pipeline.ID, "stack_id", pipeline.StackID)

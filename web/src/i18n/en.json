@@ -37,7 +37,58 @@
     "notFound": "Page not found",
     "notFoundDesc": "The page you are looking for does not exist or has been moved.",
     "close": "Close",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "vulnerability": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low",
+      "unknown": "Unknown severity",
+      "countsUnknown": "Counts unknown"
+    },
+    "vulnerabilityList": {
+      "show": "View vulnerability list",
+      "hide": "Hide vulnerability list",
+      "loading": "Loading vulnerabilities...",
+      "error": "Couldn't load the vulnerability list.",
+      "empty": "No vulnerabilities were found in this image.",
+      "emptyFiltered": "No vulnerabilities match the current filters.",
+      "resetFilters": "Clear filters",
+      "classFilterLabel": "Package type",
+      "severityFilterLabel": "Severity",
+      "allClasses": "All",
+      "fixableOnly": "Fixable only",
+      "searchLabel": "Search vulnerabilities",
+      "searchPlaceholder": "Search CVE or package",
+      "targetsLabel": "Scan targets",
+      "targetTotal": "{{count}} found",
+      "class": {
+        "os": "Base image OS packages",
+        "library": "App dependencies",
+        "other": "Other"
+      },
+      "columns": {
+        "severity": "Severity",
+        "id": "Vulnerability",
+        "package": "Package",
+        "installed": "Installed",
+        "fixed": "Fixed in",
+        "target": "Target"
+      },
+      "noFix": "No fixed version",
+      "range": "{{from}}–{{to}} / {{total}}",
+      "rangeUnknownTotal": "{{from}}–{{to}}",
+      "pagination": "Vulnerability list pages",
+      "previous": "Previous",
+      "next": "Next",
+      "unavailable": {
+        "reportExpired": "The CI report is past its retention period, so the list can't be shown. Severity counts are still recorded.",
+        "reportMissing": "No CI report was recorded for this scan. The scan may have failed before writing its report.",
+        "ciUnreachable": "Couldn't reach the CI server. Try again later.",
+        "notRecorded": "This image was scanned before the vulnerability list was available. The list appears after the next scan.",
+        "unknown": "The vulnerability list is not available."
+      }
+    }
   },
   "header": {
     "roles": {
@@ -800,7 +851,26 @@
     "deleteWarnings": {
       "title": "Deleted, but some resources remain"
     },
-    "accessUrl": "Access URL"
+    "accessUrl": "Access URL",
+    "imageScan": {
+      "title": "Image scan",
+      "gate": {
+        "pass": "Passed",
+        "warn": "Passed with warnings",
+        "block": "Blocked by policy",
+        "error": "Scan error"
+      },
+      "dbStale": "Stale DB",
+      "dbStaleHint": "The vulnerability DB is older than 30 days or its age is unknown, so recent vulnerabilities may be missing from this result.",
+      "errorHint": "The scan could not be performed or evaluated. This is not a vulnerability finding.",
+      "viewReport": "View report",
+      "image": "Image",
+      "digest": "Digest",
+      "scanner": "Scanner",
+      "dbUpdatedAt": "Vulnerability DB",
+      "scannedAt": "Scanned",
+      "unknown": "Unknown"
+    }
   },
   "cicdHistoryPage": {
     "title": "CI/CD History",
@@ -925,7 +995,8 @@
       "history": "History",
       "version-upgrade": "Version Upgrade",
       "workloads": "Workloads",
-      "config": "Config"
+      "config": "Config",
+      "image-scans": "Image Vulnerabilities"
     },
     "status": {
       "pending": "Pending",
@@ -995,6 +1066,39 @@
       "summary": "{{ready}} / {{total}} pods ready",
       "loading": "Reading pods from the cluster...",
       "empty": "No pods found for this stack in the cluster."
+    },
+    "imageScans": {
+      "title": "Installed image vulnerabilities",
+      "reportOnly": "Report only — these results never blocked the installation.",
+      "loading": "Loading image scan results...",
+      "noData": "No image scan data is available for this stack.",
+      "pending": "Waiting for the first scan. Installed images are scanned right after install and then periodically.",
+      "notScanned": {
+        "scannerNotInstalled": "Trivy is not selected for this stack, so installed images are not scanned. This does not mean there are no vulnerabilities.",
+        "airgap": "Air-gapped installs do not scan installed images. This does not mean there are no vulnerabilities.",
+        "unknown": "Installed images have not been scanned."
+      },
+      "lastScannedAt": "Last scanned {{time}}",
+      "summaryHint": "Totals include vulnerabilities without an available fix.",
+      "empty": "No installed images were reported for this stack.",
+      "dbStale": "Stale DB",
+      "dbStaleHint": "Older than 30 days or unknown",
+      "item": {
+        "failed": "Scan failed",
+        "failedNoReason": "The scanner did not report a reason.",
+        "fixable": "Fixable: Critical {{critical}} · High {{high}} · Medium {{medium}} · Low {{low}}",
+        "unknown": "Unknown",
+        "scanned": "Scanned",
+        "vulnerabilityList": "Vulnerability list",
+        "vulnerabilityListFor": "Vulnerability list — {{image}}"
+      },
+      "columns": {
+        "image": "Image",
+        "release": "Release",
+        "fixable": "Fixable",
+        "status": "Status"
+      },
+      "summaryScanner": "Scanner {{scanner}} · Vulnerability DB {{db}}"
     }
   },
   "deploy": {

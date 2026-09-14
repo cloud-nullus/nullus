@@ -112,6 +112,37 @@ func (r *PostgresStackRepository) ListInFlight(ctx context.Context) ([]*domain.S
 	return stacks, rows.Err()
 }
 
+// ListCompleted 는 설치가 끝난 스택을 조직과 무관하게 돌려준다.
+//
+// 설치 이미지 주기 재스캔이 쓴다. 오래 스캔하지 않은 순서가 아니라 갱신 순서로
+// 도는 것은, 재스캔이 스택 레코드를 건드리지 않아 둘이 같은 순서를 뜻하지 않기
+// 때문이다 — 한 번에 전부 돈다.
+func (r *PostgresStackRepository) ListCompleted(ctx context.Context) ([]*domain.Stack, error) {
+	q := `
+		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config,
+			current_step, last_completed_step, last_failed_step, last_failure_reason,
+			created_at, updated_at, deleted_at
+		FROM stacks
+		WHERE deleted_at IS NULL AND state = $1
+		ORDER BY updated_at ASC LIMIT 500`
+
+	rows, err := r.pool.Query(ctx, q, string(domain.StateCompleted))
+	if err != nil {
+		return nil, fmt.Errorf("query completed stacks: %w", err)
+	}
+	defer rows.Close()
+
+	var stacks []*domain.Stack
+	for rows.Next() {
+		s, err := r.scanStack(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan stack: %w", err)
+		}
+		stacks = append(stacks, s)
+	}
+	return stacks, rows.Err()
+}
+
 func (r *PostgresStackRepository) List(ctx context.Context, orgID string, includeDeleted bool) ([]*domain.Stack, error) {
 	q := `
 		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config,

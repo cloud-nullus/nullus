@@ -113,6 +113,12 @@ type InstallStack struct {
 	tokenRegistry       port.TokenSourceRegistry
 	tokenRegistryEnv    string
 	secretRouter        *secrets.Router
+	imageScan           installedImageScanRunner
+}
+
+// installedImageScanRunner 는 설치가 끝난 스택의 OSS 이미지를 스캔한다(보고용).
+type installedImageScanRunner interface {
+	Execute(ctx context.Context, stackID string) (*domain.StackImageScanReport, error)
 }
 
 type stackConfigAwareExecutor interface {
@@ -192,6 +198,13 @@ func WithTokenSourceRegistry(registry port.TokenSourceRegistry, env string) Inst
 func WithSecretRouter(router *secrets.Router) InstallStackOption {
 	return func(uc *InstallStack) {
 		uc.secretRouter = router
+	}
+}
+
+// WithInstalledImageScan 은 설치가 끝난 뒤 설치 이미지를 스캔하도록 배선한다.
+func WithInstalledImageScan(runner installedImageScanRunner) InstallStackOption {
+	return func(uc *InstallStack) {
+		uc.imageScan = runner
 	}
 }
 
@@ -433,6 +446,55 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 				fmt.Sprintf("GitHub 자격증명 등록에 실패했습니다 — 파이프라인 생성 전에 다시 등록해야 합니다: %v", err))
 		}
 	}
+	uc.scanInstalledImages(ctx, stack, deploymentID)
+}
+
+// scanInstalledImages 는 설치가 끝난 스택의 OSS 이미지를 스캔해 보고서로 남긴다.
+//
+// 보고용이다 — 결과가 어떻든 설치는 이미 완료다. 실패해도 설치를 되돌리지 않고
+// 경고만 남긴다. 주기 재스캔이 다음에 다시 시도한다.
+func (uc *InstallStack) scanInstalledImages(ctx context.Context, stack *domain.Stack, deploymentID string) {
+	if uc.imageScan == nil || stack == nil {
+		return
+	}
+	report, err := uc.imageScan.Execute(ctx, stack.ID)
+	if err != nil {
+		slog.Warn("installed image scan failed", "stack_id", stack.ID, "error", err)
+		uc.emit(ctx, deploymentID, "warn", "completed", "C",
+			fmt.Sprintf("설치 이미지 취약점 스캔을 하지 못했습니다 — 보고용이라 설치에는 영향이 없고, 주기 재스캔이 다시 시도합니다: %v", err))
+		return
+	}
+	if report == nil {
+		return
+	}
+	uc.emit(ctx, deploymentID, "info", "completed", "C", installedImageScanMessage(report))
+}
+
+func installedImageScanMessage(report *domain.StackImageScanReport) string {
+	switch report.Status {
+	case domain.ImageScanStateNotScanned:
+		if report.Reason == domain.ImageScanReasonAirgap {
+			return "설치 이미지 취약점 스캔: 에어갭 설치라 스캔하지 않습니다"
+		}
+		return "설치 이미지 취약점 스캔: 이미지 스캐너(Trivy)를 설치하지 않은 스택이라 스캔하지 않습니다"
+	case domain.ImageScanStatePending:
+		return "설치 이미지 취약점 스캔: 결과가 아직 없습니다"
+	}
+	failed := 0
+	for _, item := range report.Items {
+		if item.Status == domain.ImageScanStatusFailed {
+			failed++
+		}
+	}
+	msg := fmt.Sprintf("설치 이미지 취약점 스캔(보고용): 이미지 %d개", len(report.Items))
+	if report.Summary != nil {
+		msg += fmt.Sprintf(" — CRITICAL %d · HIGH %d · MEDIUM %d · LOW %d",
+			report.Summary.Critical, report.Summary.High, report.Summary.Medium, report.Summary.Low)
+	}
+	if failed > 0 {
+		msg += fmt.Sprintf(" (스캔하지 못한 이미지 %d개)", failed)
+	}
+	return msg
 }
 
 func (uc *InstallStack) runOpenBaoHealthGate(ctx context.Context, stack *domain.Stack, phase string) error {

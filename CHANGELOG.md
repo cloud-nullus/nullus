@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **파이프라인 실행과 스택 설치 이미지의 취약점 목록을 보인다 — 베이스 이미지와 앱 의존성을 가른다** (`internal/shared/domain`, `internal/cicd/**`, `internal/stack/**`, `db/migrations/000082`·`000083`, `web/src/components/shared`, nullus-plan#76·#78): 건수와 리포트 링크만으로는 무엇을 고쳐야 하는지 화면에서 알 수 없었다. CVE · 패키지 · 설치/수정 버전 · 심각도 · 링크를 목록으로 보이고, Trivy 결과의 Class 로 **베이스 이미지 OS 패키지**와 **앱 의존성**을 나눈다. 심각도 · 구분 · 수정 가능 · 검색 조건과 쪽 나눔을 받는다. 목록을 보일 수 없으면 빈 목록 대신 이유(`report_expired` · `report_missing` · `ci_unreachable` · `not_recorded`)를 돌려준다.
+
+  **파이프라인은 저장하지 않는다**(`GET /api/v1/cicd/pipelines/:id/image-scans/:scanId/vulnerabilities`). 원본 리포트를 DB 에 넣지 않는다는 결정을 지키고, 동기화가 리포트 위치(`report_ref` — GitLab 잡 id · GitHub 실행 id · Jenkins 빌드 번호)만 남긴 뒤 볼 때 CI 리포트를 다시 읽는다. CI 보관 기간이 지나면 목록은 사라지고 건수는 남는다. **스택 설치 이미지는 스캔할 때 저장한다**(`GET /api/v1/stacks/:stackId/image-scans/vulnerabilities?digest=`) — 다시 읽을 CI 리포트가 없다. 스캔 Job 이 이미지마다 취약점 줄을 gzip+base64 한 줄로 찍어 kubelet 로그 상한(10Mi)을 피하고(kind 실측 alpine 48건 7.2KB → 784B), `stack_image_vulnerabilities` 에 COPY 로 넣는다.
+
+  kind(arm64) `harbor-e2e` 스택에서 실측: 설치 이미지 33개 전부 목록 저장(취약점 40,284건), `gitlab-toolbox` 7,374건이 건수 합계와 일치했고 베이스 이미지 OS 패키지 6,607건 · 앱 의존성(Node.js 27 · Python 68 · Ruby 146)으로 갈렸다. 파이프라인 `harbor-app2` 실행은 주기 동기화가 리포트 위치(GitLab 잡 11)를 채운 뒤 GitLab 리포트를 다시 읽어 48건(alpine OS 패키지)을 보였다. 모르는 이미지·다른 파이프라인의 스캔은 404 다.
+
+- **스택이 설치한 OSS 이미지의 취약점을 스캔해 보고한다** (`internal/stack/**`, `internal/shared/domain`, `db/migrations/000081`, nullus-plan#76·#78): 파이프라인 게이트는 사용자 앱 이미지만 보고, 스택이 설치한 GitLab·Harbor·Argo CD 등의 이미지는 아무도 보지 않았다. 설치 완료 직후 한 번, 이후 `STACK_IMAGE_RESCAN_INTERVAL`(기본 24h)마다 스택 네임스페이스에서 실행 중인 이미지를 digest 단위로 스택 Trivy 서버에 스캔한다. **보고용이라 설치를 막지 않는다** — 업스트림 이미지의 CVE 는 사용자가 고칠 수 없는 경우가 많다. 결과는 `GET /api/v1/stacks/:stackId/image-scans` 와 스택 상세 화면으로 보인다.
+
+  **스캔하지 않는 경우를 숨기지 않는다.** Trivy 를 고르지 않은 스택은 `scanner_not_installed`, 에어갭 설치(`NULLUS_HELM_OCI_REGISTRY`)는 `airgap` 사유로 `not_scanned` 를 돌려준다 — "0건" 으로 보이면 안 된다. 스캔 자체가 실패하면 이전 결과를 지우지 않고, 이미지 하나를 못 스캔하면 `failed` 와 오류를 남기며 건수는 비운다.
+
+  **스택 네임스페이스의 Job 이 스캔한다.** 멀티아치 이미지는 파드가 도는 노드 아키텍처로 스캔한다(Trivy 기본값은 amd64). 결과는 JSON 이 아니라 취약점 하나당 `심각도[+]` 토큰으로 로그에 받는다 — JSON 리포트는 큰 이미지 몇 개만으로 kubelet 로그 상한(10Mi)에서 잘린다. DB 날짜는 서버의 `metadata.json` 에서 읽는다. 결과는 stack 모듈이 소유한 `stack_image_scans` 에 스택 단위로 통째로 교체 저장한다. Trivy 리포트 요약·심각도 건수·DB 신선도는 `internal/shared/domain` 으로 옮겨 cicd 와 같은 방식으로 센다.
+
+  kind(arm64) `harbor-e2e` 스택에서 실측: 이미지 33개 스캔·실패 0, DB 날짜·스캐너 버전 기록, GitLab CE 이미지(`gitlab-toolbox` CRITICAL 61 · HIGH 1569)가 가장 심각했다.
+
+- **파이프라인 스캔 결과에 CI 리포트 링크를 남기고, 실행 기록을 주기적으로 동기화한다** (`internal/cicd/**`, nullus-plan#76): `report_uri` 칼럼은 있었지만 채우는 곳이 없어 무엇에 걸렸는지 보려면 CI 를 직접 뒤져야 했다. 산출물 조회기가 스택 접속 도메인(https)으로 브라우저 링크를 만든다 — GitLab 잡 산출물 파일, GitHub Actions 실행 페이지, Jenkins 빌드 산출물. API 클라이언트의 클러스터 내부 주소로는 만들지 않는다. 리포트를 읽은 실행에만 걸고, 링크 전에 기록한 실행은 리포트를 다시 받지 않고 링크만 채운다.
+
+  실행 기록은 화면 조회 때만 들여, 아무도 보지 않는 파이프라인의 스캔 결과가 쌓이지 않았다. `CICD_RUN_SYNC_INTERVAL`(기본 10m)마다 스택에 묶인 모든 파이프라인을 들인다. CI 클라이언트 번들은 스택마다 한 번만 만들고, 설치 중인 스택은 건너뛴다. kind 실측에서 기존 `harbor-app2` 실행에 GitLab 리포트 링크가 채워졌다.
+
+  cicd 저장소 통합 테스트는 000006 이 만드는 테이블을 미리 만들어 두어 마이그레이션이 `already exists` 로 전부 실패하고 있었다. 낡은 사전 생성을 지웠다.
+
+- **파이프라인 실행 이력과 스택 상세에 이미지 스캔 결과를 보인다** (`web/src/features/{cicd,stack}/**`, `web/src/components/shared/severity-counts.tsx`, nullus-plan#76): 스캔 결과는 저장만 되고 어느 화면에도 뜨지 않았다. 파이프라인 실행 이력의 실행마다 게이트 판정과 심각도 건수를, 선택한 실행에는 이미지·digest·취약점 DB 날짜와 CI 리포트 링크를 보인다. 스택 상세에 **이미지 취약점** 탭을 두어 설치 이미지 보고서(보고용)를 보인다. 건수를 모르는 결과는 0 으로 그리지 않고, `error` 판정과 DB 가 오래된 결과는 초록불로 보이지 않으며, 스캔하지 않는 스택은 이유를 보인다. http(s) 가 아닌 리포트 주소는 링크로 만들지 않는다.
+
 - **이미지 스캔을 파이프라인의 실제 차단 게이트로 만들었다** (`internal/cicd/**`, `internal/shared/domain`, `db/migrations/000077`·`000078`, nullus-plan#76): 스캐너는 스택에서 고르면 설치되지만(#250), 스캐폴딩이 만드는 파이프라인에는 **스캔 단계가 없었다.** 차단 게이트가 실제로는 존재하지 않았다는 뜻이다.
 
   **렌더러 3종이 같은 두 명령을 만든다.** GitLab CI · Jenkins · GitHub Actions 모두 `build → image-scan → deploy` 이고 deploy 를 스캔 잡에 매달아 스캔을 건너뛰고 배포되지 않게 한다. 한 번은 리포트를 남기고 한 번은 `--exit-code 1` 로 판정한다 — 한 번에 하면 차단된 실행에서 무엇에 걸렸는지 알 수 없다. **차단 기준은 스크립트에 박지 않았다.** 심각도와 unfixed 제외를 파이프라인 변수로 두어, 정책을 바꿀 때 재스캐폴딩이 아니라 변수만 갱신하면 된다. kind 에서 **렌더된 명령을 그대로** 돌려 `alpine:3.18` 통과 · `node:16` 차단, client 쪽 DB 다운로드 0건을 확인했다.

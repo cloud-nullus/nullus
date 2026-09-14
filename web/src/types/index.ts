@@ -417,6 +417,115 @@ export interface Deployment {
   completedAt: string | null;
 }
 
+/**
+ * 이미지 스캔의 심각도별 취약점 건수. 건수를 모르면 이 객체 자체가 없다(undefined) —
+ * 모르는 값을 0 으로 채우면 "취약점 없음" 으로 읽힌다.
+ */
+export interface VulnerabilityCounts {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  unknown: number;
+}
+
+/** 취약점 한 건의 심각도. 스캐너가 모르는 값을 주면 unknown 이다. */
+export type VulnerabilitySeverity = keyof VulnerabilityCounts;
+
+/**
+ * 취약점이 나온 패키지의 분류.
+ * - os: 베이스 이미지의 OS 패키지(apk·deb·rpm) — 베이스 이미지를 올려야 고친다
+ * - library: 앱 의존성(npm·maven·go 모듈 …) — 앱 저장소에서 고친다
+ * - other: 그 밖(바이너리, 알 수 없는 분류)
+ *
+ * 둘을 섞어 보이면 누가 고칠지 알 수 없다. 그래서 목록이 이 분류를 늘 함께 보인다.
+ */
+export type VulnerabilityClass = "os" | "library" | "other";
+
+/** 이미지 스캔이 찾은 취약점 한 건. */
+export interface VulnerabilityItem {
+  /** CVE-2024-6119, GHSA-… */
+  id: string;
+  pkg: string;
+  installed: string;
+  /** 수정된 버전. 수정 버전이 없으면 "" 다(undefined 가 아니다). */
+  fixed: string;
+  severity: VulnerabilitySeverity;
+  class: VulnerabilityClass;
+  /** 스캔 대상. "alpine 3.19.0 (alpine 3.19.0)", "Node.js" … */
+  target: string;
+  /** 취약점 설명 주소. 스캐너가 준 값이라 http(s) 인지 확인한 뒤에만 링크로 쓴다. */
+  url: string;
+}
+
+/** 스캔 대상 하나의 합계. 필터와 무관한 전체 건수다. */
+export interface VulnerabilityTarget {
+  target: string;
+  class: VulnerabilityClass;
+  /** 없으면 건수를 모른다. 0 이 아니다. */
+  total?: number;
+}
+
+/**
+ * 취약점 목록 응답(파이프라인 스캔·스택 설치 이미지 공통).
+ *
+ * unavailable 은 목록을 볼 수 없다는 뜻이지 취약점이 없다는 뜻이 아니다. 이유는 reason 에 있다.
+ * "report_expired" | "report_missing" | "ci_unreachable" | "not_recorded"
+ */
+export interface VulnerabilityListResult {
+  status: "available" | "unavailable";
+  reason: string;
+  targets: VulnerabilityTarget[];
+  /** 요청한 페이지. */
+  items: VulnerabilityItem[];
+  /** 필터를 적용한 뒤의 건수. 없으면 모른다. */
+  total?: number;
+  limit: number;
+  offset: number;
+}
+
+/** 취약점 목록의 필터와 페이지. 조회 키에 그대로 들어간다. */
+export interface VulnerabilityListFilter {
+  /** 비어 있으면 모든 심각도. */
+  severities: VulnerabilitySeverity[];
+  /** 없으면 모든 분류. */
+  vulnerabilityClass?: VulnerabilityClass;
+  fixableOnly: boolean;
+  /** ID·패키지 이름 검색어. */
+  query: string;
+  offset: number;
+}
+
+/**
+ * 파이프라인 이미지 스캔의 정책 판정.
+ * - pass: 통과 · warn: 경고와 함께 통과 · block: 정책으로 차단
+ * - error: 스캔을 수행하거나 평가하지 못했다. 취약점 판정이 아니다.
+ */
+export type ImageScanGateResult = "pass" | "warn" | "block" | "error";
+
+/** 파이프라인 실행이 만든 이미지 한 개의 스캔 결과(GET /cicd/pipelines/{id}/image-scans). */
+export interface PipelineImageScan {
+  id: string;
+  pipelineId: string;
+  /** 스캔한 이미지를 만든 실행. 실행과 이어지지 않은 스캔이면 없다. */
+  deploymentId?: string;
+  imageRepository?: string;
+  imageTag?: string;
+  imageDigest?: string;
+  scanSource: string;
+  scanner: string;
+  scannerVersion?: string;
+  dbUpdatedAt?: string;
+  /** 없으면 건수를 모른다. 0 이 아니다. */
+  counts?: VulnerabilityCounts;
+  gateResult: ImageScanGateResult;
+  /** 원본 리포트 주소. 비어 있으면 없다. */
+  reportUri?: string;
+  scannedAt: string;
+  /** 취약점 DB 가 30일보다 오래됐거나 날짜를 모른다. 통과여도 깨끗한 통과로 보이면 안 된다. */
+  dbStale: boolean;
+}
+
 export interface PipelineResource {
   kind: string;
   name: string;

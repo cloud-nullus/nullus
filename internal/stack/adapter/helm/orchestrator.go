@@ -600,7 +600,7 @@ func isHarborRegistrySelection(sel domain.ToolSelection) bool {
 // 이름을 보지 않는다 — 스캐너 슬롯의 선택지는 현재 Trivy 하나뿐이고, 고른
 // 사실 자체가 곧 설치 여부다. 선택지가 늘면 여기서 갈라야 한다.
 func isImageScannerSelection(sel domain.ToolSelection) bool {
-	return sel.Enabled && !isExternalSelection(sel)
+	return domain.HasImageScanner(sel)
 }
 
 // isGitLabContainerRegistrySelection 은 GitLab 내장 레지스트리를 골랐는지 본다.

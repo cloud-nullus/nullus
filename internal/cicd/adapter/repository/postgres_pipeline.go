@@ -102,6 +102,37 @@ func (r *PostgresPipelineRepository) List(ctx context.Context, orgID string) ([]
 }
 
 // ListByStackID returns all pipelines linked to a specific stack.
+
+// ListWithStack 은 스택에 묶인 파이프라인을 조직과 무관하게 돌려준다(주기 동기화용).
+func (r *PostgresPipelineRepository) ListWithStack(ctx context.Context) ([]*domain.Pipeline, error) {
+	const q = `
+		SELECT id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url,
+		       COALESCE(dockerfile_path, ''), COALESCE(docker_context, ''), COALESCE(env_vars, '{}'::jsonb),
+		       status, created_at, COALESCE(stack_id, ''), COALESCE(stages, '[]'::jsonb)
+		FROM pipelines WHERE COALESCE(stack_id, '') <> '' ORDER BY stack_id, created_at LIMIT 1000`
+
+	rows, err := r.pool.Query(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("query pipelines: %w", err)
+	}
+	defer rows.Close()
+
+	var pipelines []*domain.Pipeline
+	for rows.Next() {
+		p, err := scanPipeline(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan pipeline: %w", err)
+		}
+		pipelines = append(pipelines, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+	return pipelines, nil
+}
+
+// ListByStackID returns all pipelines linked to a specific stack.
+
 func (r *PostgresPipelineRepository) ListByStackID(ctx context.Context, stackID string) ([]*domain.Pipeline, error) {
 	const q = `
 		SELECT id, name, execution_mode, template_id, org_id, cluster_id, namespace, app_type, git_repo_url,

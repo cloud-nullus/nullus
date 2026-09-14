@@ -27,6 +27,18 @@ func (r *BuildReader) ReadArtifact(ctx context.Context, ref port.CIArtifactRef) 
 	return r.client.getRaw(ctx, path)
 }
 
+// ArtifactWebURL 은 잡 산출물 파일을 GitLab 화면에서 여는 주소다.
+func (r *BuildReader) ArtifactWebURL(ref port.CIArtifactRef) string {
+	app := strings.TrimSpace(ref.JobName)
+	jobID := strings.TrimSpace(ref.Stage.ID)
+	file := strings.Trim(strings.TrimSpace(ref.Path), "/")
+	if r.webBaseURL == "" || app == "" || jobID == "" || file == "" {
+		return ""
+	}
+	return r.webBaseURL + "/" + escapeSegments(r.projectPath(app)) +
+		"/-/jobs/" + url.PathEscape(jobID) + "/artifacts/file/" + escapeSegments(file)
+}
+
 // getRaw 는 JSON 이 아닌 응답 본문을 상한까지만 읽는다. 404 는 found=false 다.
 func (c *Client) getRaw(ctx context.Context, path string) ([]byte, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)

@@ -25,6 +25,18 @@ func NewBuildReader(client *Client, owner string) *BuildReader {
 	return &BuildReader{client: client, owner: owner}
 }
 
+// WebBaseURLFor 는 API 주소에 대응하는 웹 주소다.
+//
+// github.com 은 API 호스트가 따로 있고, GitHub Enterprise Server 는 같은 호스트의
+// /api/v3 아래에 API 가 있다.
+func WebBaseURLFor(apiBaseURL string) string {
+	base := strings.TrimRight(strings.TrimSpace(apiBaseURL), "/")
+	if base == "" || strings.EqualFold(base, DefaultAPIBaseURL) {
+		return "https://github.com"
+	}
+	return strings.TrimSuffix(base, "/api/v3")
+}
+
 // maxPerPage 는 GitHub 목록 API 의 한 쪽 최대 크기다.
 const maxPerPage = 100
 

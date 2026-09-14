@@ -9,7 +9,13 @@ import type {
   CreateStackRequest,
 } from '../../../types'
 import { DEFAULT_PLANNING_PROFILE, PLANNING_PROFILE_VALUES } from '../../../types'
-import type { MatrixInput } from './stack-api-types'
+import { normalizeVulnerabilityCounts } from '../../../lib/vulnerability-counts'
+import type {
+  MatrixInput,
+  StackImageScanItem,
+  StackImageScanReport,
+  StackImageScanStatus,
+} from './stack-api-types'
 
 export interface RawTemplate {
   id: string
@@ -524,5 +530,53 @@ export function toCreateStackBody(req: CreateStackRequest) {
           }
         : undefined,
     },
+  }
+}
+
+const STACK_IMAGE_SCAN_STATUSES: ReadonlySet<string> = new Set(['scanned', 'pending', 'not_scanned'])
+
+function optionalScanString(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+function normalizeStackImageScanItem(raw: unknown): StackImageScanItem {
+  const item = (raw ?? {}) as Record<string, unknown>
+  const failed = item.status === 'failed'
+  return {
+    image: String(item.image ?? ''),
+    imageDigest: optionalScanString(item.image_digest),
+    release: optionalScanString(item.release),
+    workloads: Array.isArray(item.workloads) ? item.workloads.map((workload) => String(workload)) : [],
+    status: failed ? 'failed' : 'scanned',
+    error: optionalScanString(item.error),
+    // 실패한 스캔의 건수는 믿을 수 없다. 서버가 실어 보내더라도 모름으로 둔다.
+    counts: failed ? undefined : normalizeVulnerabilityCounts(item.counts),
+    fixableCounts: failed ? undefined : normalizeVulnerabilityCounts(item.fixable_counts),
+    scannerVersion: optionalScanString(item.scanner_version),
+    dbUpdatedAt: optionalScanString(item.db_updated_at),
+    dbStale: item.db_stale === true,
+    scannedAt: optionalScanString(item.scanned_at),
+  }
+}
+
+/**
+ * 설치 이미지 취약점 보고를 화면 모델로 옮긴다.
+ *
+ * summary·last_scanned_at 은 스캔하지 않은 스택에서 null 이다. 0 으로 채우지 않고
+ * undefined 로 둔다 — 스캔하지 않은 스택이 "취약점 0" 으로 보이면 안 된다. 모르는
+ * status 도 같은 이유로 scanned 가 아니라 not_scanned 로 떨어뜨린다.
+ */
+export function normalizeStackImageScanReport(raw: unknown): StackImageScanReport {
+  const report = (raw ?? {}) as Record<string, unknown>
+  const status = String(report.status ?? '')
+  const items = Array.isArray(report.items) ? report.items.map(normalizeStackImageScanItem) : []
+  return {
+    stackId: String(report.stack_id ?? ''),
+    status: STACK_IMAGE_SCAN_STATUSES.has(status) ? (status as StackImageScanStatus) : 'not_scanned',
+    reason: typeof report.reason === 'string' ? report.reason : '',
+    lastScannedAt: optionalScanString(report.last_scanned_at),
+    summary: normalizeVulnerabilityCounts(report.summary),
+    items,
+    total: typeof report.total === 'number' ? report.total : items.length,
   }
 }

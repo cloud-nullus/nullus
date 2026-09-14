@@ -80,6 +80,20 @@ func (r *MemoryStackRepository) ListInFlight(_ context.Context) ([]*domain.Stack
 	return result, nil
 }
 
+// ListCompleted 는 설치가 끝난 스택을 조직과 무관하게 돌려준다.
+func (r *MemoryStackRepository) ListCompleted(_ context.Context) ([]*domain.Stack, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]*domain.Stack, 0, len(r.stacks))
+	for _, s := range r.stacks {
+		if s.DeletedAt == nil && s.State == domain.StateCompleted {
+			cp := *s
+			result = append(result, &cp)
+		}
+	}
+	return result, nil
+}
+
 // Update replaces a stored stack with the given value.
 // TouchUpdatedAt 은 갱신 시각만 찍는다. 설치가 살아 있음을 알리는 데 쓴다.
 func (r *MemoryStackRepository) TouchUpdatedAt(_ context.Context, stackID string) error {

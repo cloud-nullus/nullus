@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -56,6 +57,9 @@ type PipelineHandler struct {
 	// 기록하는 것보다 낫다.
 	applier port.ManifestApplier
 
+	// scanVulns 는 스캔 결과의 취약점 목록을 CI 리포트에서 읽는다. 없으면 목록 조회가 503 이다.
+	scanVulns *usecase.ScanVulnerabilities
+
 	// stackReader 는 배포되는 앱에 넣어 줄 수집기 주소를 찾는 데 쓴다.
 	// 없으면 배포는 그대로 되고 추적 환경변수만 빠진다.
 	stackReader port.StackReader
@@ -84,6 +88,12 @@ func (h *PipelineHandler) WithStackReader(r port.StackReader) *PipelineHandler {
 //
 // 대시보드(#65)가 읽는 공개 경로다. 스캔 결과 테이블은 cicd 가 소유하므로
 // 다른 모듈이 직접 조회하지 않는다.
+// WithScanVulnerabilities 는 스캔 결과의 취약점 목록 조회를 배선한다.
+func (h *PipelineHandler) WithScanVulnerabilities(uc *usecase.ScanVulnerabilities) *PipelineHandler {
+	h.scanVulns = uc
+	return h
+}
+
 func (h *PipelineHandler) WithImageScans(repo port.ImageScanResultRepository) *PipelineHandler {
 	h.imageScans = repo
 	return h
@@ -131,6 +141,7 @@ func (h *PipelineHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/pipelines/:id/deploy", h.DeployPipeline)
 	g.GET("/pipelines/:id/resources", h.GetPipelineResources)
 	g.GET("/pipelines/:id/image-scans", h.ListImageScans)
+	g.GET("/pipelines/:id/image-scans/:scanId/vulnerabilities", h.ListScanVulnerabilities)
 	g.GET("/deployments", h.ListDeployments)
 	g.GET("/deployments/:id", h.GetDeployment)
 	g.GET("/app-templates", h.ListAppTemplates)
@@ -1166,6 +1177,28 @@ func (h *PipelineHandler) resolveOrgID(ctx context.Context, headerOrgID, cluster
 type imageScanView struct {
 	*domain.ImageScanResult
 	DBStale bool `json:"db_stale"`
+}
+
+// ListScanVulnerabilities handles GET /pipelines/:id/image-scans/:scanId/vulnerabilities.
+//
+// 목록을 보일 수 없으면(리포트 만료·CI 불통) 200 과 함께 이유를 담는다.
+func (h *PipelineHandler) ListScanVulnerabilities(c echo.Context) error {
+	if h.scanVulns == nil {
+		return errorResponse(c, http.StatusServiceUnavailable, "SCAN_VULNERABILITIES_NOT_CONFIGURED",
+			"scan vulnerability listing is not configured")
+	}
+	filter := shareddomain.NewVulnerabilityFilter(c.QueryParam("severity"), c.QueryParam("class"),
+		c.QueryParam("fixable"), c.QueryParam("q"), c.QueryParam("limit"), c.QueryParam("offset"))
+	page, err := h.scanVulns.Execute(c.Request().Context(), c.Param("id"), c.Param("scanId"), filter)
+	switch {
+	case errors.Is(err, usecase.ErrScanPipelineNotFound):
+		return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
+	case errors.Is(err, usecase.ErrImageScanNotFound):
+		return errorResponse(c, http.StatusNotFound, "IMAGE_SCAN_NOT_FOUND", err.Error())
+	case err != nil:
+		return errorResponse(c, http.StatusInternalServerError, "SCAN_VULNERABILITIES_FAILED", err.Error())
+	}
+	return c.JSON(http.StatusOK, page)
 }
 
 // ListImageScans handles GET /pipelines/:id/image-scans.

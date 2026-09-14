@@ -55,6 +55,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/shared/secrets"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stackhelm "github.com/cloud-nullus/draft/internal/stack/adapter/helm"
+	stackimagescan "github.com/cloud-nullus/draft/internal/stack/adapter/imagescan"
 	logadapter "github.com/cloud-nullus/draft/internal/stack/adapter/log"
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
 	stackport "github.com/cloud-nullus/draft/internal/stack/port"
@@ -185,12 +186,28 @@ func main() {
 	// 오케스트레이터보다 먼저 만들어야 아래 WithResourceDefaultRepository 로 넘길 수 있다.
 	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
 
+	// 설치 이미지 취약점 스캔(보고용, 설치를 막지 않는다).
+	//
+	// 스택이 돌리는 OSS 이미지를 스택의 Trivy 서버로 스캔한다 — 설치 직후 한 번,
+	// 이후 주기적으로. 에어갭 설치는 외부 레지스트리에 닿지 못해 스캔하지 않는다.
+	stackImageScanUC := stackuc.NewScanStackImages(
+		pgStackRepo,
+		pgStackRepo,
+		kubeconfigProvider,
+		stackimagescan.NewScanner(),
+		stackrepo.NewPostgresStackImageScanRepository(pool),
+		stackhelm.AirgapMode(),
+	)
+
+	stackImageScanHandler := stackhandler.NewImageScanHandler(stackImageScanUC)
+
 	installStackUC := stackuc.NewInstallStack(
 		pgStackRepo,
 		memStreamer,
 		stackuc.WithKubeconfigProvider(kubeconfigProvider),
 		stackuc.WithTokenSourceRegistry(stackrepo.NewPostgresTokenSourceRegistry(pool, secretRouter), tokenSourceEnvironment(cfg.Server.Mode)),
 		stackuc.WithSecretRouter(secretRouter),
+		stackuc.WithInstalledImageScan(stackImageScanUC),
 		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
 			installer := stackhelm.NewHelmInstaller(kubeconfig)
 			orch := stackhelm.NewOrchestrator(
@@ -352,7 +369,10 @@ func main() {
 		// 차단된 배포가 어디에도 기록되지 않는다.
 		WithImageScans(pgImageScanRepo).
 		// CI 는 스택 정책으로 막는다. 동기화도 같은 정책으로 읽어야 차단과 스캔 오류를 가른다.
-		WithScanPolicies(pgScanPolicyRepo)
+		WithScanPolicies(pgScanPolicyRepo).
+		// 주기 동기화가 돌 파이프라인 목록. 화면을 열 때만 들이면 아무도 보지 않는
+		// 파이프라인의 스캔 결과가 쌓이지 않는다.
+		WithSyncablePipelines(pgPipelineRepo)
 	provisionRepoUC := cicduc.NewProvisionPipelineRepository(
 		cicdBundleFactory, manifestApplier, kubeconfigProvider)
 
@@ -398,6 +418,8 @@ func main() {
 		// GitOps 경로의 실행 기록은 CI 서버에만 있다. 들이지 않으면 빌드가
 		// 성공해도 화면의 실행 통계가 0 으로 남는다.
 		WithRunSync(runSyncUC).
+		// 스캔 결과의 취약점 목록. 저장하지 않고 볼 때 CI 리포트를 다시 읽는다.
+		WithScanVulnerabilities(cicduc.NewScanVulnerabilities(pgPipelineRepo, pgImageScanRepo, cicdBundleFactory)).
 		// 직접 배포가 실제로 클러스터에 적용하도록 한다. 없으면 배포가
 		// 실패한다 — 적용 없이 성공으로 기록하는 것보다 낫다.
 		WithManifestApplier(manifestApplier).
@@ -547,6 +569,7 @@ func main() {
 	releaseValuesHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
 	retryHistoryHandler.RegisterRoutes(stacks)
+	stackImageScanHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
 	cicdGoldenPathHandler.RegisterRoutes(cicd)
 	pipelineHandler.RegisterRoutes(cicd)
@@ -684,6 +707,27 @@ func main() {
 		}
 	}()
 
+	// 파이프라인 실행 기록과 스캔 결과를 주기적으로 들인다.
+	//
+	// 레플리카가 여럿이면 각자 돈다. 기록은 upsert 라 겹쳐도 결과는 같고 CI 조회만 는다.
+	go runEvery(rotationCtx, durationFromEnv("CICD_RUN_SYNC_INTERVAL", 10*time.Minute), func(ctx context.Context) {
+		if synced, err := runSyncUC.SyncAll(ctx); err != nil {
+			slog.Warn("pipeline run sync failed", "error", err)
+		} else if synced > 0 {
+			slog.Debug("pipeline runs synced", "pipelines", synced)
+		}
+	})
+
+	// 스택이 설치한 OSS 이미지를 주기적으로 다시 스캔한다. 설치 뒤에 공개된 CVE 는
+	// 다시 스캔해야 보인다. 에어갭 설치는 스캔하지 않는다.
+	if !stackhelm.AirgapMode() {
+		go runEvery(rotationCtx, durationFromEnv("STACK_IMAGE_RESCAN_INTERVAL", 24*time.Hour), func(ctx context.Context) {
+			if scanned := stackImageScanUC.RescanAll(ctx); scanned > 0 {
+				slog.Info("installed images rescanned", "stacks", scanned)
+			}
+		})
+	}
+
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	go func() {
 		slog.Info("starting server", "addr", addr)
@@ -752,6 +796,31 @@ func cicdKubectlRunner(ctx context.Context, kubeconfig []byte, args ...string) (
 			strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return out, nil
+}
+
+// runEvery 는 interval 마다 fn 을 돌린다. fn 이 끝나기 전에 온 틱은 버려지므로 실행이 겹치지 않는다.
+func runEvery(ctx context.Context, interval time.Duration, fn func(context.Context)) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			fn(ctx)
+		}
+	}
+}
+
+// durationFromEnv 는 환경 변수의 기간 값이다. 비었거나 잘못됐으면 기본값이다.
+func durationFromEnv(name string, fallback time.Duration) time.Duration {
+	if raw := strings.TrimSpace(os.Getenv(name)); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			return d
+		}
+		slog.Warn("invalid duration env; using default", "name", name, "value", raw, "default", fallback)
+	}
+	return fallback
 }
 
 func tokenRotationInterval() time.Duration {

@@ -9,9 +9,20 @@ import type {
   DeployAppRequest,
   DeployAppResult,
   Deployment,
+  ImageScanGateResult,
   Pipeline,
+  PipelineImageScan,
   PipelineResource,
+  VulnerabilityListFilter,
+  VulnerabilityListResult,
 } from "../../../types";
+import { normalizeVulnerabilityCounts } from "../../../lib/vulnerability-counts";
+import {
+  normalizeVulnerabilityList,
+  placeholderFromSameSource,
+  retryVulnerabilityList,
+  vulnerabilityListParams,
+} from "../../../lib/vulnerability-list";
 
 export type {
   AppTemplate,
@@ -23,9 +34,14 @@ export type {
   DeployAppRequest,
   DeployAppResult,
   Deployment,
+  ImageScanGateResult,
   Pipeline,
+  PipelineImageScan,
   PipelineResource,
   PipelineStatus,
+  VulnerabilityCounts,
+  VulnerabilityListFilter,
+  VulnerabilityListResult,
 } from "../../../types";
 
 // --- Types ---
@@ -101,9 +117,62 @@ const queryKeys = {
   appTemplates: () => ["cicd", "appTemplates"] as const,
   pipelineResources: (pipelineId: string) =>
     ["cicd", "pipelineResources", pipelineId] as const,
+  pipelineImageScans: (pipelineId: string, deploymentsUpdatedAt: number) =>
+    ["cicd", "pipelineImageScans", pipelineId, deploymentsUpdatedAt] as const,
+  // 필터 앞까지가 출처(어느 스캔인가)다. 페이지를 넘길 때 같은 출처의 결과만 잠시 둔다.
+  pipelineScanVulnerabilitiesSource: (pipelineId: string, scanId: string) =>
+    ["cicd", "pipelineScanVulnerabilities", pipelineId, scanId] as const,
+  pipelineScanVulnerabilities: (
+    pipelineId: string,
+    scanId: string,
+    filter: VulnerabilityListFilter,
+  ) =>
+    ["cicd", "pipelineScanVulnerabilities", pipelineId, scanId, filter] as const,
 };
 
 // --- API functions ---
+
+const IMAGE_SCAN_GATE_RESULTS: ReadonlySet<string> = new Set([
+  "pass",
+  "warn",
+  "block",
+  "error",
+]);
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/**
+ * 스캔 기록 한 건을 화면 모델로 옮긴다. 다른 cicd 응답처럼 snake/camel 두 표기를 모두 받는다.
+ *
+ * - 선택 필드(이미지·다이제스트·리포트 주소 …)는 빈 문자열도 "없음" 으로 둔다. 빈
+ *   report_uri 로 링크를 만들면 현재 페이지로 가는 깨진 링크가 된다.
+ * - counts 는 모르면 undefined 로 남긴다. 0 으로 채우면 스캔 오류가 "취약점 0" 으로 보인다.
+ * - 모르는 gate_result 는 error(판정 불가)로 둔다. pass 로 떨어뜨리면 초록 통과로 보인다.
+ */
+function mapPipelineImageScan(raw: Record<string, unknown>): PipelineImageScan {
+  const gate = String(raw.gate_result ?? raw.gateResult ?? "");
+  return {
+    id: String(raw.id ?? ""),
+    pipelineId: String(raw.pipeline_id ?? raw.pipelineId ?? ""),
+    deploymentId: optionalString(raw.deployment_id ?? raw.deploymentId),
+    imageRepository: optionalString(raw.image_repository ?? raw.imageRepository),
+    imageTag: optionalString(raw.image_tag ?? raw.imageTag),
+    imageDigest: optionalString(raw.image_digest ?? raw.imageDigest),
+    scanSource: String(raw.scan_source ?? raw.scanSource ?? ""),
+    scanner: String(raw.scanner ?? ""),
+    scannerVersion: optionalString(raw.scanner_version ?? raw.scannerVersion),
+    dbUpdatedAt: optionalString(raw.db_updated_at ?? raw.dbUpdatedAt),
+    counts: normalizeVulnerabilityCounts(raw.counts),
+    gateResult: IMAGE_SCAN_GATE_RESULTS.has(gate)
+      ? (gate as ImageScanGateResult)
+      : "error",
+    reportUri: optionalString(raw.report_uri ?? raw.reportUri),
+    scannedAt: String(raw.scanned_at ?? raw.scannedAt ?? ""),
+    dbStale: (raw.db_stale ?? raw.dbStale) === true,
+  };
+}
 
 // 테스트에서 매퍼를 직접 검증할 수 있도록 내보낸다. 훅을 거치면 react-query 목까지
 // 끼워야 해서 응답 표기 대응 같은 순수 변환 로직을 확인하기 어렵다.
@@ -463,6 +532,37 @@ export const cicdApiCalls = {
     })) as PipelineResource[];
     return { items, total: raw.total ?? items.length };
   },
+
+  mapPipelineImageScan,
+
+  // 스캔 저장소가 배선되지 않은 서버는 503(IMAGE_SCANS_NOT_CONFIGURED)을 준다.
+  // 여기서 삼키지 않고 훅의 오류 상태로 넘긴다 — 화면은 오류를 "스캔 데이터 없음" 으로 그린다.
+  getPipelineImageScans: async (pipelineId: string) => {
+    const raw = await api
+      .get<{ items?: Record<string, unknown>[] | null; total?: number }>(
+        `/cicd/pipelines/${pipelineId}/image-scans`,
+      )
+      .then((r) => r.data);
+    const items = (raw?.items ?? []).map((item) => mapPipelineImageScan(item));
+    return { items, total: raw?.total ?? items.length };
+  },
+
+  // 목록은 서버가 CI 리포트를 읽어 만든다. 리포트가 만료됐거나 CI 에 닿지 못하면 오류가
+  // 아니라 status "unavailable" 과 이유로 온다 — 화면이 이유를 설명한다. 모르는 파이프라인·
+  // 스캔(404)만 오류다.
+  getPipelineScanVulnerabilities: async (
+    pipelineId: string,
+    scanId: string,
+    filter: VulnerabilityListFilter,
+  ): Promise<VulnerabilityListResult> => {
+    const raw = await api
+      .get<unknown>(
+        `/cicd/pipelines/${encodeURIComponent(pipelineId)}/image-scans/${encodeURIComponent(scanId)}/vulnerabilities`,
+        { params: vulnerabilityListParams(filter) },
+      )
+      .then((r) => r.data);
+    return normalizeVulnerabilityList(raw);
+  },
 };
 
 // --- Hooks ---
@@ -613,6 +713,57 @@ export function usePipelineDeployments(pipelineId: string) {
     queryKey: ["cicd-pipeline-deployments", pipelineId],
     queryFn: () => cicdApiCalls.getDeployments({ pipelineId }),
     enabled: !!pipelineId,
+  });
+}
+
+/**
+ * 파이프라인 실행들의 이미지 스캔 결과.
+ *
+ * 실행 목록을 불러오는 요청이 서버에서 CI 결과를 동기화하며 스캔 기록을 만든다. 그래서
+ * 실행 목록이 갱신된 시각(dataUpdatedAt)을 키에 넣어, 실행 목록이 새로 올 때마다 스캔도
+ * 다시 읽는다. 실행 목록을 받기 전(0)에는 읽지 않는다 — 먼저 읽으면 방금 끝난 실행의
+ * 스캔이 빠진 목록이 캐시에 남는다.
+ *
+ * 503(미배선)은 재시도해도 바뀌지 않는다. 재시도 없이 오류로 끝내고 화면은 스캔 표시만 뺀다.
+ */
+export function usePipelineImageScans(
+  pipelineId: string,
+  deploymentsUpdatedAt: number,
+) {
+  return useQuery({
+    queryKey: queryKeys.pipelineImageScans(pipelineId, deploymentsUpdatedAt),
+    queryFn: () => cicdApiCalls.getPipelineImageScans(pipelineId),
+    enabled: !!pipelineId && deploymentsUpdatedAt > 0,
+    retry: false,
+    // 키가 바뀌는 사이 배지가 깜빡이지 않게 직전 결과를 잠시 둔다. 실행 id 로
+    // 이어 붙이므로 다른 파이프라인의 결과가 이 파이프라인 실행에 붙지는 않는다.
+    placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * 파이프라인 스캔 하나의 취약점 목록.
+ *
+ * 펼쳤을 때(enabled)만 읽는다. 목록 한 번이 CI 리포트 한 번이라 실행을 고를 때마다 읽으면
+ * CI 에 부담을 준다. 필터는 키에 들어가므로 필터·페이지마다 따로 캐시된다. 리포트는
+ * 스캔이 끝나면 바뀌지 않으니 잠시 신선한 것으로 둔다.
+ */
+export function usePipelineScanVulnerabilities(
+  pipelineId: string,
+  scanId: string,
+  filter: VulnerabilityListFilter,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: queryKeys.pipelineScanVulnerabilities(pipelineId, scanId, filter),
+    queryFn: () =>
+      cicdApiCalls.getPipelineScanVulnerabilities(pipelineId, scanId, filter),
+    enabled: enabled && !!pipelineId && !!scanId,
+    retry: retryVulnerabilityList,
+    staleTime: 60_000,
+    placeholderData: placeholderFromSameSource<VulnerabilityListResult>(
+      queryKeys.pipelineScanVulnerabilitiesSource(pipelineId, scanId),
+    ),
   });
 }
 

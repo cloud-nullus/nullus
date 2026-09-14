@@ -207,7 +207,8 @@ func (f *BundleFactory) gitLabBundle(
 	// GitLab CI 는 SCM 과 한 몸이다. 같은 토큰으로 그룹 아래 앱 프로젝트의
 	// 파이프라인 이력과 잡 산출물을 읽는다 — 없으면 스캔 게이트가 돌아도 판정이
 	// 기록되지 않는다.
-	runs := gitlab.NewBuildReader(client, f.opts.GroupPath)
+	runs := gitlab.NewBuildReader(client, f.opts.GroupPath).
+		WithWebBaseURL(toolWebBaseURL("gitlab", summary.AccessDomain))
 
 	bundle := &port.SCMBundle{
 		Provisioner:          client,
@@ -422,7 +423,8 @@ func (f *BundleFactory) giteaBundle(
 			if ciBaseURL == "" {
 				ciBaseURL = jenkinsBaseURL(namespace)
 			}
-			client := jenkins.NewClient(ciBaseURL, user, password)
+			client := jenkins.NewClient(ciBaseURL, user, password).
+				WithWebBaseURL(toolWebBaseURL("jenkins", summary.AccessDomain))
 			bundle.CIJobs = client
 			// 같은 클라이언트가 빌드 이력도 읽는다 — GitOps 경로의 실행 기록은
 			// CI 서버에만 있어서, 들이지 않으면 화면 통계가 0 으로 남는다.
@@ -562,6 +564,19 @@ func registryHostFor(accessDomain string) string {
 		return ""
 	}
 	return "registry." + domain
+}
+
+// toolWebBaseURL 은 스택 도구를 브라우저로 여는 주소다(리포트 링크용).
+//
+// 스택 모듈의 domain.ToolAccessURL 과 같은 규칙이다 — 접속 도메인은 게이트웨이 TLS
+// 리스너 뒤에 서므로 스킴은 https 다. 모듈끼리 import 할 수 없어 여기 다시 적는다.
+// 접속 도메인이 없으면 링크를 만들지 않는다.
+func toolWebBaseURL(host, accessDomain string) string {
+	domain := strings.Trim(strings.TrimSpace(accessDomain), "/")
+	if domain == "" {
+		return ""
+	}
+	return "https://" + host + "." + domain
 }
 
 // harborHostFor 는 접근 도메인에서 Harbor 호스트를 유도한다.

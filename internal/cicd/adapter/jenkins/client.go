@@ -39,6 +39,14 @@ type Client struct {
 	user       string
 	token      string
 	httpClient *http.Client
+	// webBaseURL 은 브라우저가 여는 Jenkins 주소다(리포트 링크용). 비면 링크를 만들지 않는다.
+	webBaseURL string
+}
+
+// WithWebBaseURL 은 리포트 링크에 쓸 외부 주소를 정한다.
+func (c *Client) WithWebBaseURL(base string) *Client {
+	c.webBaseURL = strings.TrimRight(strings.TrimSpace(base), "/")
+	return c
 }
 
 // NewClient 는 Jenkins 클라이언트를 만든다.

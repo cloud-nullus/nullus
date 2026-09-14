@@ -32,6 +32,10 @@ func (m *memScanResults) Delete(_ context.Context, id string) error {
 	return nil
 }
 
+func (m *memScanResults) GetByID(_ context.Context, id string) (*domain.ImageScanResult, error) {
+	return m.rows[id], nil
+}
+
 func (m *memScanResults) ListByPipelineID(_ context.Context, id string) ([]*domain.ImageScanResult, error) {
 	var out []*domain.ImageScanResult
 	for _, r := range m.rows {
