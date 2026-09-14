@@ -50,6 +50,14 @@ func TestChartVersionsMatchCompatibilityMatrix(t *testing.T) {
 		// 못 고르는" 임의의 구멍이 생긴다 — gitlab-argocd-v1 이 실제로 그랬다.
 		{matrixID: "gitlab-argocd-v1", category: "image_scanner", step: "installing_trivy"},
 		{matrixID: "gitlab-allinone-v1", category: "image_scanner", step: "installing_trivy"},
+		// 스캐너를 기본으로 고른 템플릿은 모든 도구가 실제 설치 버전을 말해야 한다.
+		// 시드 템플릿이 설치와 다른 버전을 안내하면 화면과 클러스터가 갈라진다.
+		{matrixID: "gitlab-harbor-trivy-v1", category: "source_repository", step: "installing_gitlab"},
+		{matrixID: "gitlab-harbor-trivy-v1", category: "ci_platform", step: "installing_gitlab"},
+		{matrixID: "gitlab-harbor-trivy-v1", category: "container_registry", step: "installing_harbor"},
+		{matrixID: "gitlab-harbor-trivy-v1", category: "storage_backend", step: "installing_minio"},
+		{matrixID: "gitlab-harbor-trivy-v1", category: "cd_tool", step: "installing_argocd"},
+		{matrixID: "gitlab-harbor-trivy-v1", category: "image_scanner", step: "installing_trivy"},
 	}
 
 	for _, tc := range cases {

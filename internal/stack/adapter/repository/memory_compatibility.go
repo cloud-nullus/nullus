@@ -302,6 +302,26 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			},
 		},
 		{
+			// 기본으로 이미지 스캐너를 고른 템플릿(gitlab-harbor-trivy-v1)의 매트릭스.
+			// 시드(000084)와 같은 값이다 — TestSeedMigration_GitLabHarborTrivy_MatchesMemory.
+			ID:     "gitlab-harbor-trivy-v1",
+			Name:   "GitLab + Harbor + Trivy",
+			Status: "verified",
+			Kubernetes: domain.KubernetesCompat{
+				Min:         baselineMinK8sPlatform,
+				Max:         "1.35",
+				Recommended: "1.35",
+			},
+			Tools: map[string]domain.ToolVersion{
+				"source_repository":  {Name: "GitLab CE", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"ci_platform":        {Name: "GitLab CI", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
+				"container_registry": {Name: "Harbor", HelmVersion: baselineHarborHelmVersion, AppVersion: baselineHarborAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierBeta},
+				"storage_backend":    {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":            {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"image_scanner":      {Name: "Trivy", HelmVersion: baselineTrivyHelmVersion, AppVersion: baselineTrivyAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+			},
+		},
+		{
 			ID:     "gitlab-nexus-v1",
 			Name:   "GitLab + Nexus",
 			Status: "verified",

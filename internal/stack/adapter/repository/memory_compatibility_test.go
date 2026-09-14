@@ -26,6 +26,7 @@ func TestMemoryCompatibilityRepository_GetAll(t *testing.T) {
 		"gitlab-allinone-v1",
 		"gitlab-argocd-v1",
 		"gitlab-harbor-v1",
+		"gitlab-harbor-trivy-v1",
 		"gitlab-nexus-v1",
 		"github-argocd-v1",
 	})

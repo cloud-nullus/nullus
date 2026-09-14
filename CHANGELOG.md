@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **이미지 스캐너를 기본으로 고른 템플릿 `GitLab + Harbor + Trivy` 를 시드한다** (`db/migrations/000084`, `internal/stack/adapter/repository`): 스캐너는 매트릭스에서 고를 수 있었지만 기본으로 고른 템플릿이 없어 화면에서 템플릿을 직접 만들어야 했고, 그렇게 만든 템플릿은 DB 를 초기화하면 사라져 스캔 단계가 들어간 스택을 새 설치에서 다시 세울 수 없었다. `gitlab-harbor-trivy-v1` 템플릿과 호환성 매트릭스를 시드와 인메모리 저장소에 함께 둔다. 버전은 설치 경로의 상수(GitLab 8.7.2 · Harbor 1.15.0 · MinIO 5.4.0 · Argo CD 7.7.16 · Trivy 0.26.0)를 따른다 — 000059 의 `gitlab-harbor-v1` 시드가 설치와 다른 버전(GitLab 9.5.1 · Argo CD 6.8.0)을 안내하는 어긋남은 물려받지 않는다. 시드 SQL 과 인메모리 정의가 갈라지면 `TestSeedMigration_GitLabHarborTrivy_MatchesMemory` 가 깨진다.
+
 - **파이프라인 실행과 스택 설치 이미지의 취약점 목록을 보인다 — 베이스 이미지와 앱 의존성을 가른다** (`internal/shared/domain`, `internal/cicd/**`, `internal/stack/**`, `db/migrations/000082`·`000083`, `web/src/components/shared`, nullus-plan#76·#78): 건수와 리포트 링크만으로는 무엇을 고쳐야 하는지 화면에서 알 수 없었다. CVE · 패키지 · 설치/수정 버전 · 심각도 · 링크를 목록으로 보이고, Trivy 결과의 Class 로 **베이스 이미지 OS 패키지**와 **앱 의존성**을 나눈다. 심각도 · 구분 · 수정 가능 · 검색 조건과 쪽 나눔을 받는다. 목록을 보일 수 없으면 빈 목록 대신 이유(`report_expired` · `report_missing` · `ci_unreachable` · `not_recorded`)를 돌려준다.
 
   **파이프라인은 저장하지 않는다**(`GET /api/v1/cicd/pipelines/:id/image-scans/:scanId/vulnerabilities`). 원본 리포트를 DB 에 넣지 않는다는 결정을 지키고, 동기화가 리포트 위치(`report_ref` — GitLab 잡 id · GitHub 실행 id · Jenkins 빌드 번호)만 남긴 뒤 볼 때 CI 리포트를 다시 읽는다. CI 보관 기간이 지나면 목록은 사라지고 건수는 남는다. **스택 설치 이미지는 스캔할 때 저장한다**(`GET /api/v1/stacks/:stackId/image-scans/vulnerabilities?digest=`) — 다시 읽을 CI 리포트가 없다. 스캔 Job 이 이미지마다 취약점 줄을 gzip+base64 한 줄로 찍어 kubelet 로그 상한(10Mi)을 피하고(kind 실측 alpine 48건 7.2KB → 784B), `stack_image_vulnerabilities` 에 COPY 로 넣는다.

@@ -177,6 +177,30 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 		assert.Equal(t, 45*time.Minute, updated.EstimatedInstallTime)
 	})
 
+	// 이미지 스캐너를 기본으로 고른 템플릿이 새 설치에도 있어야 한다. 화면에서 만든
+	// 템플릿은 DB 를 초기화하면 사라져, 스캔 단계가 들어간 스택을 다시 세울 수 없었다.
+	t.Run("seeded gitlab harbor trivy template carries image scanner", func(t *testing.T) {
+		tmpl, err := NewPostgresTemplateRepository(pool).GetByID(ctx, "gitlab-harbor-trivy-v1")
+		require.NoError(t, err)
+		require.NotNil(t, tmpl)
+		assert.Equal(t, 110*time.Minute, tmpl.EstimatedInstallTime)
+
+		var scanner *domain.ToolConfig
+		for i := range tmpl.Tools {
+			if tmpl.Tools[i].Category == "image_scanner" {
+				scanner = &tmpl.Tools[i]
+			}
+		}
+		require.NotNil(t, scanner, "템플릿이 이미지 스캐너를 고르지 않았다")
+		assert.Equal(t, "Trivy", scanner.Name)
+		assert.Equal(t, domain.TrivyChartVersion, scanner.HelmVersion)
+
+		matrix, err := NewPostgresCompatibilityRepository(pool).GetByID(ctx, "gitlab-harbor-trivy-v1")
+		require.NoError(t, err)
+		require.NotNil(t, matrix)
+		assert.Equal(t, domain.TrivyChartVersion, matrix.Tools["image_scanner"].HelmVersion)
+	})
+
 	t.Run("history repository save list and get versions", func(t *testing.T) {
 		repo := NewPostgresHistoryRepository(pool)
 
