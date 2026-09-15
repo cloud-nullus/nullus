@@ -84,6 +84,19 @@ func TestRuntimeImages_생성기와_같은_목록을_본다(t *testing.T) {
 		"생성기가 이 이미지를 덧붙이지 않는다 — 목록을 재생성하면 사라진다: %v", missing)
 }
 
+// MinIO 는 Docker Hub 배포를 멈췄다 — docker.io/minio/* 는 태그와 무관하게
+// "pull access denied" 로 거절된다(2026-09-15 kind 새 클러스터 실측, minio/mc:latest 도 같다).
+// 노드에 캐시가 남은 클러스터에서는 드러나지 않다가, 새 클러스터에서 버킷 부트스트랩이
+// ImagePullBackOff 로 설치를 실패시켰다. MinIO 가 계속 게시하는 quay.io 에서 받는다.
+func TestRuntimeImages_MinIO_이미지는_quay_에서_받는다(t *testing.T) {
+	for _, img := range RuntimeImages() {
+		repo := strings.TrimPrefix(img, "docker.io/")
+		assert.Falsef(t, strings.HasPrefix(repo, "minio/"),
+			"%s 는 Docker Hub 의 MinIO 이미지다 — quay.io/minio/ 에서 받아야 한다", img)
+	}
+	assert.True(t, strings.HasPrefix(MinIOClientImage, "quay.io/minio/mc:"), MinIOClientImage)
+}
+
 func TestRuntimeImages_형식(t *testing.T) {
 	for _, img := range RuntimeImages() {
 		assert.Contains(t, img, ":", "%s 에 태그가 없다 — latest 는 재현 가능하지 않다", img)

@@ -48,7 +48,7 @@ INFRA_IMAGES=(
 # **여기만 고치거나 저기만 고치면 실패한다 — 둘 다 고쳐야 한다.**
 RUNTIME_IMAGES=(
   # GitLab 오브젝트 스토리지 버킷 부트스트랩 Job
-  "minio/mc:RELEASE.2025-05-21T01-59-54Z"
+  "quay.io/minio/mc:RELEASE.2025-05-21T01-59-54Z"
   # Harbor·Nexus 프로비저닝 Job (REST API 호출)
   "curlimages/curl:8.11.1"
   # OpenBao init/bootstrap 사이드카
