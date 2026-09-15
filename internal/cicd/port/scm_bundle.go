@@ -96,7 +96,10 @@ type SCMBundle struct {
 	// 스캐너를 고르지 않은 스택에서는 비어 있고, 그때는 스캐폴딩이
 	// 이미지 스캔 단계를 만들지 않는다.
 	ImageScannerEndpoint string
-	GatewayName          string
+	// ImageScannerJavaDBRepository 는 에어갭 설치에서 CI 잡의 trivy client 가 Java DB 를
+	// 받을 내부 미러다. 클러스터 안 CI(GitLab 러너·Jenkins 에이전트) 번들에만 싣는다.
+	ImageScannerJavaDBRepository string
+	GatewayName                  string
 }
 
 // PipelineCredentialPlane 은 파이프라인 자격증명을 준비하고 그것을 클러스터에

@@ -92,6 +92,10 @@ type Input struct {
 	// 비면 이미지 스캔 단계를 만들지 않는다. 돌지도 않을 단계를 선언하면
 	// 화면이 그것을 성공으로 보여준다(마이그레이션 000070).
 	ImageScannerEndpoint string
+	// ImageScannerJavaDBRepository 는 에어갭 설치에서 CI 잡의 trivy client 가 Java DB 를
+	// 받을 내부 미러다. client 는 Maven 메타데이터가 없는 JAR 을 만나면 Java DB 를 스스로
+	// 받는데 기본 주소(mirror.gcr.io)는 에어갭에서 닿지 않는다. 비면 업스트림 기본값을 쓴다.
+	ImageScannerJavaDBRepository string
 }
 
 // 이미지 스캔 단계의 이름. CI 마다 표기가 달라 둘로 나눈다 —
@@ -393,6 +397,10 @@ func renderPipeline(in Input) string {
 		fmt.Fprintf(&b, "    TRIVY_USERNAME: $%s\n", target.UsernameVar)
 		fmt.Fprintf(&b, "    TRIVY_PASSWORD: $%s\n", target.PasswordVar)
 		b.WriteString("    TRIVY_INSECURE: \"true\"\n")
+		if repo := strings.TrimSpace(in.ImageScannerJavaDBRepository); repo != "" {
+			// 내부 레지스트리는 plain HTTP 다 — 위의 TRIVY_INSECURE 가 Java DB 수신에도 쓰인다.
+			fmt.Fprintf(&b, "    TRIVY_JAVA_DB_REPOSITORY: %q\n", repo)
+		}
 		b.WriteString("  script:\n")
 		writeScriptLines(&b, scanScriptLines())
 		// 리포트는 실패해도 남긴다. 차단당한 사람이 무엇에 걸렸는지 보려면

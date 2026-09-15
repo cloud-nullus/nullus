@@ -170,6 +170,10 @@ func renderJenkinsfile(in Input) string {
 			// 검증하면 같은 레지스트리를 못 읽는다.
 			b.WriteString("            export TRIVY_INSECURE=true\n")
 		}
+		if repo := strings.TrimSpace(in.ImageScannerJavaDBRepository); repo != "" {
+			// 에어갭 Java DB 미러. 에이전트는 클러스터 안이라 내부 레지스트리에 닿는다.
+			fmt.Fprintf(&b, "            export TRIVY_JAVA_DB_REPOSITORY=%q\n", repo)
+		}
 		b.WriteString("            set -x\n")
 		for _, line := range scanScriptLines() {
 			fmt.Fprintf(&b, "            %s\n", line)

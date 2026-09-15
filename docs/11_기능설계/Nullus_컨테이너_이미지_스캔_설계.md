@@ -474,6 +474,10 @@ Jenkins · GitHub Actions 판도 **같은 두 명령**이다. `<unfixed>` 는 `N
 
 서버는 내부 레지스트리에 미러된 DB 를 `TRIVY_DB_REPOSITORY` 로 가리킨다. `--skip-db-update` 는 쓰지 않는다 — 내부 미러에서 정상 갱신 경로를 타게 두면, DB 를 갱신했을 때 서버가 저절로 새 DB 를 쓴다.
 
+**누가 넣나** — API 로 설치하는 에어갭 스택(`29-install-stacks-via-api.sh`)은 `stack-values/trivy.yaml` 을 읽지 않는다. API 가 에어갭 모드(`NULLUS_HELM_OCI_REGISTRY`, 예: `kind-registry:5000/charts`)에서 **같은 레지스트리의 루트**로 `trivy.dbRepository=kind-registry:5000/aquasecurity/trivy-db` 와 `TRIVY_INSECURE=true`(내부 레지스트리가 plain HTTP)를 넣는다(`trivyAirgapDBValues`). 처음에는 이 값이 values 파일에만 있어 API 설치의 서버가 ghcr.io 를 찾았고, 파일 값도 호스트 주소(`localhost:5001`)라 파드 안에서는 닿지 않았다. helm 으로 직접 설치하는 경로는 `stack-values/trivy.yaml` 이 같은 값을 가진다.
+
+**CI 잡의 Java DB** — 서버 모드여도 JAR 분석은 client 가 한다. client 는 Maven 메타데이터(`pom.properties`)가 없는 JAR 을 만나면 Java DB(약 900MiB)를 스스로 받는데, 기본 주소는 `mirror.gcr.io/aquasec/trivy-java-db:1` 이다. 에어갭에서는 스캔이 `FATAL … post analysis error … mirror.gcr.io` 로 끝나 기본 정책(스캐너 장애 시 차단)에서 배포가 멈춘다(kind 에서 client 파드의 인터넷을 막고 실측). 에어갭 모드면 API 가 `TRIVY_JAVA_DB_REPOSITORY=kind-registry:5000/aquasecurity/trivy-java-db` 를 GitLab 스캔 잡 · Jenkins 스캐너 단계에 싣는다 — 같은 미러에서 16초에 받았다. GitHub 호스티드 러너는 클러스터 안의 레지스트리에 닿지 않아 싣지 않는다. 서버 DB 와 Java DB 의 미러 경로 규칙은 `internal/shared/domain` 의 `TrivyDBRepository` · `TrivyJavaDBRepository` 가 소유한다.
+
 **제약**: DB 미러는 클러스터 안에서 접근 가능한 레지스트리 경로여야 한다. 스택마다 다른 곳을 보게 만들지 않는다 — 반입 절차가 갈라지면 그중 하나는 반드시 낡는다. Trivy Operator 를 나중에 넣더라도(§11) 같은 미러를 그대로 쓴다.
 
 ### 7.3 갱신 주기 — 그리고 지켜지지 않을 때
