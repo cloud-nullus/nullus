@@ -640,6 +640,7 @@ CI API 클라이언트는 클러스터 내부 주소로 붙는다. 그 주소는
 - 결과를 JSON 리포트가 아니라 **취약점 하나당 탭으로 나눈 한 줄**(심각도 · ID · 패키지 · 설치/수정 버전 · Trivy Class · 대상 · 링크)로 만들고, 이미지마다 **gzip+base64 한 줄**로 싸서 로그에 찍는다. GitLab 이미지 하나에 수천 건이라 그대로 찍으면 kubelet 컨테이너 로그 상한(기본 10Mi)을 넘어 앞부분이 잘린다. kind 실측에서 alpine 48건이 7.2KB → 784B 로 줄었고, 건수는 같은 이미지의 JSON 리포트와 일치했다(§12.5).
 - 서버 모드 client 는 템플릿 출력에 DB 시각을 싣지 않는다. DB 날짜는 서버의 `metadata.json` 에서 읽는다.
 - 이미지 참조는 셸 스크립트에 들어가므로 `저장소@sha256:` 모양이 아니면 넣지 않는다.
+- 이미지마다 **최대 3회** 시도한다(사이 10초, `NULLUS_SCAN_ATTEMPTS` · `NULLUS_SCAN_RETRY_DELAY`). 설치 직후 스캔에서 레이어를 받다 끊기는 일시적 실패(argocd 의 `failed to extract the archive: unexpected EOF`, gitlab-runner 의 파일 열기 실패)가 났고, 같은 이미지를 다시 스캔하면 통과했다. 한 번만 시도하면 다음 주기 재스캔(기본 24h)까지 `failed` 로 남는다. 끝내 실패하면 마지막 시도의 오류를 `N회 시도 후 실패:` 와 함께 남긴다.
 
 **저장** — `stack_image_scans`(000081, **stack 모듈 소유**). 파이프라인 결과(`image_scan_results`)와 나눈다 — 그쪽은 cicd 가 소유한 CI 실행 기록이다.
 

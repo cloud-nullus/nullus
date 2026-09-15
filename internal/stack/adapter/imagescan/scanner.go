@@ -361,19 +361,7 @@ func scanJobManifest(namespace, image, server string, images []installedImage, t
 		fmt.Fprintf(&targets, "%s %s\n", img.Platform, img.Ref)
 	}
 
-	script := `set +e
-echo "@@VERSION $(trivy --version 2>/dev/null | awk 'NR==1{print $2}')"
-while read -r platform ref; do
-  [ -n "$ref" ] || continue
-  echo "@@IMAGE $ref"
-  if trivy image --server "$NULLUS_TRIVY_SERVER" --scanners vuln --platform "$platform" --quiet --timeout 15m --cache-dir /tmp/trivy --format template --template "$NULLUS_TRIVY_TEMPLATE" "$ref" >/tmp/out 2>/tmp/err; then
-    echo "@@VULNS_GZ $(gzip -c </tmp/out | base64 -w 0)"
-  else
-    echo "@@ERROR $(tail -n 3 /tmp/err | tr '\n' ' ' | cut -c1-400)"
-  fi
-done <<'TARGETS'
-` + targets.String() + `TARGETS
-echo "@@DONE"`
+	script := scanScript(targets.String())
 
 	return fmt.Sprintf(`apiVersion: batch/v1
 kind: Job
@@ -413,6 +401,37 @@ spec:
 %s
 `, jobName, namespace, managedByValue, int(timeout.Seconds()), managedByValue, image, server, vulnTemplate,
 		indent(script, 10))
+}
+
+// scanScript 는 스캔 Job 이 이미지를 하나씩 스캔하는 셸 스크립트다.
+// targets 는 "<platform> <ref>" 줄들이다 — 모양 검사를 마친 값만 들어온다.
+func scanScript(targets string) string {
+	// 레이어를 받다 끊기는 일시적 실패는 같은 이미지를 다시 스캔하면 지나간다(kind 실측).
+	// 한 번만 시도하면 그 이미지는 다음 주기 재스캔(기본 24h)까지 실패로 남는다.
+	// 영구 실패(매니페스트 없음 등)도 같은 횟수만큼 시도하지만 대개 곧바로 끝난다.
+	return `set +e
+: "${NULLUS_SCAN_ATTEMPTS:=3}"
+: "${NULLUS_SCAN_RETRY_DELAY:=10}"
+echo "@@VERSION $(trivy --version 2>/dev/null | awk 'NR==1{print $2}')"
+while read -r platform ref; do
+  [ -n "$ref" ] || continue
+  echo "@@IMAGE $ref"
+  attempt=1
+  while :; do
+    if trivy image --server "$NULLUS_TRIVY_SERVER" --scanners vuln --platform "$platform" --quiet --timeout 15m --cache-dir /tmp/trivy --format template --template "$NULLUS_TRIVY_TEMPLATE" "$ref" >/tmp/out 2>/tmp/err; then
+      echo "@@VULNS_GZ $(gzip -c </tmp/out | base64 -w 0)"
+      break
+    fi
+    if [ "$attempt" -ge "$NULLUS_SCAN_ATTEMPTS" ]; then
+      echo "@@ERROR ${attempt}회 시도 후 실패: $(tail -n 3 /tmp/err | tr '\n' ' ' | cut -c1-400)"
+      break
+    fi
+    attempt=$((attempt + 1))
+    sleep "$NULLUS_SCAN_RETRY_DELAY"
+  done
+done <<'TARGETS'
+` + targets + `TARGETS
+echo "@@DONE"`
 }
 
 type scanOutcome struct {
