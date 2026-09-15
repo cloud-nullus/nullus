@@ -10,8 +10,9 @@
 #
 # 경로 계산은 12-push-to-registry.sh 와 같은 규칙을 쓴다:
 #   ghcr.io/aquasecurity/trivy-db:2 → localhost:5001/aquasecurity/trivy-db:2
-# 이 결과가 stack-values/trivy.yaml 의 trivy.dbRepository 와 같아야 한다.
-# 갈라지면 서버가 없는 경로에서 DB 를 찾는다.
+# 서버는 같은 레지스트리를 클러스터 안의 이름(kind-registry:5000)으로 부른다 —
+# API 설치는 NULLUS_HELM_OCI_REGISTRY 에서, helm 직접 설치는 stack-values/trivy.yaml 에서.
+# 경로가 갈라지면 서버가 없는 곳에서 DB 를 찾는다.
 #
 # 사용법: bash 14-push-oci-artifacts.sh
 #         DRY_RUN=1 bash 14-push-oci-artifacts.sh
@@ -155,4 +156,4 @@ if [[ ${#failed[@]} -gt 0 ]]; then
 fi
 
 log_info "완료: ${#artifacts[@]}건을 $REGISTRY_HOST 로 올렸습니다"
-log_info "  stack-values/trivy.yaml 의 trivy.dbRepository 가 이 경로를 가리켜야 합니다"
+log_info "  Trivy 서버는 클러스터 안에서 같은 경로를 kind-registry:5000 으로 읽습니다 (NULLUS_HELM_OCI_REGISTRY / stack-values/trivy.yaml)"

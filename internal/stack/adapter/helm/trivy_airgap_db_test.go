@@ -11,19 +11,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 취약점 DB 미러 경로가 세 곳에 흩어져 있다:
+// 취약점 DB 미러 경로가 네 곳에 흩어져 있다:
 //
 //  1. airgap/images/oci-artifacts.txt          — 무엇을 반입하나
-//  2. airgap/scripts/14-push-oci-artifacts.sh  — 어디로 올리나
-//  3. airgap/helm/stack-values/trivy.yaml      — 서버가 어디서 찾나
+//  2. airgap/scripts/14-push-oci-artifacts.sh  — 어디로 올리나 (호스트에서 localhost:5001)
+//  3. airgap/helm/values-airgap.yaml           — 클러스터 안에서 그 레지스트리를 부르는 이름
+//  4. 서버가 어디서 찾나 — API 설치는 trivyAirgapDBValues, helm 직접 설치는 stack-values/trivy.yaml
 //
 // 셋이 갈라지면 서버는 정상으로 뜨는데 없는 경로에서 DB 를 찾는다. 스캔이 전부
 // 실패하고, 오류가 스캐너 장애처럼 보여 원인을 찾기 어렵다.
 //
-// 반입(1)과 조회(3)가 같은 곳을 가리키는지 고정한다.
+// 반입 경로를 **클러스터 안의 주소**로 옮긴 것이 조회 경로여야 한다. 예전 계약은
+// 호스트 주소(localhost:5001)와 같은지만 봤다 — 파드 안의 localhost 는 파드 자신이라
+// 그 값으로는 DB 를 받을 수 없었다.
 func TestAirgapTrivyDBMirror_MatchesStackValues(t *testing.T) {
-	const registryHost = "localhost:5001"
-
 	artifacts := readRepoFile(t, "airgap", "images", "oci-artifacts.txt")
 
 	// oci-artifacts.txt 의 trivy-db 항목을 찾는다.
@@ -41,15 +42,35 @@ func TestAirgapTrivyDBMirror_MatchesStackValues(t *testing.T) {
 	require.NotEmpty(t, upstream,
 		"oci-artifacts.txt 에 trivy-db 가 없으면 에어갭에서 DB 를 반입할 방법이 없다")
 
-	// 14-push-oci-artifacts.sh 의 compute_target 규칙:
-	// 레지스트리 호스트를 벗겨 내부 레지스트리 경로로 바꾼다.
-	// trivy 는 dbRepository 에 태그를 붙이지 않는다 — 스키마 버전 태그는 스스로 붙인다.
-	path := upstream[strings.Index(upstream, "/")+1:]
-	wantRepository := registryHost + "/" + path[:strings.LastIndex(path, ":")]
+	// 클러스터 안에서 내부 레지스트리를 부르는 이름은 values-airgap.yaml 의 ociRegistry 다.
+	var ociRegistry string
+	for _, line := range strings.Split(readRepoFile(t, "airgap", "helm", "values-airgap.yaml"), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "ociRegistry:") {
+			ociRegistry = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "ociRegistry:")), `"`)
+		}
+	}
+	require.NotEmpty(t, ociRegistry)
 
-	values := readRepoFile(t, "airgap", "helm", "stack-values", "trivy.yaml")
+	// 14-push-oci-artifacts.sh 의 compute_target 규칙: 레지스트리 호스트를 벗겨
+	// 내부 레지스트리 루트 아래로 옮긴다. trivy 는 dbRepository 에 태그를 붙이지 않는다.
+	path := upstream[strings.Index(upstream, "/")+1:]
+	inClusterHost := strings.SplitN(ociRegistry, "/", 2)[0]
+	wantRepository := inClusterHost + "/" + path[:strings.LastIndex(path, ":")]
+
+	// API 설치 경로
+	trivy, ok := trivyAirgapDBValues(ociRegistry)["trivy"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, wantRepository, trivy["dbRepository"],
+		"API 설치의 dbRepository 가 반입 경로와 다르면 서버가 없는 곳에서 DB 를 찾는다")
+
+	// helm 직접 설치 경로
+	values := stripYAMLComments(readRepoFile(t, "airgap", "helm", "stack-values", "trivy.yaml"))
 	assert.Contains(t, values, "dbRepository: "+wantRepository,
 		"stack-values 의 dbRepository 가 반입 경로와 다르면 서버가 없는 곳에서 DB 를 찾는다")
+	assert.NotContains(t, values, "localhost:5001/aquasecurity",
+		"파드 안의 localhost 는 파드 자신이다 — 레지스트리에 닿지 못한다")
+	assert.Contains(t, values, `TRIVY_INSECURE: "true"`, "내부 레지스트리는 plain HTTP 다")
 }
 
 // 카탈로그용 values 는 업스트림을 가리켜야 한다.
