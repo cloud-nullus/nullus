@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
 // 취약점 DB 미러 경로가 네 곳에 흩어져 있다:
@@ -71,6 +73,23 @@ func TestAirgapTrivyDBMirror_MatchesStackValues(t *testing.T) {
 	assert.NotContains(t, values, "localhost:5001/aquasecurity",
 		"파드 안의 localhost 는 파드 자신이다 — 레지스트리에 닿지 못한다")
 	assert.Contains(t, values, `TRIVY_INSECURE: "true"`, "내부 레지스트리는 plain HTTP 다")
+}
+
+// 에어갭 번들 이미지 목록에 Trivy 이미지가 있어야 한다.
+//
+// 스택 Trivy 서버(차트)와 CI 스캔 잡(client)이 같은 aquasec/trivy 이미지를 쓴다. 목록은
+// 00-generate-images.sh 가 카탈로그 차트를 렌더해 만드는데, Trivy 카탈로그를 넣은 뒤
+// 재생성하지 않아 목록에서 빠져 있었다 — 폐쇄망 설치에서 서버가 ImagePullBackOff 로 뜨지
+// 않는다. 버전은 설치가 쓰는 앱 버전과 같아야 한다.
+func TestAirgapImages_IncludeTrivy(t *testing.T) {
+	want := "aquasec/trivy:" + domain.TrivyAppVersion
+	var found bool
+	for _, line := range strings.Split(readRepoFile(t, "airgap", "images", "images.txt"), "\n") {
+		if strings.TrimPrefix(strings.TrimSpace(line), "docker.io/") == want {
+			found = true
+		}
+	}
+	assert.True(t, found, "airgap/images/images.txt 에 %s 가 없다 — 00-generate-images.sh 로 재생성하라", want)
 }
 
 // 카탈로그용 values 는 업스트림을 가리켜야 한다.
