@@ -23,7 +23,8 @@ package domain
 const (
 	// MinIOClientImage — GitLab 오브젝트 스토리지 버킷 부트스트랩 Job.
 	// (internal/stack/adapter/helm/object-storage-buckets.go)
-	MinIOClientImage = "minio/mc:RELEASE.2025-05-21T01-59-54Z"
+	// MinIO 는 Docker Hub 배포를 멈춰 docker.io/minio/* 가 거절된다. quay.io 에서 받는다.
+	MinIOClientImage = "quay.io/minio/mc:RELEASE.2025-05-21T01-59-54Z"
 
 	// CurlImage — Harbor·Nexus 프로비저닝 Job 이 REST API 를 호출한다.
 	// (internal/stack/adapter/helm/{harbor,nexus}-provisioning.go)
