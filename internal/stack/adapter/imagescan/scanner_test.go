@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/base64"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -144,6 +146,77 @@ func TestScanJobManifest_ExcludesUnsafeRefs(t *testing.T) {
 	assert.Contains(t, manifest, "gzip -c </tmp/out | base64 -w 0")
 	assert.NotContains(t, manifest, "rm -rf")
 	assert.NotContains(t, manifest, "$(id)")
+}
+
+// 설치 직후 스캔에서 레이어를 받다 끊기는 일시적 실패가 났다(kind 실측: argocd 의
+// "failed to extract the archive: unexpected EOF", gitlab-runner 의 파일 열기 실패).
+// 같은 이미지를 다시 스캔하면 통과했지만, Job 은 한 번만 시도해 다음 주기(24h)까지
+// 실패로 남았다. 스크립트를 가짜 trivy 로 실제로 돌려 재시도를 확인한다.
+func TestScanScript_RetriesTransientScanFailures(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh 가 없다")
+	}
+	bin, state := t.TempDir(), t.TempDir()
+	writeExec := func(name, body string) {
+		require.NoError(t, os.WriteFile(filepath.Join(bin, name), []byte(body), 0o755))
+	}
+	// 마지막 인자가 이미지 참조다. 호출 횟수를 이미지별로 센다.
+	writeExec("trivy", `#!/bin/sh
+case "$1" in --version) echo "Version: 0.74.0"; exit 0;; esac
+for a in "$@"; do ref="$a"; done
+key=$(echo "$ref" | tr '/:@' '___')
+n=$(cat "$STATE/$key" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$STATE/$key"
+case "$ref" in
+  *flaky*) if [ "$n" -lt 2 ]; then echo "failed to extract the archive: unexpected EOF" >&2; exit 1; fi ;;
+  *broken*) echo "MANIFEST_UNKNOWN: manifest unknown" >&2; exit 1 ;;
+esac
+printf 'HIGH\tCVE-1\topenssl\t3.0.1\t3.0.2\tos-pkgs\talpine 3.19\t\n'
+`)
+	// 컨테이너의 base64 -w 0 과 같은 한 줄 출력을 흉내 낸다(macOS base64 는 -w 가 없다).
+	writeExec("base64", `#!/bin/sh
+real=$(PATH=/usr/bin:/bin command -v base64)
+"$real" | tr -d '\n'
+`)
+
+	targets := "linux/arm64 quay.io/x/flaky@sha256:aaa\n" +
+		"linux/arm64 quay.io/x/broken@sha256:bbb\n" +
+		"linux/arm64 quay.io/x/ok@sha256:ccc\n"
+	cmd := exec.Command("sh", "-c", scanScript(targets))
+	cmd.Env = append(os.Environ(),
+		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"STATE="+state,
+		"NULLUS_SCAN_RETRY_DELAY=0",
+		"NULLUS_TRIVY_SERVER=http://trivy:4954",
+		"NULLUS_TRIVY_TEMPLATE=unused",
+	)
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(out))
+
+	calls := func(ref string) string {
+		raw, _ := os.ReadFile(filepath.Join(state, strings.NewReplacer("/", "_", ":", "_", "@", "_").Replace(ref)))
+		return strings.TrimSpace(string(raw))
+	}
+	version, outcomes := parseScanLog(string(out))
+	assert.Equal(t, "0.74.0", version)
+	assert.Contains(t, string(out), "@@DONE")
+
+	flaky := outcomes["quay.io/x/flaky@sha256:aaa"]
+	require.NotNil(t, flaky)
+	assert.True(t, flaky.done)
+	assert.Empty(t, flaky.err, "한 번 끊긴 이미지는 다시 스캔해 결과를 남긴다")
+	assert.Len(t, flaky.vulns, 1)
+	assert.Equal(t, "2", calls("quay.io/x/flaky@sha256:aaa"))
+
+	broken := outcomes["quay.io/x/broken@sha256:bbb"]
+	require.NotNil(t, broken)
+	assert.Contains(t, broken.err, "MANIFEST_UNKNOWN", "마지막 시도의 오류를 남긴다")
+	assert.Contains(t, broken.err, "3회", "몇 번 시도했는지 남긴다")
+	assert.Equal(t, "3", calls("quay.io/x/broken@sha256:bbb"))
+
+	ok := outcomes["quay.io/x/ok@sha256:ccc"]
+	require.NotNil(t, ok)
+	assert.Len(t, ok.vulns, 1)
+	assert.Equal(t, "1", calls("quay.io/x/ok@sha256:ccc"), "성공한 이미지는 다시 스캔하지 않는다")
 }
 
 type fakeKubectl struct {
