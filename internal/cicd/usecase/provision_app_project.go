@@ -45,6 +45,8 @@ type ProvisionAppProjectInput struct {
 	// 만들지 않는다 — 돌지도 않을 단계를 선언하면 화면이 그것을 성공으로
 	// 보여준다(마이그레이션 000070).
 	ImageScannerEndpoint string
+	// ImageScannerJavaDBRepository 는 에어갭 CI 잡이 Java DB 를 받을 내부 미러다. 비면 업스트림.
+	ImageScannerJavaDBRepository string
 	// AppType 은 어떤 앱을 스캐폴딩할지다. web 이면 바로 도는 React 앱을 만든다.
 	AppType domain.AppType
 	// AccessDomain / GatewayName / GatewayNamespace 가 있으면
@@ -230,7 +232,8 @@ func (uc *ProvisionAppProject) Execute(
 		StackID:          input.StackID,
 		TemplateID:       input.TemplateID,
 
-		ImageScannerEndpoint: input.ImageScannerEndpoint,
+		ImageScannerEndpoint:         input.ImageScannerEndpoint,
+		ImageScannerJavaDBRepository: input.ImageScannerJavaDBRepository,
 	}
 	files, err := scaffold.Render(scaffoldInput)
 	if err != nil {
