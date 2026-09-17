@@ -36,8 +36,6 @@ ghcr.io/dasomel/goharbor/trivy-adapter-photon:v2.15.0-build.32
 ghcr.io/dexidp/dex:v2.41.1
 grafana/loki:2.4.2
 jimmidyson/configmap-reload:v0.5.0
-minio/mc:RELEASE.2018-07-13T00-53-22Z
-minio/minio:RELEASE.2017-12-28T01-21-00Z
 opensearchproject/opensearch:2.16.0
 otel/opentelemetry-collector-contrib:0.90.0
 public.ecr.aws/docker/library/redis:7.4.1-alpine
