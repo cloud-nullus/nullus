@@ -95,6 +95,16 @@ func TestAirgapBundle_ShipsStackInstallScripts(t *testing.T) {
 		"14-push-oci-artifacts.sh 는 oras 가 필요한데 번들 바이너리에 없다")
 }
 
+// 29-install-stacks-via-api.sh 는 nullus-bootstrap 으로 무인 설치 토큰을 받는다. 번들에 그
+// 바이너리가 없으면 오프라인에서는 받을 곳이 없어 스택 설치가 토큰 단계에서 멈췄다.
+// install.sh 가 PATH 에 넣은 번들 bin 은 install.sh 가 끝나면 사라지므로 29 가 직접 찾아야 한다.
+func TestAirgapBundle_ShipsBootstrapCLI(t *testing.T) {
+	assert.True(t, strings.Contains(readRepoFile(t, "airgap", "scripts", "pre", "pull-binaries.sh"), "./cmd/nullus-bootstrap"),
+		"번들 바이너리에 nullus-bootstrap 이 없다")
+	assert.True(t, strings.Contains(readRepoFile(t, "airgap", "scripts", "29-install-stacks-via-api.sh"), "bin/${PLATFORM}/nullus-bootstrap"),
+		"29-install-stacks-via-api.sh 가 번들 bin 의 nullus-bootstrap 을 찾지 않는다")
+}
+
 // 공식 goharbor · nexus3 처럼 arm64 이미지를 제공하지 않는 이미지가 목록에 있으면 arm64 에서
 // 번들 생성이 01-pull-images 에서 멈췄다. 01 이 그 이미지를 건너뛰어 기록하고, 번들 저장(02)과
 // 오프라인 push(12)가 같은 기록으로 그 이미지를 뺀다 — 한 곳이라도 빠지면 그 단계에서 멈춘다.
@@ -103,4 +113,15 @@ func TestAirgapBundle_PlatformSkippedImagesShareOneRecord(t *testing.T) {
 		assert.Truef(t, strings.Contains(readRepoFile(t, "airgap", "scripts", script), "images.skipped-platform.txt"),
 			"%s 가 대상 플랫폼 이미지가 없는 이미지 기록을 쓰지 않는다", script)
 	}
+}
+
+// 에어갭에서 Nullus 는 nullus 네임스페이스에 산다. 29 의 기본 스택 네임스페이스가 그 자리면
+// 스택 생성 API 가 플랫폼 네임스페이스라며 거부해 기본값으로는 스택 설치가 되지 않았다.
+// 비워 두면 API 가 스택 이름으로 nullus-<이름> 을 만든다.
+func TestAirgapStackInstallScript_DefaultNamespaceIsNotPlatform(t *testing.T) {
+	m := regexp.MustCompile(`STACK_NAMESPACE="\$\{STACK_NAMESPACE:-([^}]*)\}"`).
+		FindStringSubmatch(readRepoFile(t, "airgap", "scripts", "29-install-stacks-via-api.sh"))
+	require.NotNil(t, m, "29-install-stacks-via-api.sh 에 STACK_NAMESPACE 기본값이 없다")
+	assert.Truef(t, m[1] == "" || strings.HasPrefix(m[1], "nullus-"),
+		"기본 스택 네임스페이스 %q 는 플랫폼 네임스페이스와 겹칠 수 있다", m[1])
 }

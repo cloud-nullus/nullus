@@ -1,0 +1,39 @@
+# 29-install-stacks-via-api.sh 가 arm64 클러스터에서 스택 생성 요청의 config.yaml_overrides.installing_harbor 로 싣는다.
+# 공식 goharbor 이미지는 어느 버전도 arm64 를 내지 않아 멀티아키 재빌드 이미지로 바꾼다.
+# 에어갭 kind 는 ghcr.io 를 내부 레지스트리로 미러하므로 원래 주소를 그대로 쓴다(images.txt 에 있음).
+# trivy 어댑터 · exporter 는 설치 values 와 차트 기본값이 끄므로 넣지 않는다.
+nginx:
+  image:
+    repository: ghcr.io/dasomel/goharbor/nginx-photon
+    tag: v2.15.0-build.32
+portal:
+  image:
+    repository: ghcr.io/dasomel/goharbor/harbor-portal
+    tag: v2.15.0-build.32
+core:
+  image:
+    repository: ghcr.io/dasomel/goharbor/harbor-core
+    tag: v2.15.0-build.32
+jobservice:
+  image:
+    repository: ghcr.io/dasomel/goharbor/harbor-jobservice
+    tag: v2.15.0-build.32
+registry:
+  registry:
+    image:
+      repository: ghcr.io/dasomel/goharbor/registry-photon
+      tag: v2.15.0-build.32
+  controller:
+    image:
+      repository: ghcr.io/dasomel/goharbor/harbor-registryctl
+      tag: v2.15.0-build.32
+database:
+  internal:
+    image:
+      repository: ghcr.io/dasomel/goharbor/harbor-db
+      tag: v2.15.0-build.32
+redis:
+  internal:
+    image:
+      repository: ghcr.io/dasomel/goharbor/redis-photon
+      tag: v2.15.0-build.32
