@@ -51,6 +51,7 @@ import (
 	obsuc "github.com/cloud-nullus/draft/internal/observability/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/shared/config"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	"github.com/cloud-nullus/draft/internal/shared/secrets"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
@@ -347,6 +348,9 @@ func main() {
 			GitLabBaseURLOverride:  strings.TrimSpace(os.Getenv("NULLUS_GITLAB_URL")),
 			GiteaBaseURLOverride:   strings.TrimSpace(os.Getenv("NULLUS_GITEA_URL")),
 			JenkinsBaseURLOverride: strings.TrimSpace(os.Getenv("NULLUS_JENKINS_URL")),
+			// 에어갭 설치면 CI 잡의 trivy client 가 반입한 Java DB 미러를 쓴다. 스택
+			// Trivy 서버의 DB 미러와 같은 레지스트리다(shareddomain 이 경로 규칙을 소유).
+			TrivyJavaDBRepository: shareddomain.TrivyJavaDBRepository(os.Getenv("NULLUS_HELM_OCI_REGISTRY")),
 		},
 	).WithGitHub(cicdGitHubTokens, cicdGitHubConnections).
 		WithGitea(cicdGiteaTokens, secretRouter).

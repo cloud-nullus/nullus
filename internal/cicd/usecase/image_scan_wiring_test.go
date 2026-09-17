@@ -23,6 +23,9 @@ func TestImageScannerEndpoint_IsWiredToScaffold(t *testing.T) {
 	}{
 		{"provision_pipeline_repository.go", "ImageScannerEndpoint: bundle.ImageScannerEndpoint"},
 		{"provision_app_project.go", "ImageScannerEndpoint: input.ImageScannerEndpoint"},
+		// 에어갭의 Java DB 미러도 같은 길로 간다. 끊기면 에어갭 CI 잡이 인터넷에서 Java DB 를 찾는다.
+		{"provision_pipeline_repository.go", "ImageScannerJavaDBRepository: bundle.ImageScannerJavaDBRepository"},
+		{"provision_app_project.go", "ImageScannerJavaDBRepository: input.ImageScannerJavaDBRepository"},
 		// 실효 단계는 반대 방향으로 흐른다 — 스캐폴딩 → 출력 → 파이프라인 레코드.
 		{"provision_pipeline_repository.go", "Stages: appOut.Stages"},
 		{"create_pipeline.go", "pipeline.Stages = provisionOut.Stages"},

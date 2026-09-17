@@ -55,6 +55,12 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 		base = mergeMaps(base, otelAgentValues(o.namespace))
 	}
 
+	// 에어갭 설치의 Trivy 서버는 내부 레지스트리에서 DB 를 받는다. 오버라이드 유무와
+	// 무관하게 필요하고, 사용자 오버라이드가 뒤에 합쳐지므로 다른 미러로 바꿀 수 있다.
+	if step == "installing_trivy" {
+		base = mergeMaps(base, trivyAirgapDBValues(airgapOCIRegistry()))
+	}
+
 	// OSS 가 자기 메트릭을 내주도록 켠다. 사용자가 오버라이드로 끌 수 있어야
 	// 하므로 플랫폼 소유 값이 아니라 기본값 자리에 둔다.
 	if monitors := serviceMonitorValuesForStep(step, cfg); len(monitors) > 0 {

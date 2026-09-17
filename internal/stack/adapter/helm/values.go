@@ -172,8 +172,8 @@ func DefaultValues(stepName string) map[string]any {
 			// 스캐너 장애가 그 스택의 배포를 멈추는 것이 부담이면 운영에서 늘린다.
 			"replicaCount": 1,
 			"trivy": map[string]any{
-				// 취약점 DB 를 받아올 OCI 저장소. 에어갭 설치는
-				// airgap/helm/stack-values/trivy.yaml 이 내부 미러로 덮는다.
+				// 취약점 DB 를 받아올 OCI 저장소. 에어갭 설치는 mergedValuesForStep 이
+				// trivyAirgapDBValues 로 내부 레지스트리를 가리키게 덮는다.
 				"dbRepository": "ghcr.io/aquasecurity/trivy-db",
 				// 켜면 미러를 갱신해도 서버가 옛 DB 를 계속 쓴다. 내부 미러에서
 				// 정상 갱신 경로를 타게 두면 DB 를 갱신했을 때 저절로 반영된다.

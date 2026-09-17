@@ -59,6 +59,10 @@ type Options struct {
 	// 주소다. Gitea 와 같은 이유로 필요하다 — 기본 경로는 API 서버가 클러스터
 	// 안에서 돌 때만 해석된다.
 	JenkinsBaseURLOverride string
+
+	// TrivyJavaDBRepository 는 에어갭 설치에서 CI 잡이 Java DB 를 받을 내부 미러다.
+	// 비면(온라인 설치) 스캔 잡은 업스트림 기본값을 쓴다.
+	TrivyJavaDBRepository string
 }
 
 // BundleFactory 는 port.SCMBundleFactory 구현체다.
@@ -211,19 +215,20 @@ func (f *BundleFactory) gitLabBundle(
 		WithWebBaseURL(toolWebBaseURL("gitlab", summary.AccessDomain))
 
 	bundle := &port.SCMBundle{
-		Provisioner:          client,
-		Pipeline:             client,
-		CIBuilds:             runs,
-		CIArtifacts:          runs,
-		Registry:             resolver,
-		Platform:             port.SCMPlatformGitLab,
-		GroupPath:            f.opts.GroupPath,
-		CDNamespace:          namespace,
-		CDApplications:       kube.NewArgoApplicationDeleter(),
-		ClusterID:            summary.ClusterID,
-		AccessDomain:         summary.AccessDomain,
-		ImageScannerEndpoint: summary.ImageScannerEndpoint,
-		GatewayName:          gatewayNameForStack(summary.Name),
+		Provisioner:                  client,
+		Pipeline:                     client,
+		CIBuilds:                     runs,
+		CIArtifacts:                  runs,
+		Registry:                     resolver,
+		Platform:                     port.SCMPlatformGitLab,
+		GroupPath:                    f.opts.GroupPath,
+		CDNamespace:                  namespace,
+		CDApplications:               kube.NewArgoApplicationDeleter(),
+		ClusterID:                    summary.ClusterID,
+		AccessDomain:                 summary.AccessDomain,
+		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
+		ImageScannerJavaDBRepository: f.opts.TrivyJavaDBRepository,
+		GatewayName:                  gatewayNameForStack(summary.Name),
 	}
 	// GitLab 스택도 Harbor·Nexus 를 레지스트리로 고를 수 있다. 빠뜨리면 CI 변수가
 	// 등록되지 않아 build 가 docker login 에서 죽는다.
@@ -398,11 +403,12 @@ func (f *BundleFactory) giteaBundle(
 		CDNamespace:     namespace,
 		// 지금은 모든 스택이 Argo CD 를 쓴다. 다른 CD 도구를 들이면 그 도구의
 		// CDApplicationDeleter 구현체를 여기서 갈아 끼운다.
-		CDApplications:       kube.NewArgoApplicationDeleter(),
-		ClusterID:            summary.ClusterID,
-		AccessDomain:         summary.AccessDomain,
-		ImageScannerEndpoint: summary.ImageScannerEndpoint,
-		GatewayName:          gatewayNameForStack(summary.Name),
+		CDApplications:               kube.NewArgoApplicationDeleter(),
+		ClusterID:                    summary.ClusterID,
+		AccessDomain:                 summary.AccessDomain,
+		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
+		ImageScannerJavaDBRepository: f.opts.TrivyJavaDBRepository,
+		GatewayName:                  gatewayNameForStack(summary.Name),
 	}
 
 	f.attachRegistryCredentials(ctx, bundle, resolver, summary)
