@@ -92,6 +92,25 @@ func TestAirgapImages_IncludeTrivy(t *testing.T) {
 	assert.True(t, found, "airgap/images/images.txt 에 %s 가 없다 — 00-generate-images.sh 로 재생성하라", want)
 }
 
+// 에어갭 번들 목록에 받을 수 없는 이미지가 있으면 번들 생성이 멈춘다.
+//
+// 01-pull-images.sh 는 하나라도 못 받으면 exit 1 이다. GitLab 차트에 딸린 MinIO
+// 서브차트(minio/minio:RELEASE.2017…, minio/mc:RELEASE.2018…)가 목록에 들어 있었는데,
+// MinIO 가 Docker Hub 배포를 멈춰 익명 pull 이 거절된다 — 어느 머신에서도 번들을 만들
+// 수 없었다. 실제 설치는 global.minio.enabled=false 로 그 서브차트를 끄므로(values.go),
+// 목록을 만드는 카탈로그 values 도 같게 두고 목록에 Docker Hub 의 minio/* 가 없어야 한다.
+func TestAirgapImages_NoDockerHubMinIO(t *testing.T) {
+	for _, line := range strings.Split(readRepoFile(t, "airgap", "images", "images.txt"), "\n") {
+		repo := strings.TrimPrefix(strings.TrimSpace(line), "docker.io/")
+		assert.Falsef(t, strings.HasPrefix(repo, "minio/"),
+			"%s 는 Docker Hub 의 MinIO 이미지다 — 받을 수 없어 번들 생성이 멈춘다", line)
+	}
+
+	values := stripYAMLComments(readRepoFile(t, "airgap", "helm", "charts-catalog-values", "gitlab.yaml"))
+	assert.Regexp(t, `(?m)^\s*minio:\s*\n\s*enabled:\s*false`, values,
+		"카탈로그 values 가 GitLab 내장 MinIO 를 끄지 않으면 재생성할 때 목록에 다시 들어온다")
+}
+
 // 카탈로그용 values 는 업스트림을 가리켜야 한다.
 //
 // rewrite_upstream(00-generate-images.sh)은 cloud-nullus / dasomel / bitnami

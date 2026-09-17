@@ -9,6 +9,11 @@ global:
   hosts:
     domain: example.com
   edition: ce
+  # 실제 설치와 같게 GitLab 내장 MinIO 를 끈다(internal/stack/adapter/helm/values.go).
+  # 켜 두면 서브차트의 minio/minio · minio/mc(Docker Hub)가 목록에 들어오는데, MinIO 가
+  # Docker Hub 배포를 멈춰 받을 수 없어 01-pull-images.sh 가 멈춘다.
+  minio:
+    enabled: false
 certmanager-issuer:
   email: airgap@example.com
 redis:
