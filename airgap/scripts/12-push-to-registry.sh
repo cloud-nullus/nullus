@@ -19,6 +19,8 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # ── 설정값 ───────────────────────────────────────────────────
 REGISTRY_HOST="${REGISTRY_HOST:-localhost:5001}"
 IMAGES_LIST="${IMAGES_LIST:-${ROOT_DIR}/airgap/images/images.txt}"
+# 01-pull-images 가 대상 플랫폼 이미지가 없어 건너뛴 이미지 — 번들에 없으므로 올리지 않는다.
+SKIPPED_FILE="${SKIPPED_FILE:-${ROOT_DIR}/airgap/bundle/images.skipped-platform.txt}"
 DRY_RUN="${DRY_RUN:-0}"
 
 # ── 로그 헬퍼 ────────────────────────────────────────────────
@@ -116,6 +118,10 @@ main() {
   while IFS= read -r image || [[ -n "${image}" ]]; do
     # 빈 줄 및 주석 건너뜀
     [[ -z "${image}" || "${image}" == \#* ]] && continue
+    if [[ -s "${SKIPPED_FILE}" ]] && grep -Fxq "${image%@*}" "${SKIPPED_FILE}"; then
+      log_warn "대상 플랫폼 이미지가 없어 건너뜀(01-pull-images): ${image}"
+      continue
+    fi
     total=$((total + 1))
 
     local target source

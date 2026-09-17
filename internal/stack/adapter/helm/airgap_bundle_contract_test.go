@@ -94,3 +94,13 @@ func TestAirgapBundle_ShipsStackInstallScripts(t *testing.T) {
 	assert.True(t, strings.Contains(readRepoFile(t, "airgap", "scripts", "pre", "pull-binaries.sh"), "oras"),
 		"14-push-oci-artifacts.sh 는 oras 가 필요한데 번들 바이너리에 없다")
 }
+
+// 공식 goharbor · nexus3 처럼 arm64 이미지를 제공하지 않는 이미지가 목록에 있으면 arm64 에서
+// 번들 생성이 01-pull-images 에서 멈췄다. 01 이 그 이미지를 건너뛰어 기록하고, 번들 저장(02)과
+// 오프라인 push(12)가 같은 기록으로 그 이미지를 뺀다 — 한 곳이라도 빠지면 그 단계에서 멈춘다.
+func TestAirgapBundle_PlatformSkippedImagesShareOneRecord(t *testing.T) {
+	for _, script := range []string{"01-pull-images.sh", "02-save-bundle.sh", "12-push-to-registry.sh"} {
+		assert.Truef(t, strings.Contains(readRepoFile(t, "airgap", "scripts", script), "images.skipped-platform.txt"),
+			"%s 가 대상 플랫폼 이미지가 없는 이미지 기록을 쓰지 않는다", script)
+	}
+}
