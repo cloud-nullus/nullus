@@ -33,6 +33,9 @@ PLATFORMS="${PLATFORMS:-linux-amd64,linux-arm64}"
 KIND_VERSION="${KIND_VERSION:-v0.31.0}"
 KUBECTL_VERSION="${KUBECTL_VERSION:-v1.30.0}"
 HELM_VERSION="${HELM_VERSION:-v3.16.0}"
+# oras — Trivy 취약점 DB(OCI 아티팩트)를 오프라인 레지스트리에 올린다(14-push-oci-artifacts.sh).
+# docker 로는 올릴 수 없어 폴백이 없다.
+ORAS_VERSION="${ORAS_VERSION:-1.3.4}"
 DRY_RUN="${DRY_RUN:-0}"
 
 if [[ -t 1 ]]; then
@@ -113,13 +116,35 @@ download_helm() {
   rm -rf "$tmp"
 }
 
+download_oras() {
+  local platform="$1" outdir="$2"
+  local os="${platform%-*}" arch="${platform#*-}"
+  # oras URL: https://github.com/oras-project/oras/releases/download/v<ver>/oras_<ver>_<os>_<arch>.tar.gz
+  local url="https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_${os}_${arch}.tar.gz"
+  local out="${outdir}/oras"
+  if [[ -x "$out" ]]; then
+    log_info "oras 이미 존재: $out — 건너뜀"
+    return 0
+  fi
+  log_info "oras ${ORAS_VERSION} 다운로드 (${platform})"
+  local tmp
+  tmp="$(mktemp -d)"
+  run_curl "$url" "${tmp}/oras.tar.gz"
+  if [[ "$DRY_RUN" != "1" ]]; then
+    tar -xzf "${tmp}/oras.tar.gz" -C "$tmp" oras
+    mv "${tmp}/oras" "$out"
+    chmod +x "$out"
+  fi
+  rm -rf "$tmp"
+}
+
 write_sha256sums() {
   local dir="$1"
   if [[ "$DRY_RUN" == "1" ]]; then
     printf 'DRY_RUN: sha256 sums for %s\n' "$dir" >&2
     return
   fi
-  ( cd "$dir" && "${SHA_CMD[@]}" kind kubectl helm > SHA256SUMS )
+  ( cd "$dir" && "${SHA_CMD[@]}" kind kubectl helm oras > SHA256SUMS )
 }
 
 log_info "=== 바이너리 다운로드 시작 ==="
@@ -127,6 +152,7 @@ log_info "Platforms : $PLATFORMS"
 log_info "kind      : $KIND_VERSION"
 log_info "kubectl   : $KUBECTL_VERSION"
 log_info "helm      : $HELM_VERSION"
+log_info "oras      : $ORAS_VERSION"
 log_info "Output    : $BIN_DIR"
 
 mkdir -p "$BIN_DIR"
@@ -143,6 +169,7 @@ for platform in "${PLATFORM_LIST[@]}"; do
   download_kind    "$platform" "$outdir"
   download_kubectl "$platform" "$outdir"
   download_helm    "$platform" "$outdir"
+  download_oras    "$platform" "$outdir"
   write_sha256sums "$outdir"
   log_ok "${platform} 완료"
 done

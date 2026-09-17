@@ -1,0 +1,27 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_cert_manager
+# chart: cert-manager 1.16.3
+cainjector:
+    resources:
+        limits:
+            cpu: 500m
+            memory: 512Mi
+        requests:
+            cpu: 250m
+            memory: 256Mi
+installCRDs: true
+resources:
+    limits:
+        cpu: "1"
+        memory: 1Gi
+    requests:
+        cpu: 500m
+        memory: 512Mi
+webhook:
+    resources:
+        limits:
+            cpu: 500m
+            memory: 512Mi
+        requests:
+            cpu: 250m
+            memory: 256Mi

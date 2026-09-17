@@ -1,0 +1,47 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_jenkins
+# chart: jenkins 5.9.54
+controller:
+    JCasC:
+        configScripts:
+            nullus-gitea-credentials: |
+                credentials:
+                  system:
+                    domainCredentials:
+                      - credentials:
+                          - usernamePassword:
+                              scope: GLOBAL
+                              id: "nullus-gitea"
+                              username: "${nullus-gitea-credentials-username}"
+                              password: "${nullus-gitea-credentials-password}"
+                              description: "Nullus 가 만든 Gitea 접속 자격증명"
+            nullus-gitea-server: |
+                unclassified:
+                  giteaServers:
+                    servers:
+                      - displayName: "nullus-gitea"
+                        serverUrl: "http://gitea-http.nullus.svc:3000"
+                        manageHooks: false
+                        credentialsId: "nullus-gitea"
+        defaultConfig: true
+    additionalExistingSecrets:
+        - keyName: username
+          name: nullus-gitea-credentials
+        - keyName: password
+          name: nullus-gitea-credentials
+    admin:
+        existingSecret: nullus-jenkins-credentials
+        passwordKey: jenkins-admin-password
+        userKey: jenkins-admin-user
+    image:
+        pullPolicy: IfNotPresent
+        registry: ghcr.io
+        repository: cloud-nullus/nullus/nullus-jenkins
+        tag: 2.568.2
+    installPlugins: false
+    jenkinsUrl: http://jenkins.nullus.internal
+    servicePort: 8080
+    serviceType: ClusterIP
+persistence:
+    enabled: true
+    size: 20Gi

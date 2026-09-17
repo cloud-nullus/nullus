@@ -1,0 +1,40 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_otel_agent
+# chart: opentelemetry-collector 0.75.0
+config:
+    exporters:
+        otlp/gateway:
+            endpoint: otel-collector-opentelemetry-collector.nullus.svc.cluster.local:4317
+            tls:
+                insecure: true
+    service:
+        pipelines:
+            logs:
+                exporters:
+                    - otlp/gateway
+                receivers:
+                    - filelog
+            metrics: null
+            traces: null
+image:
+    repository: otel/opentelemetry-collector-contrib
+mode: daemonset
+ports:
+    jaeger-compact:
+        enabled: false
+    jaeger-grpc:
+        enabled: false
+    jaeger-thrift:
+        enabled: false
+    otlp:
+        enabled: false
+    otlp-http:
+        enabled: false
+    zipkin:
+        enabled: false
+presets:
+    kubernetesAttributes:
+        enabled: true
+    logsCollection:
+        enabled: true
+        includeCollectorLogs: false
