@@ -2,12 +2,13 @@
 # =============================================================================
 # pre/pull-charts-catalog.sh — Stack 카탈로그 helm chart 다운로드
 # =============================================================================
-# 용도: Nullus stack orchestrator (internal/stack/adapter/helm/orchestrator.go)
-#       가 사용자 클러스터에 설치하는 모든 helm chart 를 에어갭 번들에 포함.
-#       대상: cert-manager, metrics-server, openbao(=manifest 직접 설치, chart 없음),
-#             minio, gitlab, gitlab-runner, argo-cd, kube-prometheus-stack,
-#             grafana, loki, opensearch, opentelemetry-collector,
-#             envoy gateway-helm(OCI), keycloak(OIDC), harbor(선택).
+# 용도: Nullus stack orchestrator 가 사용자 클러스터에 설치하는 모든 helm chart 를
+#       에어갭 번들에 포함한다. 에어갭 설치는 차트를 내부 OCI 레지스트리에서만 받으므로
+#       (installAirgapOCI) 여기 없는 차트는 그 단계에서 설치가 멈춘다.
+#
+#       단일 출처는 internal/stack/adapter/helm/helm_step_metadata.go 의
+#       DefaultChartSpecForStep 이다. 설치 차트가 여기 없거나 버전 · 저장소가 다르면
+#       TestAirgapChartCatalog_CoversEveryInstallerChart 가 CI 에서 막는다.
 #
 # 사용법:
 #   ./pull-charts-catalog.sh
@@ -17,7 +18,7 @@
 #   CATALOG_FILTER  쉼표 구분 (기본: 전체)
 #   DRY_RUN         1 = 명령 출력만
 #
-# 버전 정합성: orchestrator.go 의 ChartSpec 과 일치 유지. drift 시 helm template
+# 버전 정합성: DefaultChartSpecForStep 과 일치 유지(계약 테스트). drift 시 helm template
 # 결과가 달라져 images.txt 가 잘못 생성될 수 있음.
 #
 # 출력: airgap/helm/charts-catalog/<chart>-<version>.tgz
@@ -60,6 +61,15 @@ CATALOG=(
   "opensearch|opensearch|https://opensearch-project.github.io/helm-charts|opensearch/opensearch|2.22.0"
   "opentelemetry-collector|open-telemetry|https://open-telemetry.github.io/opentelemetry-helm-charts|open-telemetry/opentelemetry-collector|0.75.0"
   "gateway-helm|oci|-|oci://registry-1.docker.io/envoyproxy/gateway-helm|v1.4.3"
+  # 시크릿 평면 — 모든 스택이 처음에 설치한다. 빠지면 어떤 템플릿이든 여기서 멈춘다.
+  "openbao|openbao|https://openbao.github.io/openbao-helm|openbao/openbao|0.28.4"
+  "external-secrets|external-secrets|https://charts.external-secrets.io|external-secrets/external-secrets|2.7.0"
+  # 스택 공유 DB. Nullus 차트의 postgresql 서브차트(20-bundle-charts.sh 가 복사)와 버전이 다르다.
+  "postgresql|bitnami|https://charts.bitnami.com/bitnami|bitnami/postgresql|16.7.27"
+  "prometheus-operator-crds|prometheus-community|https://prometheus-community.github.io/helm-charts|prometheus-community/prometheus-operator-crds|18.0.0"
+  "gitea|gitea|https://dl.gitea.com/charts|gitea/gitea|12.7.0"
+  "jenkins|jenkins|https://charts.jenkins.io|jenkins/jenkins|5.9.54"
+  "nexus-repository-manager|sonatype|https://sonatype.github.io/helm3-charts/|sonatype/nexus-repository-manager|64.2.0"
   # --- platform/optional chart ---
   "keycloak|bitnami|https://charts.bitnami.com/bitnami|bitnami/keycloak|24.4.5"
   "harbor|harbor|https://helm.goharbor.io|harbor/harbor|1.15.0"
