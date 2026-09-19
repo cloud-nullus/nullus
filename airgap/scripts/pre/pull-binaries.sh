@@ -2,8 +2,8 @@
 # =============================================================================
 # pre/pull-binaries.sh — 오프라인 설치에 필요한 CLI 바이너리 다운로드
 # =============================================================================
-# 용도: kind, kubectl, helm 을 PLATFORMS 별로 받아 airgap/bin/<platform>/ 에
-#       저장. 마스터 번들에 포함되어 오프라인 머신에서 PATH 로 사용된다.
+# 용도: kind, kubectl, helm, oras 를 PLATFORMS 별로 받고 nullus-bootstrap 을 빌드해
+#       airgap/bin/<platform>/ 에 저장. 마스터 번들에 포함되어 오프라인 머신에서 PATH 로 사용된다.
 #
 # 사용법:
 #   ./pull-binaries.sh
@@ -19,7 +19,7 @@
 #   DRY_RUN           1 = 명령 출력만
 #
 # 출력:
-#   airgap/bin/<platform>/{kind,kubectl,helm}
+#   airgap/bin/<platform>/{kind,kubectl,helm,oras,nullus-bootstrap}
 #   airgap/bin/<platform>/SHA256SUMS
 # =============================================================================
 set -euo pipefail
@@ -27,12 +27,16 @@ IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_DIR="$(cd "${ROOT_DIR}/.." && pwd)"
 BIN_DIR="${ROOT_DIR}/bin"
 
 PLATFORMS="${PLATFORMS:-linux-amd64,linux-arm64}"
 KIND_VERSION="${KIND_VERSION:-v0.31.0}"
 KUBECTL_VERSION="${KUBECTL_VERSION:-v1.30.0}"
 HELM_VERSION="${HELM_VERSION:-v3.16.0}"
+# oras — Trivy 취약점 DB(OCI 아티팩트)를 오프라인 레지스트리에 올린다(14-push-oci-artifacts.sh).
+# docker 로는 올릴 수 없어 폴백이 없다.
+ORAS_VERSION="${ORAS_VERSION:-1.3.4}"
 DRY_RUN="${DRY_RUN:-0}"
 
 if [[ -t 1 ]]; then
@@ -47,6 +51,8 @@ log_ok()   { printf '%s[ OK ]%s %s\n' "$CL_OK"   "$CL_RST" "$*" >&2; }
 
 command -v curl >/dev/null || { log_err "curl not found"; exit 127; }
 command -v tar  >/dev/null || { log_err "tar not found";  exit 127; }
+# go 없이 만든 번들은 오프라인에서 29 가 토큰을 받지 못한다 — 조용히 빼지 않고 여기서 멈춘다.
+command -v go   >/dev/null || [[ "$DRY_RUN" == "1" ]] || { log_err "go not found — nullus-bootstrap 빌드에 필요"; exit 127; }
 if command -v shasum >/dev/null 2>&1; then
   SHA_CMD=(shasum -a 256)
 elif command -v sha256sum >/dev/null 2>&1; then
@@ -113,13 +119,50 @@ download_helm() {
   rm -rf "$tmp"
 }
 
+download_oras() {
+  local platform="$1" outdir="$2"
+  local os="${platform%-*}" arch="${platform#*-}"
+  # oras URL: https://github.com/oras-project/oras/releases/download/v<ver>/oras_<ver>_<os>_<arch>.tar.gz
+  local url="https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_${os}_${arch}.tar.gz"
+  local out="${outdir}/oras"
+  if [[ -x "$out" ]]; then
+    log_info "oras 이미 존재: $out — 건너뜀"
+    return 0
+  fi
+  log_info "oras ${ORAS_VERSION} 다운로드 (${platform})"
+  local tmp
+  tmp="$(mktemp -d)"
+  run_curl "$url" "${tmp}/oras.tar.gz"
+  if [[ "$DRY_RUN" != "1" ]]; then
+    tar -xzf "${tmp}/oras.tar.gz" -C "$tmp" oras
+    mv "${tmp}/oras" "$out"
+    chmod +x "$out"
+  fi
+  rm -rf "$tmp"
+}
+
+# nullus-bootstrap — 29-install-stacks-via-api.sh 가 무인 설치 토큰을 받는 CLI.
+# 릴리스 바이너리가 없어 저장소 소스로 대상 플랫폼용을 빌드한다. 소스가 바뀌면 결과도 바뀌므로
+# 다른 바이너리와 달리 있어도 다시 빌드한다.
+build_bootstrap() {
+  local platform="$1" outdir="$2"
+  local os="${platform%-*}" arch="${platform#*-}"
+  local out="${outdir}/nullus-bootstrap"
+  log_info "nullus-bootstrap 빌드 (${platform})"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf 'DRY_RUN: GOOS=%s GOARCH=%s go build -o %s ./cmd/nullus-bootstrap\n' "$os" "$arch" "$out" >&2
+    return 0
+  fi
+  ( cd "$REPO_DIR" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -o "$out" ./cmd/nullus-bootstrap )
+}
+
 write_sha256sums() {
   local dir="$1"
   if [[ "$DRY_RUN" == "1" ]]; then
     printf 'DRY_RUN: sha256 sums for %s\n' "$dir" >&2
     return
   fi
-  ( cd "$dir" && "${SHA_CMD[@]}" kind kubectl helm > SHA256SUMS )
+  ( cd "$dir" && "${SHA_CMD[@]}" kind kubectl helm oras nullus-bootstrap > SHA256SUMS )
 }
 
 log_info "=== 바이너리 다운로드 시작 ==="
@@ -127,6 +170,7 @@ log_info "Platforms : $PLATFORMS"
 log_info "kind      : $KIND_VERSION"
 log_info "kubectl   : $KUBECTL_VERSION"
 log_info "helm      : $HELM_VERSION"
+log_info "oras      : $ORAS_VERSION"
 log_info "Output    : $BIN_DIR"
 
 mkdir -p "$BIN_DIR"
@@ -143,6 +187,8 @@ for platform in "${PLATFORM_LIST[@]}"; do
   download_kind    "$platform" "$outdir"
   download_kubectl "$platform" "$outdir"
   download_helm    "$platform" "$outdir"
+  download_oras    "$platform" "$outdir"
+  build_bootstrap  "$platform" "$outdir"
   write_sha256sums "$outdir"
   log_ok "${platform} 완료"
 done

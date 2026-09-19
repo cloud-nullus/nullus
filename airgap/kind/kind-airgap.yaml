@@ -64,6 +64,9 @@ containerdConfigPatches:
     # public.ecr.aws 미러 (ArgoCD redis 등)
     [plugins."io.containerd.grpc.v1.cri".registry.mirrors."public.ecr.aws"]
       endpoint = ["http://kind-registry:5000"]
+    # docker.gitea.com 미러 (Gitea 차트 기본 이미지)
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.gitea.com"]
+      endpoint = ["http://kind-registry:5000"]
     # localhost:5001 미러 — values-airgap.yaml 의 image repository 가
     # localhost:5001/... 형태로 고정되어 있기 때문에 노드 내부에서도
     # 동일 표현이 동작하도록 자체 미러 등록 (실제 endpoint 는 kind-registry:5000)

@@ -1,0 +1,30 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_postgresql
+# chart: postgresql 16.7.27
+architecture: standalone
+auth:
+    database: gitlabhq_production
+    existingSecret: nullus-postgresql-credentials
+    secretKeys:
+        adminPasswordKey: postgres-password
+        replicationPasswordKey: replication-password
+        userPasswordKey: password
+    username: gitlab
+global:
+    security:
+        allowInsecureImages: true
+image:
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: 17.6.0-debian-12-r4
+primary:
+    persistence:
+        enabled: true
+        size: 20Gi
+    resources:
+        limits:
+            cpu: "2"
+            memory: 4Gi
+        requests:
+            cpu: "1"
+            memory: 2Gi

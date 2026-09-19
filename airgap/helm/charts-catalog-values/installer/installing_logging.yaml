@@ -1,0 +1,11 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_logging
+# chart: loki 2.10.3
+grafana:
+    enabled: false
+loki:
+    enabled: true
+promtail:
+    enabled: true
+rbac:
+    pspEnabled: false

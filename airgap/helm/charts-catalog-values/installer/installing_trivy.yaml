@@ -1,0 +1,15 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_trivy
+# chart: trivy 0.26.0
+persistence:
+    enabled: true
+    size: 5Gi
+replicaCount: 1
+service:
+    port: 4954
+    type: ClusterIP
+trivy:
+    dbRepository: kind-registry:5000/aquasecurity/trivy-db
+    extraEnvVars:
+        TRIVY_INSECURE: "true"
+    skipDBUpdate: false

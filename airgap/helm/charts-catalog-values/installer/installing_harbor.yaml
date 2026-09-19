@@ -1,0 +1,37 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_harbor
+# chart: harbor 1.15.0
+core:
+    resources:
+        limits:
+            cpu: "1"
+            memory: 1Gi
+        requests:
+            cpu: 100m
+            memory: 256Mi
+database:
+    type: internal
+existingSecretAdminPassword: nullus-harbor-credentials
+existingSecretAdminPasswordKey: HARBOR_ADMIN_PASSWORD
+existingSecretSecretKey: nullus-harbor-credentials
+expose:
+    tls:
+        enabled: false
+    type: clusterIP
+externalURL: https://harbor.nullus.internal
+persistence:
+    enabled: true
+redis:
+    type: internal
+registry:
+    registry:
+        resources:
+            limits:
+                cpu: "1"
+                memory: 1Gi
+            requests:
+                cpu: 100m
+                memory: 256Mi
+    relativeurls: true
+trivy:
+    enabled: false

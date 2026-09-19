@@ -135,6 +135,10 @@ fi
 if [[ -d "${ROOT_DIR}/helm/stack-values" ]]; then
   stage_copy "${ROOT_DIR}/helm/stack-values" "${AIRGAP_DST}/helm/stack-values"
 fi
+# API 스택 설치(29)가 클러스터 아키텍처에 맞춰 싣는 단계별 values 덮어쓰기 (arm64 Harbor 이미지 등)
+if [[ -d "${ROOT_DIR}/helm/stack-overrides" ]]; then
+  stage_copy "${ROOT_DIR}/helm/stack-overrides" "${AIRGAP_DST}/helm/stack-overrides"
+fi
 
 # 오프라인 설치에 필요한 스크립트만 선별 복사
 mkdir -p "${AIRGAP_DST}/scripts"
@@ -142,6 +146,7 @@ for s in 03-load-bundle.sh 10-setup-registry.sh 11-create-cluster.sh \
          12-push-to-registry.sh 13-set-config.sh 21-install-nullus.sh \
          22-install-platform-stack.sh 23-setup-gateway.sh 24-register-hosts.sh \
          25-port-forward.sh 26-migrate-db.sh 27-install-stacks.sh \
+         14-push-oci-artifacts.sh 28-push-charts-oci.sh 29-install-stacks-via-api.sh \
          99-verify.sh bootstrap.sh; do
   if [[ -f "${ROOT_DIR}/scripts/${s}" ]]; then
     stage_copy "${ROOT_DIR}/scripts/${s}" "${AIRGAP_DST}/scripts/${s}"

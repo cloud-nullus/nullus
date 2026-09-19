@@ -1,0 +1,4 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_opentelemetry
+# chart: opentelemetry-collector 0.75.0
+mode: deployment

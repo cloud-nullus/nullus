@@ -14,15 +14,20 @@
 #   DRY_RUN=1    명령만 출력하고 실행하지 않음 (기본: 0)
 #
 # 종료 코드:
-#   0  모든 이미지 pull 성공
+#   0  모든 이미지 pull 성공(대상 플랫폼 이미지가 아예 없어 건너뛴 것은 제외)
 #   1  하나 이상의 이미지 pull 실패
+#
+# 대상 플랫폼 이미지를 제공하지 않는 이미지(예: arm64 에서 공식 goharbor · nexus3)는 실패가 아니라
+# 건너뛴다 — 받아도 그 플랫폼에서 돌 수 없다. images.skipped-platform.txt 에 남기고
+# 02-save-bundle · 12-push-to-registry 가 그 이미지를 뺀다.
 # =============================================================================
 set -euo pipefail
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-IMAGES_FILE="$ROOT_DIR/images/images.txt"
+IMAGES_FILE="${IMAGES_FILE:-$ROOT_DIR/images/images.txt}"
+SKIPPED_FILE="${SKIPPED_FILE:-$ROOT_DIR/bundle/images.skipped-platform.txt}"
 
 # ---------------------------------------------------------------------------
 # 색상 로그 헬퍼
@@ -111,6 +116,16 @@ pull_one() {
   "$RUNTIME" pull --platform "$TARGET_PLATFORM" "$image"
 }
 
+# 대상 플랫폼 이미지를 아예 제공하지 않는가. 0 = 확실히 없음, 1 = 있거나 알 수 없음.
+# 매니페스트를 읽지 못하면(인증 · 네트워크 · 없는 이미지) 알 수 없음으로 두어 실패로 남긴다.
+platform_unavailable() {
+  local image="${1%@*}" os="${TARGET_PLATFORM%%/*}" arch="${TARGET_PLATFORM#*/}" out
+  out="$("$RUNTIME" manifest inspect -v "$image" 2>/dev/null | tr -d ' \n\t')" || return 1
+  printf '%s' "$out" | grep -q '"architecture":' || return 1
+  printf '%s' "$out" | grep -q "\"architecture\":\"${arch}\",\"os\":\"${os}\"" && return 1
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # images.txt 존재 확인
 # ---------------------------------------------------------------------------
@@ -123,6 +138,7 @@ pull_one() {
 # Pull 루프
 # ---------------------------------------------------------------------------
 failed_images=()
+skipped_images=()
 total=0
 success=0
 
@@ -130,6 +146,10 @@ log_info "Using runtime: $RUNTIME"
 log_info "Target platform: $TARGET_PLATFORM (USE_CRANE=$USE_CRANE)"
 log_info "Image list: $IMAGES_FILE"
 [[ "$DRY_RUN" == "1" ]] && log_warn "DRY_RUN enabled — commands will be printed only"
+if [[ "$DRY_RUN" != "1" ]]; then
+  mkdir -p "$(dirname "$SKIPPED_FILE")"
+  : > "$SKIPPED_FILE"
+fi
 
 while IFS= read -r line; do
   # 빈 줄 및 주석 스킵
@@ -147,6 +167,10 @@ while IFS= read -r line; do
   log_info "Pulling ($TARGET_PLATFORM): $image"
   if pull_one "$image"; then
     success=$((success + 1))
+  elif platform_unavailable "$image"; then
+    log_warn "${TARGET_PLATFORM} 이미지를 제공하지 않아 건너뜀: $image"
+    skipped_images+=("$image")
+    printf '%s\n' "${image%@*}" >> "$SKIPPED_FILE"
   else
     log_err "Failed to pull: $image"
     failed_images+=("$image")
@@ -158,6 +182,14 @@ done < "$IMAGES_FILE"
 # ---------------------------------------------------------------------------
 printf '\n'
 log_info "$(printf 'Pull complete: %d/%d succeeded' "$success" "$total")"
+if [[ ${#skipped_images[@]} -gt 0 ]]; then
+  log_warn "${TARGET_PLATFORM} 이미지를 제공하지 않아 이 플랫폼 번들에서 빠진 이미지 ${#skipped_images[@]}개:"
+  for img in "${skipped_images[@]}"; do
+    log_warn "  - $img"
+  done
+  log_warn "  기록: $SKIPPED_FILE (02-save-bundle · 12-push-to-registry 가 뺀다)"
+  log_warn "  이 이미지를 쓰는 도구는 이 플랫폼에서 멀티아키 이미지로 덮어써야 설치된다(예: Harbor → yaml_overrides)."
+fi
 
 if [[ ${#failed_images[@]} -gt 0 ]]; then
   log_err "The following images failed to pull:"

@@ -25,12 +25,19 @@ REPO_ROOT="$(cd "$ROOT_DIR/.." && pwd)"
 CHART_DIR="$REPO_ROOT/deploy/helm/nullus"
 VALUES_AIRGAP="$ROOT_DIR/helm/values-airgap.yaml"
 OUT_FILE="$ROOT_DIR/images/images.txt"
+# 차트는 에어갭 kind 노드의 쿠버네티스 버전으로 렌더한다. helm 의 기본 kubeVersion(v1.20)으로
+# 렌더하면 kubeVersion 제약이 있는 차트(argo-cd ≥1.25, cert-manager ≥1.22)가 실패해 이미지가 빠진다.
+KIND_CONFIG="$ROOT_DIR/kind/kind-airgap.yaml"
+KUBE_VERSION="${KUBE_VERSION:-$(awk '/image:[[:space:]]*kindest\/node:v/ { sub(/.*kindest\/node:v/, ""); print; exit }' "$KIND_CONFIG")}"
+# 설치 코드가 에어갭 모드에서 쓰는 단계별 values(go test ... -update-airgap-values 로 생성).
+# 차트 기본값만 렌더하면 설치가 덮어쓰는 이미지(bitnamilegacy postgresql, OpenBao 2.5.5 등)가 빠진다.
+INSTALLER_VALUES_DIR="$ROOT_DIR/helm/charts-catalog-values/installer"
 
 INFRA_IMAGES=(
   "kindest/node:v1.30.0"
   "registry:2"
-  # OpenBao: installed via inline manifest by stack orchestrator (not a helm chart)
-  "openbao/openbao:latest"
+  # OpenBao: 설치 코드 상수(internal/stack/adapter/helm/openbao-values.go 의 OpenBaoImage*)와 같아야 한다.
+  "openbao/openbao:2.5.5"
   # Jenkins: 플러그인을 구운 자체 이미지라 helm render 로는 잡히지 않는다.
   # 스택 설치가 values 로 지정한다(internal/stack/adapter/helm/values.go 의
   # jenkinsImage* 상수). 빼면 인터넷 없는 설치에서 Jenkins 가 뜨지 않는다.
@@ -90,7 +97,8 @@ if [[ "$MODE" == "write" ]]; then
   }
 fi
 
-HELM_ARGS=(template nullus "$CHART_DIR")
+[[ -n "$KUBE_VERSION" ]] || { log_err "kubeVersion 을 $KIND_CONFIG 에서 읽지 못했다"; exit 1; }
+HELM_ARGS=(template nullus "$CHART_DIR" --kube-version "$KUBE_VERSION")
 if [[ -f "$VALUES_AIRGAP" ]]; then
   HELM_ARGS+=(-f "$VALUES_AIRGAP")
 fi
@@ -142,6 +150,7 @@ fi
 CATALOG_DIR="${ROOT_DIR}/helm/charts-catalog"
 CATALOG_VALUES_DIR="${ROOT_DIR}/helm/charts-catalog-values"
 CATALOG_IMAGES=""
+INSTALLER_FAILED=()
 if [[ -d "$CATALOG_DIR" && "$DRY_RUN" != "1" ]]; then
   log_info "카탈로그 chart 스캔: $CATALOG_DIR"
   shopt -s nullglob
@@ -156,10 +165,29 @@ if [[ -d "$CATALOG_DIR" && "$DRY_RUN" != "1" ]]; then
     else
       log_info "  helm template $name"
     fi
-    rendered="$(helm template "$name" "$tgz" ${extra_args[@]+"${extra_args[@]}"} 2>/dev/null || true)"
+    rendered="$(helm template "$name" "$tgz" --kube-version "$KUBE_VERSION" ${extra_args[@]+"${extra_args[@]}"} 2>/dev/null || true)"
     [[ -z "$rendered" ]] && { log_warn "    렌더 실패 — 건너뜀 (values override 필요?)"; continue; }
     imgs="$(printf '%s\n' "$rendered" | extract_images | rewrite_upstream | sort -u)"
     CATALOG_IMAGES+="$imgs"$'\n'
+  done
+  # 설치 코드의 values 로도 렌더한다 — 설치가 실제로 받는 이미지.
+  for values in "$INSTALLER_VALUES_DIR"/*.yaml; do
+    IFS=' ' read -r chart version < <(awk '/^# chart: / { print $3, $4; exit }' "$values")
+    tgz=""
+    for cand in "$CATALOG_DIR/${chart}-${version}.tgz" "$CATALOG_DIR/${chart}-v${version}.tgz"; do
+      [[ -f "$cand" ]] && { tgz="$cand"; break; }
+    done
+    if [[ -z "$tgz" ]]; then
+      INSTALLER_FAILED+=("$(basename "$values") (차트 ${chart}-${version} 이 카탈로그에 없음)")
+      continue
+    fi
+    rendered="$(helm template "$chart" "$tgz" --kube-version "$KUBE_VERSION" -f "$values" 2>/dev/null || true)"
+    if [[ -z "$rendered" ]]; then
+      INSTALLER_FAILED+=("$(basename "$values") (렌더 실패)")
+      continue
+    fi
+    log_info "  helm template $chart $version (installer values: $(basename "$values"))"
+    CATALOG_IMAGES+="$(printf '%s\n' "$rendered" | extract_images | rewrite_upstream | sort -u)"$'\n'
   done
   shopt -u nullglob
   # 2025-08 Bitnami 정책: 버전 태그는 docker.io/bitnamilegacy/* 로 이관됨
@@ -172,6 +200,13 @@ if [[ -d "$CATALOG_DIR" && "$DRY_RUN" != "1" ]]; then
   fi
 fi
 
+# 설치 values 해시 — 파일 이름 순으로 내용을 이어 붙인 sha256(테스트와 같은 규칙).
+INSTALLER_VALUES_SHA="$(find "$INSTALLER_VALUES_DIR" -maxdepth 1 -name '*.yaml' | LC_ALL=C sort | xargs cat | shasum -a 256 | awk '{print $1}')"
+if [[ ${#INSTALLER_FAILED[@]} -gt 0 ]]; then
+  log_err "설치 values 로 렌더하지 못한 단계가 있다 — 그 단계의 이미지가 목록에서 빠진다:"
+  for f in "${INSTALLER_FAILED[@]}"; do log_err "  - $f"; done
+  exit 1
+fi
 tmp_file="$(mktemp)"
 trap 'rm -f "$tmp_file"' EXIT
 
@@ -183,6 +218,8 @@ trap 'rm -f "$tmp_file"' EXIT
   printf '# Regenerate whenever chart deps or app versions change.\n'
   printf '# Format : <registry>/<repo>:<tag>, one per line. Blank / "#" lines ignored.\n'
   printf '# CI     : MODE=check ./00-generate-images.sh blocks drift.\n'
+  # 어떤 설치 values 로 만든 목록인지 남긴다 — TestAirgapImages_GeneratedFromCurrentInstallerValues 가 본다.
+  printf '# installer-values-sha256: %s\n' "$INSTALLER_VALUES_SHA"
   printf '\n'
   printf '# --- Nullus app + chart dependency images (rendered from chart) ---\n'
   printf '%s\n' "$CHART_IMAGES"

@@ -26,7 +26,7 @@ IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-IMAGES_FILE="$ROOT_DIR/images/images.txt"
+IMAGES_FILE="${IMAGES_FILE:-$ROOT_DIR/images/images.txt}"
 BUNDLE_DIR="${BUNDLE_DIR:-$ROOT_DIR/bundle}"
 BUNDLE_TAR="$BUNDLE_DIR/images.tar"
 BUNDLE_GZ="$BUNDLE_DIR/images.tar.gz"
@@ -94,6 +94,24 @@ done < "$IMAGES_FILE"
 if [[ ${#images[@]} -eq 0 ]]; then
   log_err "No images found in $IMAGES_FILE"
   exit 1
+fi
+
+# 01-pull-images 가 대상 플랫폼 이미지가 없어 건너뛴 것은 번들에서 뺀다.
+SKIPPED_FILE="$BUNDLE_DIR/images.skipped-platform.txt"
+if [[ -s "$SKIPPED_FILE" ]]; then
+  kept=()
+  for img in "${images[@]}"; do
+    if grep -Fxq "$img" "$SKIPPED_FILE"; then
+      log_warn "대상 플랫폼 이미지가 없어 번들에서 뺀다(01-pull-images): $img"
+    else
+      kept+=("$img")
+    fi
+  done
+  if [[ ${#kept[@]} -eq 0 ]]; then
+    log_err "번들에 담을 이미지가 없다 — 모두 대상 플랫폼 이미지가 없다: $SKIPPED_FILE"
+    exit 1
+  fi
+  images=("${kept[@]}")
 fi
 
 log_info "Images to bundle: ${#images[@]}"

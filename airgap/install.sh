@@ -135,6 +135,15 @@ bash "${SCRIPTS}/11-create-cluster.sh"
 hdr "STEP 4/8" "이미지 → 로컬 레지스트리 push (12-push-to-registry.sh)"
 bash "${SCRIPTS}/12-push-to-registry.sh"
 
+# Trivy 취약점 DB 는 컨테이너 이미지가 아니라 OCI 아티팩트라 12 가 올리지 않는다.
+# 번들에만 있고 레지스트리에 없으면 이미지 스캐너를 고른 스택의 Trivy 서버가 DB 를 받지 못한다.
+hdr "STEP 4b" "OCI 아티팩트(Trivy 취약점 DB) → 로컬 레지스트리 push (14-push-oci-artifacts.sh)"
+if [[ -f "${AIRGAP_DIR}/bundle/oci-artifacts.tar.gz" ]]; then
+  bash "${SCRIPTS}/14-push-oci-artifacts.sh" || log_warn "OCI 아티팩트 push 실패 — 이미지 스캐너(Trivy)를 고른 스택은 취약점 DB 를 받지 못한다. 수동 확인: bash scripts/14-push-oci-artifacts.sh"
+else
+  log_warn "bundle/oci-artifacts.tar.gz 없음 — 이미지 스캐너(Trivy)를 고른 스택은 취약점 DB 를 받지 못한다"
+fi
+
 hdr "STEP 5/10" "카탈로그 차트 → OCI 레지스트리 push (28-push-charts-oci.sh)"
 if [[ -d "${AIRGAP_DIR}/helm/charts-catalog" ]]; then
   bash "${SCRIPTS}/28-push-charts-oci.sh" || log_warn "OCI 차트 push 일부 실패 — UI Stack 설치에 영향 가능. 수동 확인: bash scripts/28-push-charts-oci.sh"
