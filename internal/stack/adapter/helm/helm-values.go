@@ -61,6 +61,13 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 		base = mergeMaps(base, trivyAirgapDBValues(airgapOCIRegistry()))
 	}
 
+	// 공식 이미지가 노드 아키텍처를 내지 않는 도구는 대체 출처의 이미지로 바꾼다
+	// (arm64 의 Harbor). 기본값 자리에 두어 사용자 오버라이드가 뒤에서 이긴다 —
+	// 자기 미러나 다른 빌드로 바꿀 수 있어야 한다.
+	if images := archImageValuesForStep(step, o.nodeArchitectures()); len(images) > 0 {
+		base = mergeMaps(base, images)
+	}
+
 	// OSS 가 자기 메트릭을 내주도록 켠다. 사용자가 오버라이드로 끌 수 있어야
 	// 하므로 플랫폼 소유 값이 아니라 기본값 자리에 둔다.
 	if monitors := serviceMonitorValuesForStep(step, cfg); len(monitors) > 0 {

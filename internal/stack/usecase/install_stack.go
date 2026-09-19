@@ -144,6 +144,27 @@ type preflightExecutor interface {
 	PreflightNamespace(ctx context.Context, namespace string) error
 }
 
+// architecturePreflightExecutor 는 설치를 시작하기 전에 노드 아키텍처와 도구 이미지가
+// 맞는지 볼 수 있는 실행기다. notices 는 설치 로그에 남길 안내(대체 이미지 사용 등)다.
+type architecturePreflightExecutor interface {
+	PreflightArchitecture(ctx context.Context, stackID string) (notices []string, err error)
+}
+
+// recordPreflightFailure 는 설치 전 검사에서 멈춘 이유를 스택에 남긴다.
+//
+// 이어서 진행하던 스택은 이전 실패 단계를 들고 있어 handleFailure 가 실패 기록을
+// 건너뛴다. 그러면 화면에는 이전 실패 사유가 계속 보인다. 실패 단계(재개 지점)는
+// 바꾸지 않는다 — validate 로 바꾸면 다음 Continue 가 처음부터 다시 돈다.
+func (uc *InstallStack) recordPreflightFailure(ctx context.Context, stack *domain.Stack, cause error) {
+	if stack == nil || cause == nil || stack.LastFailedStep == "" || uc.stackRepo == nil {
+		return
+	}
+	stack.LastFailureReason = cause.Error()
+	if err := uc.stackRepo.Update(ctx, stack); err != nil {
+		slog.Warn("failed to persist preflight failure reason", "stack_id", stack.ID, "error", err)
+	}
+}
+
 type deploymentVerifiableExecutor interface {
 	VerifyDeployment(ctx context.Context, stackID string) error
 }
@@ -382,6 +403,27 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 				uc.handleFailure(ctx, stack, executor, err)
 				return
 			}
+		}
+	}
+
+	// 노드 아키텍처에서 뜰 이미지가 없는 도구가 있으면 여기서 멈춘다.
+	//
+	// 헬름은 이미지 아키텍처를 보지 않으므로 설치는 성공하고 파드만 크래시한다 —
+	// DGX Spark(arm64)에서 공식 이미지가 amd64 뿐인 Harbor 가 그렇게 멈췄다(#270).
+	// Pre-Deploy Gate 는 저장된(낡거나 비어 있을 수 있는) 클러스터 정보를 보므로,
+	// 설치 직전에 노드를 직접 읽어 한 번 더 본다.
+	//
+	// 잔여 볼륨 검사와 달리 이어서 진행할 때도 돈다. 노드를 읽어야 남은 단계가
+	// 노드에 맞는 이미지를 받는다. 재개 지점 앞의 단계는 실행기가 건너뛴다.
+	if archPreflight, ok := executor.(architecturePreflightExecutor); ok {
+		notices, err := archPreflight.PreflightArchitecture(ctx, stack.ID)
+		if err != nil {
+			uc.recordPreflightFailure(ctx, stack, err)
+			uc.handleFailure(ctx, stack, executor, err)
+			return
+		}
+		for _, notice := range notices {
+			uc.emit(ctx, deploymentID, "info", "validate", "A", notice)
 		}
 	}
 

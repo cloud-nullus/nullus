@@ -33,6 +33,8 @@ func TestSeedMigration_GitLabHarborTrivy_MatchesMemory(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(blocks[0][1]), &seededTools))
 	var seededMatrix map[string]domain.ToolVersion
 	require.NoError(t, json.Unmarshal([]byte(blocks[1][1]), &seededMatrix))
+	// 뒤 마이그레이션이 바꾼 값까지 적용해야 지금 DB 와 같다.
+	applyToolImageArchSupportMigration(t, seededMatrix)
 
 	tmpl, err := NewMemoryTemplateRepository().GetByID(context.Background(), "gitlab-harbor-trivy-v1")
 	require.NoError(t, err)

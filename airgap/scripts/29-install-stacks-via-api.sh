@@ -24,8 +24,8 @@
 #   ACCESS_DOMAIN     접속 도메인 (기본: nullus.internal)
 #   STORAGE_CLASS     PVC StorageClass (미지정 시 클러스터 기본값)
 #   YAML_OVERRIDES_DIR 단계별 values 덮어쓰기 디렉토리 — <step>.yaml 이 config.yaml_overrides[<step>] 가 된다.
-#                     미지정 시 kubectl 로 본 노드가 arm64 면 번들의 helm/stack-overrides/linux-arm64 를 쓴다
-#                     (공식 Harbor 이미지는 arm64 가 없다). 끄려면 빈 디렉토리를 지정한다
+#                     arm64 노드의 Harbor 이미지는 따로 넣지 않아도 된다 — 설치 백엔드가 노드 아키텍처를
+#                     읽어 멀티아키 이미지로 바꾼다(internal/stack/domain/arch_image_source.go)
 # =============================================================================
 set -euo pipefail
 IFS=$'\n\t'
@@ -113,17 +113,7 @@ CLUSTER_ID="$(api POST /admin/clusters/self-register \
 log "클러스터: ${CLUSTER_ID}"
 
 # --- 3) 스택 생성 -----------------------------------------------------------
-# 에어갭 스택 설치에는 화면에서 yaml_overrides 를 넣을 사람이 없다. 클러스터 아키텍처에 맞는
-# 덮어쓰기를 번들에서 골라 싣는다 — 이것이 없으면 arm64 에서 Harbor 파드가 amd64 이미지로 멈춘다.
-if [[ -z "${YAML_OVERRIDES_DIR}" ]] && command -v kubectl >/dev/null; then
-  NODE_ARCH="$(kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.architecture}' 2>/dev/null || true)"
-  if [[ -n "${NODE_ARCH}" ]]; then
-    ARCH_OVERRIDES="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/helm/stack-overrides/linux-${NODE_ARCH}"
-    [[ -d "${ARCH_OVERRIDES}" ]] && YAML_OVERRIDES_DIR="${ARCH_OVERRIDES}"
-  else
-    log "kubectl 로 노드 아키텍처를 읽지 못했습니다 — 아키텍처별 덮어쓰기 없이 진행 (YAML_OVERRIDES_DIR 로 지정 가능)"
-  fi
-fi
+# 에어갭 스택 설치에는 화면에서 yaml_overrides 를 넣을 사람이 없다. 필요하면 YAML_OVERRIDES_DIR 로 싣는다.
 [[ -n "${YAML_OVERRIDES_DIR}" ]] && log "단계별 values 덮어쓰기: ${YAML_OVERRIDES_DIR}"
 
 log "스택 생성 (템플릿: ${TEMPLATE_ID})"
