@@ -126,12 +126,31 @@ func matchesMatrix(m *domain.CompatibilityMatrix, tools map[string]string) bool 
 }
 
 // archAMD64Only is the arch profile for tools that do not publish official arm64 images
-// (e.g. Harbor, GitLab CE/CI/Registry as of 2026-Q1). Kept as a package-level slice so
+// (e.g. GitLab CE/CI/Registry as of 2026-Q1). Kept as a package-level slice so
 // callers don't accidentally mutate the defaults.
 var archAMD64Only = []string{domain.ArchAMD64}
 
 // archMulti is the arch profile for tools that support both amd64 and arm64.
 var archMulti = []string{domain.ArchAMD64, domain.ArchARM64}
+
+// archHarbor 는 Harbor 가 뜰 수 있는 아키텍처다. 공식 이미지는 amd64 뿐이지만 설치가
+// arm64 노드에서 멀티아키 재빌드 이미지로 바꾼다. 선언은 도메인(ToolImageProfile)이
+// 소유한다 — 매트릭스마다 따로 적었더니 gitea 계열만 arm64 를 선언해, 설치가 amd64
+// 이미지만 깔던 때에도 arm64 클러스터에서 게이트를 통과했다(#270).
+var archHarbor = toolImageArchSupport("Harbor")
+
+// archNexus 는 Nexus 가 뜰 수 있는 아키텍처다. 설치하는 sonatype/nexus3 3.64.0 은
+// amd64 뿐이고 대체 출처가 없다 — 매트릭스가 amd64·arm64 로 잘못 적고 있었다.
+var archNexus = toolImageArchSupport("Nexus")
+
+// toolImageArchSupport 는 도메인의 도구 이미지 선언이 말하는 지원 아키텍처다.
+func toolImageArchSupport(tool string) []string {
+	profile, ok := domain.ToolImageProfileForTool(tool)
+	if !ok {
+		return archMulti
+	}
+	return profile.SupportedArchs()
+}
 
 // 매트릭스가 선언하는 버전. 전부 domain 이 소유한다 — 설치가 쓰는 값과 같아야
 // 하기 때문이다.
@@ -213,7 +232,7 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			Tools: map[string]domain.ToolVersion{
 				"source_repository":        {Name: "Gitea", HelmVersion: baselineGiteaHelmVersion, AppVersion: baselineGiteaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"ci_platform":              {Name: "Jenkins", HelmVersion: baselineJenkinsHelmVersion, AppVersion: baselineJenkinsAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"container_registry":       {Name: "Harbor", HelmVersion: baselineHarborHelmVersion, AppVersion: baselineHarborAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"container_registry":       {Name: "Harbor", HelmVersion: baselineHarborHelmVersion, AppVersion: baselineHarborAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archHarbor, Tier: domain.ToolTierStable},
 				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
@@ -236,7 +255,7 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			Tools: map[string]domain.ToolVersion{
 				"source_repository":  {Name: "Gitea", HelmVersion: baselineGiteaHelmVersion, AppVersion: baselineGiteaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"ci_platform":        {Name: "Jenkins", HelmVersion: baselineJenkinsHelmVersion, AppVersion: baselineJenkinsAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
-				"container_registry": {Name: "Harbor", HelmVersion: baselineHarborHelmVersion, AppVersion: baselineHarborAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"container_registry": {Name: "Harbor", HelmVersion: baselineHarborHelmVersion, AppVersion: baselineHarborAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archHarbor, Tier: domain.ToolTierStable},
 				"cd_tool":            {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"image_scanner":      {Name: "Trivy", HelmVersion: baselineTrivyHelmVersion, AppVersion: baselineTrivyAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
 			},
@@ -293,7 +312,7 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			Tools: map[string]domain.ToolVersion{
 				"source_repository":        {Name: "GitLab CE", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
 				"ci_platform":              {Name: "GitLab CI", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
-				"container_registry":       {Name: "Harbor", HelmVersion: baselineHarborHelmVersion, AppVersion: baselineHarborAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierBeta},
+				"container_registry":       {Name: "Harbor", HelmVersion: baselineHarborHelmVersion, AppVersion: baselineHarborAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archHarbor, Tier: domain.ToolTierBeta},
 				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
@@ -315,7 +334,7 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			Tools: map[string]domain.ToolVersion{
 				"source_repository":  {Name: "GitLab CE", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
 				"ci_platform":        {Name: "GitLab CI", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
-				"container_registry": {Name: "Harbor", HelmVersion: baselineHarborHelmVersion, AppVersion: baselineHarborAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierBeta},
+				"container_registry": {Name: "Harbor", HelmVersion: baselineHarborHelmVersion, AppVersion: baselineHarborAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archHarbor, Tier: domain.ToolTierBeta},
 				"storage_backend":    {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"cd_tool":            {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"image_scanner":      {Name: "Trivy", HelmVersion: baselineTrivyHelmVersion, AppVersion: baselineTrivyAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
@@ -333,8 +352,8 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 			Tools: map[string]domain.ToolVersion{
 				"source_repository":        {Name: "GitLab CE", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
 				"ci_platform":              {Name: "GitLab CI", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archAMD64Only, Tier: domain.ToolTierStable},
-				"container_registry":       {Name: "Nexus", HelmVersion: baselineNexusHelmVersion, AppVersion: baselineNexusAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
-				"package_registry":         {Name: "Nexus", HelmVersion: baselineNexusHelmVersion, AppVersion: baselineNexusAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"container_registry":       {Name: "Nexus", HelmVersion: baselineNexusHelmVersion, AppVersion: baselineNexusAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archNexus, Tier: domain.ToolTierBeta},
+				"package_registry":         {Name: "Nexus", HelmVersion: baselineNexusHelmVersion, AppVersion: baselineNexusAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archNexus, Tier: domain.ToolTierBeta},
 				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},

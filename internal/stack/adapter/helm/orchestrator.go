@@ -113,6 +113,12 @@ type Orchestrator struct {
 	// CI/CD 모듈의 그룹 경로와 같아야 이미지 주소가 맞는다. 모듈 간 직접
 	// import 가 금지되므로 조립 지점에서 주입받는다.
 	imageProjectName string
+	// nodeArchs 는 대상 클러스터 노드의 아키텍처다(정렬). 공식 이미지가 그 아키텍처를
+	// 내지 않는 도구는 대체 출처의 이미지로 설치한다 — arch-images.go.
+	nodeArchs       []string
+	nodeArchsLoaded bool
+	// nodeReader 는 노드 목록(JSON)을 읽는다. nil 이면 kubectl 로 읽는다 — 테스트용 이음새.
+	nodeReader func(ctx context.Context) ([]byte, error)
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -945,6 +951,14 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		}
 	}
 	releaseName := o.releaseNameForSpec(spec)
+	// 이미지가 노드 아키텍처에 달린 단계는 노드를 먼저 읽어 둔다. 사전검사가 읽었으면
+	// 그 값을 쓴다 — 사전검사를 거치지 않은 경로에서도 amd64 이미지가 깔리면 안 된다.
+	// 못 읽으면 설치하지 않는다. 공식 이미지로 가면 arm64 에서 파드가 뜨지 않는다.
+	if profile, ok := domain.ToolImageProfileForStep(step); ok && len(profile.Sources) > 0 && o.canReadNodes() {
+		if _, archErr := o.loadNodeArchitectures(ctx); archErr != nil {
+			return fmt.Errorf("노드 아키텍처를 읽지 못해 %s 이미지를 고를 수 없습니다: %w", step, archErr)
+		}
+	}
 	values := o.valuesForStep(step, spec)
 	if step == stepInstallingRunner {
 		if looksLikeKubeconfig(o.kubeconfig) {
