@@ -71,6 +71,19 @@ parse_auth_arg() {
   esac
 }
 
+# pg_psql 은 docker compose 가 띄운 postgres 컨테이너에서 psql 을 돌린다.
+# 컨테이너 이름은 compose 프로젝트 이름(= 체크아웃 디렉터리 이름)을 따라가므로
+# 이름을 박아두면 다른 이름으로 clone 한 체크아웃에서 깨진다. compose 에게 묻는다.
+pg_psql() {
+  local container
+  container="$(docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" ps -q postgres 2>/dev/null | head -1)"
+  if [[ -z "$container" ]]; then
+    echo "[nullus] postgres 컨테이너를 찾을 수 없습니다 (docker compose -f docker-compose.dev.yaml ps postgres)" >&2
+    return 1
+  fi
+  docker exec -i "$container" psql -U nullus -d nullus "$@"
+}
+
 kind_cluster_exists() {
   local name="$1"
   kind get clusters 2>/dev/null | grep -q "^${name}$"
@@ -116,7 +129,7 @@ register_kind_cluster_endpoints() {
     fi
 
     echo "[nullus] registering kind cluster endpoint for kind-${cluster_name}: ${kind_endpoint}"
-    docker exec draft-postgres-1 psql -U nullus -d nullus -c \
+    pg_psql -c \
       "UPDATE clusters SET endpoint = '${kind_endpoint}' WHERE name = 'kind-${cluster_name}';" >/dev/null 2>&1 || true
   done < <(kind_cluster_names)
 }
@@ -139,11 +152,11 @@ auto_register_kind_clusters() {
 
 seed_golden_path_templates_if_needed() {
   local count
-  count="$(docker exec draft-postgres-1 psql -U nullus -d nullus -tA -c "SELECT COUNT(*) FROM golden_path_templates;" 2>/dev/null | tr -d '[:space:]' || true)"
+  count="$(pg_psql -tA -c "SELECT COUNT(*) FROM golden_path_templates;" 2>/dev/null | tr -d '[:space:]' || true)"
   if [[ -z "$count" || "$count" == "0" ]]; then
     echo "[nullus] seeding golden_path_templates..."
-    docker exec -i draft-postgres-1 psql -U nullus -d nullus < "$PROJECT_ROOT/db/migrations/000008_seed_templates.up.sql"
-    docker exec -i draft-postgres-1 psql -U nullus -d nullus < "$PROJECT_ROOT/db/migrations/000031_seed_empty_template.up.sql"
+    pg_psql < "$PROJECT_ROOT/db/migrations/000008_seed_templates.up.sql"
+    pg_psql < "$PROJECT_ROOT/db/migrations/000031_seed_empty_template.up.sql"
   else
     echo "[nullus] golden_path_templates already seeded ($count rows)"
   fi
@@ -151,10 +164,10 @@ seed_golden_path_templates_if_needed() {
 
 seed_cicd_templates_if_needed() {
   local count
-  count="$(docker exec draft-postgres-1 psql -U nullus -d nullus -tA -c "SELECT COUNT(*) FROM pipeline_templates;" 2>/dev/null | tr -d '[:space:]' || true)"
+  count="$(pg_psql -tA -c "SELECT COUNT(*) FROM pipeline_templates;" 2>/dev/null | tr -d '[:space:]' || true)"
   if [[ -z "$count" || "$count" == "0" ]]; then
     echo "[nullus] seeding pipeline_templates..."
-    docker exec -i draft-postgres-1 psql -U nullus -d nullus < "$PROJECT_ROOT/db/migrations/000010_seed_cicd_templates.up.sql"
+    pg_psql < "$PROJECT_ROOT/db/migrations/000010_seed_cicd_templates.up.sql"
   else
     echo "[nullus] pipeline_templates already seeded ($count rows)"
   fi
@@ -162,7 +175,7 @@ seed_cicd_templates_if_needed() {
 
 seed_token_sources_if_needed() {
   local count
-  count="$(docker exec draft-postgres-1 psql -U nullus -d nullus -tA -c "SELECT COUNT(*) FROM token_sources WHERE deleted_at IS NULL;" 2>/dev/null | tr -d '[:space:]' || true)"
+  count="$(pg_psql -tA -c "SELECT COUNT(*) FROM token_sources WHERE deleted_at IS NULL;" 2>/dev/null | tr -d '[:space:]' || true)"
   if [[ -z "$count" || "$count" == "0" ]]; then
     echo "[nullus] seeding token_sources..."
     bash "$PROJECT_ROOT/scripts/seed-token-sources.sh"
@@ -308,10 +321,20 @@ wait_for_http() {
   return 1
 }
 
+# port_is_listening 은 로컬 포트에 리스너가 있는지 본다. lsof 는 다른 사용자의
+# 프로세스를 보여주지 않으므로, 리눅스 rootful Docker 처럼 root 소유 docker-proxy
+# 가 포트를 잡은 경우 컨테이너가 멀쩡해도 "not running" 으로 읽힌다. 실제 TCP
+# 연결로 한 번 더 확인해서 그 오판을 막는다.
+port_is_listening() {
+  local port="$1"
+  if lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then return 0; fi
+  (exec 3<>"/dev/tcp/127.0.0.1/$port") >/dev/null 2>&1
+}
+
 wait_for_port_listen() {
   local port="$1" attempts="${2:-30}" i
   for ((i = 1; i <= attempts; i++)); do
-    if lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then return 0; fi
+    if port_is_listening "$port"; then return 0; fi
     sleep 1
   done
   return 1
@@ -320,7 +343,7 @@ wait_for_port_listen() {
 wait_for_port_free() {
   local port="$1" attempts="${2:-15}" i
   for ((i = 1; i <= attempts; i++)); do
-    if ! lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then return 0; fi
+    if ! port_is_listening "$port"; then return 0; fi
     sleep 1
   done
   return 1
@@ -328,9 +351,10 @@ wait_for_port_free() {
 
 require_port_free() {
   local name="$1" port="$2"
-  if lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+  if port_is_listening "$port"; then
     local pids
     pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | tr '\n' ',' | sed 's/,$//')"
+    [[ -n "$pids" ]] || pids="unknown (다른 사용자 소유 — 예: root 의 docker-proxy)"
     echo "[nullus] cannot start $name: port $port in use by pid=$pids"
     echo "[nullus] run 'down' first or free the port"
     exit 1
@@ -848,7 +872,7 @@ do_status() {
     echo "  api: unavailable"
   fi
 
-  if lsof -tiTCP:"$WEB_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  if port_is_listening "$WEB_PORT"; then
     echo "  web: listening on :$WEB_PORT"
   else
     echo "  web: not running"
@@ -860,13 +884,13 @@ do_status() {
     echo "  keycloak: not running"
   fi
 
-  if lsof -tiTCP:"$MINIO_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  if port_is_listening "$MINIO_PORT"; then
     echo "  minio: listening on :$MINIO_PORT (console :$MINIO_CONSOLE_PORT)"
   else
     echo "  minio: not running"
   fi
 
-  if lsof -tiTCP:"$AUTHENTIK_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  if port_is_listening "$AUTHENTIK_PORT"; then
     echo "  authentik: listening on :$AUTHENTIK_PORT"
   fi
   echo ""
