@@ -124,6 +124,10 @@ type Orchestrator struct {
 	// gitlab-runner-host-aliases.go.
 	gatewayIP       string
 	gatewayIPLoaded bool
+	// internalCAEncoded 는 스택 내부 CA 인증서다(base64). 설치가 만든 신뢰를
+	// CI 잡과 Argo CD 에 넣는 데 쓴다 — internal-ca-trust.go.
+	internalCAEncoded string
+	internalCALoaded  bool
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -964,6 +968,17 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			return fmt.Errorf("노드 아키텍처를 읽지 못해 %s 이미지를 고를 수 없습니다: %w", step, archErr)
 		}
 	}
+	// 설치가 만든 신뢰를 설치가 필요한 곳에 넣는다. values 를 만들기 전에 읽어야
+	// 한다 — Argo CD 는 CA 를 values 로 받고, CI 잡은 스택 네임스페이스의 사본을
+	// 볼륨으로 받는다.
+	if (step == "installing_argocd" || step == stepInstallingRunner) && looksLikeKubeconfig(o.kubeconfig) {
+		o.loadInternalCACert(ctx)
+		if step == stepInstallingRunner {
+			if err := o.ensureInternalCABundleSecret(ctx, namespace); err != nil {
+				return err
+			}
+		}
+	}
 	values := o.valuesForStep(step, spec)
 	if step == stepInstallingRunner {
 		if looksLikeKubeconfig(o.kubeconfig) {
@@ -1048,7 +1063,7 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			}
 			// 게이트웨이가 선 지금에야 그 주소를 알 수 있다. CI 잡이 스택
 			// 도구를 접속 도메인 이름으로 부를 수 있게 러너를 다시 적용한다.
-			if err := o.reconcileRunnerHostAliases(ctx, stackID, namespace, phase); err != nil {
+			if err := o.reconcileGatewayHostAliases(ctx, stackID, namespace, phase); err != nil {
 				return err
 			}
 		}

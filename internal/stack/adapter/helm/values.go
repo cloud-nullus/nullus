@@ -593,7 +593,7 @@ func DefaultValues(stepName string) map[string]any {
 				// TOML 을 만드는 이유는 gitLabRunnerConfigTOML 주석에 있다.
 				// helper 이미지는 노드 아키텍처를 알아야 정할 수 있어 여기서는
 				// 비워 두고, mergedValuesForStep 이 클러스터를 보고 채운다.
-				"config": gitLabRunnerConfigTOML("", nil),
+				"config": gitLabRunnerConfigTOML("", nil, false),
 			},
 		}
 	case "installing_prometheus":

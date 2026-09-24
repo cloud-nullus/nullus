@@ -39,11 +39,11 @@ func TestReapplyStep_DoesNotTripStepOrdering(t *testing.T) {
 }
 
 // 게이트웨이 주소를 읽지 못하면 설치를 실패로 뒤집지 않는다.
-func TestReconcileRunnerHostAliases_NoAccessDomainIsNoop(t *testing.T) {
+func TestReconcileGatewayHostAliases_NoAccessDomainIsNoop(t *testing.T) {
 	installer := &mockInstaller{}
 	o := NewOrchestrator(installer, []byte("not-a-kubeconfig"), "nullus")
 	o.stackConfig = &domain.StackConfig{}
 
-	require.NoError(t, o.reconcileRunnerHostAliases(context.Background(), "stk_noop", "nullus", "C"))
+	require.NoError(t, o.reconcileGatewayHostAliases(context.Background(), "stk_noop", "nullus", "C"))
 	assert.Empty(t, installer.installed, "접속 도메인이 없으면 아무것도 다시 적용하지 않는다")
 }
