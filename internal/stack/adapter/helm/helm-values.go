@@ -41,6 +41,14 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 		base = mergeMaps(base, o.giteaSharedServiceValues())
 	}
 
+	// GitLab Runner 의 helper 이미지와 CI 잡의 이름 해석은 차트 values 가 아니라
+	// 러너 설정 TOML 안에 들어간다. 그래서 archImageValuesForStep 경로가 아니라
+	// 여기서 조립한다. 둘이 같은 키(runners.config)를 쓰므로 한 번에 만든다 —
+	// 따로 병합하면 뒤에 오는 쪽이 앞의 것을 지운다.
+	if step == stepInstallingRunner {
+		base = mergeMaps(base, o.gitLabRunnerValues())
+	}
+
 	// OpenBao values 는 선택된 StorageClass 에 의존하므로 여기서 조립한다.
 	if step == "installing_openbao" {
 		base = mergeMaps(base, openBaoValues(o.stackStorageClass()))
