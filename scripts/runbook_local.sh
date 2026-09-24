@@ -1241,7 +1241,79 @@ for c in items or []:
     return 0
   fi
 
-  do_stack_status "$stack_id" --wait
+  if ! do_stack_status "$stack_id" --wait; then
+    return 1
+  fi
+
+  wire_kind_nodes_for_stack "$namespace" "$domain" "kind-${cluster_name#kind-}"
+}
+
+# wire_kind_nodes_for_stack 은 kind 노드가 스택 레지스트리에서 이미지를 받을 수
+# 있게 배선한다.
+#
+# 파드 안에서는 플랫폼이 배선한다(러너·Argo CD 의 hostAliases). 하지만 이미지를
+# 받는 것은 파드가 아니라 노드의 containerd 이고, containerd 는 클러스터 DNS 를
+# 쓰지 않는다 — 노드가 registry.<도메인> 을 풀지 못해 배포된 앱이
+# ImagePullBackOff 에서 벗어나지 못한다.
+#
+# 실제 클러스터에서는 접속 도메인이 실 DNS 로 풀리고 인증서도 공인이라 이 배선이
+# 필요 없다. kind 는 그 둘이 다 없어서 로컬 하네스가 대신 해 준다.
+wire_kind_nodes_for_stack() {
+  local namespace="$1" domain="$2" context="${3:-kind-nullus-platform}"
+  command -v kubectl >/dev/null 2>&1 || return 0
+  command -v docker >/dev/null 2>&1 || return 0
+  [[ -n "$domain" ]] || return 0
+
+  local gw_ip
+  gw_ip="$(kubectl --context "$context" get svc -n "$namespace" \
+    -l gateway.envoyproxy.io/owning-gateway-name \
+    -o jsonpath='{.items[0].spec.clusterIP}' 2>/dev/null || true)"
+  if [[ -z "$gw_ip" ]]; then
+    echo "[nullus] 게이트웨이 주소를 찾지 못해 kind 노드 배선을 건너뜁니다"
+    return 0
+  fi
+
+  local ca_file="$LOG_DIR/nullus-internal-ca.crt"
+  local ca_ns
+  ca_ns="$(kubectl --context "$context" get secret --all-namespaces \
+    -o jsonpath="{range .items[?(@.metadata.name=='nullus-internal-ca')]}{.metadata.namespace}{'\n'}{end}" 2>/dev/null | head -1 || true)"
+  if [[ -n "$ca_ns" ]]; then
+    kubectl --context "$context" -n "$ca_ns" get secret nullus-internal-ca \
+      -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d > "$ca_file" || true
+  fi
+
+  local nodes node
+  nodes="$(kubectl --context "$context" get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)"
+  [[ -n "$nodes" ]] || return 0
+
+  echo "[nullus] kind 노드에 스택 레지스트리를 배선합니다 (gateway=$gw_ip domain=$domain)"
+  local restarted=0
+  while IFS= read -r node; do
+    [[ -z "$node" ]] && continue
+    local host
+    for host in "gitlab.$domain" "registry.$domain"; do
+      docker exec "$node" sh -c "grep -q ' $host\$' /etc/hosts || echo '$gw_ip $host' >> /etc/hosts" 2>/dev/null || true
+    done
+    [[ -s "$ca_file" ]] || continue
+    # 이미 같은 CA 가 들어 있으면 손대지 않는다. containerd 재시작은 그 노드에서
+    # 도는 컨테이너를 잠깐 흔들므로, 다시 읽어야 할 때만 한다 — 이 함수는
+    # stack-up 을 돌릴 때마다 불린다.
+    if docker exec -i "$node" sh -c 'cmp -s - /usr/local/share/ca-certificates/nullus-internal-ca.crt' < "$ca_file" >/dev/null 2>&1; then
+      continue
+    fi
+    docker cp "$ca_file" "$node:/usr/local/share/ca-certificates/nullus-internal-ca.crt" >/dev/null 2>&1 || true
+    docker exec "$node" update-ca-certificates >/dev/null 2>&1 || true
+    # containerd 는 노드의 신뢰 저장소를 기동할 때 읽는다. CA 를 넣었으면 다시
+    # 읽게 한다 — 레지스트리별 certs.d 설정은 필요 없다(실측: CA 만으로 pull 이
+    # 성립한다).
+    docker exec "$node" systemctl restart containerd >/dev/null 2>&1 || true
+    restarted=1
+  done <<< "$nodes"
+
+  if ((restarted)); then
+    kubectl --context "$context" wait --for=condition=Ready nodes --all --timeout=180s >/dev/null 2>&1 || true
+  fi
+  echo "[nullus] kind 노드 배선 완료"
 }
 
 # 설치는 수십 분이 걸린다. 상태 폴링을 따로 두어 stack-up 을 기다리지 않고도
