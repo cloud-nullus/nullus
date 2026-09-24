@@ -130,6 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CI 잡과 Argo CD 가 스택 도구 이름을 여전히 풀지 못하던 것** (`internal/stack/adapter/helm`): 게이트웨이가 선 뒤 러너·Argo CD 를 다시 적용하는 호출이 Gateway 매니페스트를 적용하기 **전에** 놓여 있었다. 데이터 플레인 Service 는 Gateway 를 적용해야 생기므로 그 주소 조회가 언제나 빈 값을 받았고, 경고 한 줄만 남기고 재적용을 건너뛰었다 — 설치는 `completed` 로 끝나고 파드도 전부 Running 이라 파이프라인을 돌려 `Could not resolve host` 를 볼 때까지 드러나지 않는다. 호출을 매니페스트 적용 뒤로 옮기고 그 순서를 계약 테스트로 고정한다. kind(arm64 3노드) `gitlab-argocd-v1` 실측: 수정 전에는 `host_aliases` 가 한 줄도 실리지 않았고, 수정 후 러너 TOML 과 Argo CD `hostAliases` 가 모두 게이트웨이 ClusterIP 를 받는다.
+
 - **관측성 템플릿(`gitlab-argocd-otel-v1`)이 설치조차 되지 않고, 로그 도구는 고른 것과 다른 것이 깔리던 것** (`internal/stack/adapter/helm`): 템플릿과 카탈로그는 도구 이름을 사람이 읽는 표기로 담는데(`"Loki"`, `"Tempo"`), 차트를 고르는 쪽만 소문자 리터럴과 그대로 비교해 전부 `default` 로 떨어졌다. 자원 기본값 쪽은 이미 정규화해서 비교하므로 둘이 갈라졌고, **Tempo 의 values 가 OTel Collector 차트에 실려** 스키마 검증에서 설치가 통째로 실패했다 (`additional properties 'tempo', 'tempoQuery' not allowed`). 같은 이유로 **Loki 를 골라도 OpenSearch 가 깔렸다** — 이 증상은 한 번 고쳐진 적이 있지만(빠진 분기 추가) 대소문자 정규화가 빠져 그대로 재현됐다. 덧붙여 `installing_log_search` 의 자원 기본값에는 `loki` 분기 자체가 없어, Loki 를 골라도 `opensearch` 키를 보고 계획값이 한 줄도 닿지 않았다(값 모양도 OpenSearch 의 `master` 키였다). 세 곳 모두 `normalizeToolName` 하나를 쓰게 하고, 차트를 고르는 쪽과 자원 기본값을 고르는 쪽이 같은 도구를 가리키는지 계약 테스트로 고정한다 — 세 번째 어긋남을 찾아낸 것이 그 테스트다.
 
 - **Grafana 가 스택이 함께 깐 백엔드에 연결되지 않던 것** (`internal/stack/adapter/helm`): 설치는 Prometheus·Loki·Tempo 를 세우고 OTel Collector 가 셋으로 내보내도록 배선하는데, 정작 그것들을 보는 화면인 Grafana 에는 데이터소스가 한 줄도 들어가지 않았다. 스택은 `completed` 이고 파드도 전부 Running 인데 Grafana 를 열면 비어 있다. 스택 설정이 어느 도구를 깔았는지 알고 있으므로, 실제로 설치한 백엔드만 데이터소스로 건다 — 고르지 않은 도구를 걸면 Grafana 가 시작부터 연결 오류를 띄워 무엇이 진짜 문제인지 가릴 수 없게 된다.
