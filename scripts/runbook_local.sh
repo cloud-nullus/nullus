@@ -1287,22 +1287,32 @@ wire_kind_nodes_for_stack() {
   [[ -n "$nodes" ]] || return 0
 
   echo "[nullus] kind 노드에 스택 레지스트리를 배선합니다 (gateway=$gw_ip domain=$domain)"
+  local restarted=0
   while IFS= read -r node; do
     [[ -z "$node" ]] && continue
     local host
     for host in "gitlab.$domain" "registry.$domain"; do
       docker exec "$node" sh -c "grep -q ' $host\$' /etc/hosts || echo '$gw_ip $host' >> /etc/hosts" 2>/dev/null || true
     done
-    if [[ -s "$ca_file" ]]; then
-      docker cp "$ca_file" "$node:/usr/local/share/ca-certificates/nullus-internal-ca.crt" >/dev/null 2>&1 || true
-      docker exec "$node" update-ca-certificates >/dev/null 2>&1 || true
+    [[ -s "$ca_file" ]] || continue
+    # 이미 같은 CA 가 들어 있으면 손대지 않는다. containerd 재시작은 그 노드에서
+    # 도는 컨테이너를 잠깐 흔들므로, 다시 읽어야 할 때만 한다 — 이 함수는
+    # stack-up 을 돌릴 때마다 불린다.
+    if docker exec -i "$node" sh -c 'cmp -s - /usr/local/share/ca-certificates/nullus-internal-ca.crt' < "$ca_file" >/dev/null 2>&1; then
+      continue
     fi
-    # containerd 는 노드의 신뢰 저장소를 그대로 쓴다. CA 를 넣은 뒤 다시 읽게 한다 —
-    # 레지스트리별 certs.d 설정은 필요 없다(실측: CA 만으로 pull 이 성립한다).
+    docker cp "$ca_file" "$node:/usr/local/share/ca-certificates/nullus-internal-ca.crt" >/dev/null 2>&1 || true
+    docker exec "$node" update-ca-certificates >/dev/null 2>&1 || true
+    # containerd 는 노드의 신뢰 저장소를 기동할 때 읽는다. CA 를 넣었으면 다시
+    # 읽게 한다 — 레지스트리별 certs.d 설정은 필요 없다(실측: CA 만으로 pull 이
+    # 성립한다).
     docker exec "$node" systemctl restart containerd >/dev/null 2>&1 || true
+    restarted=1
   done <<< "$nodes"
 
-  kubectl --context "$context" wait --for=condition=Ready nodes --all --timeout=180s >/dev/null 2>&1 || true
+  if ((restarted)); then
+    kubectl --context "$context" wait --for=condition=Ready nodes --all --timeout=180s >/dev/null 2>&1 || true
+  fi
   echo "[nullus] kind 노드 배선 완료"
 }
 
