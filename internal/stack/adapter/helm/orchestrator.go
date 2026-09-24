@@ -1065,11 +1065,6 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			if err := o.applyManifest(ctx, namespace, defaultEnvoyGatewayClassManifest()); err != nil {
 				return fmt.Errorf("apply default gatewayclass manifest: %w", err)
 			}
-			// 게이트웨이가 선 지금에야 그 주소를 알 수 있다. CI 잡이 스택
-			// 도구를 접속 도메인 이름으로 부를 수 있게 러너를 다시 적용한다.
-			if err := o.reconcileGatewayHostAliases(ctx, stackID, namespace, phase); err != nil {
-				return err
-			}
 		}
 	}
 	if step == "installing_route" && looksLikeKubeconfig(o.kubeconfig) {
@@ -1112,6 +1107,14 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			if err := o.ensureGatewayBridgeIngress(ctx, manifestNamespace, accessDomain, stackLabel); err != nil {
 				slog.Warn("gateway bridge ingress not created", "namespace", manifestNamespace, "error", err)
 			}
+		}
+	}
+	// 데이터 플레인 Service 는 Gateway 를 적용해야 생긴다. 컨트롤러 차트만 깔린
+	// 시점에는 아직 없으므로, 매니페스트를 적용한 뒤에 그 주소를 읽어야 한다 —
+	// 앞에서 부르면 언제나 빈 값을 받고 CI 잡은 이름 해석 없이 남는다.
+	if step == "installing_gateway" && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.reconcileGatewayHostAliases(ctx, stackID, namespace, phase); err != nil {
+			return err
 		}
 	}
 	o.markCompleted(stackID, order)
