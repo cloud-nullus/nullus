@@ -80,3 +80,32 @@ func TestChartSelectionAndResourceDefaultsAgreeOnTool(t *testing.T) {
 			"search=%q: 자원 기본값은 %q 를 보는데 차트는 %q 를 깐다", tc.search, logKey, logChart)
 	}
 }
+
+// 로그 수집과 검색이 같은 도구면 검색 단계는 돌지 않는다 — 둘 다 같은 loki
+// 릴리스를 설치하므로 뒤엣것이 앞엣것을 덮는다.
+//
+// 그 판단이 TrimSpace 로만 비교하면, 차트를 고르는 쪽이 정규화해서 같은 도구로
+// 보는 표기("loki"/"Loki")를 여기서는 다른 도구로 보고 두 단계를 모두 돌린다.
+func TestIsStepEnabled_LogSearchSkipsSameToolRegardlessOfCasing(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		collection string
+		search     string
+		want       bool
+	}{
+		{name: "표기만 다른 같은 도구", collection: "loki", search: "Loki", want: false},
+		{name: "반대 표기", collection: "Loki", search: "loki", want: false},
+		{name: "같은 표기", collection: "Loki", search: "Loki", want: false},
+		{name: "다른 도구는 따로 깐다", collection: "Loki", search: "OpenSearch", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			o := NewOrchestrator(&mockInstaller{}, []byte("not-a-kubeconfig"), "nullus")
+			cfg := &domain.StackConfig{}
+			cfg.Logging.Collection = domain.ToolSelection{Name: tc.collection, Enabled: true}
+			cfg.Logging.Search = domain.ToolSelection{Name: tc.search, Enabled: true}
+			o.stackConfig = cfg
+
+			assert.Equal(t, tc.want, o.isStepEnabled("installing_log_search"))
+		})
+	}
+}

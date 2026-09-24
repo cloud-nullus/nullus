@@ -531,8 +531,12 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				if !cfg.Logging.Search.Enabled {
 					return false
 				}
-				search := strings.TrimSpace(cfg.Logging.Search.Name)
-				collection := strings.TrimSpace(cfg.Logging.Collection.Name)
+				// 카탈로그·템플릿은 도구 이름을 사람이 읽는 대로 준다("Loki").
+				// 표기만 다른 같은 도구를 다른 것으로 보면 두 단계가 같은 릴리스를
+				// 설치해 뒤엣것이 앞엣것을 덮는다 — 차트를 고르는 쪽과 같은
+				// 헬퍼로 맞춘다.
+				search := normalizeToolName(cfg.Logging.Search.Name)
+				collection := normalizeToolName(cfg.Logging.Collection.Name)
 				if search != "" && collection != "" && search == collection {
 					return false
 				}

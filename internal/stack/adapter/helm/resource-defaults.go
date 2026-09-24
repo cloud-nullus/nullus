@@ -287,6 +287,10 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 		// 값의 모양은 고른 도구의 차트를 따라야 한다. opensearch 의 master 를
 		// loki 차트에 실으면 계획값이 어디에도 닿지 않는다.
 		if cfg != nil && normalizeToolName(cfg.Logging.Search.Name) == "loki" {
+			// 지금 설치하는 차트는 2.10.3 이라 top-level resources 만 읽는다.
+			// singleBinary·read·write·backend 는 Loki 차트 5.x 이후의 자리로,
+			// 지금은 무시된다 — 차트를 올릴 때 이 함수를 다시 찾지 않아도 되도록
+			// 남겨 둔다. 헬름은 모르는 키를 조용히 버린다.
 			return map[string]any{
 				"resources":    resources,
 				"loki":         map[string]any{"resources": resources},
