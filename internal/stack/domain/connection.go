@@ -179,6 +179,13 @@ const (
 	GitLabChartVersion = "8.7.2"
 	GitLabAppVersion   = "v17.7.0"
 
+	// GitLab Runner 는 별도 차트다. 차트 0.72.0 이 러너 17.7.0 을 싣는다.
+	// AppVersion 은 helper 이미지 태그에 그대로 들어가므로(gitlab-runner-helper:
+	// arm64-v17.7.0) 차트를 올릴 때 함께 올려야 한다 — 어긋나면 그 태그가 없어
+	// helper 를 받지 못하고 모든 CI 잡이 멈춘다.
+	GitLabRunnerChartVersion = "0.72.0"
+	GitLabRunnerAppVersion   = "v17.7.0"
+
 	// Gitea 는 소스 저장소만 담당한다 — GitLab 과 달리 CI 도 레지스트리도 겸하지
 	// 않으므로, 이 스택은 CI(Jenkins)와 레지스트리(Harbor)를 따로 세운다.
 	GiteaChartVersion = "12.7.0"

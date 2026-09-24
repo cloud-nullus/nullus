@@ -590,16 +590,10 @@ func DefaultValues(stepName string) map[string]any {
 				"create": true,
 			},
 			"runners": map[string]any{
-				// 차트 0.72.0 은 runners.privileged 를 읽지 않는다 — 설정은
-				// runners.config 의 TOML 로 넣어야 config.toml 에 반영된다.
-				// privileged 없이는 docker:dind 서비스가 기동하지 못해
-				// 파이프라인의 이미지 빌드 단계가 통째로 실패한다.
-				"config": `[[runners]]
-  [runners.kubernetes]
-    namespace = "{{.Release.Namespace}}"
-    image = "alpine"
-    privileged = true
-`,
+				// TOML 을 만드는 이유는 gitLabRunnerConfigTOML 주석에 있다.
+				// helper 이미지는 노드 아키텍처를 알아야 정할 수 있어 여기서는
+				// 비워 두고, mergedValuesForStep 이 클러스터를 보고 채운다.
+				"config": gitLabRunnerConfigTOML("", nil),
 			},
 		}
 	case "installing_prometheus":

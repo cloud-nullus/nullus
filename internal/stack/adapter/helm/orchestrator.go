@@ -119,6 +119,11 @@ type Orchestrator struct {
 	nodeArchsLoaded bool
 	// nodeReader 는 노드 목록(JSON)을 읽는다. nil 이면 kubectl 로 읽는다 — 테스트용 이음새.
 	nodeReader func(ctx context.Context) ([]byte, error)
+	// gatewayIP 는 스택 게이트웨이 데이터 플레인의 ClusterIP 다. CI 잡 파드가
+	// 스택 도구를 접속 도메인 이름으로 부를 수 있게 하는 데 쓴다 —
+	// gitlab-runner-host-aliases.go.
+	gatewayIP       string
+	gatewayIPLoaded bool
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -1041,6 +1046,11 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			if err := o.applyManifest(ctx, namespace, defaultEnvoyGatewayClassManifest()); err != nil {
 				return fmt.Errorf("apply default gatewayclass manifest: %w", err)
 			}
+			// 게이트웨이가 선 지금에야 그 주소를 알 수 있다. CI 잡이 스택
+			// 도구를 접속 도메인 이름으로 부를 수 있게 러너를 다시 적용한다.
+			if err := o.reconcileRunnerHostAliases(ctx, stackID, namespace, phase); err != nil {
+				return err
+			}
 		}
 	}
 	if step == "installing_route" && looksLikeKubeconfig(o.kubeconfig) {
@@ -1226,4 +1236,17 @@ func (o *Orchestrator) markCompleted(stackID string, order int) {
 	o.mu.Lock()
 	o.progress[stackID] = order
 	o.mu.Unlock()
+}
+
+// reapplyStep 은 이미 지나간 단계를 순서 장부를 건드리지 않고 다시 적용한다.
+//
+// ExecuteStep 은 stackID 로 진행도를 검사한다(ensureOrder). 지나간 단계를 그
+// stackID 와 함께 다시 부르면 "out of order step" 으로 거부되고, 그 오류가 지금
+// 도는 단계를 실패로 뒤집는다 — 뒤늦게 알게 된 값을 앞 단계에 넣으려던 것이
+// 설치 전체를 멈추게 한다.
+//
+// stackID 를 비우면 ensureOrder 도 markCompleted 도 그냥 지나간다. 진행도는 지금
+// 도는 단계의 것이 그대로 남고, 헬름 설치는 upgrade --install 이라 멱등하다.
+func (o *Orchestrator) reapplyStep(ctx context.Context, step, phase string) error {
+	return o.ExecuteStep(ctx, "", step, phase)
 }
