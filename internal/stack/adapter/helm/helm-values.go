@@ -49,6 +49,19 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 		base = mergeMaps(base, o.gitLabRunnerValues())
 	}
 
+	// Argo CD 는 스택 GitLab 에서 매니페스트를 읽는다. 그 인증서는 스택이 만든
+	// 내부 CA 로 발급되므로, 신뢰를 함께 넣지 않으면 Application 이 Synced 에
+	// 도달하지 못한다.
+	if step == "installing_argocd" {
+		o.mu.Lock()
+		argoCfg := o.stackConfig
+		o.mu.Unlock()
+		if argoCfg != nil {
+			base = mergeMaps(base, argoCDInternalCAValues(o.internalCACertPEM(), argoCfg.AccessDomain))
+			base = mergeMaps(base, argoCDGatewayHostAliasValues(o.gatewayClusterIP(), argoCfg.AccessDomain))
+		}
+	}
+
 	// OpenBao values 는 선택된 StorageClass 에 의존하므로 여기서 조립한다.
 	if step == "installing_openbao" {
 		base = mergeMaps(base, openBaoValues(o.stackStorageClass()))

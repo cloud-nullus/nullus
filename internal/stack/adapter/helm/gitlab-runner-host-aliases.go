@@ -60,42 +60,50 @@ func (o *Orchestrator) gatewayClusterIP() string {
 	return o.gatewayIP
 }
 
-// reconcileRunnerHostAliases 는 게이트웨이가 선 뒤 러너 설치를 다시 적용한다.
+// reconcileGatewayHostAliases 는 게이트웨이가 선 뒤 그 주소가 필요한 단계를 다시 적용한다.
 //
-// 게이트웨이는 설치 순서의 마지막이라 러너를 깔 때는 그 주소가 아직 없다. 그래서
-// 러너는 CI 잡이 스택 도구 이름을 풀 방법을 모른 채 서고, 잡은 clone 단계에서
-// "Could not resolve host: gitlab.<도메인>" 으로 끝난다 — 스택은 completed 이고
-// 러너 파드도 Running 이라 파이프라인을 돌려 보기 전에는 드러나지 않는다.
+// 게이트웨이는 설치 순서의 마지막이라 러너와 Argo CD 를 깔 때는 그 주소가 아직
+// 없다. 그래서 둘 다 스택 도구 이름을 풀 방법을 모른 채 서고, 파이프라인을 돌리면
+// CI 잡은 clone 단계에서 "Could not resolve host: gitlab.<도메인>" 으로,
+// Argo CD 는 "dial tcp: lookup gitlab.<도메인>" 으로 멈춘다 — 스택은 completed 이고
+// 두 파드 모두 Running 이라 돌려 보기 전에는 드러나지 않는다.
 //
-// helm upgrade --install 은 멱등하고 등록 토큰 조회도 읽기라, 같은 단계를 다시
-// 도는 것으로 충분하다.
-func (o *Orchestrator) reconcileRunnerHostAliases(ctx context.Context, stackID, namespace, phase string) error {
+// helm upgrade --install 은 멱등하고 러너 등록 토큰 조회도 읽기라, 같은 단계를
+// 다시 도는 것으로 충분하다.
+func (o *Orchestrator) reconcileGatewayHostAliases(ctx context.Context, stackID, namespace, phase string) error {
 	o.mu.Lock()
 	cfg := o.stackConfig
 	o.mu.Unlock()
-	if cfg == nil || !runnerReleaseRequired(*cfg) {
-		return nil
-	}
-	if len(runnerCIHostnames(cfg.AccessDomain)) == 0 {
+	if cfg == nil || len(runnerCIHostnames(cfg.AccessDomain)) == 0 {
 		return nil
 	}
 
 	ip := o.loadGatewayClusterIP(ctx, namespace)
 	if ip == "" {
-		// 이름 해석이 없으면 CI 잡이 clone 에서 멈추지만, 설치를 실패로 뒤집을
-		// 일은 아니다. 조용히 넘어가지 않도록 남긴다.
-		slog.Warn("게이트웨이 주소를 읽지 못해 CI 잡의 스택 도구 이름 해석을 배선하지 못했습니다",
+		// 이름 해석이 없으면 파이프라인이 멈추지만, 설치를 실패로 뒤집을 일은
+		// 아니다. 조용히 넘어가지 않도록 남긴다.
+		slog.Warn("게이트웨이 주소를 읽지 못해 스택 도구 이름 해석을 배선하지 못했습니다",
 			"namespace", namespace, "stack", stackID)
 		return nil
 	}
 
-	slog.Info("CI 잡이 스택 도구 이름을 풀도록 러너를 다시 적용합니다",
-		"namespace", namespace, "stack", stackID,
-		"gateway_ip", ip, "hosts", runnerCIHostnames(cfg.AccessDomain))
-	// 러너는 이 단계보다 앞이라 stackID 와 함께 부르면 순서 검사가 거부한다.
-	// reapplyStep 주석 참고.
-	if err := o.reapplyStep(ctx, stepInstallingRunner, phase); err != nil {
-		return fmt.Errorf("reconcile runner host aliases: %w", err)
+	steps := make([]string, 0, 2)
+	if runnerReleaseRequired(*cfg) {
+		steps = append(steps, stepInstallingRunner)
+	}
+	if o.isStepEnabled("installing_argocd") {
+		steps = append(steps, "installing_argocd")
+	}
+
+	for _, step := range steps {
+		slog.Info("스택 도구 이름을 풀도록 단계를 다시 적용합니다",
+			"step", step, "namespace", namespace, "stack", stackID,
+			"gateway_ip", ip, "hosts", runnerCIHostnames(cfg.AccessDomain))
+		// 둘 다 이 단계보다 앞이라 stackID 와 함께 부르면 순서 검사가 거부한다.
+		// reapplyStep 주석 참고.
+		if err := o.reapplyStep(ctx, step, phase); err != nil {
+			return fmt.Errorf("reconcile host aliases for %s: %w", step, err)
+		}
 	}
 	return nil
 }
