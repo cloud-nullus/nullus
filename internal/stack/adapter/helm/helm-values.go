@@ -49,6 +49,15 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 		base = mergeMaps(base, o.gitLabRunnerValues())
 	}
 
+	// Grafana 는 스택이 함께 깐 백엔드에 연결돼야 쓸모가 있다. 어느 것을 깔았는지는
+	// 스택 설정이 알고 있으므로 여기서 조립한다.
+	if step == "installing_grafana" {
+		o.mu.Lock()
+		grafanaCfg := o.stackConfig
+		o.mu.Unlock()
+		base = mergeMaps(base, grafanaDatasourceValues(grafanaCfg))
+	}
+
 	// Argo CD 는 스택 GitLab 에서 매니페스트를 읽는다. 그 인증서는 스택이 만든
 	// 내부 CA 로 발급되므로, 신뢰를 함께 넣지 않으면 Application 이 Synced 에
 	// 도달하지 못한다.
@@ -211,7 +220,10 @@ func (o *Orchestrator) resolveChartSpecForStep(step string, spec ChartSpec) Char
 	}
 
 	if step == "installing_log_search" {
-		switch strings.TrimSpace(cfg.Logging.Search.Name) {
+		// 카탈로그·템플릿은 도구 이름을 사람이 읽는 대로 준다("Loki", "Tempo").
+		// TrimSpace 만으로 비교하면 전부 default 로 떨어진다 — 자원 기본값 쪽은
+		// 이미 정규화해서 비교하므로, 고른 도구의 값이 엉뚱한 차트에 실린다.
+		switch normalizeToolName(cfg.Logging.Search.Name) {
 		case "loki":
 			// 화면은 Loki 를 고를 수 있게 열어 두는데 여기에 분기가 없어
 			// 아래 default 로 떨어졌다 — Loki 를 골라도 OpenSearch 가 깔렸다.
@@ -238,7 +250,7 @@ func (o *Orchestrator) resolveChartSpecForStep(step string, spec ChartSpec) Char
 	}
 
 	if step == "installing_opentelemetry" {
-		switch strings.TrimSpace(cfg.Logging.TraceLayer.Name) {
+		switch normalizeToolName(cfg.Logging.TraceLayer.Name) {
 		case "tempo":
 			spec.ChartName = "tempo"
 			spec.RepoURL = "https://grafana.github.io/helm-charts"
