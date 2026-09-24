@@ -1237,3 +1237,16 @@ func (o *Orchestrator) markCompleted(stackID string, order int) {
 	o.progress[stackID] = order
 	o.mu.Unlock()
 }
+
+// reapplyStep 은 이미 지나간 단계를 순서 장부를 건드리지 않고 다시 적용한다.
+//
+// ExecuteStep 은 stackID 로 진행도를 검사한다(ensureOrder). 지나간 단계를 그
+// stackID 와 함께 다시 부르면 "out of order step" 으로 거부되고, 그 오류가 지금
+// 도는 단계를 실패로 뒤집는다 — 뒤늦게 알게 된 값을 앞 단계에 넣으려던 것이
+// 설치 전체를 멈추게 한다.
+//
+// stackID 를 비우면 ensureOrder 도 markCompleted 도 그냥 지나간다. 진행도는 지금
+// 도는 단계의 것이 그대로 남고, 헬름 설치는 upgrade --install 이라 멱등하다.
+func (o *Orchestrator) reapplyStep(ctx context.Context, step, phase string) error {
+	return o.ExecuteStep(ctx, "", step, phase)
+}

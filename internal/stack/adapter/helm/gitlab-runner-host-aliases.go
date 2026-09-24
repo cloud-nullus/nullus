@@ -90,8 +90,11 @@ func (o *Orchestrator) reconcileRunnerHostAliases(ctx context.Context, stackID, 
 	}
 
 	slog.Info("CI 잡이 스택 도구 이름을 풀도록 러너를 다시 적용합니다",
-		"namespace", namespace, "gateway_ip", ip, "hosts", runnerCIHostnames(cfg.AccessDomain))
-	if err := o.ExecuteStep(ctx, stackID, stepInstallingRunner, phase); err != nil {
+		"namespace", namespace, "stack", stackID,
+		"gateway_ip", ip, "hosts", runnerCIHostnames(cfg.AccessDomain))
+	// 러너는 이 단계보다 앞이라 stackID 와 함께 부르면 순서 검사가 거부한다.
+	// reapplyStep 주석 참고.
+	if err := o.reapplyStep(ctx, stepInstallingRunner, phase); err != nil {
 		return fmt.Errorf("reconcile runner host aliases: %w", err)
 	}
 	return nil
