@@ -175,7 +175,7 @@ exit code 규약(§5)은 동일하게 적용된다. WebSocket 엔드포인트는
 - 인증은 CLI와 같은 토큰 캐시를 쓴다 — 미리 `nullus login` 해두거나 `NULLUS_TOKEN`을 env에 넣는다
 - 시크릿은 tool 인자로 전달되지 않는다 (SCM PAT는 서버 프로세스의 `NULLUS_SCM_TOKEN` env에서만)
 
-세부 tool 목록과 정책은 [MCP 설계](../11_기능설계/Nullus_MCP_설계.md), 클라이언트별 설정은 MCP 사용 가이드(트랙 B-4, 작성 예정) 참조.
+세부 tool 목록과 정책은 [MCP 설계](../11_기능설계/Nullus_MCP_설계.md), 클라이언트 설정·문제 해결은 [MCP 사용 가이드](./Nullus_MCP_사용_가이드.md) 참조.
 
 ## 9. 명령 요약
 
