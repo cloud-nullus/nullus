@@ -123,6 +123,7 @@ func (h *DeployHandler) RegisterRoutes(stacks *echo.Group, e *echo.Echo, wsMiddl
 	stacks.POST("/:id/continue", h.Continue)
 	stacks.GET("/:id/status", h.Status)
 	stacks.GET("/:id/deploy/logs", h.StreamLogs)
+	stacks.GET("/:id/deploy/logs/tail", h.TailLogs)
 
 	e.GET("/ws/deployments/:id/logs", h.StreamLogs, wsMiddleware...)
 	e.GET("/ws/deployments/:id/pods", h.StreamPods, wsMiddleware...)

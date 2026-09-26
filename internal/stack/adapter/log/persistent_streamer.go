@@ -77,6 +77,19 @@ func (s *PersistentStreamer) Subscribe(deploymentID string) <-chan port.LogEntry
 	return s.memory.SubscribeWithHistory(deploymentID, stored)
 }
 
+// Tail 은 최근 n 줄을 돌려준다. Subscribe 와 같은 규칙이다 — 이 프로세스가
+// 스트리밍한 배포는 메모리가 진실이고, 재시작 뒤에만 저장소에서 읽는다.
+// 저장소 List 는 이미 "최근 limit 줄을 기록 순서로" 돌려주므로 그대로 쓴다.
+func (s *PersistentStreamer) Tail(ctx context.Context, deploymentID string, n int) ([]port.LogEntry, error) {
+	if s.store == nil || s.memory.HasHistory(deploymentID) {
+		return s.memory.Tail(ctx, deploymentID, n)
+	}
+
+	storeCtx, cancel := context.WithTimeout(ctx, storeTimeout)
+	defer cancel()
+	return s.store.List(storeCtx, deploymentID, n)
+}
+
 func (s *PersistentStreamer) Unsubscribe(deploymentID string, ch <-chan port.LogEntry) {
 	s.memory.Unsubscribe(deploymentID, ch)
 }

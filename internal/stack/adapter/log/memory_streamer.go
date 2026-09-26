@@ -79,6 +79,19 @@ func (s *MemoryStreamer) HasHistory(deploymentID string) bool {
 	return len(s.history[deploymentID]) > 0
 }
 
+// Tail 은 최근 n 줄을 기록 순서(오름차순)로 돌려준다.
+// 사본을 돌려준다 — 내부 슬라이스를 그대로 내주면 이후 Stream 과 경합한다.
+func (s *MemoryStreamer) Tail(_ context.Context, deploymentID string, n int) ([]port.LogEntry, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	history := s.history[deploymentID]
+	if n > 0 && len(history) > n {
+		history = history[len(history)-n:]
+	}
+	return append([]port.LogEntry(nil), history...), nil
+}
+
 // Unsubscribe removes ch from the subscriber list for deploymentID and closes it.
 func (s *MemoryStreamer) Unsubscribe(deploymentID string, ch <-chan port.LogEntry) {
 	s.mu.Lock()
