@@ -119,6 +119,15 @@ type Orchestrator struct {
 	nodeArchsLoaded bool
 	// nodeReader 는 노드 목록(JSON)을 읽는다. nil 이면 kubectl 로 읽는다 — 테스트용 이음새.
 	nodeReader func(ctx context.Context) ([]byte, error)
+	// gatewayIP 는 스택 게이트웨이 데이터 플레인의 ClusterIP 다. CI 잡 파드가
+	// 스택 도구를 접속 도메인 이름으로 부를 수 있게 하는 데 쓴다 —
+	// gitlab-runner-host-aliases.go.
+	gatewayIP       string
+	gatewayIPLoaded bool
+	// internalCAEncoded 는 스택 내부 CA 인증서다(base64). 설치가 만든 신뢰를
+	// CI 잡과 Argo CD 에 넣는 데 쓴다 — internal-ca-trust.go.
+	internalCAEncoded string
+	internalCALoaded  bool
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -522,8 +531,12 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				if !cfg.Logging.Search.Enabled {
 					return false
 				}
-				search := strings.TrimSpace(cfg.Logging.Search.Name)
-				collection := strings.TrimSpace(cfg.Logging.Collection.Name)
+				// 카탈로그·템플릿은 도구 이름을 사람이 읽는 대로 준다("Loki").
+				// 표기만 다른 같은 도구를 다른 것으로 보면 두 단계가 같은 릴리스를
+				// 설치해 뒤엣것이 앞엣것을 덮는다 — 차트를 고르는 쪽과 같은
+				// 헬퍼로 맞춘다.
+				search := normalizeToolName(cfg.Logging.Search.Name)
+				collection := normalizeToolName(cfg.Logging.Collection.Name)
 				if search != "" && collection != "" && search == collection {
 					return false
 				}
@@ -959,6 +972,17 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			return fmt.Errorf("노드 아키텍처를 읽지 못해 %s 이미지를 고를 수 없습니다: %w", step, archErr)
 		}
 	}
+	// 설치가 만든 신뢰를 설치가 필요한 곳에 넣는다. values 를 만들기 전에 읽어야
+	// 한다 — Argo CD 는 CA 를 values 로 받고, CI 잡은 스택 네임스페이스의 사본을
+	// 볼륨으로 받는다.
+	if (step == "installing_argocd" || step == stepInstallingRunner) && looksLikeKubeconfig(o.kubeconfig) {
+		o.loadInternalCACert(ctx)
+		if step == stepInstallingRunner {
+			if err := o.ensureInternalCABundleSecret(ctx, namespace); err != nil {
+				return err
+			}
+		}
+	}
 	values := o.valuesForStep(step, spec)
 	if step == stepInstallingRunner {
 		if looksLikeKubeconfig(o.kubeconfig) {
@@ -1083,6 +1107,14 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			if err := o.ensureGatewayBridgeIngress(ctx, manifestNamespace, accessDomain, stackLabel); err != nil {
 				slog.Warn("gateway bridge ingress not created", "namespace", manifestNamespace, "error", err)
 			}
+		}
+	}
+	// 데이터 플레인 Service 는 Gateway 를 적용해야 생긴다. 컨트롤러 차트만 깔린
+	// 시점에는 아직 없으므로, 매니페스트를 적용한 뒤에 그 주소를 읽어야 한다 —
+	// 앞에서 부르면 언제나 빈 값을 받고 CI 잡은 이름 해석 없이 남는다.
+	if step == "installing_gateway" && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.reconcileGatewayHostAliases(ctx, stackID, namespace, phase); err != nil {
+			return err
 		}
 	}
 	o.markCompleted(stackID, order)
@@ -1226,4 +1258,17 @@ func (o *Orchestrator) markCompleted(stackID string, order int) {
 	o.mu.Lock()
 	o.progress[stackID] = order
 	o.mu.Unlock()
+}
+
+// reapplyStep 은 이미 지나간 단계를 순서 장부를 건드리지 않고 다시 적용한다.
+//
+// ExecuteStep 은 stackID 로 진행도를 검사한다(ensureOrder). 지나간 단계를 그
+// stackID 와 함께 다시 부르면 "out of order step" 으로 거부되고, 그 오류가 지금
+// 도는 단계를 실패로 뒤집는다 — 뒤늦게 알게 된 값을 앞 단계에 넣으려던 것이
+// 설치 전체를 멈추게 한다.
+//
+// stackID 를 비우면 ensureOrder 도 markCompleted 도 그냥 지나간다. 진행도는 지금
+// 도는 단계의 것이 그대로 남고, 헬름 설치는 upgrade --install 이라 멱등하다.
+func (o *Orchestrator) reapplyStep(ctx context.Context, step, phase string) error {
+	return o.ExecuteStep(ctx, "", step, phase)
 }

@@ -58,10 +58,20 @@ echo "[nullus] domain=$DOMAIN context=$CONTEXT"
 NODE="$(kubectl get nodes --context "$CONTEXT" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
 [[ -n "$NODE" ]] || { echo "[nullus] 클러스터에 노드가 없습니다" >&2; exit 1; }
 
-HOST_IP="$(docker exec "$NODE" getent hosts host.docker.internal 2>/dev/null | awk '{print $1}' | head -1 || true)"
+# 넘겨받은 값이 있으면 그것이 이긴다. 예전에는 조회 결과로 무조건 덮어써서,
+# 아래 안내대로 HOST_IP= 를 넣어도 아무 일도 일어나지 않았다.
+if [[ -z "${HOST_IP:-}" ]]; then
+  HOST_IP="$(docker exec "$NODE" getent hosts host.docker.internal 2>/dev/null | awk '{print $1}' | head -1 || true)"
+fi
 if [[ -z "$HOST_IP" ]]; then
-  echo "[nullus] 노드에서 host.docker.internal 을 해석하지 못했습니다." >&2
-  echo "[nullus] Docker Desktop 이 아니면 호스트 IP 를 직접 넣어야 합니다:" >&2
+  # 리눅스 Docker Engine 에는 host.docker.internal 이 없다(Docker Desktop 이 넣어
+  # 주는 이름이다). kind 노드가 붙은 브리지의 기본 게이트웨이가 곧 호스트다.
+  HOST_IP="$(docker exec "$NODE" sh -c "ip -4 route show default | awk '{print \$3; exit}'" 2>/dev/null || true)"
+  [[ -n "$HOST_IP" ]] && echo "[nullus] host.docker.internal 이 없어 노드의 기본 게이트웨이를 씁니다"
+fi
+if [[ -z "$HOST_IP" ]]; then
+  echo "[nullus] 노드에서 호스트 IP 를 찾지 못했습니다." >&2
+  echo "[nullus] 직접 넣으세요:" >&2
   echo "           HOST_IP=<호스트IP> $0 $*" >&2
   exit 1
 fi
@@ -158,8 +168,15 @@ if [[ -n "$CA_NS" ]]; then
   echo "[nullus] 내부 CA 를 꺼냈습니다: $CA_FILE (namespace=$CA_NS)"
   echo "[nullus] 브라우저가 도구 인증서를 신뢰하게 하려면 (sudo 필요):"
   echo ""
-  echo "  sudo security add-trusted-cert -d -r trustRoot \\"
-  echo "    -k /Library/Keychains/System.keychain '$CA_FILE'"
+  # 신뢰 저장소를 다루는 명령은 OS 마다 다르다. 남의 OS 명령을 찍어 주면
+  # 그대로 붙여 넣었다가 실패한다.
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "  sudo security add-trusted-cert -d -r trustRoot \\"
+    echo "    -k /Library/Keychains/System.keychain '$CA_FILE'"
+  else
+    echo "  sudo cp '$CA_FILE' /usr/local/share/ca-certificates/nullus-internal-ca.crt \\"
+    echo "    && sudo update-ca-certificates"
+  fi
 else
   echo ""
   echo "[nullus] 내부 CA($CA_SECRET)를 찾지 못했습니다 — 스택 설치 후 다시 실행하세요."

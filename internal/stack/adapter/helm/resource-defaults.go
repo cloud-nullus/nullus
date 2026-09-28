@@ -284,6 +284,22 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 			"promtail":     map[string]any{"resources": resources},
 		}
 	case "installing_log_search":
+		// 값의 모양은 고른 도구의 차트를 따라야 한다. opensearch 의 master 를
+		// loki 차트에 실으면 계획값이 어디에도 닿지 않는다.
+		if cfg != nil && normalizeToolName(cfg.Logging.Search.Name) == "loki" {
+			// 지금 설치하는 차트는 2.10.3 이라 top-level resources 만 읽는다.
+			// singleBinary·read·write·backend 는 Loki 차트 5.x 이후의 자리로,
+			// 지금은 무시된다 — 차트를 올릴 때 이 함수를 다시 찾지 않아도 되도록
+			// 남겨 둔다. 헬름은 모르는 키를 조용히 버린다.
+			return map[string]any{
+				"resources":    resources,
+				"loki":         map[string]any{"resources": resources},
+				"singleBinary": map[string]any{"resources": resources},
+				"read":         map[string]any{"resources": resources},
+				"write":        map[string]any{"resources": resources},
+				"backend":      map[string]any{"resources": resources},
+			}
+		}
 		return map[string]any{
 			"resources": resources,
 			"master":    map[string]any{"resources": resources},
@@ -291,7 +307,7 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 	case "installing_opentelemetry":
 		traceName := ""
 		if cfg != nil {
-			traceName = strings.TrimSpace(strings.ToLower(cfg.Logging.TraceLayer.Name))
+			traceName = normalizeToolName(cfg.Logging.TraceLayer.Name)
 		}
 		switch traceName {
 		case "tempo":
@@ -353,7 +369,11 @@ func (o *Orchestrator) resourceDefaultKeyForStep(step string, cfg *domain.StackC
 		return "loki"
 	case "installing_log_search":
 		if cfg != nil {
-			switch strings.TrimSpace(strings.ToLower(cfg.Logging.Search.Name)) {
+			// loki 분기가 없어 Loki 를 골라도 opensearch 키를 봤다. 계획값이
+			// 엉뚱한 도구 것으로 실리거나(키가 있으면) 한 줄도 실리지 않는다.
+			switch normalizeToolName(cfg.Logging.Search.Name) {
+			case "loki":
+				return "loki"
 			case "elasticsearch":
 				return "elasticsearch"
 			case "opensearch", "":
@@ -363,7 +383,7 @@ func (o *Orchestrator) resourceDefaultKeyForStep(step string, cfg *domain.StackC
 		return "opensearch"
 	case "installing_opentelemetry":
 		if cfg != nil {
-			switch strings.TrimSpace(strings.ToLower(cfg.Logging.TraceLayer.Name)) {
+			switch normalizeToolName(cfg.Logging.TraceLayer.Name) {
 			case "tempo":
 				return "tempo"
 			case "jaeger":

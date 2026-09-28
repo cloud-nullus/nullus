@@ -199,3 +199,43 @@ func normalizeArchList(archs []string) []string {
 	slices.Sort(out)
 	return out
 }
+
+// GitLab Runner 의 Kubernetes executor 는 잡마다 helper 컨테이너를 띄운다. 그
+// 이미지 태그에는 아키텍처가 박혀 있고(gitlab-runner-helper:x86_64-v17.7.0),
+// 설정하지 않으면 러너가 x86_64 를 고른다 — 러너 자신이 arm64 로 돌고 있어도
+// 그렇다. arm64 노드에서는 helper 의 init 컨테이너가 실행되지 못해 그 스택의
+// 모든 CI 잡이 runner_system_failure 로 끝난다.
+//
+// 이 실패는 설치로는 드러나지 않는다. 헬름은 성공하고 러너 파드도 Running 이며
+// 스택은 completed 로 끝나고 Pre-Deploy Gate 도 통과한다 — 파이프라인을 실제로
+// 돌려 봐야 드러난다. Harbor(#270)와 같은 부류이지만 그 게이트는 차트가 받는
+// 컴포넌트 이미지만 보므로 러너 설정 안의 이 이미지는 잡지 못한다.
+const GitLabRunnerHelperImageRepository = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper"
+
+// gitLabRunnerHelperArchTokens 는 노드 아키텍처 → helper 이미지 태그의 아키텍처 조각이다.
+// 러너가 내는 태그 이름을 그대로 따른다 — amd64 는 x86_64 로 적힌다.
+var gitLabRunnerHelperArchTokens = map[string]string{
+	ArchAMD64: "x86_64",
+	ArchARM64: "arm64",
+}
+
+// GitLabRunnerHelperImage 는 이 클러스터의 노드에서 뜨는 helper 이미지를 고른다.
+//
+// 노드 아키텍처가 한 종류일 때만 고른다. 섞여 있으면 태그 하나로 양쪽을 덮을 수
+// 없고, 노드를 모르거나 처음 보는 아키텍처면 지금까지의 동작(러너 기본값)을
+// 그대로 둔다 — 잘못 박으면 지금 도는 클러스터를 우리가 깨뜨린다.
+func GitLabRunnerHelperImage(nodeArchs []string, version string) (string, bool) {
+	archs := normalizeArchList(nodeArchs)
+	if len(archs) != 1 {
+		return "", false
+	}
+	token, ok := gitLabRunnerHelperArchTokens[archs[0]]
+	if !ok {
+		return "", false
+	}
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return "", false
+	}
+	return GitLabRunnerHelperImageRepository + ":" + token + "-" + version, true
+}

@@ -226,7 +226,7 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 		return ChartSpec{
 			ChartName: "gitlab-runner",
 			RepoURL:   "https://charts.gitlab.io/",
-			Version:   "0.72.0",
+			Version:   domain.GitLabRunnerChartVersion,
 			Values:    DefaultValues(stepInstallingRunner),
 			Wait:      false,
 		}, true

@@ -71,6 +71,19 @@ parse_auth_arg() {
   esac
 }
 
+# pg_psql 은 docker compose 가 띄운 postgres 컨테이너에서 psql 을 돌린다.
+# 컨테이너 이름은 compose 프로젝트 이름(= 체크아웃 디렉터리 이름)을 따라가므로
+# 이름을 박아두면 다른 이름으로 clone 한 체크아웃에서 깨진다. compose 에게 묻는다.
+pg_psql() {
+  local container
+  container="$(docker compose -f "$PROJECT_ROOT/docker-compose.dev.yaml" ps -q postgres 2>/dev/null | head -1)"
+  if [[ -z "$container" ]]; then
+    echo "[nullus] postgres 컨테이너를 찾을 수 없습니다 (docker compose -f docker-compose.dev.yaml ps postgres)" >&2
+    return 1
+  fi
+  docker exec -i "$container" psql -U nullus -d nullus "$@"
+}
+
 kind_cluster_exists() {
   local name="$1"
   kind get clusters 2>/dev/null | grep -q "^${name}$"
@@ -116,7 +129,7 @@ register_kind_cluster_endpoints() {
     fi
 
     echo "[nullus] registering kind cluster endpoint for kind-${cluster_name}: ${kind_endpoint}"
-    docker exec draft-postgres-1 psql -U nullus -d nullus -c \
+    pg_psql -c \
       "UPDATE clusters SET endpoint = '${kind_endpoint}' WHERE name = 'kind-${cluster_name}';" >/dev/null 2>&1 || true
   done < <(kind_cluster_names)
 }
@@ -139,11 +152,11 @@ auto_register_kind_clusters() {
 
 seed_golden_path_templates_if_needed() {
   local count
-  count="$(docker exec draft-postgres-1 psql -U nullus -d nullus -tA -c "SELECT COUNT(*) FROM golden_path_templates;" 2>/dev/null | tr -d '[:space:]' || true)"
+  count="$(pg_psql -tA -c "SELECT COUNT(*) FROM golden_path_templates;" 2>/dev/null | tr -d '[:space:]' || true)"
   if [[ -z "$count" || "$count" == "0" ]]; then
     echo "[nullus] seeding golden_path_templates..."
-    docker exec -i draft-postgres-1 psql -U nullus -d nullus < "$PROJECT_ROOT/db/migrations/000008_seed_templates.up.sql"
-    docker exec -i draft-postgres-1 psql -U nullus -d nullus < "$PROJECT_ROOT/db/migrations/000031_seed_empty_template.up.sql"
+    pg_psql < "$PROJECT_ROOT/db/migrations/000008_seed_templates.up.sql"
+    pg_psql < "$PROJECT_ROOT/db/migrations/000031_seed_empty_template.up.sql"
   else
     echo "[nullus] golden_path_templates already seeded ($count rows)"
   fi
@@ -151,10 +164,10 @@ seed_golden_path_templates_if_needed() {
 
 seed_cicd_templates_if_needed() {
   local count
-  count="$(docker exec draft-postgres-1 psql -U nullus -d nullus -tA -c "SELECT COUNT(*) FROM pipeline_templates;" 2>/dev/null | tr -d '[:space:]' || true)"
+  count="$(pg_psql -tA -c "SELECT COUNT(*) FROM pipeline_templates;" 2>/dev/null | tr -d '[:space:]' || true)"
   if [[ -z "$count" || "$count" == "0" ]]; then
     echo "[nullus] seeding pipeline_templates..."
-    docker exec -i draft-postgres-1 psql -U nullus -d nullus < "$PROJECT_ROOT/db/migrations/000010_seed_cicd_templates.up.sql"
+    pg_psql < "$PROJECT_ROOT/db/migrations/000010_seed_cicd_templates.up.sql"
   else
     echo "[nullus] pipeline_templates already seeded ($count rows)"
   fi
@@ -162,7 +175,7 @@ seed_cicd_templates_if_needed() {
 
 seed_token_sources_if_needed() {
   local count
-  count="$(docker exec draft-postgres-1 psql -U nullus -d nullus -tA -c "SELECT COUNT(*) FROM token_sources WHERE deleted_at IS NULL;" 2>/dev/null | tr -d '[:space:]' || true)"
+  count="$(pg_psql -tA -c "SELECT COUNT(*) FROM token_sources WHERE deleted_at IS NULL;" 2>/dev/null | tr -d '[:space:]' || true)"
   if [[ -z "$count" || "$count" == "0" ]]; then
     echo "[nullus] seeding token_sources..."
     bash "$PROJECT_ROOT/scripts/seed-token-sources.sh"
@@ -308,10 +321,20 @@ wait_for_http() {
   return 1
 }
 
+# port_is_listening 은 로컬 포트에 리스너가 있는지 본다. lsof 는 다른 사용자의
+# 프로세스를 보여주지 않으므로, 리눅스 rootful Docker 처럼 root 소유 docker-proxy
+# 가 포트를 잡은 경우 컨테이너가 멀쩡해도 "not running" 으로 읽힌다. 실제 TCP
+# 연결로 한 번 더 확인해서 그 오판을 막는다.
+port_is_listening() {
+  local port="$1"
+  if lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then return 0; fi
+  (exec 3<>"/dev/tcp/127.0.0.1/$port") >/dev/null 2>&1
+}
+
 wait_for_port_listen() {
   local port="$1" attempts="${2:-30}" i
   for ((i = 1; i <= attempts; i++)); do
-    if lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then return 0; fi
+    if port_is_listening "$port"; then return 0; fi
     sleep 1
   done
   return 1
@@ -320,7 +343,7 @@ wait_for_port_listen() {
 wait_for_port_free() {
   local port="$1" attempts="${2:-15}" i
   for ((i = 1; i <= attempts; i++)); do
-    if ! lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then return 0; fi
+    if ! port_is_listening "$port"; then return 0; fi
     sleep 1
   done
   return 1
@@ -328,9 +351,10 @@ wait_for_port_free() {
 
 require_port_free() {
   local name="$1" port="$2"
-  if lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+  if port_is_listening "$port"; then
     local pids
     pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | tr '\n' ',' | sed 's/,$//')"
+    [[ -n "$pids" ]] || pids="unknown (다른 사용자 소유 — 예: root 의 docker-proxy)"
     echo "[nullus] cannot start $name: port $port in use by pid=$pids"
     echo "[nullus] run 'down' first or free the port"
     exit 1
@@ -848,7 +872,7 @@ do_status() {
     echo "  api: unavailable"
   fi
 
-  if lsof -tiTCP:"$WEB_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  if port_is_listening "$WEB_PORT"; then
     echo "  web: listening on :$WEB_PORT"
   else
     echo "  web: not running"
@@ -860,13 +884,13 @@ do_status() {
     echo "  keycloak: not running"
   fi
 
-  if lsof -tiTCP:"$MINIO_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  if port_is_listening "$MINIO_PORT"; then
     echo "  minio: listening on :$MINIO_PORT (console :$MINIO_CONSOLE_PORT)"
   else
     echo "  minio: not running"
   fi
 
-  if lsof -tiTCP:"$AUTHENTIK_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+  if port_is_listening "$AUTHENTIK_PORT"; then
     echo "  authentik: listening on :$AUTHENTIK_PORT"
   fi
   echo ""
@@ -1217,7 +1241,79 @@ for c in items or []:
     return 0
   fi
 
-  do_stack_status "$stack_id" --wait
+  if ! do_stack_status "$stack_id" --wait; then
+    return 1
+  fi
+
+  wire_kind_nodes_for_stack "$namespace" "$domain" "kind-${cluster_name#kind-}"
+}
+
+# wire_kind_nodes_for_stack 은 kind 노드가 스택 레지스트리에서 이미지를 받을 수
+# 있게 배선한다.
+#
+# 파드 안에서는 플랫폼이 배선한다(러너·Argo CD 의 hostAliases). 하지만 이미지를
+# 받는 것은 파드가 아니라 노드의 containerd 이고, containerd 는 클러스터 DNS 를
+# 쓰지 않는다 — 노드가 registry.<도메인> 을 풀지 못해 배포된 앱이
+# ImagePullBackOff 에서 벗어나지 못한다.
+#
+# 실제 클러스터에서는 접속 도메인이 실 DNS 로 풀리고 인증서도 공인이라 이 배선이
+# 필요 없다. kind 는 그 둘이 다 없어서 로컬 하네스가 대신 해 준다.
+wire_kind_nodes_for_stack() {
+  local namespace="$1" domain="$2" context="${3:-kind-nullus-platform}"
+  command -v kubectl >/dev/null 2>&1 || return 0
+  command -v docker >/dev/null 2>&1 || return 0
+  [[ -n "$domain" ]] || return 0
+
+  local gw_ip
+  gw_ip="$(kubectl --context "$context" get svc -n "$namespace" \
+    -l gateway.envoyproxy.io/owning-gateway-name \
+    -o jsonpath='{.items[0].spec.clusterIP}' 2>/dev/null || true)"
+  if [[ -z "$gw_ip" ]]; then
+    echo "[nullus] 게이트웨이 주소를 찾지 못해 kind 노드 배선을 건너뜁니다"
+    return 0
+  fi
+
+  local ca_file="$LOG_DIR/nullus-internal-ca.crt"
+  local ca_ns
+  ca_ns="$(kubectl --context "$context" get secret --all-namespaces \
+    -o jsonpath="{range .items[?(@.metadata.name=='nullus-internal-ca')]}{.metadata.namespace}{'\n'}{end}" 2>/dev/null | head -1 || true)"
+  if [[ -n "$ca_ns" ]]; then
+    kubectl --context "$context" -n "$ca_ns" get secret nullus-internal-ca \
+      -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d > "$ca_file" || true
+  fi
+
+  local nodes node
+  nodes="$(kubectl --context "$context" get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)"
+  [[ -n "$nodes" ]] || return 0
+
+  echo "[nullus] kind 노드에 스택 레지스트리를 배선합니다 (gateway=$gw_ip domain=$domain)"
+  local restarted=0
+  while IFS= read -r node; do
+    [[ -z "$node" ]] && continue
+    local host
+    for host in "gitlab.$domain" "registry.$domain"; do
+      docker exec "$node" sh -c "grep -q ' $host\$' /etc/hosts || echo '$gw_ip $host' >> /etc/hosts" 2>/dev/null || true
+    done
+    [[ -s "$ca_file" ]] || continue
+    # 이미 같은 CA 가 들어 있으면 손대지 않는다. containerd 재시작은 그 노드에서
+    # 도는 컨테이너를 잠깐 흔들므로, 다시 읽어야 할 때만 한다 — 이 함수는
+    # stack-up 을 돌릴 때마다 불린다.
+    if docker exec -i "$node" sh -c 'cmp -s - /usr/local/share/ca-certificates/nullus-internal-ca.crt' < "$ca_file" >/dev/null 2>&1; then
+      continue
+    fi
+    docker cp "$ca_file" "$node:/usr/local/share/ca-certificates/nullus-internal-ca.crt" >/dev/null 2>&1 || true
+    docker exec "$node" update-ca-certificates >/dev/null 2>&1 || true
+    # containerd 는 노드의 신뢰 저장소를 기동할 때 읽는다. CA 를 넣었으면 다시
+    # 읽게 한다 — 레지스트리별 certs.d 설정은 필요 없다(실측: CA 만으로 pull 이
+    # 성립한다).
+    docker exec "$node" systemctl restart containerd >/dev/null 2>&1 || true
+    restarted=1
+  done <<< "$nodes"
+
+  if ((restarted)); then
+    kubectl --context "$context" wait --for=condition=Ready nodes --all --timeout=180s >/dev/null 2>&1 || true
+  fi
+  echo "[nullus] kind 노드 배선 완료"
 }
 
 # 설치는 수십 분이 걸린다. 상태 폴링을 따로 두어 stack-up 을 기다리지 않고도

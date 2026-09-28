@@ -146,3 +146,34 @@ func TestToolImageProfiles_StepsAreInstallSteps(t *testing.T) {
 		}
 	}
 }
+
+func TestGitLabRunnerHelperImage(t *testing.T) {
+	image, ok := GitLabRunnerHelperImage([]string{ArchARM64}, "v17.7.0")
+	require.True(t, ok)
+	assert.Equal(t, "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v17.7.0", image)
+
+	// 러너가 내는 태그 이름을 따른다 — amd64 는 x86_64 로 적힌다.
+	image, ok = GitLabRunnerHelperImage([]string{ArchAMD64}, "v17.7.0")
+	require.True(t, ok)
+	assert.Equal(t, "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:x86_64-v17.7.0", image)
+
+	// 중복·공백은 한 아키텍처로 본다.
+	_, ok = GitLabRunnerHelperImage([]string{" arm64 ", "arm64", ""}, "v17.7.0")
+	assert.True(t, ok)
+
+	for _, tc := range []struct {
+		name    string
+		archs   []string
+		version string
+	}{
+		{name: "노드를 모르면 손대지 않는다", archs: nil, version: "v17.7.0"},
+		{name: "섞인 클러스터는 한 태그로 덮을 수 없다", archs: []string{ArchAMD64, ArchARM64}, version: "v17.7.0"},
+		{name: "처음 보는 아키텍처", archs: []string{"riscv64"}, version: "v17.7.0"},
+		{name: "버전이 없으면 태그를 만들 수 없다", archs: []string{ArchARM64}, version: "  "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok := GitLabRunnerHelperImage(tc.archs, tc.version)
+			assert.False(t, ok)
+		})
+	}
+}
