@@ -1292,7 +1292,13 @@ wire_kind_nodes_for_stack() {
     [[ -z "$node" ]] && continue
     local host
     for host in "gitlab.$domain" "registry.$domain"; do
-      docker exec "$node" sh -c "grep -q ' $host\$' /etc/hosts || echo '$gw_ip $host' >> /etc/hosts" 2>/dev/null || true
+      # 이미 있으면 건너뛰지 않고 갈아 끼운다. 스택을 다시 깔면 게이트웨이
+      # ClusterIP 가 새로 배정되는데, 건너뛰면 옛 주소가 남아 kubelet 이 이미지를
+      # 받지 못한다(ImagePullBackOff) — 설치는 completed 인데 앱이 뜨지 않는다.
+      #
+      # /etc/hosts 는 바인드 마운트라 sed -i 가 "Device or resource busy" 로
+      # 실패한다. 걸러 낸 내용을 같은 파일에 덮어써야 한다.
+      docker exec "$node" sh -c "grep -v ' $host\$' /etc/hosts > /tmp/nullus-hosts && cat /tmp/nullus-hosts > /etc/hosts && rm -f /tmp/nullus-hosts; echo '$gw_ip $host' >> /etc/hosts" 2>/dev/null || true
     done
     [[ -s "$ca_file" ]] || continue
     # 이미 같은 CA 가 들어 있으면 손대지 않는다. containerd 재시작은 그 노드에서
