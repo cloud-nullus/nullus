@@ -14,12 +14,14 @@ x = sin t + 2 sin 2t
 y = cos t − 2 cos 2t
 ```
 
-산출물은 **두 개**이고, 둘 다 이 스크립트가 만든다.
+산출물은 모두 이 스크립트가 만든다.
 
 | 산출물 | 쓰이는 곳 |
 |---|---|
 | `web/public/favicon.svg` | 브라우저 탭 · 북마크. 번들을 타지 않는 정적 파일 |
 | `web/src/components/brand/mark-geometry.generated.ts` | `<NullusMark>` 가 읽는 경로·색 데이터 |
+| `docs/40_UI_UX/logo/export/*.svg` | 문서 · 발표 · 외부 제출용 로고 원본 ([아래](#배포용-로고)) |
+| `docs/40_UI_UX/logo/export/*.png` | 위 SVG 를 구운 배경 투명 PNG — `rasterize.mjs` 가 만든다 |
 
 도형을 고쳤을 때만 다시 굽는다. 앱은 런타임에 이 스크립트를 실행하지 않는다.
 
@@ -27,14 +29,36 @@ y = cos t − 2 cos 2t
 node docs/40_UI_UX/logo/emit.mjs \
   web/public/favicon.svg \
   web/src/components/brand/mark-geometry.generated.ts
+node docs/40_UI_UX/logo/rasterize.mjs   # PNG — web/ 의 Playwright 크로미움을 쓴다
 ```
 
-둘이 갈라지면 `web/src/components/brand/nullus-mark.test.tsx` 가 잡는다 —
-favicon 이 컴포넌트와 같은 경로를 담고 있는지 대조한다. 한쪽만 다시 굽고
-커밋하는 사고를 막기 위한 것이다.
+갈라지면 `web/src/components/brand/nullus-mark.test.tsx` 가 잡는다 —
+favicon 과 배포본이 컴포넌트와 같은 매듭을 담고 있는지 대조하고, PNG 가
+지금의 SVG 에서 구워졌는지(PNG 에 남긴 SVG 해시) 확인한다. 한쪽만 다시 굽고
+커밋하는 사고를 막기 위한 것이다. 대조하는 테스트가 없는 사본은 조용히 낡으므로
+로고 파일을 손으로 복사해 두지 않는다.
 
-브랜드 자산으로 SVG 파일이 필요하면 `web/public/favicon.svg` 를 그대로 쓴다.
-사본을 docs 에 두지 않는다 — 대조하는 테스트가 없는 사본은 조용히 낡는다.
+## 배포용 로고
+
+`export/` 의 파일을 그대로 쓴다. 모두 배경이 투명하고, PNG 는 긴 변 2048px 이다.
+
+| 파일 | 모양 | 바탕 |
+|---|---|---|
+| `nullus-logo.svg` / `.png` | 마크 + 워드마크 가로형 (2048×462) | 밝은 바탕 |
+| `nullus-logo-on-dark.svg` / `.png` | 마크 + 워드마크 가로형 (2048×462) | 어두운 바탕 |
+| `nullus-mark.svg` / `.png` | 마크 단독 (2048×1918) | 밝은 바탕 |
+| `nullus-mark-on-dark.svg` / `.png` | 마크 단독 (2048×1918) | 어두운 바탕 |
+
+- **워드마크**는 앱과 같은 Inter 4.001 Bold 의 "Nullus" 를 윤곽선으로 바꿔 실었다.
+  폰트가 없는 곳에서도 같은 모양이다. 마크·간격·글자 비율은 사이드바
+  (마크 20px · 간격 8px · 글자 16px)를 그대로 옮겼고, 대문자 높이의 가운데를
+  마크 중심에 맞췄다. 글자색은 `--color-text-primary`(`#0a0b0d` / `#ffffff`).
+- **바탕은 쓰는 쪽이 고른다.** 파비콘과 달리 `prefers-color-scheme` 을 싣지 않는다 —
+  남의 문서에 이미지로 박히는 파일이 보는 사람의 OS 테마를 따라 색을 바꾸면 안 된다.
+- **큰 크기용으로 따로 그린다.** 앱용 도형(48조각 · 360점 꺾은선)을 그대로 키우면
+  조각마다 둥근 끝이 반원 비늘로 비치고 색 계단과 꺾인 모서리가 드러난다. 배포본은
+  같은 표본을 지나는 매끈한 곡선 한 줄을 모양 마스크로 쓰고, 색은 표본마다 매긴
+  조각을 그 안에서만 칠한다. 지나는 점과 가닥 굵기 · 간격 · 교차점 색은 앱과 같다.
 
 ## 교차 간격
 
