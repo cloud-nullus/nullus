@@ -35,6 +35,10 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		if errors.As(err, &usageErr) {
 			return 2
 		}
+		var authErr *authError
+		if errors.As(err, &authErr) {
+			return nullusclient.KindAuth.ExitCode()
+		}
 		return 1
 	}
 	return 0
@@ -44,6 +48,12 @@ func Main(args []string, stdout, stderr io.Writer) int {
 type usageError struct{ msg string }
 
 func (e *usageError) Error() string { return e.msg }
+
+// authError 는 인증 문제를 exit 3 으로 이끈다 — API 401 과 달리 호출 전에
+// 로컬에서 판정되는 경우(토큰 부재 등)다.
+type authError struct{ msg string }
+
+func (e *authError) Error() string { return e.msg }
 
 type rootOptions struct {
 	server string
@@ -66,6 +76,7 @@ func newRoot(stdout, stderr io.Writer) *cobra.Command {
 
 	root.AddCommand(newVersionCmd(stdout))
 	root.AddCommand(newStackCmd(opts, stdout))
+	root.AddCommand(newMCPCmd(opts, stderr))
 	return root
 }
 

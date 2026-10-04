@@ -22,4 +22,7 @@ type LogStreamer interface {
 	Subscribe(deploymentID string) <-chan LogEntry
 	// Unsubscribe removes the given channel from the subscriber list for deploymentID.
 	Unsubscribe(deploymentID string, ch <-chan LogEntry)
+	// Tail 은 최근 n 줄을 기록 순서(오름차순)로 돌려준다 — WS 재생과 같은 순서다.
+	// 연결을 붙들 수 없는 자동화 클라이언트(CLI·MCP)가 한 번의 요청으로 읽는 경로.
+	Tail(ctx context.Context, deploymentID string, n int) ([]LogEntry, error)
 }
