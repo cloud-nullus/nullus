@@ -130,6 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **스택을 다시 깔면 배포된 앱이 `ImagePullBackOff` 에서 벗어나지 못하던 것** (`scripts/runbook_local.sh`): kind 노드에 스택 레지스트리를 배선하는 곳이 `/etc/hosts` 에 이름이 **이미 있으면 건너뛰기만** 했다. 스택을 다시 깔면 게이트웨이 ClusterIP 가 새로 배정되는데 노드에는 옛 주소가 남아, kubelet 이 이미지를 받지 못한다 — 설치는 `completed` 이고 파이프라인도 성공하고 Argo CD 도 `Synced` 인데 앱만 뜨지 않으므로, 재설치 때마다 재현되면서도 원인이 드러나지 않는다. 건너뛰지 않고 갈아 끼운다. `/etc/hosts` 는 바인드 마운트라 `sed -i` 가 `Device or resource busy` 로 실패하므로 걸러 낸 내용을 같은 파일에 덮어쓴다.
+
 - **CI 잡과 Argo CD 가 스택 도구 이름을 여전히 풀지 못하던 것** (`internal/stack/adapter/helm`): 게이트웨이가 선 뒤 러너·Argo CD 를 다시 적용하는 호출이 Gateway 매니페스트를 적용하기 **전에** 놓여 있었다. 데이터 플레인 Service 는 Gateway 를 적용해야 생기므로 그 주소 조회가 언제나 빈 값을 받았고, 경고 한 줄만 남기고 재적용을 건너뛰었다 — 설치는 `completed` 로 끝나고 파드도 전부 Running 이라 파이프라인을 돌려 `Could not resolve host` 를 볼 때까지 드러나지 않는다. 호출을 매니페스트 적용 뒤로 옮기고 그 순서를 계약 테스트로 고정한다. kind(arm64 3노드) `gitlab-argocd-v1` 실측: 수정 전에는 `host_aliases` 가 한 줄도 실리지 않았고, 수정 후 러너 TOML 과 Argo CD `hostAliases` 가 모두 게이트웨이 ClusterIP 를 받는다.
 
 - **관측성 템플릿(`gitlab-argocd-otel-v1`)이 설치조차 되지 않고, 로그 도구는 고른 것과 다른 것이 깔리던 것** (`internal/stack/adapter/helm`): 템플릿과 카탈로그는 도구 이름을 사람이 읽는 표기로 담는데(`"Loki"`, `"Tempo"`), 차트를 고르는 쪽만 소문자 리터럴과 그대로 비교해 전부 `default` 로 떨어졌다. 자원 기본값 쪽은 이미 정규화해서 비교하므로 둘이 갈라졌고, **Tempo 의 values 가 OTel Collector 차트에 실려** 스키마 검증에서 설치가 통째로 실패했다 (`additional properties 'tempo', 'tempoQuery' not allowed`). 같은 이유로 **Loki 를 골라도 OpenSearch 가 깔렸다** — 이 증상은 한 번 고쳐진 적이 있지만(빠진 분기 추가) 대소문자 정규화가 빠져 그대로 재현됐다. 덧붙여 `installing_log_search` 의 자원 기본값에는 `loki` 분기 자체가 없어, Loki 를 골라도 `opensearch` 키를 보고 계획값이 한 줄도 닿지 않았다(값 모양도 OpenSearch 의 `master` 키였다). 세 곳 모두 `normalizeToolName` 하나를 쓰게 하고, 차트를 고르는 쪽과 자원 기본값을 고르는 쪽이 같은 도구를 가리키는지 계약 테스트로 고정한다 — 세 번째 어긋남을 찾아낸 것이 그 테스트다.
