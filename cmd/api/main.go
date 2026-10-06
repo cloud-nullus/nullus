@@ -257,6 +257,11 @@ func main() {
 	)
 	// 삭제가 플랫폼 네임스페이스를 훑지 않게 자기 자리를 알려준다.
 	deleteStackUC.SetPlatformNamespace(cfg.Platform.Namespace)
+	// 클러스터의 마지막 스택을 지울 때 공용 릴리스(cert-manager·metrics-server)의 values 를 읽어
+	// Nullus 가 설치한 것만 회수한다.
+	deleteStackUC.SetReleaseManagerFactory(func(kubeconfig []byte) stackport.HelmReleaseManager {
+		return stackhelm.NewHelmInstaller(kubeconfig)
+	})
 	// 설치가 IdP 에 등록한 OIDC 클라이언트를 삭제 때 함께 지운다. 설치와 같은
 	// 팩토리를 줘야 같은 client ID 를 계산한다.
 	if ssoFactory != nil {
