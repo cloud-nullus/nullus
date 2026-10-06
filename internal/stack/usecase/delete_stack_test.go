@@ -86,8 +86,11 @@ func TestDeleteStack_UninstallsKnownReleasesThenDeletesStack(t *testing.T) {
 	s, getErr := repo.GetByID(context.Background(), "stk-1")
 	require.Error(t, getErr)
 	assert.Nil(t, s)
-	assert.Contains(t, installer.uninstallCalls, "cert-manager@devsecops")
-	assert.Contains(t, installer.uninstallCalls, "cert-manager@default")
+	// 공용 릴리스(cert-manager·metrics-server)는 누가 깔았는지 모르는 자리(default, 회수하지 않는
+	// 네임스페이스)에서 지우지 않는다. 마지막 스택일 때 소유를 확인하고 회수한다.
+	assert.NotContains(t, installer.uninstallCalls, "cert-manager@devsecops")
+	assert.NotContains(t, installer.uninstallCalls, "cert-manager@default")
+	assert.NotContains(t, installer.uninstallCalls, "metrics-server@default")
 	assert.Contains(t, installer.uninstallCalls, "opensearch@devsecops")
 	assert.Contains(t, installer.uninstallCalls, "opensearch@default")
 	// 게이트웨이는 스택 것이다 — 지우면 함께 회수된다. 다만 훑는 자리는 스택

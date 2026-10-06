@@ -75,8 +75,26 @@ func (o *Orchestrator) platformOwnedValuesForStep(step string) []platformOwnedVa
 			value:  fmt.Sprintf("http://gitlab-webservice-default.%s.svc:8181", namespace),
 			reason: namespaceScopedReason,
 		}}
+	case stepInstallingCertManager:
+		return installMarkerValue(domain.CertManagerReleaseName)
+	case "installing_metrics_server":
+		return installMarkerValue(domain.MetricsServerReleaseName)
 	}
 	return nil
+}
+
+// installMarkerValue 는 공용 릴리스에 싣는 설치 표시다. 클러스터의 마지막 스택을 지울 때 이 표시로
+// Nullus 가 설치한 릴리스를 가려 회수한다 — 표시가 지워지면 고객 것으로 보고 남긴다.
+func installMarkerValue(releaseName string) []platformOwnedValue {
+	path, ok := domain.InstallMarkerValuePath(releaseName)
+	if !ok {
+		return nil
+	}
+	return []platformOwnedValue{{
+		path:   path,
+		value:  domain.InstalledByNullus,
+		reason: "스택을 지울 때 Nullus 가 설치한 공용 릴리스를 가리는 표시입니다",
+	}}
 }
 
 // enforcePlatformOwnedValues 는 병합이 끝난 values 위에 플랫폼 소유 값을 다시 쓴다.

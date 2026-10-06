@@ -80,6 +80,20 @@ func (r *MemoryStackRepository) ListInFlight(_ context.Context) ([]*domain.Stack
 	return result, nil
 }
 
+// ListByCluster 는 한 클러스터의 지우지 않은 스택을 조직과 무관하게 돌려준다.
+func (r *MemoryStackRepository) ListByCluster(_ context.Context, clusterID string) ([]*domain.Stack, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]*domain.Stack, 0, len(r.stacks))
+	for _, s := range r.stacks {
+		if s.DeletedAt == nil && s.ClusterID == clusterID {
+			cp := *s
+			result = append(result, &cp)
+		}
+	}
+	return result, nil
+}
+
 // ListCompleted 는 설치가 끝난 스택을 조직과 무관하게 돌려준다.
 func (r *MemoryStackRepository) ListCompleted(_ context.Context) ([]*domain.Stack, error) {
 	r.mu.RLock()

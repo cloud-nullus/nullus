@@ -112,6 +112,42 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 		assert.Nil(t, notFound)
 	})
 
+	// 스택 삭제가 클러스터의 마지막 스택인지 볼 때 쓴다. 조직과 무관하게 같은 클러스터의 지우지 않은
+	// 스택만 돌려준다.
+	t.Run("stack repository lists live stacks of a cluster across orgs", func(t *testing.T) {
+		repo := NewPostgresStackRepository(pool)
+		orgID, clusterID := createTestOrgAndCluster(t, ctx, pool)
+		otherOrgID, otherClusterID := createTestOrgAndCluster(t, ctx, pool)
+
+		newStack := func(org, cluster string) *domain.Stack {
+			now := time.Now().UTC().Truncate(time.Microsecond)
+			s := &domain.Stack{
+				ID: "stack-" + uuid.NewString(), Name: "cluster-list", TemplateID: "gitlab-allinone-v1",
+				OrgID: org, ClusterID: cluster, Namespace: "nullus-cluster-list", State: domain.StateCompleted,
+				Config: sampleStackConfig("GitLab CE"), CreatedAt: now, UpdatedAt: now,
+			}
+			require.NoError(t, repo.Create(ctx, s))
+			return s
+		}
+		sameOrg := newStack(orgID, clusterID)
+		otherOrg := newStack(otherOrgID, clusterID)
+		otherCluster := newStack(orgID, otherClusterID)
+		deleted := newStack(orgID, clusterID)
+		require.NoError(t, repo.Delete(ctx, deleted.ID))
+
+		stacks, err := repo.ListByCluster(ctx, clusterID)
+		require.NoError(t, err)
+		assert.True(t, containsStackID(stacks, sameOrg.ID))
+		assert.True(t, containsStackID(stacks, otherOrg.ID), "다른 조직의 스택도 같은 클러스터를 쓴다")
+		assert.False(t, containsStackID(stacks, otherCluster.ID))
+		assert.False(t, containsStackID(stacks, deleted.ID))
+
+		// 형식이 틀린 ID 는 쿼리 오류가 아니라 "없음" 이다.
+		none, err := repo.ListByCluster(ctx, "cluster-1")
+		require.NoError(t, err)
+		assert.Empty(t, none)
+	})
+
 	t.Run("template repository seeded templates and tools decoding", func(t *testing.T) {
 		repo := NewPostgresTemplateRepository(pool)
 
