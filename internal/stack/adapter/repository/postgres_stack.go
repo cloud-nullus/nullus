@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -129,6 +130,39 @@ func (r *PostgresStackRepository) ListCompleted(ctx context.Context) ([]*domain.
 	rows, err := r.pool.Query(ctx, q, string(domain.StateCompleted))
 	if err != nil {
 		return nil, fmt.Errorf("query completed stacks: %w", err)
+	}
+	defer rows.Close()
+
+	var stacks []*domain.Stack
+	for rows.Next() {
+		s, err := r.scanStack(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan stack: %w", err)
+		}
+		stacks = append(stacks, s)
+	}
+	return stacks, rows.Err()
+}
+
+// ListByCluster 는 한 클러스터의 지우지 않은 스택을 조직과 무관하게 돌려준다.
+//
+// cluster_id 는 UUID 라 형식이 틀린 값이 오면 쿼리가 실패한다. 그때는 오류가 아니라 "없음" 이어야 하므로
+// 먼저 걸러 낸다. text 로 바꿔 비교하면 같은 결과지만 idx_stacks_cluster_id 를 쓰지 못한다.
+func (r *PostgresStackRepository) ListByCluster(ctx context.Context, clusterID string) ([]*domain.Stack, error) {
+	if _, err := uuid.Parse(clusterID); err != nil {
+		return nil, nil
+	}
+	q := `
+		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config,
+			current_step, last_completed_step, last_failed_step, last_failure_reason,
+			created_at, updated_at, deleted_at
+		FROM stacks
+		WHERE cluster_id = $1::uuid AND deleted_at IS NULL
+		ORDER BY created_at ASC LIMIT 500`
+
+	rows, err := r.pool.Query(ctx, q, clusterID)
+	if err != nil {
+		return nil, fmt.Errorf("query cluster stacks: %w", err)
 	}
 	defer rows.Close()
 

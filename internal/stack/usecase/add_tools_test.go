@@ -108,3 +108,7 @@ func TestAddToolsUseCase_Execute_StackNotFound(t *testing.T) {
 func (f *fakeAddToolsRepo) ListInFlight(context.Context) ([]*domain.Stack, error) {
 	return nil, nil
 }
+
+func (f *fakeAddToolsRepo) ListByCluster(context.Context, string) ([]*domain.Stack, error) {
+	return nil, nil
+}
