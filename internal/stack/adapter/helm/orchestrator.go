@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	defaultSelfSignedBootstrapIssuer = "nullus-selfsigned-bootstrap"
-	defaultInternalCAIssuer          = "nullus-internal-ca-issuer"
-	defaultInternalCASecretName      = "nullus-internal-ca"
-	defaultInternalCACertName        = "nullus-internal-ca-cert"
+	// 내부 CA 이름은 스택 삭제가 회수할 때도 봐야 하므로 domain 에서 온다.
+	defaultSelfSignedBootstrapIssuer = domain.InternalCABootstrapIssuerName
+	defaultInternalCAIssuer          = domain.InternalCAIssuerName
+	defaultInternalCASecretName      = domain.InternalCASecretName
+	defaultInternalCACertName        = domain.InternalCACertName
 	defaultEnvoyDataPlaneTLSSecret   = "envoy"
 	defaultEnvoyControlPlaneSecret   = "envoy-gateway"
 	gatewayAPIStandardInstallURL     = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml"
@@ -959,6 +960,9 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	}
 
 	if step == "installing_gateway" && looksLikeKubeconfig(o.kubeconfig) {
+		// 이 단계가 새로 까는 Gateway CRD 에만 설치 표시를 단다. 단계를 어떻게 끝내든 깔린 CRD 는
+		// 남으므로 실패해도 표시한다.
+		defer o.markGatewayCRDsCreatedSince(ctx, o.gatewayCRDSnapshot(ctx))
 		if err := o.ensureGatewayAPICRDs(ctx); err != nil {
 			return fmt.Errorf("ensure gateway api crds: %w", err)
 		}
@@ -1004,6 +1008,8 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	// 인수한다. 옛 네임스페이스가 주석에 박혀 있으면 Helm 이 ownership 충돌로
 	// 설치를 거부한다. 살아 있는 다른 릴리스 소유는 건드리지 않는다.
 	o.adoptClusterScopedResources(ctx, releaseName, namespace)
+	// 공용 릴리스의 설치 표시는 Nullus 가 새로 까는 릴리스에만 남긴다(install_marker.go).
+	values = o.withInstallMarkerIfOwned(ctx, releaseName, namespace, values)
 
 	result, err := o.installer.Install(ctx, port.HelmInstallRequest{
 		ReleaseName: releaseName,
@@ -1062,7 +1068,7 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			if err := o.reconcileGatewayDataPlaneTLSSecret(ctx, namespace); err != nil {
 				return fmt.Errorf("reconcile gateway data-plane tls secret: %w", err)
 			}
-			if err := o.applyManifest(ctx, namespace, defaultEnvoyGatewayClassManifest()); err != nil {
+			if err := o.ensureEnvoyGatewayClass(ctx); err != nil {
 				return fmt.Errorf("apply default gatewayclass manifest: %w", err)
 			}
 		}

@@ -4,6 +4,8 @@
 args:
     - --kubelet-insecure-tls
     - --kubelet-preferred-address-types=InternalIP,Hostname,ExternalIP
+commonLabels:
+    nullus.io/installed-by: nullus
 resources:
     limits:
         cpu: 500m
