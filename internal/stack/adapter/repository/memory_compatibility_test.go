@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -59,6 +60,52 @@ func TestMemoryCompatibilityRepository_Validate_Match(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotNil(t, m)
+}
+
+// 같은 도구를 담은 매트릭스가 여럿이면 Postgres 저장소는 id 순서로 첫 것을 고른다
+// (GetAll 의 ORDER BY id). 인메모리 저장소가 맵 순서로 고르면 같은 요청의 판정이
+// 실행마다 달라진다 — gitlab-argocd-sonarqube-v1 이 GitLab 의 arm64 를 허용하자
+// 혼합 아키텍처 배포 게이트 테스트가 몇 번에 한 번꼴로 통과(202)했다.
+func TestMemoryCompatibilityRepository_Validate_PicksLowestIDLikePostgres(t *testing.T) {
+	repo := NewMemoryCompatibilityRepository()
+	ctx := context.Background()
+	gitlabOnly := map[string]string{
+		"source_repository":  "GitLab CE",
+		"ci_platform":        "GitLab CI",
+		"container_registry": "GitLab Registry",
+	}
+
+	all, err := repo.GetAll(ctx)
+	require.NoError(t, err)
+	var matching []string
+	for _, m := range all {
+		if matchesMatrix(m, gitlabOnly) {
+			matching = append(matching, m.ID)
+		}
+	}
+	require.Greater(t, len(matching), 1, "여러 매트릭스가 겹쳐야 순서를 확인할 수 있다")
+	sort.Strings(matching)
+
+	for i := 0; i < 50; i++ {
+		m, err := repo.Validate(ctx, gitlabOnly)
+		require.NoError(t, err)
+		require.Equal(t, matching[0], m.ID, "실행마다 다른 매트릭스를 골랐다(%d번째)", i)
+	}
+}
+
+// Postgres 저장소와 같은 순서로 돌려준다. 순서에 기대는 호출자가 저장소에 따라
+// 다르게 동작하지 않게 한다.
+func TestMemoryCompatibilityRepository_GetAll_OrderedByIDLikePostgres(t *testing.T) {
+	repo := NewMemoryCompatibilityRepository()
+	for i := 0; i < 20; i++ {
+		matrices, err := repo.GetAll(context.Background())
+		require.NoError(t, err)
+		ids := make([]string, 0, len(matrices))
+		for _, m := range matrices {
+			ids = append(ids, m.ID)
+		}
+		require.True(t, sort.StringsAreSorted(ids), "id 순서가 아니다: %v", ids)
+	}
 }
 
 func TestMemoryCompatibilityRepository_Validate_NoMatch(t *testing.T) {
