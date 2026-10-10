@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
@@ -87,5 +88,50 @@ func TestProtectedValueViolations_AddedPathIsAllowed(t *testing.T) {
 
 	if got := domain.ProtectedValueViolations("installing_harbor", base, edited); len(got) != 0 {
 		t.Fatalf("없던 값을 채운 것은 위반이 아니다: %+v", got)
+	}
+}
+
+// values 키에는 점이 들어간다(grafana.ini, sonar.auth.saml.*). 점마다 쪼개 찾으면
+// 그런 경로는 영영 못 찾아 보호가 조용히 꺼진다.
+func TestProtectedValueViolations_KeysContainingDots(t *testing.T) {
+	base := map[string]any{
+		"sonarProperties": map[string]any{
+			"sonar.auth.saml.certificate.secured": "NEW-CERT",
+			"sonar.web.javaOpts":                  "-Xmx1G",
+		},
+	}
+	edited := map[string]any{
+		"sonarProperties": map[string]any{
+			"sonar.auth.saml.certificate.secured": "OLD-CERT",
+			"sonar.web.javaOpts":                  "-Xmx2G",
+		},
+	}
+
+	got := domain.ProtectedValueViolations("installing_sonarqube", base, edited)
+	if len(got) != 1 || got[0].Path != "sonarProperties.sonar.auth.saml.certificate.secured" {
+		t.Fatalf("SAML 인증서 변경만 보고해야 한다(사용자 속성은 자유): %+v", got)
+	}
+
+	grafanaBase := map[string]any{"grafana.ini": map[string]any{"auth.generic_oauth": map[string]any{"enabled": "true"}}}
+	grafanaEdited := map[string]any{"grafana.ini": map[string]any{}}
+	if got := domain.ProtectedValueViolations("installing_grafana", grafanaBase, grafanaEdited); len(got) != 1 {
+		t.Fatalf("grafana.ini 아래 OIDC 블록을 지운 것이 잡히지 않았다: %+v", got)
+	}
+}
+
+// SonarQube 는 공유 DB 주소와 서버 주소, Keycloak 로그인 설정을 플랫폼이 계산한다.
+func TestProtectedValuePaths_SonarQube(t *testing.T) {
+	paths := domain.ProtectedValuePaths("installing_sonarqube")
+	for _, want := range []string{
+		"jdbcOverwrite.jdbcUrl",
+		"sonarProperties.sonar.core.serverBaseURL",
+		"sonarProperties.sonar.auth.saml.certificate.secured",
+		"sonarProperties.sonar.auth.saml.providerId",
+		"sonarProperties.sonar.auth.saml.loginUrl",
+		"sonarProperties.sonar.auth.saml.applicationId",
+	} {
+		if !slices.Contains(paths, want) {
+			t.Fatalf("보호 경로에 %s 가 없다: %v", want, paths)
+		}
 	}
 }
