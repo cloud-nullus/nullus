@@ -168,6 +168,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **스택 파이프라인의 앱이 화면에서 고른 클러스터가 아니라 스택 클러스터에 뜨고, 모니터링 탭은 고른 클러스터를 읽어 비어 보이던 것** (`internal/cicd/usecase/{create_pipeline,delete_pipeline,deploy_cluster}.go`, `internal/cicd/adapter/handler/pipeline_handler.go`, `web/src/features/cicd/pages/developer-deploy-page.tsx`, `api/openapi.yaml`): 스택의 Argo CD Application 은 목적지가 자기 클러스터(`kubernetes.default.svc`)이고 Application 자체도 스택 클러스터에 적용되므로, 앱은 늘 스택이 설치된 클러스터에 선다. 그런데 파이프라인에는 화면의 "Deploy Cluster" 로 고른 클러스터가 저장됐다. 개발자 배포 화면은 스택과 클러스터를 따로 고르게 했고, 클러스터 목록은 `target` 타입만 보여 스택 클러스터가 그 타입이 아니면 맞출 수도 없었다. 모니터링 탭(`GET /pipelines/:id/resources`)은 저장된 클러스터를 읽어 빈 네임스페이스를 보고, "클러스터 리소스까지 삭제" 는 거기서 Application 을 찾다 "이미 없음" 을 성공으로 끝내 앱이 스택 클러스터에 남았다.
+
+  **규칙을 하나로 고정했다 — 스택에 묶인 파이프라인의 배포 클러스터는 스택 클러스터다.** 파이프라인 생성은 `stack_id` 가 있으면 `cluster_id` 가 스택 클러스터와 같은지 보고, 다르면 `400 STACK_CLUSTER_MISMATCH` 로 거절한다(조용히 바꾸면 화면이 보여 준 선택이 거짓이 된다). 비우면 스택 클러스터로 채운다. 개발자 배포 화면은 스택을 고르면 클러스터를 스택의 것으로 잠그고 이유를 적는다 — 스택 클러스터가 `target` 타입이 아니어도 그렇다. 모니터링과 삭제는 앱이 실제로 서 있는 클러스터를 읽는다: 러너에 위임하는 스택 파이프라인은 스택 클러스터, 플랫폼이 직접 적용한 경로(스택 없음·긴급 직접 배포)는 파이프라인의 클러스터. 이미 어긋나게 저장된 파이프라인도 이 보정으로 모니터링·삭제가 맞는 곳을 본다 — 정보 탭의 "Cluster" 값은 저장된 그대로다.
+
+  스택 클러스터 밖으로 배포하는 진짜 멀티 클러스터는 Argo CD 에 대상 클러스터를 등록하고 대상에서 레지스트리·게이트웨이에 닿아야 하는 별도 기능이라 여기서 다루지 않았다. 유스케이스·핸들러·화면 테스트로 확인했다. 실클러스터 검증은 하지 않았다.
+
 - **GitHub 스택에서 "실행"이 Trigger CI 단계에서 실패하던 것과, Dockerfile 경로 없이 만든 스택 파이프라인이 플랫폼 직접 적용으로 새던 것** (`internal/cicd/adapter/github/workflow_trigger.go` 신규, `internal/cicd/adapter/scaffold/renderer.go`, `internal/cicd/adapter/provisioning/bundle_factory.go`, `internal/cicd/domain/pipeline.go`): GitLab 에 이어 GitHub 번들에도 트리거를 실었다 — 같은 PAT 로 `POST /repos/{owner}/{repo}/actions/workflows/nullus-ci.yml/dispatches` 를 불러 `main` 에서 워크플로를 시작시킨다. GitHub 은 dispatch 에 실행 id 를 돌려주지 않으므로 몇 초 안에 새로 생긴 `workflow_dispatch` 실행을 찾아 그 주소를 실행 기록에 남기고, 못 찾으면 워크플로 페이지 주소를 준다(지어낸 실행 주소는 열리지 않는 링크가 된다). 그 브랜치의 최신 실행이 아직 돌고 있으면 새로 시작하지 않고 붙는다(GitLab 과 같은 이유). 리포·워크플로가 없으면(404) "프로비저닝을 다시", `workflow_dispatch` 가 없어 422 로 거절되면 워크플로의 `on:` 에 트리거를 더하거나 다시 프로비저닝하라고 말한다.
 
   **스캐폴딩 워크플로에 `workflow_dispatch` 를 둔다.** 없으면 GitHub 이 API 실행 요청을 거절해 실행이 push 로만 돈다. 이 변경 전에 만들어진 GitHub 파이프라인은 워크플로에 트리거가 없어 "실행"이 그 안내로 실패한다 — 파이프라인을 다시 프로비저닝하거나 `.github/workflows/nullus-ci.yml` 의 `on:` 에 `workflow_dispatch:` 를 더하면 된다.

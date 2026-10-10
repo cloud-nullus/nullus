@@ -17,6 +17,9 @@ import (
 var (
 	ErrStackNotFound    = errors.New("referenced stack does not exist")
 	ErrStackOrgMismatch = errors.New("stack belongs to a different organization")
+	// ErrStackClusterMismatch 는 스택에 묶인 파이프라인에 스택과 다른 클러스터를 준 경우다.
+	// 스택의 CD 도구는 자기 클러스터에만 배포하므로, 다른 클러스터는 배포 대상이 될 수 없다.
+	ErrStackClusterMismatch = errors.New("pipeline cluster must be the stack's cluster")
 )
 
 // CreatePipelineInput holds the parameters for creating a new pipeline.
@@ -112,9 +115,6 @@ func (uc *CreatePipeline) Execute(ctx context.Context, input CreatePipelineInput
 	if input.OrgID == "" {
 		return nil, fmt.Errorf("org_id is required")
 	}
-	if input.ClusterID == "" {
-		return nil, fmt.Errorf("cluster_id is required")
-	}
 	var tmpl *domain.PipelineTemplate
 	if input.TemplateID != "" {
 		var err error
@@ -150,6 +150,25 @@ func (uc *CreatePipeline) Execute(ctx context.Context, input CreatePipelineInput
 				input.StackID, summary.State,
 			)
 		}
+		// 스택에 묶인 파이프라인의 앱은 스택의 CD 도구가 스택 클러스터에 올린다 —
+		// Argo CD Application 의 목적지가 자기 클러스터다. 다른 클러스터를 받아
+		// 적어 두면 모니터링·삭제가 그 클러스터를 뒤지고, 사용자는 앱이 거기 있는
+		// 줄 안다. 비어 있으면 채우고, 다르면 거절한다 — 조용히 바꾸면 화면이
+		// 보여 준 선택이 거짓이 된다.
+		if stackCluster := strings.TrimSpace(summary.ClusterID); stackCluster != "" {
+			switch strings.TrimSpace(input.ClusterID) {
+			case "":
+				input.ClusterID = stackCluster
+			case stackCluster:
+			default:
+				return nil, fmt.Errorf("%w: stack %s is on cluster %s, got %s",
+					ErrStackClusterMismatch, input.StackID, stackCluster, input.ClusterID)
+			}
+		}
+	}
+	// 스택이 채워 주지 않았으면 호출자가 줘야 한다.
+	if input.ClusterID == "" {
+		return nil, fmt.Errorf("cluster_id is required")
 	}
 
 	// --- 저장소 프로비저닝 ---

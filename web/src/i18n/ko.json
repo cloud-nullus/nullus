@@ -1527,6 +1527,7 @@
     "form": {
       "stackOptional": "스택",
       "stackRequired": "Stack 선택",
+      "clusterLockedToStack": "스택이 설치된 클러스터로 고정됩니다. 앱은 스택의 Argo CD 가 그 클러스터에 배포합니다.",
       "manualInput": "직접 입력",
       "appName": "앱 이름",
       "imageRegistry": "Image Registry",

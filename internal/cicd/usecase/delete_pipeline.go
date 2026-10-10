@@ -207,9 +207,18 @@ func (uc *DeletePipeline) deleteClusterResources(
 	if uc.kubeconfig == nil {
 		return fmt.Errorf("클러스터 접근이 배선되지 않아 배포 리소스를 지울 수 없습니다")
 	}
-	kubeconfig, err := uc.kubeconfig.GetKubeconfig(ctx, pipeline.ClusterID)
+	// 스택 파이프라인의 Application 과 워크로드는 **스택 클러스터**에 있다 — Argo CD
+	// 가 자기 클러스터에 올렸다. 파이프라인에 다른 클러스터가 적혀 있어도 그렇다.
+	// 거기를 뒤지면 삭제기는 "이미 없음" 을 성공으로 보고 앱이 조용히 남는다 —
+	// 실제로 그렇게 남았다. 번들의 클러스터가 스택의 것이다. 플랫폼이 직접 적용한
+	// 경로(긴급 직접 배포)는 파이프라인의 클러스터에 올렸으니 그쪽을 지운다.
+	clusterID := pipeline.ClusterID
+	if bundle != nil && pipeline.DelegatesBuildToRunner() && strings.TrimSpace(bundle.ClusterID) != "" {
+		clusterID = bundle.ClusterID
+	}
+	kubeconfig, err := uc.kubeconfig.GetKubeconfig(ctx, clusterID)
 	if err != nil {
-		return fmt.Errorf("클러스터 %s kubeconfig 로드 실패: %w", pipeline.ClusterID, err)
+		return fmt.Errorf("클러스터 %s kubeconfig 로드 실패: %w", clusterID, err)
 	}
 
 	if bundle != nil && bundle.CDApplications != nil {

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
+	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
 type mockCreatePipelineRepo struct {
@@ -137,4 +138,91 @@ func TestCreatePipeline_TemplateNotFound(t *testing.T) {
 	assert.Nil(t, out)
 	assert.Contains(t, err.Error(), "template not found")
 	assert.Empty(t, pipelineRepo.created)
+}
+
+// 스택에 묶인 파이프라인의 앱은 스택의 CD 도구가 스택 클러스터에 배포한다.
+// 다른 클러스터를 받아 저장하면 모니터링·삭제가 빈 클러스터를 뒤지고, 사용자는
+// 앱이 거기 있는 줄 안다. 조용히 바꾸지 않고 거절한다.
+func TestCreatePipeline_RejectsClusterOtherThanStackCluster(t *testing.T) {
+	pipelineRepo := &mockCreatePipelineRepo{}
+	templateRepo := newMockCreateTemplateRepo()
+	reader := &stubStackReader{summary: &port.StackSummary{
+		ID: "stack-1", OrgID: "org-1", ClusterID: "c-stack", State: "completed",
+	}}
+	uc := NewCreatePipeline(pipelineRepo, templateRepo, reader)
+
+	out, err := uc.Execute(context.Background(), CreatePipelineInput{
+		Name:          "orders",
+		OrgID:         "org-1",
+		ClusterID:     "c-other",
+		StackID:       "stack-1",
+		ExecutionMode: domain.ExecutionModeEmergencyDirect,
+		Namespace:     "apps",
+		AppType:       domain.AppTypeBackend,
+	})
+
+	require.ErrorIs(t, err, ErrStackClusterMismatch)
+	assert.Contains(t, err.Error(), "c-stack")
+	assert.Contains(t, err.Error(), "c-other")
+	assert.Nil(t, out)
+	assert.Empty(t, pipelineRepo.created)
+}
+
+// 클러스터를 비우고 스택만 주면 스택 클러스터로 채운다 — 스택이 정하는 값을
+// 호출자가 다시 알아내 적어 보낼 이유가 없다.
+func TestCreatePipeline_FillsClusterFromStackWhenEmpty(t *testing.T) {
+	pipelineRepo := &mockCreatePipelineRepo{}
+	templateRepo := newMockCreateTemplateRepo()
+	reader := &stubStackReader{summary: &port.StackSummary{
+		ID: "stack-1", OrgID: "org-1", ClusterID: "c-stack", State: "completed",
+	}}
+	uc := NewCreatePipeline(pipelineRepo, templateRepo, reader)
+
+	out, err := uc.Execute(context.Background(), CreatePipelineInput{
+		Name:          "orders",
+		OrgID:         "org-1",
+		StackID:       "stack-1",
+		ExecutionMode: domain.ExecutionModeEmergencyDirect,
+		Namespace:     "apps",
+		AppType:       domain.AppTypeBackend,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "c-stack", out.Pipeline.ClusterID)
+	require.Len(t, pipelineRepo.created, 1)
+	assert.Equal(t, "c-stack", pipelineRepo.created[0].ClusterID)
+}
+
+func TestCreatePipeline_AcceptsStackCluster(t *testing.T) {
+	pipelineRepo := &mockCreatePipelineRepo{}
+	templateRepo := newMockCreateTemplateRepo()
+	reader := &stubStackReader{summary: &port.StackSummary{
+		ID: "stack-1", OrgID: "org-1", ClusterID: "c-stack", State: "completed",
+	}}
+	uc := NewCreatePipeline(pipelineRepo, templateRepo, reader)
+
+	out, err := uc.Execute(context.Background(), CreatePipelineInput{
+		Name:          "orders",
+		OrgID:         "org-1",
+		ClusterID:     "c-stack",
+		StackID:       "stack-1",
+		ExecutionMode: domain.ExecutionModeEmergencyDirect,
+		Namespace:     "apps",
+		AppType:       domain.AppTypeBackend,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "c-stack", out.Pipeline.ClusterID)
+}
+
+// 스택 없는 파이프라인은 클러스터를 채워 줄 곳이 없다 — 종전대로 필수다.
+func TestCreatePipeline_ClusterRequiredWithoutStack(t *testing.T) {
+	uc := NewCreatePipeline(&mockCreatePipelineRepo{}, newMockCreateTemplateRepo())
+
+	_, err := uc.Execute(context.Background(), CreatePipelineInput{
+		Name: "orders", OrgID: "org-1", Namespace: "apps", AppType: domain.AppTypeBackend,
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cluster_id is required")
 }

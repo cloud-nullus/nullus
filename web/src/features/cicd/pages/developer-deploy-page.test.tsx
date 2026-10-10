@@ -360,6 +360,62 @@ describe("DeveloperDeployPage", () => {
     });
   });
 
+  // 스택에 묶인 파이프라인의 앱은 스택의 Argo CD 가 스택 클러스터에 올린다.
+  // 다른 클러스터를 고르게 두면 앱은 스택 클러스터에 뜨는데 화면은 고른
+  // 클러스터를 보여 준다 — 모니터링 탭이 비어 보이던 원인이다.
+  it("locks the cluster to the stack's cluster when a stack is selected", async () => {
+    mockUseClusters.mockReturnValue({
+      data: {
+        items: [
+          { id: "c1", name: "prod-k8s", types: ["target"] },
+          // 스택 클러스터는 target 타입이 아니어도 고정 대상이다.
+          { id: "c-stack", name: "stack-k8s", types: ["pipeline"] },
+        ],
+        total: 2,
+      },
+    });
+    mockUseStacks.mockReturnValue({
+      data: {
+        items: [{ id: "stack-1", name: "app-stack", clusterId: "c-stack" }],
+        total: 1,
+      },
+    });
+    renderWithProviders(<DeveloperDeployPage />);
+
+    const clusterSelect = screen.getByLabelText("Cluster");
+    await waitFor(() => {
+      expect(selectedLabel(clusterSelect)).toBe("stack-k8s");
+    });
+    // MUI 콤보박스는 disabled 속성 대신 aria-disabled 로 알린다.
+    expect(clusterSelect).toHaveAttribute("aria-disabled", "true");
+    expect(
+      screen.getByText(
+        "Fixed to the cluster the stack is installed on. The stack's Argo CD deploys the app there.",
+      ),
+    ).not.toBeNull();
+
+    completeRequiredFields();
+    expect(await screen.findByText("demo-app-deployment.yaml")).not.toBeNull();
+    fireEvent.click(submitButton());
+    await waitFor(() => {
+      expect(mockCreatePipeline).toHaveBeenCalledWith(
+        expect.objectContaining({ clusterId: "c-stack", stackId: "stack-1" }),
+      );
+    });
+  });
+
+  it("leaves the cluster choice open when the selected stack has no cluster", async () => {
+    renderWithProviders(<DeveloperDeployPage />);
+
+    selectOptionByValue(screen.getByLabelText("Stack 선택"), "stack-1");
+
+    const clusterSelect = screen.getByLabelText("Cluster");
+    await waitFor(() => {
+      expect(selectedLabel(clusterSelect)).toBe("prod-k8s");
+    });
+    expect(clusterSelect).not.toHaveAttribute("aria-disabled", "true");
+  });
+
   it("keeps manual code URL input visible when the selected stack has no repository endpoint", () => {
     mockUseStackIntegrations.mockReturnValue({ data: { integrations: [] } });
     renderWithProviders(<DeveloperDeployPage />);
