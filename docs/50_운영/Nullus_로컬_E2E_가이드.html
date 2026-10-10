@@ -440,7 +440,7 @@ footer { max-width: 46rem; margin-top: 64px; padding-top: 18px; border-top: 1px 
   <h1>Nullus를 로컬에서 처음부터 끝까지</h1>
   <p class="lede">처음 설치하고 띄운 뒤 GitLab + Argo CD + SonarQube 스택을 깔고, CI/CD 파이프라인을 돌리고, 백업 → 삭제 → 복구를 거쳐 그 파이프라인을 이어서 돌리는 한 바퀴다. 각 단계는 실제 스크립트와 코드에서 확인한 명령만 적었다.</p>
   <div class="meta">
-    <span><b>기준</b> main <code>0bbbb25</code> + SonarQube Keycloak 로그인 변경 · 2026-10-10</span>
+    <span><b>기준</b> main <code>040c480</code> + 설치 화면·파이프라인 SAST 변경 · 2026-10-10</span>
     <span><b>소요</b> 반나절 (스택 설치만 40분~2시간)</span>
     <span><b>대상</b> 처음 로컬 환경을 꾸리는 개발자</span>
   </div>
@@ -451,7 +451,7 @@ footer { max-width: 46rem; margin-top: 64px; padding-top: 18px; border-top: 1px 
 </header>
 
 <section class="notes" aria-label="시작 전에">
-  <div class="note"><strong>SonarQube는 설치와 Keycloak 로그인까지 된다</strong>템플릿 <code>gitlab-argocd-sonarqube-v1</code>이 SonarQube를 스택에 함께 깔고, 관리자 비밀번호를 바꾸고, Keycloak(SAML) 로그인을 붙인다. 설치 화면에서 고르기와 파이프라인의 SAST 단계는 아직 없어 분석은 손으로 돌린다(<a href="#ax-b">부록 B</a>).</div>
+  <div class="note"><strong>SonarQube는 설치부터 파이프라인 분석까지 된다</strong>템플릿 <code>gitlab-argocd-sonarqube-v1</code>(또는 설치 화면 Security 탭의 SonarQube)이 SonarQube를 스택에 함께 깔고, 관리자 비밀번호를 바꾸고, Keycloak(SAML) 로그인을 붙인다. 그 스택의 파이프라인에는 <code>sast</code> 단계가 생겨 Quality Gate 를 통과해야 배포된다(스택 정책으로 경고로 바꿀 수 있다 — <a href="#ax-b">부록 B</a>).</div>
   <div class="note"><strong>삭제는 "네임스페이스 삭제"로 한다</strong>백업·복구가 리허설된 경로가 이것뿐이다. 화면의 스택 삭제나 <code>stack-down</code> 뒤 복구는 아직 되지 않는다(<a href="#s11">11단계</a>).</div>
   <div class="note"><strong>배지 읽는 법</strong><span class="badge ok">실측 기록</span>은 CHANGELOG·리허설에 실제로 돌린 기록이 있는 단계, <span class="badge warn">코드 기준</span>은 코드를 읽고 쓴 단계다. 후자는 처음 돌리는 사람이 확인하게 된다.</div>
   <div class="note"><strong>몇 군데는 손이 간다</strong>GitLab 포트포워딩, 백업 설정, 복구 후 주소 갱신은 아직 자동화되지 않았다. 해당 단계에 <span class="badge manual">수동</span> 표시가 있다.</div>
@@ -733,7 +733,7 @@ grep '백업 모듈 준비 완료' .runbook-logs/api.log</code></pre></div>
       <li>CI 변수(배포 토큰 등), 이미지 pull Secret, Argo CD 저장소 Secret과 Application <code>demo-api</code>를 만든다.</li>
     </ol>
     <div class="callout warn"><b>실행 직후 "Trigger CI" 실패가 보여도 정상이다</b>화면은 파이프라인을 만든 뒤 Nullus 쪽 "실행"을 한 번 더 부르는데, 이 넘김은 Jenkins 스택에만 구현돼 있다. GitLab 스택에서는 그 기록만 실패로 남고, 실제 빌드는 위 2번의 GitLab 파이프라인이 한다.</div>
-    <div class="callout"><b>파이프라인에는 아직 SonarQube 분석 단계가 없다</b>스택에 SonarQube가 있어도 만들어지는 <code>.gitlab-ci.yml</code>은 빌드·배포만 한다. 분석은 <a href="#ax-b">부록 B</a>처럼 손으로 돌린다.</div>
+    <div class="callout"><b>스택에 SonarQube 가 있으면 <code>sast</code> 단계가 생긴다</b> <span class="badge ok" title="2026-10-10 kind 에서 gitlab-argocd-sonarqube-v1 스택에 파이프라인을 만들어 build · sast · deploy 를 실제로 돌렸다">실측 기록</span> 빌드와 함께 돌아 <code>sonar-scanner</code> 로 소스를 분석하고, Quality Gate 를 통과해야 <code>deploy</code> 가 돈다. 분석 토큰(<code>SONAR_TOKEN</code>, 가려짐)과 정책 변수는 Nullus 가 프로젝트 CI/CD 변수로 넣는다 — 스택 설치가 발급해 둔 토큰이라 따로 만들 것이 없다.</div>
     <details class="fold"><summary>화면 대신 API로 만들기</summary><div>
     <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>TARGET_ID=$(curl -s $API/api/v1/admin/clusters \
   | jq -r '.items[] | select(.name=="kind-nullus-develop") | .id')
@@ -794,6 +794,7 @@ fingerprint | tee ~/nullus-before.txt</code></pre></div>
     <p class="check-title">확인</p>
     <ul class="check">
       <li>앱 이미지 태그가 <code>:bootstrap</code>이 아니라 커밋 SHA다</li>
+      <li>SonarQube 스택이면 GitLab 파이프라인에 <code>build</code> · <code>sast</code> · <code>deploy</code> 가 있고 <code>sast</code> 잡 로그 끝에 <code>QUALITY GATE STATUS: PASSED</code> 가 있다. <code>https://sonarqube.nullus.local</code> 에 앱 이름의 프로젝트가 생겼다</li>
       <li><code>~/nullus-before.txt</code>의 세 항목이 모두 채워져 있다</li>
     </ul>
   </div>
@@ -1059,12 +1060,16 @@ kubectl --context $CTX wait --for=condition=Ready nodes --all --timeout=180s</co
         <tr><td>설치</td><td>된다</td><td>템플릿 <code>gitlab-argocd-sonarqube-v1</code>을 <code>stack-up</code>으로 깐다(4단계). 스택 PostgreSQL 안에 전용 DB <code>sonarqube</code>를 만들어 쓰고, 그래서 스택 백업에 함께 담긴다</td></tr>
         <tr><td>관리자 계정</td><td>된다</td><td>설치가 <code>admin/admin</code>을 바꿔 둔다. 비밀번호는 Secret <code>nullus-sonarqube-credentials</code>의 <code>admin-password</code>(5단계)이고, 연결 정보 창도 이 Secret을 가리킨다</td></tr>
         <tr><td>Keycloak 로그인</td><td>된다</td><td>SonarQube Community는 SSO로 SAML만 받는다. 설치가 Keycloak에 SAML 클라이언트를 등록하고 렐름 서명 인증서를 SonarQube에 넣어, 로그인 화면에 Keycloak 버튼이 생긴다. 처음 들어온 사용자는 일반 사용자(<code>sonar-users</code>)로 만들어지고 로그인 ID 뒤에 숫자가 붙는다(SonarQube의 외부 계정 규칙). 관리는 admin 계정으로 한다. Keycloak 렐름 키를 회전하면 SonarQube 단계를 다시 돌려야 새 인증서를 받는다</td></tr>
-        <tr><td>설치 화면에서 고르기</td><td>아직</td><td>설치 마법사에 SAST 칸이 없다. 게다가 화면은 보안 탭에서 고른 값을 요청에 싣지 않아 Trivy도 빠진다(<a href="#ax-c">부록 C</a>). 보안 도구는 <code>stack-up</code> 템플릿으로 깐다</td></tr>
-        <tr><td>파이프라인 분석·차단</td><td>아직</td><td>만들어지는 <code>.gitlab-ci.yml</code>에 분석 단계가 없다. 아래처럼 손으로 돌린다</td></tr>
+        <tr><td>설치 화면에서 고르기</td><td>된다</td><td>설치 마법사 Security 탭에서 Static Analysis (SAST) = SonarQube 를 고른다. 템플릿 <code>gitlab-argocd-sonarqube-v1</code>을 고르면 미리 채워진다. 다만 화면 설치는 kind 노드 배선을 하지 않으므로 부록 A 를 따른다</td></tr>
+        <tr><td>파이프라인 분석·차단</td><td>된다</td><td>파이프라인에 <code>sast</code> 단계가 생긴다(GitLab · GitHub Actions · Jenkins). 기본은 Quality Gate 실패 시 차단이고, 아래처럼 스택 정책으로 경고로 바꾼다. SonarQube 에 닿지 못하면 이미지 스캔과 같은 장애 정책(<code>on_scanner_unreachable</code>)을 따른다</td></tr>
       </tbody>
     </table></div>
 
-    <p><b>손으로 분석 돌려 보기.</b> 8단계에서 만든 앱 저장소를 받아 스캐너 컨테이너로 분석한다. SonarQube에는 포트포워딩으로 붙는다. 로컬 MinIO가 9000을 쓰므로 19000으로 연다.</p>
+    <p><b>정책을 경고로 바꾸기.</b> Quality Gate 를 막 들인 팀이 기존 코드의 문제로 배포가 멈추지 않게 하려면 스택 정책을 바꾼다. 저장하면 그 스택의 파이프라인 변수(<code>NULLUS_SAST_ON_GATE_FAILURE</code>)에 바로 실리고, 다음 실행부터 따른다(실측: 같은 커밋을 다시 돌리자 <code>sast</code> 가 "경고 정책에 따라 통과" 로 끝나고 <code>deploy</code> 가 돌았다).</p>
+    <div class="code"><div class="code-head"><span>스택 정책</span><button class="copy" type="button">복사</button></div><pre><code>curl -s -X PUT $API/api/v1/stacks/$STACK_ID/image-scan-policy -H 'Content-Type: application/json' \
+  -d '{"block_severity":"CRITICAL","ignore_unfixed":true,"on_scanner_unreachable":"block","sast_on_gate_failure":"warn"}' \
+  | jq '{policy, pushes}'                        <span class="c"># 되돌리려면 "block"</span></code></pre></div>
+    <p><b>손으로 분석 돌려 보기(선택).</b> 파이프라인 밖에서 확인하고 싶을 때 쓴다. 8단계에서 만든 앱 저장소를 받아 스캐너 컨테이너로 분석한다. SonarQube에는 포트포워딩으로 붙는다. 로컬 MinIO가 9000을 쓰므로 19000으로 연다.</p>
     <div class="code"><div class="code-head"><span>① 분석 토큰</span><button class="copy" type="button">복사</button></div><pre><code>source ~/.nullus-e2e.env
 SQ_PW=$(kubectl --context $CTX -n $NS get secret nullus-sonarqube-credentials \
   -o jsonpath='{.data.admin-password}' | base64 -d)
@@ -1088,7 +1093,7 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
       <li>스캐너가 <code>QUALITY GATE STATUS: PASSED</code>와 <code>EXECUTION SUCCESS</code>로 끝나고 <code>exit=0</code>이다</li>
       <li><code>https://sonarqube.nullus.local/dashboard?id=demo-api</code>에 프로젝트와 이슈가 보인다</li>
     </ul>
-    <div class="callout warn"><b>첫 분석은 문제가 있어도 통과한다</b>기본 Quality Gate(Sonar way)는 "새 코드" 조건만 본다. 첫 분석에는 비교할 기준이 없어서, 실측에서 <code>eval</code>을 CRITICAL로 잡고도 PASSED였다. 그 뒤 분석에서 새 문제가 하나라도 생기면 <code>new_violations</code>로 FAILED가 되고, 스캐너가 <code>EXECUTION FAILURE</code>와 종료 코드 3으로 끝난다. 파이프라인 잡을 멈추는 것은 이 종료 코드다.</div>
+    <div class="callout warn"><b>첫 분석은 문제가 있어도 통과한다</b>기본 Quality Gate(Sonar way)는 "새 코드" 조건만 본다. 첫 분석에는 비교할 기준이 없어서, 실측에서 <code>eval</code>을 CRITICAL로 잡고도 PASSED였다. 그 뒤 분석에서 새 문제가 하나라도 생기면 <code>new_violations</code>로 FAILED가 되고, 스캐너가 <code>EXECUTION FAILURE</code>와 종료 코드 3으로 끝난다. 파이프라인 잡을 멈추는 것은 이 종료 코드다 — 실제 파이프라인에서도 첫 실행은 통과했고, <code>eval</code> 을 넣은 커밋에서 <code>sast</code> 가 실패하고 <code>deploy</code> 가 건너뛰어졌다.</div>
     <p>컨테이너 이미지 취약점은 SonarQube가 아니라 Trivy가 본다. <code>stack-up --template=gitlab-harbor-trivy-v1</code>로 깔면 스택에 Trivy가 들어가고 파이프라인에 차단 게이트(<code>image-scan</code> 잡)가 붙는다. 소스 정적 분석(SAST)은 아니다.</p>
     <p>끝나면 포트포워딩을 닫는다: <code>pkill -f 'port-forward svc/sonarqube'</code></p>
   </div>
@@ -1105,8 +1110,8 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
       <li><b>앱은 화면에서 고른 클러스터가 아니라 스택 클러스터에 배포된다.</b> Argo CD 목적지가 <code>kubernetes.default.svc</code>다. 모니터링 탭은 고른 클러스터를 읽어 비어 보일 수 있다.<span class="ref">internal/cicd/adapter/argocd/application.go:26-27, 89-92</span></li>
       <li><b>연결 정보의 GitLab 비밀번호 Secret 이름이 설치기와 다르다.</b><span class="ref">internal/stack/domain/connection.go:266 ↔ adapter/helm/secret-provisioning.go:72</span></li>
       <li><b>노드 배선은 <code>stack-up --wait</code>에서만 한다.</b> <code>stack-up</code>이 템플릿의 보안 슬롯(Trivy·SonarQube)을 빠뜨리던 것은 SonarQube 설치 변경에서 고쳤다.<span class="ref">scripts/runbook_local.sh:1251</span></li>
-      <li><b>설치 화면이 보안 탭에서 고른 값을 요청에 싣지 않는다.</b> 화면으로 깔면 Trivy를 골라도 빠진다. SAST 칸은 아직 없다.<span class="ref">web/src/features/stack/pages/stack-install-page.tsx:2164-2196</span></li>
-      <li><b>SonarQube는 설치와 Keycloak 로그인까지 된다.</b> 설치 화면 선택, 파이프라인 분석 단계와 Quality Gate 차단은 뒤따르는 변경에서 붙는다.<span class="ref">internal/stack/adapter/helm/sonarqube-sso.go</span></li>
+      <li><b>Quality Gate 결과는 Nullus 화면에 따로 보이지 않는다.</b> 파이프라인이 실패로 멈추는 것으로만 드러난다. 무엇에 걸렸는지는 GitLab 잡 로그와 SonarQube 화면에서 본다. 에어갭 번들에는 <code>sonar-scanner</code> 이미지가 아직 없고, 그 이미지는 amd64 만 낸다(arm64 노드는 에뮬레이션이 있어야 돈다).<span class="ref">internal/cicd/adapter/scaffold/sast.go</span></li>
+      <li><b>배포 되커밋(<code>[skip ci]</code>)이 실행 기록에 실패로 남는다.</b> GitLab 은 그 커밋의 파이프라인을 <code>skipped</code> 로 만드는데, 동기화가 이를 중단(ABORTED)으로 읽어 화면에 실패로 보인다.<span class="ref">internal/cicd/adapter/gitlab/build_reader.go:166</span></li>
       <li><b>백업 화면이 스택 백업을 하지 못한다.</b> 네임스페이스를 <code>nullus-app</code>으로 고정하고 <code>stack_id</code>를 보내지 않는다.<span class="ref">web/src/features/admin/pages/backup-page.tsx:54, 137-142</span></li>
       <li><b>백업 문서의 <code>X-Org-Id</code>가 쓰지 않는 조직이다.</b> 그 ID로 만든 백업은 화면 목록에 보이지 않는다.<span class="ref">docs/50_운영/Nullus_백업복구_로컬_테스트_가이드.md · internal/shared/domain/org.go:8-16</span></li>
       <li><b>복구가 네임스페이스를 만들지 않는다.</b> 문서 §4.8에도 이 단계가 빠져 있다.<span class="ref">internal/backup/adapter/kube/volume_archiver.go:207-243</span></li>
