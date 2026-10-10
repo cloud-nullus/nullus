@@ -1527,6 +1527,7 @@
     "form": {
       "stackOptional": "Stack",
       "stackRequired": "Stack 선택",
+      "clusterLockedToStack": "Fixed to the cluster the stack is installed on. The stack's Argo CD deploys the app there.",
       "manualInput": "Manual Input",
       "appName": "App Name",
       "imageRegistry": "Image Registry",
