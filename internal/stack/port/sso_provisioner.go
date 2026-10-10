@@ -10,6 +10,16 @@ type SSOClientSpec struct {
 	ClientSecret string
 }
 
+// SAML 로 로그인하는 도구가 읽을 사용자 속성 이름이다.
+//
+// IdP 는 이 이름으로 속성을 싣고 도구는 이 이름으로 읽는다. 두 모듈이 따로 적으면
+// 한쪽만 바뀌어도 로그인이 "login 속성이 없다" 로 막히므로 여기 하나만 둔다.
+const (
+	SAMLLoginAttribute = "login"
+	SAMLNameAttribute  = "name"
+	SAMLEmailAttribute = "email"
+)
+
 // SSOProvisioner 는 설치된 OSS 의 OIDC 클라이언트를 IdP 에 등록한다.
 //
 // stack 모듈이 auth 모듈의 구현을 직접 import 하면 모듈 간 직접 의존 금지
@@ -27,6 +37,16 @@ type SSOProvisioner interface {
 	// redirect URI 가 계속 남는다. 구현은 진작 있었는데 이 인터페이스에 없어서
 	// stack 모듈이 부를 방법이 없었다.
 	Deprovision(ctx context.Context, stepName string) error
+	// UsesClientSecret 은 도구가 client secret 으로 IdP 와 통신하는지 알려 준다.
+	//
+	// SAML 로 로그인하는 도구(SonarQube Community)는 client secret 이 없다. 이걸
+	// 모르면 시크릿 평면이 아무도 읽지 않는 값을 만들고, 프로비저닝이 OpenBao 에서
+	// 그 값을 찾다가 멈춘다.
+	UsesClientSecret(stepName string) bool
+	// SAMLSigningCertificate 는 IdP 가 SAML 응답에 서명하는 인증서다(머리말 없는
+	// base64 DER). SAML 도구는 디스커버리 문서 대신 이 인증서를 직접 받아 서명을
+	// 검증한다.
+	SAMLSigningCertificate(ctx context.Context) (string, error)
 }
 
 // SSOProvisionerFactory 는 스택별 접속 도메인/슬러그로 provisioner 를 만든다.

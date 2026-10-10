@@ -129,6 +129,9 @@ type Orchestrator struct {
 	// CI 잡과 Argo CD 에 넣는 데 쓴다 — internal-ca-trust.go.
 	internalCAEncoded string
 	internalCALoaded  bool
+	// samlSigningCert 는 Keycloak 이 SAML 응답에 서명하는 인증서다. SAML 로 로그인하는
+	// SonarQube 가 values 로 받는다 — sonarqube-sso.go.
+	samlSigningCert string
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -1008,6 +1011,13 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			if err := o.ensureInternalCABundleSecret(ctx, namespace); err != nil {
 				return err
 			}
+		}
+	}
+	// SAML 로 로그인하는 SonarQube 는 IdP 서명 인증서를 values 로 받는다. Argo CD 의
+	// CA 와 같은 이유로 values 를 만들기 전에 읽는다(sonarqube-sso.go).
+	if step == "installing_sonarqube" && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.loadSAMLSigningCertificate(ctx); err != nil {
+			return err
 		}
 	}
 	values := o.valuesForStep(step, spec)

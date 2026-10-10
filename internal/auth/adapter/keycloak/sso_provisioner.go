@@ -9,6 +9,9 @@ import (
 
 const defaultAccessDomain = "nullus.local"
 
+// ProtocolSAML 은 SAML 로 로그인하는 도구의 프로토콜이다. 비어 있으면 OIDC 다.
+const ProtocolSAML = "saml"
+
 // ToolSSOSpec defines SSO client parameters for an OSS tool.
 type ToolSSOSpec struct {
 	ClientID     string
@@ -22,6 +25,10 @@ type ToolSSOSpec struct {
 	//
 	// 도구가 특정 클레임을 요구할 때만 채운다 — 불필요한 클레임은 토큰만 키운다.
 	ProtocolMappers []OIDCProtocolMapper
+	// Protocol 은 도구가 IdP 와 쓰는 프로토콜이다. 비어 있으면 OIDC 다.
+	//
+	// SAML 도구는 client secret 이 없고, CallbackPath 는 ACS(응답을 받는 주소)다.
+	Protocol string
 }
 
 // buildRedirectURI constructs the OIDC redirect URI for a tool.
@@ -106,6 +113,15 @@ func newToolSpecs() map[string]ToolSSOSpec {
 				{Name: "minio-policy", ClaimName: "policy", ClaimValue: "consoleAdmin"},
 			},
 		},
+		"installing_sonarqube": {
+			ClientID:    "sonarqube",
+			DisplayName: "SonarQube",
+			Subdomain:   "sonarqube",
+			// SonarQube Community 는 SSO 로 OIDC 를 받지 않고 SAML 만 받는다. ACS 는
+			// SonarQube 가 sonar.core.serverBaseURL 에 이 경로를 붙여 만든다.
+			CallbackPath: "/oauth2/callback/saml",
+			Protocol:     ProtocolSAML,
+		},
 	}
 }
 
@@ -175,16 +191,41 @@ func (p *SSOProvisioner) ToolSteps() []string {
 	return steps
 }
 
-// ProvisionSSO 는 도구의 OIDC 클라이언트를 등록/갱신한다.
+// UsesClientSecret 은 도구가 client secret 을 갖는 OIDC 클라이언트인지 알려 준다.
+//
+// SAML 도구와 등록하지 않는 도구는 client secret 이 없다.
+func (p *SSOProvisioner) UsesClientSecret(stepName string) bool {
+	spec, ok := p.toolSpecs[stepName]
+	return ok && spec.Protocol != ProtocolSAML
+}
+
+// SAMLSigningCertificate 는 SAML 도구가 응답 서명을 검증할 렐름 인증서다.
+func (p *SSOProvisioner) SAMLSigningCertificate(ctx context.Context) (string, error) {
+	if p.kc == nil {
+		return "", fmt.Errorf("keycloak 클라이언트가 없어 서명 인증서를 읽을 수 없습니다")
+	}
+	return p.kc.RealmSigningCertificate(ctx)
+}
+
+// ProvisionSSO 는 도구의 IdP 클라이언트를 등록/갱신한다.
 //
 // secret 은 호출자가 넘긴다. Nullus 가 생성해 OpenBao 에 기록한 값을 그대로
 // Keycloak 에 push 하므로, Keycloak 이 유실돼도 OpenBao 에서 복원할 수 있다.
+// SAML 도구는 secret 이 없어 무시한다.
 func (p *SSOProvisioner) ProvisionSSO(ctx context.Context, stepName, clientSecret string) error {
 	spec, ok := p.toolSpecs[stepName]
 	if !ok {
 		return fmt.Errorf("unknown SSO tool: %s", stepName)
 	}
 	clientID, _ := p.ClientIDFor(stepName)
+
+	if spec.Protocol == ProtocolSAML {
+		return p.kc.UpsertSAMLClient(ctx, SAMLClientSpec{
+			ClientID: clientID,
+			Name:     spec.DisplayName,
+			ACSURL:   buildRedirectURI(spec.Subdomain, p.accessDomain, spec.CallbackPath),
+		})
+	}
 
 	return p.kc.UpsertOIDCClient(ctx, OIDCClientSpec{
 		ClientID:        clientID,

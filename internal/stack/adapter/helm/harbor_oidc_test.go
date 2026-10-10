@@ -160,3 +160,9 @@ func TestHarborExternalURL_IsHTTPSWithoutSSO(t *testing.T) {
 	assert.Equal(t, "https://harbor.nullus.local", values["externalURL"],
 		"http 로 두면 스캔 잡이 토큰 realm 에서 거부된다")
 }
+
+func (s stubHarborProvisioner) UsesClientSecret(string) bool { return true }
+
+func (s stubHarborProvisioner) SAMLSigningCertificate(context.Context) (string, error) {
+	return "", nil
+}

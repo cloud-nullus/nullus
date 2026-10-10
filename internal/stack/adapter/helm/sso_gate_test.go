@@ -84,3 +84,7 @@ func TestToolOIDCValues_ImplyClientRegistrationStep(t *testing.T) {
 	assert.True(t, o.isStepEnabled("provisioning_sso"),
 		"도구에 OIDC 를 넣으면서 클라이언트 등록을 건너뛰면 Client not found 가 난다")
 }
+
+func (ssoGateProvisioner) UsesClientSecret(string) bool { return true }
+
+func (ssoGateProvisioner) SAMLSigningCertificate(context.Context) (string, error) { return "", nil }
