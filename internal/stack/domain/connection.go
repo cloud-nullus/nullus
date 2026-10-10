@@ -109,10 +109,10 @@ const (
 	//
 	// 차트 기본 이름은 <릴리스>-sonarqube 라 fullnameOverride 로 릴리스명과 같게
 	// 둔다 — Service·StatefulSet·PVC 이름이 모두 이 값이 된다.
-	SonarQubeReleaseName = "sonarqube"
+	SonarQubeReleaseName = shareddomain.SonarQubeReleaseName
 	SonarQubeServiceName = SonarQubeReleaseName
 	// SonarQubeServicePort 는 화면과 웹 API 포트다. 차트 기본 service.externalPort 와 같다.
-	SonarQubeServicePort = 9000
+	SonarQubeServicePort = shareddomain.SonarQubeServicePort
 	// SonarQubeSecret 은 DB 비밀번호·모니터링 패스코드·관리자 비밀번호를 담는다.
 	// OpenBao 에서 만든 값을 ESO 가 이 이름으로 옮긴다.
 	SonarQubeSecret = "nullus-sonarqube-credentials"

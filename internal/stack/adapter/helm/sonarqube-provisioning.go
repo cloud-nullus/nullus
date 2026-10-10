@@ -235,7 +235,8 @@ func (o *Orchestrator) ensureSonarQubeProvisioned(ctx context.Context, namespace
 		logs, _ := o.runKubectl(ctx, "logs", "-n", namespace, "job/"+sonarqubeProvisionJobName, "--tail=30")
 		return fmt.Errorf("sonarqube 관리자 비밀번호를 바꾸지 못했습니다: %w (로그: %s)", err, strings.TrimSpace(string(logs)))
 	}
-	return nil
+	// CI 의 소스 정적 분석 단계가 쓸 토큰을 발급해 둔다(sonarqube-analysis-token.go).
+	return o.ensureSonarQubeAnalysisToken(ctx, namespace, stackName)
 }
 
 // sonarqubeSharedServiceValues 는 네임스페이스와 접속 도메인에서 파생되는 값이다.
