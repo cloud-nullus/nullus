@@ -67,11 +67,6 @@ func (kc *KeycloakClient) UpsertOIDCClient(ctx context.Context, spec OIDCClientS
 		return err
 	}
 
-	existingID, err := kc.findClientUUID(ctx, token, spec.ClientID)
-	if err != nil {
-		return err
-	}
-
 	payload := map[string]any{
 		"clientId":                  spec.ClientID,
 		"enabled":                   true,
@@ -90,34 +85,9 @@ func (kc *KeycloakClient) UpsertOIDCClient(ctx context.Context, spec OIDCClientS
 		payload["secret"] = spec.Secret
 	}
 
-	body, err := json.Marshal(payload)
+	existingID, err := kc.upsertClient(ctx, token, spec.ClientID, payload)
 	if err != nil {
-		return fmt.Errorf("클라이언트 페이로드 마샬 실패: %w", err)
-	}
-
-	method := http.MethodPost
-	endpoint := fmt.Sprintf("%s/admin/realms/%s/clients", kc.baseURL, kc.realm)
-	if existingID != "" {
-		method = http.MethodPut
-		endpoint = fmt.Sprintf("%s/admin/realms/%s/clients/%s", kc.baseURL, kc.realm, existingID)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("클라이언트 요청 생성 실패: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := kc.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("클라이언트 upsert 실패: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 {
-		raw, _ := io.ReadAll(resp.Body) // #nosec G104 -- 오류 맥락용 best-effort 읽기
-		return fmt.Errorf("클라이언트 upsert 실패: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return err
 	}
 
 	if len(spec.ProtocolMappers) == 0 {
@@ -134,11 +104,62 @@ func (kc *KeycloakClient) UpsertOIDCClient(ctx context.Context, spec OIDCClientS
 	return kc.ensureProtocolMappers(ctx, token, clientUUID, spec.ProtocolMappers)
 }
 
-// ensureProtocolMappers 는 매퍼를 등록하거나 갱신한다.
+// upsertClient 는 clientId 로 찾아 있으면 갱신하고 없으면 만든다.
+//
+// 갱신했으면 그 클라이언트의 내부 UUID 를, 새로 만들었으면 빈 문자열을 돌려준다.
+// 생성 응답은 본문이 비어 UUID 를 알 수 없다 — 필요한 호출자만 다시 찾는다.
+func (kc *KeycloakClient) upsertClient(ctx context.Context, token, clientID string, payload map[string]any) (string, error) {
+	existingID, err := kc.findClientUUID(ctx, token, clientID)
+	if err != nil {
+		return "", err
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("클라이언트 페이로드 마샬 실패: %w", err)
+	}
+
+	method := http.MethodPost
+	endpoint := fmt.Sprintf("%s/admin/realms/%s/clients", kc.baseURL, kc.realm)
+	if existingID != "" {
+		method = http.MethodPut
+		endpoint = fmt.Sprintf("%s/admin/realms/%s/clients/%s", kc.baseURL, kc.realm, existingID)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("클라이언트 요청 생성 실패: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := kc.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("클라이언트 upsert 실패: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(resp.Body) // #nosec G104 -- 오류 맥락용 best-effort 읽기
+		return "", fmt.Errorf("클라이언트 upsert 실패: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	return existingID, nil
+}
+
+// ensureProtocolMappers 는 고정 클레임 매퍼를 등록하거나 갱신한다.
+func (kc *KeycloakClient) ensureProtocolMappers(ctx context.Context, token, clientUUID string, mappers []OIDCProtocolMapper) error {
+	payloads := make([]map[string]any, 0, len(mappers))
+	for _, m := range mappers {
+		payloads = append(payloads, hardcodedClaimMapperPayload(m))
+	}
+	return kc.ensureProtocolMapperPayloads(ctx, token, clientUUID, payloads)
+}
+
+// ensureProtocolMapperPayloads 는 매퍼 표현들을 이름 기준으로 등록하거나 갱신한다.
 //
 // 이미 있는 이름을 다시 만들면 409 가 난다. 그것을 성공으로 다루면 값이 바뀌어도
 // 반영되지 않으므로, 이름으로 찾아 PUT 으로 갱신한다.
-func (kc *KeycloakClient) ensureProtocolMappers(ctx context.Context, token, clientUUID string, mappers []OIDCProtocolMapper) error {
+func (kc *KeycloakClient) ensureProtocolMapperPayloads(ctx context.Context, token, clientUUID string, payloads []map[string]any) error {
 	base := fmt.Sprintf("%s/admin/realms/%s/clients/%s/protocol-mappers/models", kc.baseURL, kc.realm, clientUUID)
 
 	existing, err := kc.listProtocolMapperIDs(ctx, token, base)
@@ -146,35 +167,49 @@ func (kc *KeycloakClient) ensureProtocolMappers(ctx context.Context, token, clie
 		return err
 	}
 
-	for _, m := range mappers {
-		body, marshalErr := json.Marshal(hardcodedClaimMapperPayload(m))
-		if marshalErr != nil {
-			return fmt.Errorf("매퍼 페이로드 마샬 실패 (%s): %w", m.Name, marshalErr)
-		}
-
+	for _, payload := range payloads {
+		name, _ := payload["name"].(string)
 		method, endpoint := http.MethodPost, base
-		if id, ok := existing[m.Name]; ok {
+		if id, ok := existing[name]; ok {
+			// Keycloak 은 갱신할 매퍼를 경로가 아니라 본문의 id 로 찾는다. 본문에 id 가
+			// 없으면 NullPointerException 으로 500 을 내, 다시 프로비저닝할 때마다
+			// SSO 단계가 멈췄다(26.0 실측).
+			payload = withMapperID(payload, id)
 			method, endpoint = http.MethodPut, base+"/"+id
+		}
+		body, marshalErr := json.Marshal(payload)
+		if marshalErr != nil {
+			return fmt.Errorf("매퍼 페이로드 마샬 실패 (%s): %w", name, marshalErr)
 		}
 
 		req, reqErr := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
 		if reqErr != nil {
-			return fmt.Errorf("매퍼 요청 생성 실패 (%s): %w", m.Name, reqErr)
+			return fmt.Errorf("매퍼 요청 생성 실패 (%s): %w", name, reqErr)
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
 
 		resp, doErr := kc.httpClient.Do(req)
 		if doErr != nil {
-			return fmt.Errorf("매퍼 등록 실패 (%s): %w", m.Name, doErr)
+			return fmt.Errorf("매퍼 등록 실패 (%s): %w", name, doErr)
 		}
 		raw, _ := io.ReadAll(resp.Body) // #nosec G104 -- 오류 맥락용 best-effort 읽기
 		resp.Body.Close()
 		if resp.StatusCode >= 300 {
-			return fmt.Errorf("매퍼 등록 실패 (%s): status=%d body=%s", m.Name, resp.StatusCode, strings.TrimSpace(string(raw)))
+			return fmt.Errorf("매퍼 등록 실패 (%s): status=%d body=%s", name, resp.StatusCode, strings.TrimSpace(string(raw)))
 		}
 	}
 	return nil
+}
+
+// withMapperID 는 매퍼 표현에 id 를 붙인 사본이다. 원본은 다른 클라이언트에도 쓰일 수 있어 고치지 않는다.
+func withMapperID(payload map[string]any, id string) map[string]any {
+	out := make(map[string]any, len(payload)+1)
+	for k, v := range payload {
+		out[k] = v
+	}
+	out["id"] = id
+	return out
 }
 
 // listProtocolMapperIDs 는 이름 → 매퍼 ID 를 돌려준다.

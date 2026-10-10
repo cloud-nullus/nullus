@@ -205,3 +205,7 @@ func TestJenkinsOIDC_EscapeHatchUsesMountedAdminCredential(t *testing.T) {
 		"${"+domain.JenkinsAdminSecret+"-"+domain.JenkinsAdminPasswordKey+"}")
 	assert.NotContains(t, script, "password: \"admin", "평문 비밀번호가 들어갔다")
 }
+
+func (s stubMultiProvisioner) UsesClientSecret(string) bool { return true }
+
+func (s stubMultiProvisioner) SAMLSigningCertificate(context.Context) (string, error) { return "", nil }

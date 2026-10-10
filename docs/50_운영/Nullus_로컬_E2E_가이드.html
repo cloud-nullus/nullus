@@ -440,7 +440,7 @@ footer { max-width: 46rem; margin-top: 64px; padding-top: 18px; border-top: 1px 
   <h1>Nullus를 로컬에서 처음부터 끝까지</h1>
   <p class="lede">처음 설치하고 띄운 뒤 GitLab + Argo CD + SonarQube 스택을 깔고, CI/CD 파이프라인을 돌리고, 백업 → 삭제 → 복구를 거쳐 그 파이프라인을 이어서 돌리는 한 바퀴다. 각 단계는 실제 스크립트와 코드에서 확인한 명령만 적었다.</p>
   <div class="meta">
-    <span><b>기준</b> main <code>13314f3</code> + SonarQube 설치 변경 · 2026-10-10</span>
+    <span><b>기준</b> main <code>0bbbb25</code> + SonarQube Keycloak 로그인 변경 · 2026-10-10</span>
     <span><b>소요</b> 반나절 (스택 설치만 40분~2시간)</span>
     <span><b>대상</b> 처음 로컬 환경을 꾸리는 개발자</span>
   </div>
@@ -451,7 +451,7 @@ footer { max-width: 46rem; margin-top: 64px; padding-top: 18px; border-top: 1px 
 </header>
 
 <section class="notes" aria-label="시작 전에">
-  <div class="note"><strong>SonarQube는 설치까지만 된다</strong>템플릿 <code>gitlab-argocd-sonarqube-v1</code>이 SonarQube를 스택에 함께 깔고 관리자 비밀번호까지 바꿔 둔다. Keycloak 로그인, 설치 화면에서 고르기, 파이프라인의 SAST 단계는 아직 없어 분석은 손으로 돌린다(<a href="#ax-b">부록 B</a>).</div>
+  <div class="note"><strong>SonarQube는 설치와 Keycloak 로그인까지 된다</strong>템플릿 <code>gitlab-argocd-sonarqube-v1</code>이 SonarQube를 스택에 함께 깔고, 관리자 비밀번호를 바꾸고, Keycloak(SAML) 로그인을 붙인다. 설치 화면에서 고르기와 파이프라인의 SAST 단계는 아직 없어 분석은 손으로 돌린다(<a href="#ax-b">부록 B</a>).</div>
   <div class="note"><strong>삭제는 "네임스페이스 삭제"로 한다</strong>백업·복구가 리허설된 경로가 이것뿐이다. 화면의 스택 삭제나 <code>stack-down</code> 뒤 복구는 아직 되지 않는다(<a href="#s11">11단계</a>).</div>
   <div class="note"><strong>배지 읽는 법</strong><span class="badge ok">실측 기록</span>은 CHANGELOG·리허설에 실제로 돌린 기록이 있는 단계, <span class="badge warn">코드 기준</span>은 코드를 읽고 쓴 단계다. 후자는 처음 돌리는 사람이 확인하게 된다.</div>
   <div class="note"><strong>몇 군데는 손이 간다</strong>GitLab 포트포워딩, 백업 설정, 복구 후 주소 갱신은 아직 자동화되지 않았다. 해당 단계에 <span class="badge manual">수동</span> 표시가 있다.</div>
@@ -608,7 +608,7 @@ kubectl --context $CTX -n $NS get secret gitlab-initial-root-password \
 <span class="c"># Argo CD — 사용자 admin</span>
 kubectl --context $CTX -n $NS get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' | base64 -d; echo
-<span class="c"># SonarQube — 사용자 admin (Keycloak 로그인은 아직 없다)</span>
+<span class="c"># SonarQube — 관리자 admin. 일반 사용자는 로그인 화면의 Keycloak 버튼으로 들어간다</span>
 kubectl --context $CTX -n $NS get secret nullus-sonarqube-credentials \
   -o jsonpath='{.data.admin-password}' | base64 -d; echo</code></pre></div>
     <div class="callout"><b>연결 정보 창과 Secret 이름이 다를 수 있다</b>화면의 연결 정보는 <code>gitlab-gitlab-initial-root-password</code>를 가리키지만, 설치기는 GitLab 비밀번호를 <code>gitlab-initial-root-password</code>로 만든다. 앞의 것이 없으면 위 명령을 쓴다.</div>
@@ -617,6 +617,7 @@ kubectl --context $CTX -n $NS get secret nullus-sonarqube-credentials \
       <li><code>https://gitlab.nullus.local</code>에 root로 로그인된다</li>
       <li><code>https://argocd.nullus.local</code>에 admin으로 로그인된다</li>
       <li><code>https://sonarqube.nullus.local</code>에 admin으로 로그인되고, <code>admin</code> / <code>admin</code>은 거부된다</li>
+      <li>SonarQube 로그인 화면의 <b>Keycloak</b> 버튼으로 <code>admin@nullus.io</code>가 들어가진다(일반 사용자 권한). <code>--auth=none</code>으로 띄웠으면 버튼이 없다 <span class="badge ok" title="2026-10-10 kind + Keycloak 26.0.8: SAML 시작 → Keycloak 로그인 → 응답 → SonarQube 세션을 브라우저 대신 스크립트로 따라 했다. 실제 게이트웨이·브라우저로는 아직 돌려 보지 않았다">실측 기록 (SAML 흐름)</span></li>
     </ul>
   </div>
 </section>
@@ -1057,7 +1058,7 @@ kubectl --context $CTX wait --for=condition=Ready nodes --all --timeout=180s</co
       <tbody>
         <tr><td>설치</td><td>된다</td><td>템플릿 <code>gitlab-argocd-sonarqube-v1</code>을 <code>stack-up</code>으로 깐다(4단계). 스택 PostgreSQL 안에 전용 DB <code>sonarqube</code>를 만들어 쓰고, 그래서 스택 백업에 함께 담긴다</td></tr>
         <tr><td>관리자 계정</td><td>된다</td><td>설치가 <code>admin/admin</code>을 바꿔 둔다. 비밀번호는 Secret <code>nullus-sonarqube-credentials</code>의 <code>admin-password</code>(5단계)이고, 연결 정보 창도 이 Secret을 가리킨다</td></tr>
-        <tr><td>Keycloak 로그인</td><td>아직</td><td>SonarQube Community는 SSO로 SAML만 받는다. Keycloak SAML 연결은 뒤따르는 변경에서 붙는다. 그때까지는 admin 계정으로 들어간다</td></tr>
+        <tr><td>Keycloak 로그인</td><td>된다</td><td>SonarQube Community는 SSO로 SAML만 받는다. 설치가 Keycloak에 SAML 클라이언트를 등록하고 렐름 서명 인증서를 SonarQube에 넣어, 로그인 화면에 Keycloak 버튼이 생긴다. 처음 들어온 사용자는 일반 사용자(<code>sonar-users</code>)로 만들어지고 로그인 ID 뒤에 숫자가 붙는다(SonarQube의 외부 계정 규칙). 관리는 admin 계정으로 한다. Keycloak 렐름 키를 회전하면 SonarQube 단계를 다시 돌려야 새 인증서를 받는다</td></tr>
         <tr><td>설치 화면에서 고르기</td><td>아직</td><td>설치 마법사에 SAST 칸이 없다. 게다가 화면은 보안 탭에서 고른 값을 요청에 싣지 않아 Trivy도 빠진다(<a href="#ax-c">부록 C</a>). 보안 도구는 <code>stack-up</code> 템플릿으로 깐다</td></tr>
         <tr><td>파이프라인 분석·차단</td><td>아직</td><td>만들어지는 <code>.gitlab-ci.yml</code>에 분석 단계가 없다. 아래처럼 손으로 돌린다</td></tr>
       </tbody>
@@ -1105,7 +1106,7 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
       <li><b>연결 정보의 GitLab 비밀번호 Secret 이름이 설치기와 다르다.</b><span class="ref">internal/stack/domain/connection.go:266 ↔ adapter/helm/secret-provisioning.go:72</span></li>
       <li><b>노드 배선은 <code>stack-up --wait</code>에서만 한다.</b> <code>stack-up</code>이 템플릿의 보안 슬롯(Trivy·SonarQube)을 빠뜨리던 것은 SonarQube 설치 변경에서 고쳤다.<span class="ref">scripts/runbook_local.sh:1251</span></li>
       <li><b>설치 화면이 보안 탭에서 고른 값을 요청에 싣지 않는다.</b> 화면으로 깔면 Trivy를 골라도 빠진다. SAST 칸은 아직 없다.<span class="ref">web/src/features/stack/pages/stack-install-page.tsx:2164-2196</span></li>
-      <li><b>SonarQube는 설치만 된다.</b> Keycloak 로그인(SAML), 설치 화면 선택, 파이프라인 분석 단계와 Quality Gate 차단은 뒤따르는 변경에서 붙는다.<span class="ref">internal/stack/adapter/helm/sonarqube-provisioning.go</span></li>
+      <li><b>SonarQube는 설치와 Keycloak 로그인까지 된다.</b> 설치 화면 선택, 파이프라인 분석 단계와 Quality Gate 차단은 뒤따르는 변경에서 붙는다.<span class="ref">internal/stack/adapter/helm/sonarqube-sso.go</span></li>
       <li><b>백업 화면이 스택 백업을 하지 못한다.</b> 네임스페이스를 <code>nullus-app</code>으로 고정하고 <code>stack_id</code>를 보내지 않는다.<span class="ref">web/src/features/admin/pages/backup-page.tsx:54, 137-142</span></li>
       <li><b>백업 문서의 <code>X-Org-Id</code>가 쓰지 않는 조직이다.</b> 그 ID로 만든 백업은 화면 목록에 보이지 않는다.<span class="ref">docs/50_운영/Nullus_백업복구_로컬_테스트_가이드.md · internal/shared/domain/org.go:8-16</span></li>
       <li><b>복구가 네임스페이스를 만들지 않는다.</b> 문서 §4.8에도 이 단계가 빠져 있다.<span class="ref">internal/backup/adapter/kube/volume_archiver.go:207-243</span></li>
@@ -1120,7 +1121,7 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
 </section>
 
 <footer>
-  main <code>13314f3</code>에 SonarQube 설치 변경을 더한 코드(2026-10-10)를 기준으로 스크립트·코드·기존 문서(로컬 테스트 가이드, 백업복구 로컬 테스트 가이드, CHANGELOG)를 대조해 썼다. <span class="badge warn">코드 기준</span> 단계는 아직 이 순서대로 끝까지 돌려 보지 않았다. 진행 체크는 이 브라우저에만 저장된다.
+  main <code>0bbbb25</code>에 SonarQube Keycloak 로그인 변경을 더한 코드(2026-10-10)를 기준으로 스크립트·코드·기존 문서(로컬 테스트 가이드, 백업복구 로컬 테스트 가이드, CHANGELOG)를 대조해 썼다. <span class="badge warn">코드 기준</span> 단계는 아직 이 순서대로 끝까지 돌려 보지 않았다. 진행 체크는 이 브라우저에만 저장된다.
 </footer>
 </main>
 </div>

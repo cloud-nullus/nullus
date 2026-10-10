@@ -223,6 +223,7 @@ OpenBao 경로: `kv/nullus/{env}/{org_id}/auth/{client_id}/client-secret`
 | Harbor | 설치 후 API로 `auth_mode=oidc_auth` 설정 | 부트스트랩 시 K8s Secret에서 로드 |
 | MinIO | `oidc.clientSecret` | `secretKeyRef` |
 | GitLab | `omniauth` provider 블록 | K8s Secret 마운트 |
+| SonarQube | `sonarProperties` 의 `sonar.auth.saml.*` (SAML, 7.10) | 없음 — 렐름 서명 인증서를 값으로 넣는다 |
 
 ### 7.7 argocd-secret 소유권 (P3 예외)
 
@@ -292,6 +293,21 @@ P3는 "`existingSecret` 패턴이면 Helm과 ESO의 Secret 소유권 충돌이 �
 11. 27-install-stacks.sh를 API 호출로 재작성, 30-provision-sso.sh 폐기
 12. 22-install-platform-stack.sh의 Keycloak 블록 제거
 ```
+
+### 7.10 SAML 도구 — SonarQube
+
+SonarQube Community 는 SSO 로 OIDC 를 받지 않고 SAML 만 받는다. 등록·주입 흐름은 OIDC 도구와 같고(`provisioning_sso` → `installing_sonarqube`), 세 가지가 다르다.
+
+| 항목 | OIDC 도구 | SonarQube(SAML) |
+|---|---|---|
+| Keycloak 클라이언트 | `protocol: openid-connect`, client secret push | `protocol: saml`, client secret 없음. 요청 서명 요구 끔(`saml.client.signature=false` — SonarQube 는 요청에 서명하지 않아 켜 두면 "Invalid requester"), 응답 서명 켬 |
+| 사용자 정보 | ID 토큰 클레임 | SAML 속성 매퍼 `login`·`name`(username)·`email`. 이름은 포트 상수(`port.SAMLLoginAttribute` 등)로 두 모듈이 함께 쓴다. 기본 범위 `role_list` 는 이 클라이언트에서만 뺀다 — 역할마다 `Role` 속성을 따로 실어 SonarQube 가 "duplicated Name" 으로 응답을 거부한다 |
+| IdP 신뢰 | issuer 의 디스커버리 문서 | 렐름 활성 RS256 키의 인증서를 `sonar.auth.saml.certificate.secured` 로 넣는다. 설치 직전에 Admin API(`/keys`)로 읽고, SSO 를 쓰는데 못 읽으면 단계를 멈춘다 |
+
+- 포트 `SSOProvisioner` 에 `UsesClientSecret(step)` 과 `SAMLSigningCertificate(ctx)` 를 두었다. 시크릿 평면(`ssoManagedSecrets`)과 프로비저닝(`provisionSSOClients`)은 SAML 도구의 client secret 을 만들지도 읽지도 않는다.
+- IdP entity ID 는 realm 주소(OIDC issuer 와 같은 값), 로그인 주소는 `<issuer>/protocol/saml` 이다. ACS 는 SonarQube 가 `sonar.core.serverBaseURL` 에 `/oauth2/callback/saml` 을 붙여 만들고, Keycloak 에는 같은 주소를 등록한다.
+- SSO 로 들어온 사용자는 일반 사용자(`sonar-users`)로 만들어지고 로그인 ID 뒤에 숫자가 붙는다(SonarQube 의 외부 계정 규칙). 관리는 설치가 만든 `admin` 계정으로 한다 — Keycloak 이 멈춰도 들어갈 수단이다.
+- 렐름 키를 회전하면 SonarQube 단계를 다시 돌려야 새 인증서를 받는다. 배포된 values 를 편집해 저장된 스냅샷이 옛 인증서를 얼려도 그 재실행이 이기도록, 서버 주소와 `sonar.auth.saml.*` 는 플랫폼 소유 값(`platform-owned-values.go`)으로 오버라이드 위에 다시 못박고 values 편집기의 보호 경로(`domain/release_values.go`)에도 넣었다.
 
 4~8은 P3와 같은 릴리스에 묶인다. client secret이 생성 방식으로 바뀌는 breaking change를 한 번에 처리하기 위해서다.
 

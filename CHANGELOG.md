@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **SonarQube 가 Keycloak 으로 로그인한다 (SAML)** (`internal/auth/adapter/keycloak`, `internal/stack/{port,adapter/helm}`, nullus-plan#64): SonarQube Community 는 SSO 로 OIDC 를 받지 않고 SAML 만 받는다. `provisioning_sso` 가 다른 도구와 함께 SAML 클라이언트(`<스택>-sonarqube`, ACS `https://sonarqube.<도메인>/oauth2/callback/saml`)를 등록하고, SonarQube 는 렐름의 활성 RS256 서명 인증서를 values(`sonar.auth.saml.*`)로 받아 로그인 화면에 Keycloak 버튼이 생긴다. Keycloak 기본값 두 가지를 이 클라이언트에서만 바꾼다 — 요청 서명 요구를 끄고(SonarQube 는 요청에 서명하지 않아 켜 두면 "Invalid requester"), 기본 범위 `role_list` 를 뺀다(역할마다 `Role` 속성을 따로 실어 SonarQube 가 "duplicated Name" 으로 응답을 거부한다). 사용자 속성 `login`·`name`·`email` 의 이름은 포트 상수로 두 모듈이 함께 쓴다.
+
+  SAML 도구는 client secret 이 없다. 포트 `SSOProvisioner` 에 `UsesClientSecret`·`SAMLSigningCertificate` 를 두고, 시크릿 평면과 프로비저닝이 그 값을 만들지도 읽지도 않게 했다. 인증서는 설치 직전에 읽고, SSO 를 쓰는데 못 읽으면 단계를 멈춘다 — SAML 없이 깔고 넘어가면 다시 깔 때까지 로컬 계정으로만 뜬다. SSO 사용자는 일반 사용자(`sonar-users`)로 만들어지고 관리는 `admin` 계정으로 한다. 렐름 키를 회전하면 SonarQube 단계를 다시 돌려야 새 인증서를 받는다 — 배포된 values 를 편집해 저장된 스냅샷이 옛 인증서·주소를 얼려 그 재실행을 이기지 못하도록, 서버 주소와 SAML 설정은 플랫폼 소유 값으로 오버라이드 위에 다시 못박고 values 편집기의 보호 경로에도 넣었다(사용자가 더한 다른 `sonarProperties` 는 그대로 둔다). kind + Keycloak 26.0.8 에서 브라우저의 SAML 흐름(SonarQube 시작 → Keycloak 로그인 → 응답 → SonarQube 세션)을 스크립트로 따라 해 `externalProvider: saml` 로그인, 다시 로그인해도 같은 계정, admin 계정 유지, 단계 재실행(파드 유지·클라이언트와 매퍼 중복 없음), 스택 삭제 경로의 클라이언트 회수를 확인했다.
+
 - **스택에 SonarQube(SAST)를 설치할 수 있다** (`internal/stack/{domain,adapter/helm,adapter/repository,usecase}`, `db/migrations/000086`·`000087`, `scripts/runbook_local.sh`, `airgap/**`, nullus-plan#64): 템플릿 편집기에 "예: Trivy, SonarQube" 가 보였지만 설치기에 SonarQube 단계가 없어 아무것도 깔리지 않았다. 이미지 스캐너와 같은 선택 슬롯 `security.sast` 를 두고, 고르면 SonarQube Community(차트 2026.5.1002 · 빌드 26.9.0.129388, amd64·arm64)를 스택 안에 세운다. 템플릿 `GitLab + Argo CD + SonarQube`(`gitlab-argocd-sonarqube-v1`)를 시드해 `stack-up --template=gitlab-argocd-sonarqube-v1` 로 바로 깔 수 있다.
 
   **DB 는 스택의 공유 PostgreSQL 을 쓴다.** SonarQube 테이블(users·projects·issues)이 GitLab 과 이름이 겹쳐 같은 DB 는 쓸 수 없으므로, 설치 전에 Job 이 전용 role·DB(`sonarqube`)를 만든다(다시 돌려도 같은 결과). 외부 DB 를 고른 스택에는 공유할 PostgreSQL 이 없어 이유와 함께 멈춘다. **관리자 비밀번호는 설치 뒤 `provisioning_sonarqube` 가 바꾼다** — 차트의 비밀번호 훅은 curl 에 `-f` 가 없어 변경이 거부돼도 성공으로 끝나 관리자가 조용히 `admin/admin` 으로 남는다. 생성기 값(영숫자)은 SonarQube 비밀번호 정책(특수문자 포함)을 못 맞추므로 정책을 맞춘 값으로 계산해 OpenBao 에 두고, 연결정보가 그 Secret 을 안내한다. 차트가 요구하는 에디션·모니터링 패스코드를 넣고 이름을 `sonarqube` 로 고정해 게이트웨이(`sonarqube.<도메인>`)가 찾게 했다. 자원 기본값은 요청 3Gi · 상한 4Gi다 — 분석 없이 떠 있기만 해도 2.69Gi 를 써서(kind cgroup 실측) 요청을 그 위에 두었고, 차트 기본 4096M/10240M 은 로컬에 둘 자리가 없다. 빈 kind 클러스터에서 OpenBao → ESO → 시크릿 → PostgreSQL → SonarQube → 관리자 비밀번호 변경까지 실제로 설치해, 전용 DB(테이블 164개)·새 비밀번호 통과·`admin/admin` 거부·재실행 시 파드 유지(같은 결과)를 확인했다.
@@ -135,6 +139,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **아직 아닌 것**: **실환경 리허설이 남았다** — 실제 OSS 데이터(GitLab 커밋 · Harbor digest · Jenkins 빌드) · OpenBao 금고 · RTO/정지 창 실측 · 다중 노드. 축소 리허설은 *메커니즘*을 검증했지 *규모와 도구별 정합성*을 검증하지 않았고, **그것이 끝나야 B4-1 완료다.** 알림은 구조화 로그까지이고 채널 발송은 #63 에 달렸다. UI(B3-2)와 운영 런북(B3-4)도 남아 있다.
 
 ### Fixed
+
+- **values 편집기가 키에 점이 든 보호 경로를 찾지 못하던 것** (`internal/stack/domain/release_values.go`): 경로를 점마다 쪼개 찾아서 `grafana.ini.auth.generic_oauth` 처럼 키 자체에 점이 든 경로는 한 번도 찾지 못했다. Grafana 의 OIDC 블록을 지우거나 바꿔도 경고가 뜨지 않았다. 각 단계에서 남은 조각을 이어 붙인 긴 키부터 맞춰 본다.
+
+- **SSO 를 다시 프로비저닝하면 Keycloak 매퍼 갱신이 500 으로 실패하던 것** (`internal/auth/adapter/keycloak/sso_client.go`): 이미 있는 프로토콜 매퍼를 갱신할 때 본문에 `id` 를 싣지 않았는데, Keycloak 은 갱신 대상을 경로가 아니라 본문의 `id` 로 찾아 `NullPointerException` 으로 500 을 낸다(26.0 실측). SonarQube SAML 매퍼를 다시 등록하다 드러났고, MinIO 의 `policy` 클레임 매퍼도 같은 경로라 SSO 를 켠 MinIO 스택은 `provisioning_sso` 를 다시 돌리면 이 단계에서 멈춘다. 테스트 스텁도 실제 Keycloak 처럼 id 없는 갱신을 거부하게 했다.
 
 - **인메모리 호환성 저장소가 매트릭스를 Postgres 와 같은 id 순서로 고른다** (`internal/stack/adapter/repository/memory_compatibility.go`): 같은 도구를 담은 매트릭스가 여럿이면 Postgres 저장소는 `ORDER BY id` 의 첫 것을 고르는데, 인메모리 저장소는 맵 순서로 골라 같은 요청의 판정이 실행마다 달랐다. #285 의 `gitlab-argocd-sonarqube-v1` 이 GitLab 의 arm64 를 허용하면서 겹치는 매트릭스끼리 아키텍처 정보가 갈렸고, 혼합 아키텍처 판정 테스트 둘(`TestDeployHandler_Gate_FailsOnArchMiss`, `TestValidateCompatibility_PersistedMode_ClusterIDFallbackTriggersArchCheck`)이 30번에 4번꼴로 통과해 CI 가 운에 따라 깨졌다(고친 뒤 각 100번 모두 통과). `GetAll` 도 같은 순서로 돌려준다. 운영(Postgres) 판정은 바뀌지 않는다.
 
