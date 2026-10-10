@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/gitea"
@@ -20,6 +21,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registry"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registrycreds"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/sastcreds"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/scaffold"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
@@ -345,6 +347,10 @@ func (f *BundleFactory) gitHubBundle(
 	}
 
 	runs := github.NewBuildReader(client, conn.Owner)
+	// 같은 PAT 로 실행도 시작시킨다(workflow_dispatch). 스택에 묶인 파이프라인의
+	// "배포 실행" 은 플랫폼이 빌드하지 않고 GitHub Actions 에 넘긴다.
+	trigger := github.NewWorkflowTrigger(client, conn.Owner, path.Base(scaffold.GitHubWorkflowPath)).
+		WithWebBaseURL(github.WebBaseURLFor(conn.APIBaseURL))
 
 	bundle := &port.SCMBundle{
 		Provisioner: client,
@@ -352,6 +358,7 @@ func (f *BundleFactory) gitHubBundle(
 		// GitHub Actions 실행 이력과 산출물도 같은 PAT 로 organization 아래 리포에서 읽는다.
 		CIBuilds:    runs,
 		CIArtifacts: runs,
+		CITrigger:   trigger,
 		Registry:    resolver,
 		// GHCR 패키지는 같은 PAT 로 지운다(delete:packages 스코프 필요).
 		Images:   client,

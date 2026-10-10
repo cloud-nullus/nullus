@@ -77,7 +77,7 @@ func (d *Delegate) resolveTrigger(ctx context.Context, stackID string) (port.CIB
 	}
 	if bundle == nil || bundle.CITrigger == nil {
 		return nil, fmt.Errorf(
-			"스택 %s 에 실행을 넘길 CI 플랫폼이 없습니다. 스택에 GitLab CI 또는 Jenkins 가 설치되어 있고 자격증명이 준비되었는지 확인하세요",
+			"스택 %s 에 실행을 넘길 CI 플랫폼이 없습니다. 스택에 GitLab CI·GitHub Actions·Jenkins 중 하나가 연결되어 있고 자격증명이 준비되었는지 확인하세요",
 			stackID)
 	}
 	return bundle.CITrigger, nil

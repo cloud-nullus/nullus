@@ -398,7 +398,7 @@ func (uc *DeployPipeline) delegateToRunner(ctx context.Context, pipeline *domain
 	if uc.buildDelegate == nil {
 		return fmt.Errorf(
 			"파이프라인 %s 는 스택 %s 의 CI 러너가 실행합니다. 그런데 이 서버에는 러너 연결이 배선돼 있지 않습니다 — "+
-				"스택의 CI 플랫폼(GitLab CI·Jenkins) 연결을 확인하세요",
+				"스택의 CI 플랫폼(GitLab CI·GitHub Actions·Jenkins) 연결을 확인하세요",
 			pipeline.Name, pipeline.StackID)
 	}
 
