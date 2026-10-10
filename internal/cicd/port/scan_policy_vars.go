@@ -13,7 +13,8 @@ import (
 const (
 	// ScanServerVariable 은 스택 Trivy 서버 주소다. 정책이 아니라 스택이 정한 값이다.
 	ScanServerVariable = "NULLUS_TRIVY_SERVER"
-	// ScanImageVariable 은 CI 잡이 쓸 Trivy CLI 이미지다(에어갭 미러로 덮는다).
+	// ScanImageVariable 은 CI 잡이 쓸 Trivy CLI 이미지다. 에어갭도 이름을 바꾸지 않는다 —
+	// 노드의 레지스트리 미러가 번들에서 내준다. 플랫폼은 이 변수를 푸시하지 않는다.
 	ScanImageVariable = "NULLUS_TRIVY_IMAGE"
 
 	// ScanSeverityVariable 은 게이트가 막을 심각도 목록이다(Trivy --severity 형식).
@@ -33,7 +34,7 @@ const (
 	// SASTTokenVariable 은 분석 토큰이다. 스택 설치가 발급해 OpenBao 에 두고, 플랫폼이
 	// 시크릿 CI 변수로 등록한다. sonar-scanner 가 이 이름을 그대로 읽는다.
 	SASTTokenVariable = "SONAR_TOKEN"
-	// SASTImageVariable 은 CI 잡이 쓸 sonar-scanner 이미지다(에어갭 미러로 덮는다).
+	// SASTImageVariable 은 CI 잡이 쓸 sonar-scanner 이미지다. ScanImageVariable 과 같다.
 	SASTImageVariable = "NULLUS_SONAR_SCANNER_IMAGE"
 	// SASTOnGateFailureVariable 이 "warn" 이면 Quality Gate 가 실패해도 단계를 통과시킨다.
 	SASTOnGateFailureVariable = "NULLUS_SAST_ON_GATE_FAILURE"

@@ -5,6 +5,7 @@ import (
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // 소스 정적 분석(SAST) 단계 — 스택의 SonarQube 로 소스를 분석하고 Quality Gate 로
@@ -15,8 +16,9 @@ const (
 	sastStageName = "SAST"
 
 	// defaultSASTScannerImage 는 CI 잡이 쓸 sonar-scanner 이미지다. amd64 만 낸다 —
-	// arm64 노드에서는 에뮬레이션이 있어야 돈다. 에어갭 설치는 내부 미러로 변수를 덮는다.
-	defaultSASTScannerImage = "sonarsource/sonar-scanner-cli:12.2"
+	// arm64 노드에서는 에뮬레이션이 있어야 돈다. 에어갭 설치는 이름을 바꾸지 않고
+	// 노드의 레지스트리 미러가 번들에서 내준다(RuntimeImages 가 번들에 싣는다).
+	defaultSASTScannerImage = shareddomain.SonarScannerImage
 )
 
 // sastPolicyVariableNames 는 분석 단계가 읽는, 플랫폼이 푸시하는 정책 변수다.

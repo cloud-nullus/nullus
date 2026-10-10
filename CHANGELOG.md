@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   로컬 E2E(kind + GitLab + Argo CD + SonarQube, 실제 플랫폼)에서 확인했다 — 설치가 `nullus-ci` 토큰을 발급하고 발급 Job 을 지운다. 파이프라인을 만들면 단계가 `Build·SAST·Deploy` 이고 `SONAR_TOKEN`(masked)과 정책 변수가 등록된다. 첫 실행은 build·sast·deploy 모두 성공(SonarQube 에 프로젝트 생성, Quality Gate PASSED). `eval` 을 넣은 커밋은 sast 가 "차단 정책" 으로 실패하고 deploy 가 skipped 다. 정책을 warn 으로 바꾸면(플랫폼이 파이프라인 변수로 즉시 반영) 같은 코드가 "경고 정책에 따라 통과" 로 deploy 까지 간다. 화면으로 만든 파이프라인도 같은 단계를 갖는다.
 
-  스택 정보(`StackSummary`)에 SonarQube 주소를 더했다(외부 SonarQube 는 제외). 주소 규칙과 토큰 경로는 `internal/shared/domain` 이 갖는다. 에어갭 번들의 `sonar-scanner` 이미지 반입과 Quality Gate 결과를 화면에 보이는 일은 뒤따르는 변경이다.
+  스택 정보(`StackSummary`)에 SonarQube 주소를 더했다(외부 SonarQube 는 제외). 주소 규칙과 토큰 경로는 `internal/shared/domain` 이 갖는다. Quality Gate 결과를 화면에 보이는 일은 뒤따르는 변경이다.
 
 - **설치 화면에서 SonarQube(SAST)를 고를 수 있다** (`web/src/features/stack`, `web/src/features/cicd`, nullus-plan#64): 백엔드는 `security.sast` 슬롯과 설치 단계를 갖고 있었지만 화면에 고를 칸이 없어 템플릿 밖에서는 도달할 수 없었다. Security 탭에 Static Analysis (SAST) = SonarQube 를 두고, 템플릿·Golden Path 의 보안 도구를 마법사에 채우고, 템플릿 편집기에서 SAST 칸을 고를 수 있게 했다.
 
@@ -167,6 +167,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI/CD 템플릿 생성·수정·삭제가 저장되지 않던 것** (`internal/cicd/adapter/repository/postgres_cicd_template.go`, `internal/cicd/adapter/handler/cicd_template_handler.go`, `internal/cicd/domain`, `db/migrations/000089`, `web/src/features/cicd`, `api/openapi.yaml`): Postgres 저장소의 Create·Update·Delete 가 TODO 로 성공만 돌려줘, 템플릿 화면의 버튼은 성공으로 응답하는데 목록은 바뀌지 않았다(로컬 E2E 가이드 부록 C 의 첫 항목). 세 메서드를 구현했다 — 같은 ID 는 덮어쓰지 않고 409 로 거부하고, 없는 템플릿의 수정·삭제는 404 다. 인메모리 저장소도 같은 에러를 낸다. 만든 사람(`created_by`)은 API 와 도메인이 받고 돌려주면서도 열이 없어 버려졌으므로 열을 더했다(시드 템플릿은 NULL).
 
   **수정은 요청에 있는 필드만 덧씌운다.** 화면은 이름·설명·유형·단계만 보내므로, 요청 그대로 전체를 바꾸면 시드 템플릿의 이름만 고쳐도 Dockerfile 경로와 환경 변수가 지워진다. 빌드 설정과 설명은 "안 보냄"과 "빈 값으로 지움"을 가려 받는다. 저장 전에 ID·이름·유형(`web`·`backend`·`batch`)·단계를 검사해 400 으로 알린다 — 유형이 틀린 템플릿으로 파이프라인을 만들면 `pipelines.app_type` ENUM 이 거부하므로 템플릿에서 먼저 막는다. 화면이 `appType: "web-backend"` 를 camelCase 키로 하드코딩해 보내 서버가 유형을 빈 값으로 받던 것도 함께 고쳤다 — 폼에 애플리케이션 유형 선택을 두고 서버 필드명(`app_type`)으로 보낸다. 실제 Postgres(testcontainers)에서 생성 → 조회 → 중복 거부 → 수정 → 삭제 왕복과 시드 템플릿의 빈 `created_by` 읽기를 확인했다. `api/openapi.yaml` 에 템플릿 생성·조회·수정·삭제 경로와 실제 응답 모양(snake_case, 빌드 설정·`created_by`)을 적고, `AppType` enum 을 옛 화면 값(`web-backend` 등)에서 서버 값(`web`·`backend`·`batch`)으로, `ErrorResponse` 를 실제 본문(`{"error": {code, http_status, message}}`)으로 맞췄다.
+
+- **폐쇄망에서 생성된 파이프라인의 잡 이미지가 번들에 없던 것** (`internal/shared/domain/runtime_images.go`, `internal/cicd/adapter/scaffold`, `airgap/images/images.txt`, `airgap/scripts/00-generate-images.sh`, `scripts/verify-airgap-runtime-images.sh`, nullus-plan#64): 파이프라인 잡 이미지는 이름을 바꾸지 않고 노드의 containerd 미러가 내부 레지스트리에서 내준다 — 그래서 번들 목록에 오른 것만 받힌다. GitLab 의 `build`(`docker:27`)·`deploy`(`alpine:3.20`) 잡과 SAST 스캐너(`sonarsource/sonar-scanner-cli:12.2`, GitLab·Jenkins)가 목록에 없어, 폐쇄망 GitLab 파이프라인은 첫 실행에서 `ImagePullBackOff` 로 멈췄다. Trivy 스캐너는 카탈로그 차트가 같은 이미지를 써서 우연히 들어가 있었다. 세 이미지를 `RuntimeImages()` 에 올리고 렌더러가 그 상수를 쓰게 했다(dind 는 두 CI 가 같이 쓰므로 `JenkinsDindImage` → `DindImage`).
+
+  **렌더 결과로 지킨다.** GitLab·Jenkins 파이프라인을 모든 단계를 켜고 렌더해 잡·서비스·에이전트 파드 이미지를 뽑고(GitLab 의 `$NULLUS_*_IMAGE` 는 기본값까지 따라간다), 전부 번들 목록에 있는지 본다 — 렌더러에 이미지를 새로 넣고 목록을 잊으면 CI 에서 걸린다. GitHub Actions 는 호스티드 러너라 대상이 아니다.
+
+  스캐너 이미지는 amd64 빌드만 게시된다(태그 전부 확인) — arm64 노드는 에뮬레이션(binfmt·rosetta)이 있어야 돈다. 런타임 이미지 검증 스크립트는 노드 아키텍처로 pull 하므로 이런 이미지에서 실패했다 — `01-pull-images.sh` 와 같은 판정으로 반입 검증을 건너뛰고 끝에 알린다. kind(arm64)에서 `docker:27`·`alpine:3.20` 을 번들 경로(pull → save → `ctr import`)로 넣고 `imagePullPolicy: Never` 로 실행해 확인했다(스크립트 전체는 MinIO 이미지가 레지스트리에서 401 이라 이번에 돌리지 못했다).
 
 - **설치 화면에서 고른 보안 도구가 설치 요청에서 빠지던 것** (`web/src/features/stack/pages/stack-install-page.tsx`): 요청을 만드는 `buildStackRequest` 가 `security` 를 싣지 않아, Security 탭에서 Trivy 를 골라도 요청 본문에는 `enabled: false` 로 나가 스캐너가 설치되지 않았다. 요청 변환(`toCreateStackBody`)은 그 값을 읽고 있어 단위 테스트로는 드러나지 않았다 — 화면에서 고르고 저장한 요청을 보는 테스트를 더했다(수정을 빼면 실패함을 확인).
 

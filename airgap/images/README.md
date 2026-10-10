@@ -8,13 +8,16 @@
 
 ## images.txt 구성
 
-파일은 세 섹션으로 구분됩니다.
+파일은 네 섹션으로 구분되며, 전부 `airgap/scripts/00-generate-images.sh` 가 생성합니다(손으로 고치면 재생성 때 사라집니다).
 
 | 섹션 | 내용 |
 |------|------|
-| **Nullus 앱** | `nullus-api`, `nullus-web` — `deploy/helm/nullus/values.yaml` 참조 |
-| **Chart 의존성** | Bitnami postgresql 16.7.21 차트가 사용하는 이미지 (`postgresql`, `os-shell`, `postgres-exporter`) |
-| **인프라** | `kindest/node`(kind 클러스터 노드), `registry:2`(로컬 미러 레지스트리) |
+| **Nullus 앱 + Chart 의존성** | `nullus-api`, `nullus-web` 과 Nullus 차트 의존성 이미지 — `helm template` 렌더 결과 |
+| **카탈로그** | 스택 설치가 쓰는 OSS 차트(GitLab·Harbor·Argo CD·SonarQube 등)를 설치 values 로 렌더한 이미지 |
+| **인프라** | `kindest/node`(kind 클러스터 노드), `registry:2`(로컬 미러 레지스트리), 차트 밖에서 지정하는 OpenBao·Jenkins 이미지 |
+| **런타임 매니페스트** | Go 코드가 만드는 Job·파드와 **생성된 파이프라인의 CI 잡**(GitLab build·deploy, Jenkins 에이전트, SAST 스캐너)이 쓰는 이미지. 단일 출처는 `internal/shared/domain/runtime_images.go` 의 `RuntimeImages()` |
+
+파이프라인 잡 이미지는 이름을 바꾸지 않습니다 — 폐쇄망 노드의 containerd 미러가 내부 레지스트리에서 내줍니다. 목록에 없는 잡 이미지는 첫 파이프라인 실행에서 `ImagePullBackOff` 로 멈춥니다(`internal/cicd/adapter/scaffold/airgap_images_test.go` 가 막습니다).
 
 빈 줄과 `#`으로 시작하는 줄은 스크립트에서 자동으로 무시됩니다.
 

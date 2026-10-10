@@ -13,7 +13,7 @@ import (
 // 차트로 세우지 않고 kubernetes 플러그인이 이 파드를 빌드마다 띄운다.
 const (
 	jenkinsAgentImage = shareddomain.JenkinsAgentImage
-	jenkinsDindImage  = shareddomain.JenkinsDindImage
+	jenkinsDindImage  = shareddomain.DindImage
 )
 
 // renderJenkinsfile 은 build → deploy 2단계 선언적 파이프라인을 만든다.
