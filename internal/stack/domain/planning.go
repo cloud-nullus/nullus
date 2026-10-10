@@ -36,6 +36,7 @@ const (
 	SlotTraceLayer              = "logging.traceLayer"
 	SlotTraceExporter           = "logging.traceExporter"
 	SlotImageScanner            = "security.imageScanner"
+	SlotSAST                    = "security.sast"
 )
 
 // PlanningSlots 는 계획 대상 슬롯을 마법사 화면과 같은 순서로 돌려준다.
@@ -53,6 +54,7 @@ func PlanningSlots() []string {
 		SlotTraceLayer,
 		SlotTraceExporter,
 		SlotImageScanner,
+		SlotSAST,
 	}
 }
 
@@ -152,6 +154,12 @@ var PlanningOptionDefs = map[string][]PlanningOptionDef{
 	SlotImageScanner: {
 		{Key: "scansPerDay", Baseline: 40, Min: 1, Max: 2000, Weight: 0.6, Impact: ResourceImpact{CPU: 1, Memory: 0.6, Storage: 0.1}},
 		{Key: "concurrentScans", Baseline: 2, Min: 1, Max: 50, Weight: 0.4, Impact: ResourceImpact{CPU: 0.9, Memory: 0.8, Storage: 0.1}},
+	},
+	// 분석은 Compute Engine 이 한 번에 하나씩 처리하고, 결과와 이력은 DB·검색
+	// 색인에 쌓인다. 처리량은 CPU, 프로젝트 수는 메모리·저장소를 끌어올린다.
+	SlotSAST: {
+		{Key: "scansPerDay", Baseline: 40, Min: 1, Max: 2000, Weight: 0.6, Impact: ResourceImpact{CPU: 1, Memory: 0.5, Storage: 0.2}},
+		{Key: "projectCount", Baseline: 20, Min: 1, Max: 1000, Weight: 0.4, Impact: ResourceImpact{CPU: 0.3, Memory: 0.8, Storage: 0.6}},
 	},
 }
 

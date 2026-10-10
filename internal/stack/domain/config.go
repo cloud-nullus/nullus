@@ -101,6 +101,10 @@ type MonitoringConfig struct {
 // 구성에서는 이 자리를 고르지 않으면 이미지를 검사할 수단이 아예 없다.
 type SecurityConfig struct {
 	ImageScanner ToolSelection `json:"image_scanner,omitempty"`
+	// SAST 는 소스 정적 분석 서버다(SonarQube Community). 이미지 스캐너와 같은
+	// 선택 슬롯이다 — 고르지 않으면 설치되지 않고, 그 스택의 파이프라인은 SAST
+	// 단계를 켤 수 없다.
+	SAST ToolSelection `json:"sast,omitempty"`
 }
 
 // LoggingConfig holds tool selections for the logging step.

@@ -3,7 +3,7 @@
 # Regenerate whenever chart deps or app versions change.
 # Format : <registry>/<repo>:<tag>, one per line. Blank / "#" lines ignored.
 # CI     : MODE=check ./00-generate-images.sh blocks drift.
-# installer-values-sha256: 169eba54c8547866c6fc7d884dad2113ef5c938de1765faec548d0eba4b2d52f
+# installer-values-sha256: a6dc32d672b5a8fdda77da2c08d680977a565433735610876545e730d35d5a22
 
 # --- Nullus app + chart dependency images (rendered from chart) ---
 busybox:1.37
@@ -89,6 +89,7 @@ registry.gitlab.com/gitlab-org/gitlab-runner:alpine-v17.7.0
 registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.5.1
 registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.14.0
 registry.k8s.io/metrics-server/metrics-server:v0.7.2
+sonarqube:26.9.0.129388-community
 sonatype/nexus3:3.64.0
 
 # --- Infra images (not part of helm render) ---

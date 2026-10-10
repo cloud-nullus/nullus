@@ -1,0 +1,11 @@
+# sonarqube — 이미지 추출용 values (00-generate-images.sh)
+#
+# 차트는 에디션과 모니터링 패스코드가 없으면 렌더부터 실패한다. 여기 값은 이미지 목록을
+# 뽑는 렌더에만 쓰는 자리표시자이고, 실제 설치 값은 설치기가 만든다
+# (charts-catalog-values/installer/installing_sonarqube.yaml).
+#
+# 이미지는 업스트림 경로(docker.io/sonarqube) 그대로 둔다. rewrite_upstream 은
+# cloud-nullus / dasomel / bitnami 접두사만 되돌린다.
+community:
+  enabled: true
+monitoringPasscode: "image-extraction-only"

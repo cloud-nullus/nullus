@@ -48,7 +48,7 @@ fi
 [[ -n "$CONTEXT" ]] || { echo "[nullus] kubectl context 를 찾지 못했습니다 (--context= 로 지정)" >&2; exit 1; }
 
 KC_HOST="keycloak.${DOMAIN}"
-TOOL_HOSTS=(argocd grafana harbor gitea jenkins minio gitlab nexus opensearch registry)
+TOOL_HOSTS=(argocd grafana harbor gitea jenkins minio gitlab nexus opensearch registry sonarqube)
 
 echo "[nullus] domain=$DOMAIN context=$CONTEXT"
 

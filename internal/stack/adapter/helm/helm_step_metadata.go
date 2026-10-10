@@ -181,6 +181,18 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			Values:      DefaultValues("installing_trivy"),
 			Wait:        false,
 		}, true
+	case "installing_sonarqube":
+		// Community 판이다. 공유 PostgreSQL 안의 전용 DB 는 설치 전에
+		// ensureSonarQubeDatabase 가 만들고, 관리자 비밀번호는 provisioning_sonarqube
+		// 가 바꾼다.
+		return ChartSpec{
+			ReleaseName: domain.SonarQubeReleaseName,
+			ChartName:   "sonarqube",
+			RepoURL:     "https://SonarSource.github.io/helm-chart-sonarqube",
+			Version:     domain.SonarQubeChartVersion,
+			Values:      DefaultValues("installing_sonarqube"),
+			Wait:        false,
+		}, true
 	case "installing_nexus":
 		// sonatype/nexus-repository-manager 는 상위 차트가 deprecated 로 표시돼
 		// 있으나, 대체재인 nxrm-ha 는 PostgreSQL 기반 HA 구성이라 Pro 라이선스가

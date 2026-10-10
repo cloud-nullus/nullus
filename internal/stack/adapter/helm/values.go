@@ -180,6 +180,44 @@ func DefaultValues(stepName string) map[string]any {
 				"skipDBUpdate": false,
 			},
 		}
+	case "installing_sonarqube":
+		return map[string]any{
+			// 에디션을 고르지 않으면 차트 렌더가 실패한다. Community 빌드를 쓴다.
+			"community": map[string]any{"enabled": true},
+			// 차트 기본 이름은 <릴리스>-sonarqube 다. 게이트웨이·연결정보가 찾는 이름으로 고정한다.
+			"fullnameOverride": domain.SonarQubeServiceName,
+			"service": map[string]any{
+				"type":         "ClusterIP",
+				"externalPort": domain.SonarQubeServicePort,
+				"internalPort": domain.SonarQubeServicePort,
+			},
+			// 차트가 요구하는 값이다(없으면 렌더 실패). 평문을 values 에 두지 않는다.
+			"monitoringPasscodeSecretName": domain.SonarQubeSecret,
+			"monitoringPasscodeSecretKey":  domain.SonarQubeMonitoringPasscodeKey,
+			// 끄면 내장 H2 로 떠서 데이터가 공유 DB 와 백업 밖에 놓인다. 주소는
+			// 네임스페이스에서 파생되므로 sonarqubeSharedServiceValues 가 넣는다.
+			"jdbcOverwrite": map[string]any{
+				"enabled":               true,
+				"jdbcUsername":          domain.SonarQubeDBUser,
+				"jdbcSecretName":        domain.SonarQubeSecret,
+				"jdbcSecretPasswordKey": domain.SonarQubeDBPasswordKey,
+			},
+			// 검색 색인을 담는다. 휘발 볼륨이면 재시작마다 색인을 다시 만든다.
+			"persistence": map[string]any{"enabled": true, "size": "10Gi"},
+			// 차트 기본값은 메모리 요청 4096M 이다. 웹·CE·검색 JVM 세 개가 유휴 상태로도
+			// 2.69Gi 를 쓰므로(kind 실측) 요청은 그 위인 3Gi 로 둔다. 관리자 기본값
+			// (stack_resource_defaults)이 있으면 그 값이 이긴다.
+			"resources": map[string]any{
+				"requests": map[string]any{"cpu": "500m", "memory": "3Gi"},
+				"limits":   map[string]any{"cpu": "2", "memory": "4Gi"},
+			},
+			// 접속은 스택 게이트웨이가 연다. 차트의 Ingress·HTTPRoute 는 쓰지 않는다.
+			"ingress":   map[string]any{"enabled": false},
+			"httproute": map[string]any{"enabled": false},
+			// helm test 파드와 메트릭 jar 다운로드(GitHub)는 에어갭에서 실패한다.
+			"tests":              map[string]any{"enabled": false},
+			"prometheusExporter": map[string]any{"enabled": false},
+		}
 	case "installing_harbor":
 		return map[string]any{
 			// 인그레스는 게이트웨이가 담당하므로 차트는 Service 만 낸다.

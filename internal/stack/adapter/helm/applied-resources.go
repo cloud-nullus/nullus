@@ -33,6 +33,7 @@ var plannedSlotForStep = map[string]string{
 	"installing_opentelemetry":  domain.SlotTraceLayer,
 	stepInstallingOTelCollector: domain.SlotTraceExporter,
 	"installing_trivy":          domain.SlotImageScanner,
+	"installing_sonarqube":      domain.SlotSAST,
 }
 
 // plannedResourceFor 는 이 단계에 적용할 계획값을 찾는다.

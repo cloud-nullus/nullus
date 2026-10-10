@@ -215,6 +215,25 @@ func managedSecrets(namespace string) []ManagedSecret {
 				{PathSuffix: "artifacts/nexus/admin-password", TargetKey: domain.NexusAdminPassKey},
 			},
 		},
+		{
+			// SonarQube 는 공유 PostgreSQL 안의 전용 DB 에 붙고, 차트가 모니터링 패스코드를
+			// 요구한다. 관리자 비밀번호는 provisioning_sonarqube 가 첫 값(admin)에서 이 값으로
+			// 바꾼다 — 생성기 값(영숫자)은 SonarQube 비밀번호 정책을 못 맞추므로 계산한다.
+			TargetSecret:    domain.SonarQubeSecret,
+			Consumer:        "SonarQube",
+			RestartRequired: true,
+			Entries: []SecretEntry{
+				{PathSuffix: "security/sonarqube/db-password", TargetKey: domain.SonarQubeDBPasswordKey},
+				{PathSuffix: "security/sonarqube/monitoring-passcode", TargetKey: domain.SonarQubeMonitoringPasscodeKey},
+				{PathSuffix: "security/sonarqube/admin-password-seed", TargetKey: "admin-password-seed"},
+				{
+					PathSuffix: "security/sonarqube/admin-password",
+					TargetKey:  domain.SonarQubeAdminPasswordKey,
+					DeriveFrom: "security/sonarqube/admin-password-seed",
+					Derive:     deriveSonarQubeAdminPassword,
+				},
+			},
+		},
 	}
 }
 
