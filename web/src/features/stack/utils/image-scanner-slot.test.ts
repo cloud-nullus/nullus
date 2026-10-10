@@ -90,9 +90,7 @@ describe('배포 요청 본문', () => {
       security: { imageScanner: { tool: 'trivy', version: '0.74.0' } },
     } as Parameters<typeof toCreateStackBody>[0])
 
-    expect(body.config.security).toEqual({
-      image_scanner: { name: 'trivy', version: '0.74.0', enabled: true },
-    })
+    expect(body.config.security.image_scanner).toEqual({ name: 'trivy', version: '0.74.0', enabled: true })
   })
 
   // 고르지 않았으면 켜지 않는다 — enabled=true 로 보내면 설치 술어가 켜져

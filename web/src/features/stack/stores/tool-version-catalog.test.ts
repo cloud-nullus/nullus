@@ -36,6 +36,8 @@ const BACKEND_OWNED: Record<string, string> = {
   harbor: 'Harbor',
   tempo: 'Tempo',
   'opentelemetry-collector': 'OTelCollector',
+  trivy: 'Trivy',
+  sonarqube: 'SonarQube',
 }
 
 function readGoVersions(): Record<string, string> {

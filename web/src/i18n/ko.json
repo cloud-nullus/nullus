@@ -180,7 +180,9 @@
       "traces": "트레이스",
       "traceExporter": "Exporter / Agent",
       "imageScanner": "이미지 스캐너",
-      "imageScannerHint": "고르지 않으면 설치되지 않습니다. 컨테이너 레지스트리가 Harbor 면 내장 스캐너로 대신할 수 있습니다."
+      "imageScannerHint": "고르지 않으면 설치되지 않습니다. 컨테이너 레지스트리가 Harbor 면 내장 스캐너로 대신할 수 있습니다.",
+      "sast": "정적 분석 (SAST)",
+      "sastHint": "고르지 않으면 설치되지 않습니다. 스택의 PostgreSQL 을 함께 쓰고, SSO 를 켜면 Keycloak 으로 로그인합니다."
     },
     "resourceTotal": {
       "description": "선택한 OSS {{count}}개의 적용값(request/limit) 총합"
@@ -600,6 +602,14 @@
       "victoriametrics": {
         "label": "VictoriaMetrics",
         "description": "고성능 시계열 데이터베이스"
+      },
+      "trivy": {
+        "label": "Trivy",
+        "description": "컨테이너 이미지 취약점 스캔 (server 모드)"
+      },
+      "sonarqube": {
+        "label": "SonarQube",
+        "description": "소스 코드 정적 분석 (Community)"
       },
       "grafana": {
         "label": "Grafana",

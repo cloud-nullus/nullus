@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { screen, fireEvent, act, within } from '@testing-library/react'
+import { screen, fireEvent, act, within, waitFor } from '@testing-library/react'
 import { optionLabels, renderWithProviders, selectOptionByValue, selectedLabel } from '../../../__tests__/test-utils'
-import { StackInstallPage, findReusablePendingStackId, hasDuplicateStackNameInCluster } from './stack-install-page'
+import { StackInstallPage, compatibilityRequestedTools, findReusablePendingStackId, hasDuplicateStackNameInCluster } from './stack-install-page'
 import { getToolAppVersion, getToolChartVersion, useStackConfigStore } from '../stores/stack-config-store'
 import { useAuthStore } from '../../../stores/auth-store'
 import YAML from 'yaml'
@@ -353,6 +353,87 @@ describe('StackInstallPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Security' }))
     expect(screen.getAllByText('Image Scanner')[0]).toBeTruthy()
     expect(screen.getAllByText('Trivy')[0]).toBeTruthy()
+  })
+
+  // SonarQube 는 템플릿 밖에서도 고를 수 있어야 한다. 화면에 칸이 없으면 백엔드 슬롯은
+  // 템플릿으로만 도달할 수 있다.
+  it('clicking Security tab shows the SAST selector', () => {
+    renderWithProviders(<StackInstallPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Security' }))
+    expect(screen.getAllByText('Static Analysis (SAST)')[0]).toBeTruthy()
+    expect(screen.getByRole('button', { name: /SonarQube/ })).toBeInTheDocument()
+    expect(screen.getByText('Static source code analysis (Community)')).toBeInTheDocument()
+  })
+
+  // 보안 탭에서 고른 도구가 요청에 실려야 한다. 요청을 만드는 쪽이 security 를 빠뜨려
+  // 화면에서 Trivy 를 골라도 설치되지 않았다.
+  it('Save Draft carries the security selections', async () => {
+    renderWithProviders(<StackInstallPage />)
+    fillRequiredSelectionsForConfigTabs()
+    // 자동으로 채운 이름은 검증을 거치지 않아 저장 버튼이 꺼져 있다. 사용자처럼 입력한다.
+    fireEvent.change(screen.getByLabelText(/Stack Name/i), { target: { value: 'sast-stack' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Security' }))
+    fireEvent.click(screen.getByRole('button', { name: /Trivy/ }))
+    fireEvent.click(screen.getByRole('button', { name: /SonarQube/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }))
+
+    await waitFor(() => expect(mockSaveDraftMutate).toHaveBeenCalled())
+    const request = mockSaveDraftMutate.mock.calls[0][0]
+    expect(request.security.imageScanner.tool).toBe('trivy')
+    expect(request.security.sast.tool).toBe('sonarqube')
+  })
+
+  // 화면이 만든 게이트웨이가 서버 기본값을 대신한다. 라우트가 빠지면 sonarqube.<도메인> 이
+  // 열리지 않고, 그 주소가 SAML ACS 라 Keycloak 로그인도 실패한다.
+  it('Save Draft sends a gateway route for SonarQube', async () => {
+    renderWithProviders(<StackInstallPage />)
+    fillRequiredSelectionsForConfigTabs()
+    fireEvent.change(screen.getByLabelText(/Stack Name/i), { target: { value: 'sast-stack' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Security' }))
+    fireEvent.click(screen.getByRole('button', { name: /SonarQube/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }))
+
+    await waitFor(() => expect(mockSaveDraftMutate).toHaveBeenCalled())
+    const gateway = YAML.parseAllDocuments(mockSaveDraftMutate.mock.calls[0][0].yamlOverrides.gateway).map((d) => d.toJSON())
+    const route = gateway.find((doc) => doc?.kind === 'HTTPRoute' && JSON.stringify(doc).includes('sonarqube.'))
+    expect(route).toBeTruthy()
+    expect(JSON.stringify(route)).toContain('"name":"sonarqube","port":9000')
+  })
+
+  // 백엔드는 installing_sonarqube 에서야 거부해 앞 단계를 다 깐 뒤에 실패한다. 저장 전에 막는다.
+  it('blocks SonarQube on a stack that connects an existing database', async () => {
+    renderWithProviders(<StackInstallPage />)
+    fillRequiredSelectionsForConfigTabs()
+    fireEvent.change(screen.getByLabelText(/Stack Name/i), { target: { value: 'sast-stack' } })
+    act(() => {
+      useStackConfigStore.setState((state) => ({
+        draft: {
+          ...state.draft,
+          storage: { ...state.draft.storage, planMode: 'existing-all', database: { ...state.draft.storage.database, mode: 'existing' } },
+        },
+      }))
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Security' }))
+    fireEvent.click(screen.getByRole('button', { name: /SonarQube/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }))
+
+    expect(await screen.findByText(/SonarQube 는 스택이 만드는 PostgreSQL/)).toBeInTheDocument()
+    expect(mockSaveDraftMutate).not.toHaveBeenCalled()
+  })
+
+  // 서버 게이트(stackConfigToCategoryMap)는 보안 도구를 매트릭스 대조에 넣지 않는다. 화면만 넣으면
+  // 보안 칸이 있는 몇몇 템플릿 밖에서는 스캐너·SAST 를 고르는 순간 "일치하는 매트릭스 없음"으로 막힌다.
+  it('compatibility gate leaves security tools out like the server', () => {
+    expect(
+      compatibilityRequestedTools([
+        { slot: 'artifacts.sourceRepository', toolKey: 'gitlab' },
+        { slot: 'security.imageScanner', toolKey: 'trivy' },
+        { slot: 'security.sast', toolKey: 'sonarqube' },
+      ]),
+    ).toEqual({ source_repository: 'GitLab CE' })
   })
 
   it('clicking Resources tab shows Resources content', () => {
