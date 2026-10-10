@@ -257,6 +257,7 @@ func (m *Module) Restore(ctx context.Context, stackID string) (*usecase.RestoreU
 	if a != nil {
 		deps.Scaler, deps.Archiver, deps.Resources = a.Scaler, a.Archiver, a.Resources
 		deps.Releases = a.Releases
+		deps.Namespaces = a.Namespaces
 	}
 	return usecase.NewRestoreUseCase(deps), nil
 }

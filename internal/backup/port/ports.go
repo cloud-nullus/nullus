@@ -95,6 +95,15 @@ type VolumeArchiver interface {
 	EnsurePVC(ctx context.Context, namespace string, spec domain.VolumeSpec, restoredFromBackupID string) error
 }
 
+// NamespaceEnsurer 는 복구할 네임스페이스를 보장한다.
+//
+// 새 클러스터나 지운 네임스페이스로 되돌리면 네임스페이스부터 없다. 리소스 덤프는
+// 네임스페이스 안의 것만 담으므로 Namespace 자체는 복구가 만들어야 한다 — 그러지 않으면 첫
+// PVC 생성이 "namespaces not found" 로 실패한다. 이미 있으면 그대로 둔다.
+type NamespaceEnsurer interface {
+	EnsureNamespace(ctx context.Context, namespace, restoredFromBackupID string) error
+}
+
 // HelmReleaseLister 는 네임스페이스에 설치된 차트의 버전을 읽는다.
 //
 // 복구가 다른 버전으로 재설치하면 도구들이 기동하며 스키마 마이그레이션을

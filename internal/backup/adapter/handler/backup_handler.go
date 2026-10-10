@@ -235,14 +235,24 @@ func (h *BackupHandler) CreateRestore(c echo.Context) error {
 	if mode == "" {
 		mode = domain.ModeFull
 	}
-	ns := req.Namespace
-	if ns == "" {
-		ns = h.defaultNS
-	}
-
 	backup, err := h.repo.GetRun(c.Request().Context(), req.BackupRunID)
 	if err != nil {
 		return err
+	}
+
+	// 스택 백업을 스택까지 되돌리면 그 네임스페이스에 볼륨·리소스를 풀고, 없으면 만든다. 플랫폼 기본
+	// 네임스페이스로 떨어뜨리면 스택과 무관한 곳에 스택을 풀어 놓는다 — 묻는다.
+	ns := req.Namespace
+	if ns == "" {
+		if backup.StackID != "" && mode != domain.ModePlatformOnly {
+			return &shareddomain.AppError{
+				Code:       "RESTORE_NAMESPACE_REQUIRED",
+				HTTPStatus: http.StatusBadRequest,
+				Message:    "스택을 되돌릴 네임스페이스를 지정하세요",
+				Detail:     backup.StackID,
+			}
+		}
+		ns = h.defaultNS
 	}
 	uc, err := h.factory.Restore(c.Request().Context(), backup.StackID)
 	if err != nil {

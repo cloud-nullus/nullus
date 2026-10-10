@@ -16,6 +16,8 @@ type Adapters struct {
 	Archiver  *VolumeArchiver
 	Resources *ResourceDumper
 	Releases  *HelmReleaseReader
+	// Namespaces 는 복구가 대상 네임스페이스를 만든다.
+	Namespaces *NamespaceEnsurer
 }
 
 // NewAdapters 는 kubeconfig 로 어댑터 묶음을 만든다.
@@ -36,5 +38,7 @@ func NewAdapters(kubeconfig []byte, helperImage string) (*Adapters, error) {
 		Archiver:  NewVolumeArchiver(client, cfg, helperImage),
 		Resources: NewResourceDumper(kubeconfig),
 		Releases:  NewHelmReleaseReader(client),
+
+		Namespaces: NewNamespaceEnsurer(client),
 	}, nil
 }

@@ -143,9 +143,34 @@ func TestCreateRestore_backup_run_id_가_없으면_거부한다(t *testing.T) {
 
 func TestCreateRestore_확인이_맞으면_진행한다(t *testing.T) {
 	e, _, f := newTestHandler(&stubRepo{run: &domain.BackupRun{ID: "b1", StackID: "s1"}})
-	rec := post(e, "/api/v1/restores", `{"backup_run_id":"b1","confirm":"b1"}`)
+	rec := post(e, "/api/v1/restores", `{"backup_run_id":"b1","namespace":"nullus-gitlab","confirm":"b1"}`)
 	assert.True(t, f.restoreCalled)
 	assert.Equal(t, http.StatusTeapot, rec.Code)
+}
+
+// 스택 백업을 스택까지 되돌리는데 네임스페이스가 없으면 묻는다. 플랫폼 기본 네임스페이스로 떨어뜨리면
+// 복구가 그 이름으로 네임스페이스를 만들고 거기에 볼륨·리소스를 풀어 놓는다 — 스택과 무관한 곳이다.
+func TestCreateRestore_스택_백업인데_네임스페이스가_없으면_거부한다(t *testing.T) {
+	for _, mode := range []string{"", "full", "stack_only"} {
+		e, _, f := newTestHandler(&stubRepo{run: &domain.BackupRun{ID: "b1", StackID: "s1"}})
+		rec := post(e, "/api/v1/restores", `{"backup_run_id":"b1","mode":"`+mode+`","confirm":"b1"}`)
+		assert.Equal(t, http.StatusBadRequest, rec.Code, "mode=%q", mode)
+		assert.Contains(t, rec.Body.String(), "RESTORE_NAMESPACE_REQUIRED")
+		assert.False(t, f.restoreCalled)
+	}
+}
+
+// 플랫폼만 되돌리거나 스택 없는 백업이면 네임스페이스를 쓰지 않는다 — 묻지 않는다.
+func TestCreateRestore_스택을_건드리지_않으면_네임스페이스를_묻지_않는다(t *testing.T) {
+	e, _, f := newTestHandler(&stubRepo{run: &domain.BackupRun{ID: "b1", StackID: "s1"}})
+	rec := post(e, "/api/v1/restores", `{"backup_run_id":"b1","mode":"platform_only","confirm":"b1"}`)
+	assert.Equal(t, http.StatusTeapot, rec.Code)
+	assert.True(t, f.restoreCalled)
+
+	e, _, f = newTestHandler(&stubRepo{run: &domain.BackupRun{ID: "b1"}})
+	rec = post(e, "/api/v1/restores", `{"backup_run_id":"b1","mode":"full","confirm":"b1"}`)
+	assert.Equal(t, http.StatusTeapot, rec.Code)
+	assert.True(t, f.restoreCalled)
 }
 
 func TestGetBackup_매니페스트와_산출물을_함께_준다(t *testing.T) {
