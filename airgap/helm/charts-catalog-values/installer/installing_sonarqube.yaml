@@ -1,0 +1,38 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_sonarqube
+# chart: sonarqube 2026.5.1002
+community:
+    enabled: true
+fullnameOverride: sonarqube
+httproute:
+    enabled: false
+ingress:
+    enabled: false
+jdbcOverwrite:
+    enabled: true
+    jdbcSecretName: nullus-sonarqube-credentials
+    jdbcSecretPasswordKey: jdbc-password
+    jdbcUrl: jdbc:postgresql://nullus-postgresql.nullus.svc.cluster.local:5432/sonarqube
+    jdbcUsername: sonarqube
+monitoringPasscodeSecretKey: monitoring-passcode
+monitoringPasscodeSecretName: nullus-sonarqube-credentials
+persistence:
+    enabled: true
+    size: 10Gi
+prometheusExporter:
+    enabled: false
+resources:
+    limits:
+        cpu: "2"
+        memory: 4Gi
+    requests:
+        cpu: 500m
+        memory: 3Gi
+service:
+    externalPort: 9000
+    internalPort: 9000
+    type: ClusterIP
+sonarProperties:
+    sonar.core.serverBaseURL: http://sonarqube.nullus.internal
+tests:
+    enabled: false

@@ -128,15 +128,31 @@ func TestValidateCompatibility_Arch_SingleAMD64Cluster_Passes(t *testing.T) {
 // amd64+arm64 cluster => fail (hard block). The Pre-Deploy Gate must not let
 // the user proceed with a verified matrix that cannot schedule onto every
 // worker arch.
+//
+// 행렬을 테스트 안에서 만든다. 예전에는 시드의 GitLab 행렬이 전부 amd64 전용이라는
+// 데 기댔는데, arm64 를 허용하는 GitLab 행렬(gitlab-argocd-sonarqube-v1)이 생기면서
+// 매처가 그쪽을 골라 이 분기를 지나치지 않게 됐다. 시드 모양과 무관하게 규칙을 본다.
 func TestValidateCompatibility_Arch_MixedCluster_VerifiedMatrix_Fails(t *testing.T) {
 	repo := repository.NewMemoryCompatibilityRepository()
+	require.NoError(t, repo.Create(context.Background(), &domain.CompatibilityMatrix{
+		ID:     "verified-amd64-only-v1",
+		Name:   "Verified amd64-only",
+		Status: "verified",
+		Kubernetes: domain.KubernetesCompat{
+			Min: "1.26", Max: "1.35", Recommended: "1.31",
+		},
+		Tools: map[string]domain.ToolVersion{
+			"source_repository": {
+				Name: "Legacy SCM", HelmVersion: "1.0.0", AppVersion: "1.0.0",
+				MinK8sVersion: "1.26", ArchSupport: []string{"amd64"}, Tier: "stable",
+			},
+		},
+	}))
 	uc := NewValidateCompatibility(repo)
 
 	out, err := uc.Execute(context.Background(), ValidateCompatibilityInput{
 		Tools: map[string]string{
-			"source_repository":  "GitLab CE",
-			"ci_platform":        "GitLab CI",
-			"container_registry": "GitLab Registry",
+			"source_repository": "Legacy SCM",
 		},
 		NodeArchitectures: []string{"amd64", "arm64"},
 	})

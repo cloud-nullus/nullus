@@ -105,6 +105,35 @@ const (
 	TrivyChartVersion = "0.26.0"
 	TrivyAppVersion   = "0.74.0"
 
+	// SonarQubeReleaseName 은 소스 정적 분석(SAST) 서버 릴리스명이다.
+	//
+	// 차트 기본 이름은 <릴리스>-sonarqube 라 fullnameOverride 로 릴리스명과 같게
+	// 둔다 — Service·StatefulSet·PVC 이름이 모두 이 값이 된다.
+	SonarQubeReleaseName = "sonarqube"
+	SonarQubeServiceName = SonarQubeReleaseName
+	// SonarQubeServicePort 는 화면과 웹 API 포트다. 차트 기본 service.externalPort 와 같다.
+	SonarQubeServicePort = 9000
+	// SonarQubeSecret 은 DB 비밀번호·모니터링 패스코드·관리자 비밀번호를 담는다.
+	// OpenBao 에서 만든 값을 ESO 가 이 이름으로 옮긴다.
+	SonarQubeSecret = "nullus-sonarqube-credentials"
+	// 키 이름은 차트 jdbcOverwrite.jdbcSecretPasswordKey · monitoringPasscodeSecretKey
+	// 에 그대로 넘긴다.
+	SonarQubeDBPasswordKey         = "jdbc-password"
+	SonarQubeMonitoringPasscodeKey = "monitoring-passcode"
+	SonarQubeAdminPasswordKey      = "admin-password"
+	// SonarQubeAdminUser 는 차트가 처음 만드는 관리자다. 첫 비밀번호는 admin 이고
+	// 프로비저닝이 바로 바꾼다.
+	SonarQubeAdminUser = "admin"
+	// SonarQubeDatabase / SonarQubeDBUser 는 공유 PostgreSQL 안의 전용 자리다.
+	// GitLab DB 와 테이블 이름(users·projects·issues)이 겹쳐 같은 DB 를 쓸 수 없다.
+	SonarQubeDatabase = "sonarqube"
+	SonarQubeDBUser   = "sonarqube"
+	// 차트 버전과 실제로 깔리는 Community 빌드 번호다. 차트의 appVersion(2026.5.2)은
+	// 유료 Server 판의 번호라 Community 를 고르면 깔리는 것과 다르다.
+	// (고정: TestChartVersionsMatchCompatibilityMatrix)
+	SonarQubeChartVersion = "2026.5.1002"
+	SonarQubeAppVersion   = "26.9.0.129388"
+
 	// NexusServiceName 은 Nexus 진입 Service 다. 차트 기본 이름은
 	// {release}-nexus-repository-manager 라 길어지므로 fullnameOverride 로 맞춘다.
 	NexusReleaseName = "nexus"

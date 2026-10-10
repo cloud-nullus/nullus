@@ -67,6 +67,7 @@ var legacyReleaseArtifactExactNames = map[string]struct{}{
 	domain.NexusAdminSecret:                 {},
 	domain.GiteaAdminSecret:                 {},
 	domain.JenkinsAdminSecret:               {},
+	domain.SonarQubeSecret:                  {},
 	domain.AccessDomainTLSSecretName:        {},
 	domain.AccessDomainCertName:             {},
 }

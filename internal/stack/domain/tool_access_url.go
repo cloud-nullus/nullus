@@ -80,6 +80,8 @@ func toolAccessHost(toolName string) string {
 		return "jaeger"
 	case strings.Contains(name, "openbao"):
 		return "openbao"
+	case strings.Contains(name, "sonar"):
+		return "sonarqube"
 	}
 
 	return ""

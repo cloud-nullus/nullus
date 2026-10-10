@@ -79,6 +79,12 @@ func (o *Orchestrator) platformOwnedValuesForStep(step string) []platformOwnedVa
 		return installMarkerValue(domain.CertManagerReleaseName)
 	case "installing_metrics_server":
 		return installMarkerValue(domain.MetricsServerReleaseName)
+	case "installing_sonarqube":
+		return []platformOwnedValue{{
+			path:   []string{"jdbcOverwrite", "jdbcUrl"},
+			value:  sonarQubeJDBCURL(namespace),
+			reason: namespaceScopedReason,
+		}}
 	}
 	return nil
 }

@@ -138,6 +138,9 @@ SLOTS = {
     "log_search":               ("logging",    "search"),
     "trace_layer":              ("logging",    "trace_layer"),
     "agent":                    ("logging",    "trace_exporter"),
+    # 보안 슬롯. 빠지면 템플릿이 고른 Trivy·SonarQube 가 설정에서 사라진다.
+    "image_scanner":            ("security",   "image_scanner"),
+    "sast":                     ("security",   "sast"),
 }
 
 data = json.load(sys.stdin)
@@ -148,7 +151,7 @@ if template is None:
     sys.stderr.write("template %s not found\n" % wanted)
     sys.exit(1)
 
-cfg = {"artifacts": {}, "pipeline": {}, "monitoring": {}, "logging": {}}
+cfg = {"artifacts": {}, "pipeline": {}, "monitoring": {}, "logging": {}, "security": {}}
 for section, field in SLOTS.values():
     cfg[section][field] = {"name": "", "version": "", "enabled": False}
 

@@ -174,6 +174,9 @@ const (
 	baselineNexusAppVersion   = domain.NexusAppVersion
 	baselineTrivyHelmVersion  = domain.TrivyChartVersion
 	baselineTrivyAppVersion   = domain.TrivyAppVersion
+	// SonarQube 는 Community 빌드 번호가 실제로 깔리는 앱 버전이다.
+	baselineSonarQubeHelmVersion = domain.SonarQubeChartVersion
+	baselineSonarQubeAppVersion  = domain.SonarQubeAppVersion
 
 	baselineGiteaHelmVersion = domain.GiteaChartVersion
 	baselineGiteaAppVersion  = domain.GiteaAppVersion
@@ -298,6 +301,30 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"image_scanner":            {Name: "Trivy", HelmVersion: baselineTrivyHelmVersion, AppVersion: baselineTrivyAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+			},
+		},
+		{
+			// gitlab-argocd-v1 에 SonarQube 를 더했다. GitLab 은 000048 이 gitlab-argocd-v1
+			// 에 한 것과 같이 arm64 를 허용한다 — arm64 kind 에서 끝까지 동작한 기록이 있다.
+			// SonarQube Community 이미지는 amd64·arm64 를 함께 낸다.
+			ID:     "gitlab-argocd-sonarqube-v1",
+			Name:   "GitLab + Argo CD + SonarQube",
+			Status: "verified",
+			Kubernetes: domain.KubernetesCompat{
+				Min:         baselineMinK8sPlatform,
+				Max:         "1.35",
+				Recommended: "1.35",
+			},
+			Tools: map[string]domain.ToolVersion{
+				"source_repository":        {Name: "GitLab CE", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"ci_platform":              {Name: "GitLab CI", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"container_registry":       {Name: "GitLab Registry", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"image_scanner":            {Name: "Trivy", HelmVersion: baselineTrivyHelmVersion, AppVersion: baselineTrivyAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"sast":                     {Name: "SonarQube", HelmVersion: baselineSonarQubeHelmVersion, AppVersion: baselineSonarQubeAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
 			},
 		},
 		{

@@ -425,6 +425,8 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_nexus":           "config.artifacts.container_registry",
 			"provisioning_nexus":         "config.artifacts.container_registry",
 			"installing_trivy":           "config.security.image_scanner",
+			"installing_sonarqube":       "config.security.sast",
+			"provisioning_sonarqube":     "config.security.sast",
 			"installing_argocd":          "config.pipeline.cd_tool",
 			stepInstallingRunner:         "config.pipeline.ci_platform",
 			"installing_jenkins":         "config.pipeline.ci_platform",
@@ -493,6 +495,15 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// 대신할 수 있어 고르지 않는 편이 정상인 구성도 있다.
 			"installing_trivy": func(cfg domain.StackConfig) bool {
 				return isImageScannerSelection(cfg.Security.ImageScanner)
+			},
+			// SonarQube 도 선택이다. 무거운 도구라(JVM 셋) 고르지 않은 스택에 서면
+			// 자원만 먹는다. 외부 SonarQube 는 스택 안에 세우지 않는다.
+			"installing_sonarqube": func(cfg domain.StackConfig) bool {
+				return domain.HasSAST(cfg.Security.SAST)
+			},
+			// 설치만 한 SonarQube 의 관리자는 admin/admin 이다.
+			"provisioning_sonarqube": func(cfg domain.StackConfig) bool {
+				return domain.HasSAST(cfg.Security.SAST)
 			},
 			// 시크릿 평면(installing_openbao / installing_external_secrets /
 			// provisioning_secrets)은 stepConfigEnabled 에 넣지 않는다 — 항상 켜진다.
@@ -870,6 +881,18 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		return nil
 	}
 
+	if step == "provisioning_sonarqube" {
+		if !looksLikeKubeconfig(o.kubeconfig) {
+			o.markCompleted(stackID, order)
+			return nil
+		}
+		if err := o.ensureSonarQubeProvisioned(ctx, o.namespace); err != nil {
+			return fmt.Errorf("sonarqube 프로비저닝 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
 	if step == "provisioning_sso" {
 		// OIDC 클라이언트를 미리 만들어 둔다. 이를 소비하는 GitLab/Argo CD/
 		// Grafana 설치보다 앞서야 한다.
@@ -1010,6 +1033,13 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	o.adoptClusterScopedResources(ctx, releaseName, namespace)
 	// 공용 릴리스의 설치 표시는 Nullus 가 새로 까는 릴리스에만 남긴다(install_marker.go).
 	values = o.withInstallMarkerIfOwned(ctx, releaseName, namespace, values)
+
+	// SonarQube 가 붙을 전용 DB 를 차트보다 먼저 만든다(sonarqube-provisioning.go).
+	if step == "installing_sonarqube" && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.ensureSonarQubeDatabase(ctx, namespace); err != nil {
+			return err
+		}
+	}
 
 	result, err := o.installer.Install(ctx, port.HelmInstallRequest{
 		ReleaseName: releaseName,
@@ -1200,6 +1230,9 @@ func isOptInStep(step string) bool {
 	// 이미지 스캐너는 선택 항목이다. 설정을 모를 때 켜 두면 아무도 고르지 않은
 	// 스캐너가 서고, 배포 검증이 없는 릴리스의 상태를 물어 실패한다.
 	case "installing_trivy":
+		return true
+	// SonarQube 도 선택 항목이다.
+	case "installing_sonarqube", "provisioning_sonarqube":
 		return true
 	// Gitea 는 명시적으로 골라야 선다. 소스 저장소 슬롯의 기본값은 GitLab 이므로
 	// (isGitLabSourceRepositorySelection 이 빈 이름에 true 를 돌려준다) 여기 없으면

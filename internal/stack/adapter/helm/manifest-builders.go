@@ -221,6 +221,9 @@ spec:
 	if cfg.Authentication != nil && strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao") {
 		routes = append(routes, routeSpec{name: "openbao-route", host: fmt.Sprintf("openbao.%s", accessDomain), service: "openbao", port: 8200})
 	}
+	if domain.HasSAST(cfg.Security.SAST) {
+		routes = append(routes, routeSpec{name: "sonarqube-route", host: fmt.Sprintf("sonarqube.%s", accessDomain), service: domain.SonarQubeServiceName, port: domain.SonarQubeServicePort})
+	}
 
 	for _, route := range routes {
 		manifests = append(manifests, fmt.Sprintf(`apiVersion: gateway.networking.k8s.io/v1

@@ -41,6 +41,11 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 		base = mergeMaps(base, o.giteaSharedServiceValues())
 	}
 
+	// SonarQube 의 JDBC 주소와 서버 주소도 네임스페이스·접속 도메인에서 파생된다.
+	if step == "installing_sonarqube" {
+		base = mergeMaps(base, o.sonarqubeSharedServiceValues())
+	}
+
 	// GitLab Runner 의 helper 이미지와 CI 잡의 이름 해석은 차트 values 가 아니라
 	// 러너 설정 TOML 안에 들어간다. 그래서 archImageValuesForStep 경로가 아니라
 	// 여기서 조립한다. 둘이 같은 키(runners.config)를 쓰므로 한 번에 만든다 —
