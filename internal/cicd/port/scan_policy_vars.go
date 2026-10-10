@@ -26,6 +26,17 @@ const (
 	// ScanPolicyConfigMapName 은 CI 변수 저장소가 없는 CI(Jenkins)가 정책을 읽는
 	// 스택 네임스페이스의 ConfigMap 이다.
 	ScanPolicyConfigMapName = "nullus-scan-policy"
+
+	// SASTServerVariable 은 스택 SonarQube 의 클러스터 내 주소다. sonar-scanner 가
+	// 이 이름의 환경변수를 그대로 읽는다.
+	SASTServerVariable = "SONAR_HOST_URL"
+	// SASTTokenVariable 은 분석 토큰이다. 스택 설치가 발급해 OpenBao 에 두고, 플랫폼이
+	// 시크릿 CI 변수로 등록한다. sonar-scanner 가 이 이름을 그대로 읽는다.
+	SASTTokenVariable = "SONAR_TOKEN"
+	// SASTImageVariable 은 CI 잡이 쓸 sonar-scanner 이미지다(에어갭 미러로 덮는다).
+	SASTImageVariable = "NULLUS_SONAR_SCANNER_IMAGE"
+	// SASTOnGateFailureVariable 이 "warn" 이면 Quality Gate 가 실패해도 단계를 통과시킨다.
+	SASTOnGateFailureVariable = "NULLUS_SAST_ON_GATE_FAILURE"
 )
 
 // ScanPolicyVariables 는 정책을 CI 가 읽는 변수로 옮긴다.
@@ -37,5 +48,6 @@ func ScanPolicyVariables(p domain.ScanPolicy) []ProjectVariable {
 		{Key: ScanSeverityVariable, Value: p.TrivySeverities()},
 		{Key: ScanIgnoreUnfixedVariable, Value: strconv.FormatBool(p.IgnoreUnfixed)},
 		{Key: ScanOnUnreachableVariable, Value: string(p.UnreachableActionOrDefault())},
+		{Key: SASTOnGateFailureVariable, Value: string(p.SASTGateActionOrDefault())},
 	}
 }

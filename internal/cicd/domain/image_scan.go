@@ -34,8 +34,12 @@ type ScanPolicy struct {
 	BlockSeverity Severity `json:"block_severity"`
 	// IgnoreUnfixed 가 참이면 수정본이 없는 취약점은 판정에서 뺀다.
 	IgnoreUnfixed bool `json:"ignore_unfixed"`
-	// OnScannerUnreachable 은 스캔을 수행하지 못했을 때의 동작이다.
+	// OnScannerUnreachable 은 스캔을 수행하지 못했을 때의 동작이다. 소스 정적 분석을
+	// 수행하지 못했을 때(SonarQube 장애·인증 실패)도 이 값을 따른다.
 	OnScannerUnreachable UnreachableAction `json:"on_scanner_unreachable"`
+	// SASTOnGateFailure 는 소스 정적 분석의 Quality Gate 가 실패했을 때의 동작이다.
+	// 비어 있으면 차단이다(이 필드를 모르는 옛 클라이언트·저장 행).
+	SASTOnGateFailure SASTGateAction `json:"sast_on_gate_failure"`
 }
 
 // DefaultScanPolicy 는 기본 차단 기준이다 (설계 §6).
@@ -48,6 +52,7 @@ func DefaultScanPolicy() ScanPolicy {
 		BlockSeverity:        SeverityCritical,
 		IgnoreUnfixed:        true,
 		OnScannerUnreachable: UnreachableBlock,
+		SASTOnGateFailure:    SASTGateBlock,
 	}
 }
 

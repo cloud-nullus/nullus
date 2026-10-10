@@ -248,3 +248,35 @@ func TestRegistryHostFor_DerivesFromAccessDomain(t *testing.T) {
 	// 도메인을 모르면 빈 값 — 클라이언트가 API 응답의 경로를 그대로 쓴다.
 	assert.Equal(t, "", registryHostFor(""))
 }
+
+type fakeSecretStore struct{ values map[string]string }
+
+func (f *fakeSecretStore) GetTokenForStack(_ context.Context, _, _, path string) (string, error) {
+	return f.values[path], nil
+}
+
+// SonarQube 를 고른 스택이면 주소와 분석 토큰을 번들에 싣는다. 끊기면 SonarQube 가 있어도
+// 파이프라인에 분석 단계가 생기지 않는다.
+func TestFor_CarriesSASTServerAndToken(t *testing.T) {
+	stack := gitlabStack()
+	stack.SASTServerEndpoint = "http://sonarqube.devsecops.svc.cluster.local:9000"
+	f := newFactory(t, stack, &fakeTokenIssuer{token: "glpat-x"}).WithRegistrySecrets(&fakeSecretStore{
+		values: map[string]string{"kv/nullus/dev/org-1/security/sonarqube/analysis-token": "sqa_token"},
+	})
+
+	bundle, err := f.For(context.Background(), "stk_1")
+	require.NoError(t, err)
+	assert.Equal(t, stack.SASTServerEndpoint, bundle.SASTServerEndpoint)
+	require.NotNil(t, bundle.SASTToken)
+	token, err := bundle.SASTToken.AnalysisToken(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "sqa_token", token)
+}
+
+func TestFor_NoSASTWithoutSonarQube(t *testing.T) {
+	f := newFactory(t, gitlabStack(), &fakeTokenIssuer{token: "glpat-x"}).WithRegistrySecrets(&fakeSecretStore{})
+	bundle, err := f.For(context.Background(), "stk_1")
+	require.NoError(t, err)
+	assert.Empty(t, bundle.SASTServerEndpoint)
+	assert.Nil(t, bundle.SASTToken)
+}

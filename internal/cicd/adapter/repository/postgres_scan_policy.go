@@ -25,13 +25,13 @@ func NewPostgresScanPolicyRepository(pool *pgxpool.Pool) *PostgresScanPolicyRepo
 // Get 은 저장된 정책이다. 저장한 적 없으면 found=false 다.
 func (r *PostgresScanPolicyRepository) Get(ctx context.Context, stackID string) (domain.ScanPolicy, bool, error) {
 	const q = `
-		SELECT block_severity, ignore_unfixed, on_scanner_unreachable
+		SELECT block_severity, ignore_unfixed, on_scanner_unreachable, sast_on_gate_failure
 		FROM image_scan_policies
 		WHERE stack_id = $1`
 
-	var severity, action string
+	var severity, action, sastAction string
 	var ignoreUnfixed bool
-	err := r.pool.QueryRow(ctx, q, strings.TrimSpace(stackID)).Scan(&severity, &ignoreUnfixed, &action)
+	err := r.pool.QueryRow(ctx, q, strings.TrimSpace(stackID)).Scan(&severity, &ignoreUnfixed, &action, &sastAction)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ScanPolicy{}, false, nil
 	}
@@ -42,6 +42,7 @@ func (r *PostgresScanPolicyRepository) Get(ctx context.Context, stackID string) 
 		BlockSeverity:        domain.Severity(severity),
 		IgnoreUnfixed:        ignoreUnfixed,
 		OnScannerUnreachable: domain.UnreachableAction(action),
+		SASTOnGateFailure:    domain.SASTGateAction(sastAction),
 	}, true, nil
 }
 
@@ -54,12 +55,13 @@ func (r *PostgresScanPolicyRepository) Upsert(
 ) error {
 	const q = `
 		INSERT INTO image_scan_policies (
-			stack_id, block_severity, ignore_unfixed, on_scanner_unreachable, updated_by, updated_at)
-		VALUES ($1, $2, $3, $4, $5, NOW())
+			stack_id, block_severity, ignore_unfixed, on_scanner_unreachable, sast_on_gate_failure, updated_by, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())
 		ON CONFLICT (stack_id) DO UPDATE SET
 			block_severity = EXCLUDED.block_severity,
 			ignore_unfixed = EXCLUDED.ignore_unfixed,
 			on_scanner_unreachable = EXCLUDED.on_scanner_unreachable,
+			sast_on_gate_failure = EXCLUDED.sast_on_gate_failure,
 			updated_by = EXCLUDED.updated_by,
 			updated_at = NOW()`
 
@@ -68,6 +70,7 @@ func (r *PostgresScanPolicyRepository) Upsert(
 		string(policy.BlockSeverity),
 		policy.IgnoreUnfixed,
 		string(policy.UnreachableActionOrDefault()),
+		string(policy.SASTGateActionOrDefault()),
 		strings.TrimSpace(updatedBy),
 	); err != nil {
 		return fmt.Errorf("스캔 정책 저장 실패 (%s): %w", stackID, err)

@@ -51,6 +51,7 @@ type policyResponse struct {
 		BlockSeverity        string `json:"block_severity"`
 		IgnoreUnfixed        bool   `json:"ignore_unfixed"`
 		OnScannerUnreachable string `json:"on_scanner_unreachable"`
+		SASTOnGateFailure    string `json:"sast_on_gate_failure"`
 	} `json:"policy"`
 	IsDefault bool `json:"is_default"`
 	Pushes    []struct {
@@ -125,4 +126,31 @@ func TestScanPolicyHandler_PutRequiresAllFields(t *testing.T) {
 
 	_, after := doPolicyRequest(t, e, http.MethodGet, "")
 	assert.True(t, after.IsDefault, "잘못된 요청이 정책을 바꾸면 안 된다")
+}
+
+// SAST Quality Gate 를 경고로 바꿀 수 있다. 기본은 차단이다.
+func TestScanPolicyHandler_SASTGateAction(t *testing.T) {
+	e, _ := newScanPolicyEcho(t)
+
+	_, before := doPolicyRequest(t, e, http.MethodGet, "")
+	assert.Equal(t, "block", before.Policy.SASTOnGateFailure)
+
+	rec, resp := doPolicyRequest(t, e, http.MethodPut,
+		`{"block_severity":"CRITICAL","ignore_unfixed":true,"on_scanner_unreachable":"block","sast_on_gate_failure":"warn"}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Equal(t, "warn", resp.Policy.SASTOnGateFailure)
+
+	// 이 필드를 모르는 옛 요청은 저장된 값을 그대로 둔다.
+	rec, resp = doPolicyRequest(t, e, http.MethodPut,
+		`{"block_severity":"HIGH","ignore_unfixed":true,"on_scanner_unreachable":"block"}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Equal(t, "warn", resp.Policy.SASTOnGateFailure)
+}
+
+func TestScanPolicyHandler_RejectsInvalidSASTGateAction(t *testing.T) {
+	e, _ := newScanPolicyEcho(t)
+	rec, _ := doPolicyRequest(t, e, http.MethodPut,
+		`{"block_severity":"CRITICAL","ignore_unfixed":true,"on_scanner_unreachable":"block","sast_on_gate_failure":"warning"}`)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "INVALID_SCAN_POLICY")
 }

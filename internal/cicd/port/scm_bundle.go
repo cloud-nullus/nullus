@@ -99,7 +99,18 @@ type SCMBundle struct {
 	// ImageScannerJavaDBRepository 는 에어갭 설치에서 CI 잡의 trivy client 가 Java DB 를
 	// 받을 내부 미러다. 클러스터 안 CI(GitLab 러너·Jenkins 에이전트) 번들에만 싣는다.
 	ImageScannerJavaDBRepository string
-	GatewayName                  string
+	// SASTServerEndpoint 는 스택 SonarQube 의 클러스터 내 주소다. SonarQube 를 고르지 않은
+	// 스택에서는 비어 있고, 그때는 스캐폴딩이 소스 정적 분석 단계를 만들지 않는다.
+	SASTServerEndpoint string
+	// SASTToken 은 CI 가 분석에 쓸 토큰을 푼다. 스택 설치가 OpenBao 에 둔 값이다.
+	// SonarQube 가 없거나 시크릿 백엔드가 배선되지 않았으면 nil 이다.
+	SASTToken   SASTTokenResolver
+	GatewayName string
+}
+
+// SASTTokenResolver 는 스택 SonarQube 의 분석 토큰을 읽는다. 발급하지 않고 읽기만 한다.
+type SASTTokenResolver interface {
+	AnalysisToken(ctx context.Context) (string, error)
 }
 
 // PipelineCredentialPlane 은 파이프라인 자격증명을 준비하고 그것을 클러스터에

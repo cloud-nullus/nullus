@@ -19,6 +19,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/nexus"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registry"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registrycreds"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/sastcreds"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
@@ -228,8 +229,10 @@ func (f *BundleFactory) gitLabBundle(
 		AccessDomain:                 summary.AccessDomain,
 		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
 		ImageScannerJavaDBRepository: f.opts.TrivyJavaDBRepository,
+		SASTServerEndpoint:           summary.SASTServerEndpoint,
 		GatewayName:                  gatewayNameForStack(summary.Name),
 	}
+	f.attachSASTToken(bundle, summary)
 	// GitLab 스택도 Harbor·Nexus 를 레지스트리로 고를 수 있다. 빠뜨리면 CI 변수가
 	// 등록되지 않아 build 가 docker login 에서 죽는다.
 	f.attachRegistryCredentials(ctx, bundle, resolver, summary)
@@ -259,6 +262,17 @@ func (f *BundleFactory) attachRegistryCredentials(
 	if deleter := f.imageDeleterFor(ctx, resolver, creds, summary); deleter != nil {
 		bundle.Images = deleter
 	}
+}
+
+// attachSASTToken 은 스택 SonarQube 의 분석 토큰을 푸는 수단을 번들에 붙인다.
+//
+// 토큰은 스택 설치가 OpenBao 에 둔다. 레지스트리 자격증명과 같은 시크릿 저장소에서
+// 읽는다 — 그 저장소가 배선되지 않았거나 SonarQube 가 없으면 붙이지 않는다.
+func (f *BundleFactory) attachSASTToken(bundle *port.SCMBundle, summary *port.StackSummary) {
+	if f.registrySecrets == nil || strings.TrimSpace(summary.SASTServerEndpoint) == "" {
+		return
+	}
+	bundle.SASTToken = sastcreds.New(f.registrySecrets, f.opts.Env, summary.OrgID, summary.ID)
 }
 
 // gitHubBundle 은 외부 GitHub 을 향하는 묶음을 만든다.
@@ -317,7 +331,7 @@ func (f *BundleFactory) gitHubBundle(
 
 	runs := github.NewBuildReader(client, conn.Owner)
 
-	return &port.SCMBundle{
+	bundle := &port.SCMBundle{
 		Provisioner: client,
 		Pipeline:    client,
 		// GitHub Actions 실행 이력과 산출물도 같은 PAT 로 organization 아래 리포에서 읽는다.
@@ -337,8 +351,11 @@ func (f *BundleFactory) gitHubBundle(
 		ClusterID:            summary.ClusterID,
 		AccessDomain:         summary.AccessDomain,
 		ImageScannerEndpoint: summary.ImageScannerEndpoint,
+		SASTServerEndpoint:   summary.SASTServerEndpoint,
 		GatewayName:          gatewayNameForStack(summary.Name),
-	}, nil
+	}
+	f.attachSASTToken(bundle, summary)
+	return bundle, nil
 }
 
 // giteaBundle 은 스택 안에 설치된 Gitea 를 향하는 묶음을 만든다.
@@ -408,8 +425,10 @@ func (f *BundleFactory) giteaBundle(
 		AccessDomain:                 summary.AccessDomain,
 		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
 		ImageScannerJavaDBRepository: f.opts.TrivyJavaDBRepository,
+		SASTServerEndpoint:           summary.SASTServerEndpoint,
 		GatewayName:                  gatewayNameForStack(summary.Name),
 	}
+	f.attachSASTToken(bundle, summary)
 
 	f.attachRegistryCredentials(ctx, bundle, resolver, summary)
 

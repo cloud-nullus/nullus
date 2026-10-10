@@ -32,6 +32,17 @@ const (
 	UnreachableAllow UnreachableAction = "allow"
 )
 
+// SASTGateAction 은 소스 정적 분석의 Quality Gate 가 실패했을 때의 동작이다.
+type SASTGateAction string
+
+const (
+	// SASTGateBlock 은 멈춘다. 기본값이다 — 이미지 스캔과 같다.
+	SASTGateBlock SASTGateAction = "block"
+	// SASTGateWarn 은 실패를 기록만 하고 통과시킨다. Quality Gate 를 막 도입한 팀이
+	// 기존 코드의 문제로 배포가 멈추지 않게 하는 길이다.
+	SASTGateWarn SASTGateAction = "warn"
+)
+
 // ErrInvalidScanPolicy 는 정책 값이 허용 범위를 벗어났을 때의 오류다.
 var ErrInvalidScanPolicy = errors.New("스캔 정책이 올바르지 않습니다")
 
@@ -50,7 +61,21 @@ func (p ScanPolicy) Validate() error {
 		return fmt.Errorf("%w: 스캐너 장애 시 동작 %q 는 block·allow 중 하나여야 합니다",
 			ErrInvalidScanPolicy, p.OnScannerUnreachable)
 	}
+	switch p.SASTOnGateFailure {
+	case "", SASTGateBlock, SASTGateWarn:
+	default:
+		return fmt.Errorf("%w: Quality Gate 실패 시 동작 %q 는 block·warn 중 하나여야 합니다",
+			ErrInvalidScanPolicy, p.SASTOnGateFailure)
+	}
 	return nil
+}
+
+// SASTGateActionOrDefault 는 비어 있으면 기본값(block)이다.
+func (p ScanPolicy) SASTGateActionOrDefault() SASTGateAction {
+	if p.SASTOnGateFailure == "" {
+		return SASTGateBlock
+	}
+	return p.SASTOnGateFailure
 }
 
 // TrivySeverities 는 게이트 명령의 --severity 값이다.

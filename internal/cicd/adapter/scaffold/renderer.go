@@ -96,6 +96,10 @@ type Input struct {
 	// 받을 내부 미러다. client 는 Maven 메타데이터가 없는 JAR 을 만나면 Java DB 를 스스로
 	// 받는데 기본 주소(mirror.gcr.io)는 에어갭에서 닿지 않는다. 비면 업스트림 기본값을 쓴다.
 	ImageScannerJavaDBRepository string
+	// SASTServerEndpoint 는 스택 SonarQube 의 클러스터 내 주소다.
+	//
+	// 비면 소스 정적 분석 단계를 만들지 않는다 — 이미지 스캔과 같은 이유다.
+	SASTServerEndpoint string
 }
 
 // 이미지 스캔 단계의 이름. CI 마다 표기가 달라 둘로 나눈다 —
@@ -118,6 +122,8 @@ const (
 // #64(SAST) · #79(SCA) · #80(Secret Detection) 도 여기에 자리를 더한다.
 type StageOptions struct {
 	ImageScan bool
+	// SAST 는 스택 SonarQube 로 소스를 분석하는 단계다(#64).
+	SAST bool
 }
 
 // Render 는 앱 프로젝트에 커밋할 파일들을 만든다.
@@ -194,7 +200,23 @@ func renderPipelineFor(in Input) (path, content string) {
 
 // stageOptionsFor 는 이 입력이 실제로 만들 선택 단계를 정한다.
 func stageOptionsFor(in Input) StageOptions {
-	return StageOptions{ImageScan: strings.TrimSpace(in.ImageScannerEndpoint) != ""}
+	return StageOptions{
+		ImageScan: strings.TrimSpace(in.ImageScannerEndpoint) != "",
+		SAST:      strings.TrimSpace(in.SASTServerEndpoint) != "",
+	}
+}
+
+// deployNeeds 는 deploy 잡이 기다릴 잡이다. 게이트 단계를 건너뛰고 배포되지 않도록
+// 켜진 게이트에 모두 매단다 — 이미지 스캔은 빌드를 기다리므로 빌드는 그쪽으로 따라온다.
+func deployNeeds(opts StageOptions) []string {
+	needs := []string{"build"}
+	if opts.ImageScan {
+		needs = []string{imageScanStageID}
+	}
+	if opts.SAST {
+		needs = append(needs, sastStageID)
+	}
+	return needs
 }
 
 // renderGitHubWorkflow 는 build → deploy 2단계 GitHub Actions 워크플로를 만든다.
@@ -252,6 +274,34 @@ func renderGitHubWorkflow(in Input) string {
 	b.WriteString("          docker build -t \"$IMAGE_REPOSITORY:$IMAGE_TAG\" .\n")
 	b.WriteString("          docker push \"$IMAGE_REPOSITORY:$IMAGE_TAG\"\n\n")
 
+	if opts.SAST {
+		fmt.Fprintf(&b, "  %s:\n", sastStageID)
+		b.WriteString("    runs-on: ubuntu-latest\n")
+		b.WriteString("    env:\n")
+		fmt.Fprintf(&b, "      %s: %q\n", port.SASTServerVariable, in.SASTServerEndpoint)
+		// 토큰은 플랫폼이 리포 시크릿으로 등록한다. 정책은 리포 Actions 변수다 — env 에
+		// 값을 박으면 푸시한 변수보다 앞선다.
+		fmt.Fprintf(&b, "      %s: ${{ secrets.%s }}\n", port.SASTTokenVariable, port.SASTTokenVariable)
+		for _, v := range sastPolicyVariableNames {
+			fmt.Fprintf(&b, "      %s: ${{ vars.%s }}\n", v, v)
+		}
+		b.WriteString("    container:\n")
+		fmt.Fprintf(&b, "      image: %q\n", defaultSASTScannerImage)
+		// 스캐너 이미지는 비루트로 돈다. 그대로면 actions/checkout 이 러너 소유의 작업
+		// 디렉터리에 쓰다 권한 오류로 죽고, 배포가 이 단계를 기다리므로 모든 배포가 막힌다.
+		b.WriteString("      options: --user root\n")
+		b.WriteString("    steps:\n")
+		b.WriteString("      - uses: actions/checkout@v4\n")
+		// SonarQube 는 blame 으로 새 코드를 가린다. 얕은 클론이면 그 판단이 흐려진다.
+		b.WriteString("        with:\n          fetch-depth: 0\n")
+		b.WriteString("      - name: Analyze source\n")
+		b.WriteString("        run: |\n")
+		for _, line := range sastScriptLines(in.AppName) {
+			fmt.Fprintf(&b, "          %s\n", line)
+		}
+		b.WriteString("\n")
+	}
+
 	if opts.ImageScan {
 		fmt.Fprintf(&b, "  %s:\n", imageScanStageID)
 		b.WriteString("    needs: build\n")
@@ -288,11 +338,11 @@ func renderGitHubWorkflow(in Input) string {
 	}
 
 	b.WriteString("  deploy:\n")
-	if opts.ImageScan {
-		// 스캔을 건너뛰고 배포되지 않도록 스캔 잡에 매단다.
-		fmt.Fprintf(&b, "    needs: %s\n", imageScanStageID)
+	// 게이트를 건너뛰고 배포되지 않도록 게이트 잡에 매단다. 하나면 예전 모양 그대로 둔다.
+	if needs := deployNeeds(opts); len(needs) == 1 {
+		fmt.Fprintf(&b, "    needs: %s\n", needs[0])
 	} else {
-		b.WriteString("    needs: build\n")
+		fmt.Fprintf(&b, "    needs: [%s]\n", strings.Join(needs, ", "))
 	}
 	b.WriteString("    runs-on: ubuntu-latest\n")
 	b.WriteString("    steps:\n")
@@ -341,6 +391,9 @@ func renderPipeline(in Input) string {
 	b.WriteString("# deploy: deploy/ 의 이미지 태그를 갱신해 커밋합니다. 배포는 Argo CD 가 합니다.\n\n")
 
 	b.WriteString("stages:\n  - build\n")
+	if opts.SAST {
+		fmt.Fprintf(&b, "  - %s\n", sastStageID)
+	}
 	if opts.ImageScan {
 		fmt.Fprintf(&b, "  - %s\n", imageScanStageID)
 	}
@@ -360,6 +413,11 @@ func renderPipeline(in Input) string {
 		// 플랫폼이 프로젝트 CI/CD 변수로 푸시하고, 없으면 스크립트가 기본값을 쓴다.
 		fmt.Fprintf(&b, "  %s: %q\n", scanServerVar, in.ImageScannerEndpoint)
 		fmt.Fprintf(&b, "  %s: %q\n", scanImageVar, defaultScannerImage)
+	}
+	if opts.SAST {
+		// 주소는 스택이 정한 값이다. 토큰과 정책은 플랫폼이 프로젝트 CI/CD 변수로 싣는다.
+		fmt.Fprintf(&b, "  %s: %q\n", port.SASTServerVariable, in.SASTServerEndpoint)
+		fmt.Fprintf(&b, "  %s: %q\n", port.SASTImageVariable, defaultSASTScannerImage)
 	}
 	b.WriteString("\n")
 
@@ -383,6 +441,29 @@ func renderPipeline(in Input) string {
 		`docker push "$IMAGE_REPOSITORY:$IMAGE_TAG"`,
 	})
 	b.WriteString("\n")
+
+	if opts.SAST {
+		fmt.Fprintf(&b, "%s:\n", sastStageID)
+		fmt.Fprintf(&b, "  stage: %s\n", sastStageID)
+		// 스캐너 이미지의 entrypoint 가 잡 스크립트를 가로채지 않게 비운다(SonarQube 의
+		// GitLab 예시와 같다). Kubernetes executor 는 기본으로 무시하지만 다른 executor 는
+		// 그대로 따른다.
+		b.WriteString("  image:\n")
+		fmt.Fprintf(&b, "    name: $%s\n", port.SASTImageVariable)
+		b.WriteString("    entrypoint: [\"\"]\n")
+		// 소스만 본다. 빌드를 기다리지 않고 바로 돈다.
+		b.WriteString("  needs: []\n")
+		b.WriteString("  variables:\n")
+		// SonarQube 는 blame 으로 새 코드를 가린다. 얕은 클론이면 그 판단이 흐려진다.
+		b.WriteString("    GIT_DEPTH: \"0\"\n")
+		b.WriteString("  script:\n")
+		writeScriptLines(&b, sastScriptLines(in.AppName))
+		// Community Edition 은 브랜치 분석이 없다. 기능 브랜치를 분석하면 결과가 같은 프로젝트에
+		// 덮여 기본 브랜치의 판정과 새 코드 기준이 흐트러진다 — 배포와 같은 브랜치에서만 돈다.
+		b.WriteString("  rules:\n")
+		b.WriteString("    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n")
+		b.WriteString("\n")
+	}
 
 	if opts.ImageScan {
 		fmt.Fprintf(&b, "%s:\n", imageScanStageID)
@@ -414,11 +495,10 @@ func renderPipeline(in Input) string {
 	b.WriteString("deploy:\n")
 	b.WriteString("  stage: deploy\n")
 	b.WriteString("  image: alpine:3.20\n")
-	if opts.ImageScan {
-		// 스캔을 건너뛰고 배포되지 않도록 스캔 잡에 매단다.
-		fmt.Fprintf(&b, "  needs:\n    - %s\n", imageScanStageID)
-	} else {
-		b.WriteString("  needs:\n    - build\n")
+	// 게이트를 건너뛰고 배포되지 않도록 게이트 잡에 매단다.
+	b.WriteString("  needs:\n")
+	for _, need := range deployNeeds(opts) {
+		fmt.Fprintf(&b, "    - %s\n", need)
 	}
 	b.WriteString("  script:\n")
 	writeScriptLines(&b, []string{
@@ -674,6 +754,9 @@ spec:
 // 대문자) 여기서는 표시용 표기를 쓴다.
 func PipelineStageNames(opts StageOptions) []string {
 	names := []string{"Build"}
+	if opts.SAST {
+		names = append(names, sastStageName)
+	}
 	if opts.ImageScan {
 		names = append(names, imageScanStageName)
 	}

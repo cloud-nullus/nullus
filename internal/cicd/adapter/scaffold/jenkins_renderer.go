@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cloud-nullus/draft/internal/cicd/port"
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
@@ -76,6 +77,17 @@ func renderJenkinsfile(in Input) string {
 		// 빌더와 같은 파이프라인 Secret 에서 온다.
 		fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
 	}
+	if opts.SAST {
+		// 분석기도 별도 컨테이너다. 정책은 스택 네임스페이스의 ConfigMap, 토큰은
+		// 파이프라인 Secret(SONAR_TOKEN)에서 온다 — sonar-scanner 가 그 이름을 그대로 읽는다.
+		b.WriteString("    - name: sonar-scanner\n")
+		fmt.Fprintf(&b, "      image: %s\n", defaultSASTScannerImage)
+		b.WriteString("      command: [\"cat\"]\n")
+		b.WriteString("      tty: true\n")
+		b.WriteString("      envFrom:\n")
+		fmt.Fprintf(&b, "        - configMapRef: {name: %s, optional: true}\n", scanPolicyConfigMap)
+		fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
+	}
 	b.WriteString("    - name: dind\n")
 	fmt.Fprintf(&b, "      image: %s\n", jenkinsDindImage)
 	b.WriteString("      securityContext: {privileged: true}\n")
@@ -144,6 +156,32 @@ func renderJenkinsfile(in Input) string {
 	b.WriteString("        }\n")
 	b.WriteString("      }\n")
 	b.WriteString("    }\n\n")
+
+	if opts.SAST {
+		// SAST — 소스를 스택 SonarQube 로 분석하고 Quality Gate 로 판정한다.
+		fmt.Fprintf(&b, "    stage('%s') {\n", sastStageName)
+		b.WriteString("      when {\n")
+		b.WriteString("        beforeAgent true\n")
+		b.WriteString("        allOf {\n")
+		b.WriteString("          branch 'main'\n")
+		b.WriteString("          not { changeset pattern: 'deploy/**' , comparator: 'ANT' }\n")
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("      environment {\n")
+		fmt.Fprintf(&b, "        %s = %q\n", port.SASTServerVariable, in.SASTServerEndpoint)
+		b.WriteString("      }\n")
+		b.WriteString("      steps {\n")
+		fmt.Fprintf(&b, "        container('sonar-scanner') {\n")
+		b.WriteString("          sh '''\n")
+		b.WriteString("            set -eu\n")
+		for _, line := range sastScriptLines(app) {
+			fmt.Fprintf(&b, "            %s\n", line)
+		}
+		b.WriteString("          '''\n")
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("    }\n\n")
+	}
 
 	if opts.ImageScan {
 		// image-scan — 빌드한 이미지를 스택 Trivy 서버로 검사한다.
