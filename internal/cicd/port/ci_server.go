@@ -112,6 +112,15 @@ const (
 	ImageScanReportFile = "trivy-report.json"
 )
 
+// 소스 정적 분석 리포트 산출물의 이름이다. 이미지 스캔 리포트와 같은 규칙이다 —
+// 스캐폴딩이 남기고 실행 기록 동기화가 같은 이름으로 읽는다.
+const (
+	// SASTReportArtifact 는 GitHub upload-artifact 의 묶음 이름이다.
+	SASTReportArtifact = "sast-report"
+	// SASTReportFile 은 리포트 파일 경로다.
+	SASTReportFile = "sast-report.json"
+)
+
 // MaxCIArtifactBytes 는 산출물 파일 하나를 읽을 때의 상한이다.
 //
 // 산출물은 사용자 파이프라인이 만든다. 크기를 믿고 통째로 메모리에 올리지 않는다.

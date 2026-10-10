@@ -180,6 +180,12 @@ func renderJenkinsfile(in Input) string {
 		b.WriteString("          '''\n")
 		b.WriteString("        }\n")
 		b.WriteString("      }\n")
+		// 리포트는 게이트에 걸려도 남긴다 — 무엇에 걸렸는지는 실패한 실행에서 봐야 한다.
+		b.WriteString("      post {\n")
+		b.WriteString("        always {\n")
+		fmt.Fprintf(&b, "          archiveArtifacts artifacts: %q, allowEmptyArchive: true\n", port.SASTReportFile)
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
 		b.WriteString("    }\n\n")
 	}
 

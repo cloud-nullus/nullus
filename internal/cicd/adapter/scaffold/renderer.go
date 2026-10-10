@@ -300,6 +300,14 @@ func renderGitHubWorkflow(in Input) string {
 		for _, line := range sastScriptLines(in.AppName) {
 			fmt.Fprintf(&b, "          %s\n", line)
 		}
+		// 리포트는 게이트에 걸려도 남긴다 — 무엇에 걸렸는지는 실패한 실행에서 봐야 한다.
+		b.WriteString("      - name: Upload report\n")
+		b.WriteString("        if: always()\n")
+		b.WriteString("        uses: actions/upload-artifact@v4\n")
+		b.WriteString("        with:\n")
+		// 이름은 실행 기록 동기화가 리포트를 찾는 열쇠다(port.SASTReportArtifact).
+		fmt.Fprintf(&b, "          name: %s\n", port.SASTReportArtifact)
+		fmt.Fprintf(&b, "          path: %s\n", port.SASTReportFile)
 		b.WriteString("\n")
 	}
 
@@ -459,6 +467,10 @@ func renderPipeline(in Input) string {
 		b.WriteString("    GIT_DEPTH: \"0\"\n")
 		b.WriteString("  script:\n")
 		writeScriptLines(&b, sastScriptLines(in.AppName))
+		// 리포트는 게이트에 걸려도 남긴다 — 무엇에 걸렸는지는 실패한 실행에서 봐야 한다.
+		b.WriteString("  artifacts:\n")
+		b.WriteString("    when: always\n")
+		fmt.Fprintf(&b, "    paths:\n      - %s\n", port.SASTReportFile)
 		// Community Edition 은 브랜치 분석이 없다. 기능 브랜치를 분석하면 결과가 같은 프로젝트에
 		// 덮여 기본 브랜치의 판정과 새 코드 기준이 흐트러진다 — 배포와 같은 브랜치에서만 돈다.
 		b.WriteString("  rules:\n")

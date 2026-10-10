@@ -267,6 +267,8 @@ func TestFor_CarriesSASTServerAndToken(t *testing.T) {
 	bundle, err := f.For(context.Background(), "stk_1")
 	require.NoError(t, err)
 	assert.Equal(t, stack.SASTServerEndpoint, bundle.SASTServerEndpoint)
+	// 결과 화면의 SonarQube 링크는 사람이 여는 주소다. 클러스터 내 주소는 브라우저에서 열리지 않는다.
+	assert.Equal(t, "https://sonarqube."+stack.AccessDomain, bundle.SASTWebURL)
 	require.NotNil(t, bundle.SASTToken)
 	token, err := bundle.SASTToken.AnalysisToken(context.Background())
 	require.NoError(t, err)
@@ -278,6 +280,7 @@ func TestFor_NoSASTWithoutSonarQube(t *testing.T) {
 	bundle, err := f.For(context.Background(), "stk_1")
 	require.NoError(t, err)
 	assert.Empty(t, bundle.SASTServerEndpoint)
+	assert.Empty(t, bundle.SASTWebURL)
 	assert.Nil(t, bundle.SASTToken)
 }
 

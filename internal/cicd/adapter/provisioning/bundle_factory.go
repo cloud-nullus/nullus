@@ -236,6 +236,7 @@ func (f *BundleFactory) gitLabBundle(
 		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
 		ImageScannerJavaDBRepository: f.opts.TrivyJavaDBRepository,
 		SASTServerEndpoint:           summary.SASTServerEndpoint,
+		SASTWebURL:                   sastWebURL(summary),
 		GatewayName:                  gatewayNameForStack(summary.Name),
 	}
 	f.attachSASTToken(bundle, summary)
@@ -268,6 +269,14 @@ func (f *BundleFactory) attachRegistryCredentials(
 	if deleter := f.imageDeleterFor(ctx, resolver, creds, summary); deleter != nil {
 		bundle.Images = deleter
 	}
+}
+
+// sastWebURL 은 스택 SonarQube 의 공개 주소다. SonarQube 가 없으면 비어 있다.
+func sastWebURL(summary *port.StackSummary) string {
+	if strings.TrimSpace(summary.SASTServerEndpoint) == "" {
+		return ""
+	}
+	return toolWebBaseURL("sonarqube", summary.AccessDomain)
 }
 
 // attachSASTToken 은 스택 SonarQube 의 분석 토큰을 푸는 수단을 번들에 붙인다.
@@ -358,6 +367,7 @@ func (f *BundleFactory) gitHubBundle(
 		AccessDomain:         summary.AccessDomain,
 		ImageScannerEndpoint: summary.ImageScannerEndpoint,
 		SASTServerEndpoint:   summary.SASTServerEndpoint,
+		SASTWebURL:           sastWebURL(summary),
 		GatewayName:          gatewayNameForStack(summary.Name),
 	}
 	f.attachSASTToken(bundle, summary)
@@ -432,6 +442,7 @@ func (f *BundleFactory) giteaBundle(
 		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
 		ImageScannerJavaDBRepository: f.opts.TrivyJavaDBRepository,
 		SASTServerEndpoint:           summary.SASTServerEndpoint,
+		SASTWebURL:                   sastWebURL(summary),
 		GatewayName:                  gatewayNameForStack(summary.Name),
 	}
 	f.attachSASTToken(bundle, summary)

@@ -55,6 +55,16 @@ type ImageScanResultRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// SASTResultRepository 는 소스 정적 분석 결과 요약을 보관한다.
+//
+// cicd 모듈이 소유한다. 대시보드(#65)는 이미지 스캔과 같이 cicd 의 공개 경로로 읽는다.
+type SASTResultRepository interface {
+	// Upsert 는 같은 ID 면 덮어쓴다. 같은 실행을 여러 번 동기화해도 기록이 늘지 않아야 한다.
+	Upsert(ctx context.Context, result *domain.SASTResult) error
+	// ListByPipelineID 는 최신 결과부터 돌려준다.
+	ListByPipelineID(ctx context.Context, pipelineID string) ([]*domain.SASTResult, error)
+}
+
 // CICDGoldenPathRepository defines the interface for CI/CD Golden Path persistence.
 type CICDGoldenPathRepository interface {
 	GetByID(ctx context.Context, id string) (*domain.CICDGoldenPath, error)

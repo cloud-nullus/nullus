@@ -13,6 +13,9 @@ import type {
   Pipeline,
   PipelineImageScan,
   PipelineResource,
+  PipelineSASTResult,
+  SASTMetrics,
+  SASTQualityGateStatus,
   VulnerabilityListFilter,
   VulnerabilityListResult,
 } from "../../../types";
@@ -38,6 +41,7 @@ export type {
   Pipeline,
   PipelineImageScan,
   PipelineResource,
+  PipelineSASTResult,
   PipelineStatus,
   VulnerabilityCounts,
   VulnerabilityListFilter,
@@ -119,6 +123,8 @@ const queryKeys = {
     ["cicd", "pipelineResources", pipelineId] as const,
   pipelineImageScans: (pipelineId: string, deploymentsUpdatedAt: number) =>
     ["cicd", "pipelineImageScans", pipelineId, deploymentsUpdatedAt] as const,
+  pipelineSASTResults: (pipelineId: string, deploymentsUpdatedAt: number) =>
+    ["cicd", "pipelineSASTResults", pipelineId, deploymentsUpdatedAt] as const,
   // 필터 앞까지가 출처(어느 스캔인가)다. 페이지를 넘길 때 같은 출처의 결과만 잠시 둔다.
   pipelineScanVulnerabilitiesSource: (pipelineId: string, scanId: string) =>
     ["cicd", "pipelineScanVulnerabilities", pipelineId, scanId] as const,
@@ -171,6 +177,73 @@ function mapPipelineImageScan(raw: Record<string, unknown>): PipelineImageScan {
     reportUri: optionalString(raw.report_uri ?? raw.reportUri),
     scannedAt: String(raw.scanned_at ?? raw.scannedAt ?? ""),
     dbStale: (raw.db_stale ?? raw.dbStale) === true,
+  };
+}
+
+const SAST_QUALITY_GATE_STATUSES: ReadonlySet<string> = new Set([
+  "OK",
+  "ERROR",
+  "NONE",
+]);
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * 분석 결과 한 건을 화면 모델로 옮긴다. 이미지 스캔과 같은 규칙이다.
+ *
+ * - 지표는 숫자일 때만 옮긴다. 없는 지표를 0 으로 채우면 분석 실패가 "문제 0건" 으로 보인다.
+ * - 모르는 gate_result 는 error(분석 실패)로 둔다. pass 로 떨어뜨리면 초록 통과로 보인다.
+ */
+function mapPipelineSASTResult(raw: Record<string, unknown>): PipelineSASTResult {
+  const gate = String(raw.gate_result ?? raw.gateResult ?? "");
+  const qg = String(raw.quality_gate_status ?? raw.qualityGateStatus ?? "");
+  const rawConditions = Array.isArray(raw.conditions) ? raw.conditions : [];
+  const rawMetrics =
+    raw.metrics && typeof raw.metrics === "object"
+      ? (raw.metrics as Record<string, unknown>)
+      : undefined;
+  let metrics: SASTMetrics | undefined;
+  if (rawMetrics) {
+    const picked: SASTMetrics = {
+      bugs: optionalNumber(rawMetrics.bugs),
+      vulnerabilities: optionalNumber(rawMetrics.vulnerabilities),
+      codeSmells: optionalNumber(rawMetrics.code_smells ?? rawMetrics.codeSmells),
+      securityHotspots: optionalNumber(
+        rawMetrics.security_hotspots ?? rawMetrics.securityHotspots,
+      ),
+      coverage: optionalNumber(rawMetrics.coverage),
+      duplicatedLinesDensity: optionalNumber(
+        rawMetrics.duplicated_lines_density ?? rawMetrics.duplicatedLinesDensity,
+      ),
+      ncloc: optionalNumber(rawMetrics.ncloc),
+    };
+    metrics = Object.fromEntries(
+      Object.entries(picked).filter(([, v]) => v !== undefined),
+    ) as SASTMetrics;
+  }
+  return {
+    id: String(raw.id ?? ""),
+    pipelineId: String(raw.pipeline_id ?? raw.pipelineId ?? ""),
+    deploymentId: optionalString(raw.deployment_id ?? raw.deploymentId),
+    projectKey: optionalString(raw.project_key ?? raw.projectKey),
+    qualityGateStatus: SAST_QUALITY_GATE_STATUSES.has(qg)
+      ? (qg as SASTQualityGateStatus)
+      : undefined,
+    gateResult: IMAGE_SCAN_GATE_RESULTS.has(gate)
+      ? (gate as ImageScanGateResult)
+      : "error",
+    conditions: rawConditions.map((c: Record<string, unknown>) => ({
+      metric: String(c.metric ?? ""),
+      comparator: optionalString(c.comparator),
+      threshold: optionalString(c.threshold),
+      actual: optionalString(c.actual),
+      status: String(c.status ?? ""),
+    })),
+    metrics,
+    dashboardUrl: optionalString(raw.dashboard_url ?? raw.dashboardUrl),
+    analyzedAt: String(raw.analyzed_at ?? raw.analyzedAt ?? ""),
   };
 }
 
@@ -561,6 +634,20 @@ export const cicdApiCalls = {
 
   mapPipelineImageScan,
 
+  mapPipelineSASTResult,
+
+  // 저장소가 배선되지 않은 서버는 503(SAST_RESULTS_NOT_CONFIGURED)을 준다. 이미지 스캔과 같이
+  // 훅의 오류 상태로 넘기고, 화면은 분석 표시만 뺀다.
+  getPipelineSASTResults: async (pipelineId: string) => {
+    const raw = await api
+      .get<{ items?: Record<string, unknown>[] | null; total?: number }>(
+        `/cicd/pipelines/${pipelineId}/sast-results`,
+      )
+      .then((r) => r.data);
+    const items = (raw?.items ?? []).map((item) => mapPipelineSASTResult(item));
+    return { items, total: raw?.total ?? items.length };
+  },
+
   // 스캔 저장소가 배선되지 않은 서버는 503(IMAGE_SCANS_NOT_CONFIGURED)을 준다.
   // 여기서 삼키지 않고 훅의 오류 상태로 넘긴다 — 화면은 오류를 "스캔 데이터 없음" 으로 그린다.
   getPipelineImageScans: async (pipelineId: string) => {
@@ -763,6 +850,23 @@ export function usePipelineImageScans(
     retry: false,
     // 키가 바뀌는 사이 배지가 깜빡이지 않게 직전 결과를 잠시 둔다. 실행 id 로
     // 이어 붙이므로 다른 파이프라인의 결과가 이 파이프라인 실행에 붙지는 않는다.
+    placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * 파이프라인 실행들의 소스 정적 분석 결과. 이미지 스캔과 같은 이유로 실행 목록이 갱신된
+ * 시각을 키에 넣는다 — 실행 목록 요청이 서버에서 분석 결과를 들인다.
+ */
+export function usePipelineSASTResults(
+  pipelineId: string,
+  deploymentsUpdatedAt: number,
+) {
+  return useQuery({
+    queryKey: queryKeys.pipelineSASTResults(pipelineId, deploymentsUpdatedAt),
+    queryFn: () => cicdApiCalls.getPipelineSASTResults(pipelineId),
+    enabled: !!pipelineId && deploymentsUpdatedAt > 0,
+    retry: false,
     placeholderData: (previous) => previous,
   });
 }

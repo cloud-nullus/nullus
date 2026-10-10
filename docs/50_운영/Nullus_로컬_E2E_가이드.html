@@ -794,7 +794,7 @@ fingerprint | tee ~/nullus-before.txt</code></pre></div>
     <p class="check-title">확인</p>
     <ul class="check">
       <li>앱 이미지 태그가 <code>:bootstrap</code>이 아니라 커밋 SHA다</li>
-      <li>SonarQube 스택이면 GitLab 파이프라인에 <code>build</code> · <code>sast</code> · <code>deploy</code> 가 있고 <code>sast</code> 잡 로그 끝에 <code>QUALITY GATE STATUS: PASSED</code> 가 있다. <code>https://sonarqube.nullus.local</code> 에 앱 이름의 프로젝트가 생겼다</li>
+      <li>SonarQube 스택이면 GitLab 파이프라인에 <code>build</code> · <code>sast</code> · <code>deploy</code> 가 있고 <code>sast</code> 잡 로그 끝에 <code>QUALITY GATE STATUS: PASSED</code> 가 있다. <code>https://sonarqube.nullus.local</code> 에 앱 이름의 프로젝트가 생겼다. History 의 그 실행에 <b>SAST · Quality Gate passed</b> 가 붙는다</li>
       <li><code>~/nullus-before.txt</code>의 세 항목이 모두 채워져 있다</li>
     </ul>
   </div>
@@ -1062,6 +1062,7 @@ kubectl --context $CTX wait --for=condition=Ready nodes --all --timeout=180s</co
         <tr><td>Keycloak 로그인</td><td>된다</td><td>SonarQube Community는 SSO로 SAML만 받는다. 설치가 Keycloak에 SAML 클라이언트를 등록하고 렐름 서명 인증서를 SonarQube에 넣어, 로그인 화면에 Keycloak 버튼이 생긴다. 처음 들어온 사용자는 일반 사용자(<code>sonar-users</code>)로 만들어지고 로그인 ID 뒤에 숫자가 붙는다(SonarQube의 외부 계정 규칙). 관리는 admin 계정으로 한다. Keycloak 렐름 키를 회전하면 SonarQube 단계를 다시 돌려야 새 인증서를 받는다</td></tr>
         <tr><td>설치 화면에서 고르기</td><td>된다</td><td>설치 마법사 Security 탭에서 Static Analysis (SAST) = SonarQube 를 고른다. 템플릿 <code>gitlab-argocd-sonarqube-v1</code>을 고르면 미리 채워진다. 다만 화면 설치는 kind 노드 배선을 하지 않으므로 부록 A 를 따른다</td></tr>
         <tr><td>파이프라인 분석·차단</td><td>된다</td><td>파이프라인에 <code>sast</code> 단계가 생긴다(GitLab · GitHub Actions · Jenkins). 기본은 Quality Gate 실패 시 차단이고, 아래처럼 스택 정책으로 경고로 바꾼다. SonarQube 에 닿지 못하면 이미지 스캔과 같은 장애 정책(<code>on_scanner_unreachable</code>)을 따른다</td></tr>
+        <tr><td>결과 화면</td><td>된다</td><td>CI/CD 목록 → 파이프라인 → <b>History</b> 에서 실행마다 SAST 판정(통과 · 경고 · 차단 · 분석 실패)이 붙고, 실행을 고르면 통과하지 못한 조건 · 지표 · SonarQube 링크가 보인다. <code>sast</code> 잡이 남긴 <code>sast-report.json</code> 을 실행 기록 동기화가 읽어 만든다 <span class="badge ok" title="2026-10-11 kind: 새 파이프라인으로 통과(#1) · eval 커밋 차단(#3) · 경고 정책 통과(#4)를 실제로 돌려 화면에서 확인했다">실측 기록</span></td></tr>
       </tbody>
     </table></div>
 
@@ -1108,7 +1109,7 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
       <li><b>앱은 화면에서 고른 클러스터가 아니라 스택 클러스터에 배포된다.</b> Argo CD 목적지가 <code>kubernetes.default.svc</code>다. 모니터링 탭은 고른 클러스터를 읽어 비어 보일 수 있다.<span class="ref">internal/cicd/adapter/argocd/application.go:26-27, 89-92</span></li>
       <li><b>연결 정보의 GitLab 비밀번호 Secret 이름이 설치기와 다르다.</b><span class="ref">internal/stack/domain/connection.go:266 ↔ adapter/helm/secret-provisioning.go:72</span></li>
       <li><b>노드 배선은 <code>stack-up --wait</code>에서만 한다.</b> <code>stack-up</code>이 템플릿의 보안 슬롯(Trivy·SonarQube)을 빠뜨리던 것은 SonarQube 설치 변경에서 고쳤다.<span class="ref">scripts/runbook_local.sh:1251</span></li>
-      <li><b>Quality Gate 결과는 Nullus 화면에 따로 보이지 않는다.</b> 파이프라인이 실패로 멈추는 것으로만 드러난다. 무엇에 걸렸는지는 GitLab 잡 로그와 SonarQube 화면에서 본다. <code>sonar-scanner</code> 이미지는 amd64 만 낸다 — arm64 노드는 에뮬레이션이 있어야 돈다(에어갭 설치도 같다).<span class="ref">internal/cicd/adapter/scaffold/sast.go</span></li>
+      <li><b>SAST 결과 리포트 전에 만든 파이프라인은 실행 기록에 SAST 결과가 붙지 않는다.</b> 그 파이프라인의 <code>sast</code> 잡은 <code>sast-report.json</code> 을 남기지 않는다 — 단계 상태(성공 · 실패)만 보인다. 파이프라인을 다시 만들면 붙는다. <code>sonar-scanner</code> 이미지는 amd64 만 낸다 — arm64 노드는 에뮬레이션이 있어야 돈다(에어갭 설치도 같다).<span class="ref">internal/cicd/adapter/scaffold/sast.go</span></li>
       <li><b>배포 되커밋(<code>[skip ci]</code>)이 실행 기록에 실패로 남는다.</b> GitLab 은 그 커밋의 파이프라인을 <code>skipped</code> 로 만드는데, 동기화가 이를 중단(ABORTED)으로 읽어 화면에 실패로 보인다.<span class="ref">internal/cicd/adapter/gitlab/build_reader.go:166</span></li>
       <li><b>백업 화면이 스택 백업을 하지 못한다.</b> 네임스페이스를 <code>nullus-app</code>으로 고정하고 <code>stack_id</code>를 보내지 않는다.<span class="ref">web/src/features/admin/pages/backup-page.tsx:54, 137-142</span></li>
       <li><b>백업 문서의 <code>X-Org-Id</code>가 쓰지 않는 조직이다.</b> 그 ID로 만든 백업은 화면 목록에 보이지 않는다.<span class="ref">docs/50_운영/Nullus_백업복구_로컬_테스트_가이드.md · internal/shared/domain/org.go:8-16</span></li>

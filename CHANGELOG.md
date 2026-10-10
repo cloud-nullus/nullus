@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **파이프라인 실행마다 SAST 결과(Quality Gate 판정·걸린 조건·지표)를 남기고 실행 기록에 보여준다** (`internal/cicd/{domain,adapter/scaffold,adapter/repository,adapter/handler,adapter/provisioning,usecase,port}`, `cmd/api`, `db/migrations/000090`, `web/src/features/cicd`, nullus-plan#64): 실행 기록의 SAST 단계 상태만으로는 무엇에 걸렸는지, 경고 정책이 통과시킨 실패인지, 분석기가 죽어서 실패한 것인지 알 수 없었다. 이제 CI/CD 목록 → History 의 실행마다 SAST 판정(통과·경고·차단·분석 실패)이 붙고, 실행을 고르면 통과하지 못한 조건(예: 새 이슈 1 — 기준 > 0)·지표(취약점·버그·보안 핫스팟·코드 스멜·커버리지·중복·코드 줄 수)·SonarQube 링크가 보인다. `GET /pipelines/:id/sast-results` 가 같은 것을 내준다(Security Dashboard #65 의 입력).
+
+  **결과는 CI 잡이 남기고 플랫폼이 읽는다** — 이미지 스캔(Trivy 리포트)과 같은 길이다. `sast` 잡이 분석 뒤 스캐너가 남긴 작업(`ceTaskId`)으로 **이번 분석의** 판정(`api/qualitygates/project_status?analysisId=`)과 프로젝트 지표(`api/measures/component` — 분석을 고를 수 없어 최신 값이다. 분석이 겹치지 않으면 이번 것과 같다)를 읽어 `sast-report.json` 을 산출물로 남긴다(게이트에 걸려도 남긴다, CI 3종). 플랫폼 API 는 클러스터 밖에서 돌 수 있어 SonarQube 에 닿는다는 보장이 없고, 분석 토큰은 잡 안에만 있다 — 분석 토큰으로 이 둘은 읽히고 `project_analyses`·`ce/activity` 는 403 이다(실측). 분석하지 못했으면 지표를 읽지 않는다(지난 분석의 지표가 이번 것으로 보인다). JSON 이 아닌 응답(200 으로 온 로그인 화면 등)은 버린다 — 그대로 실으면 리포트가 깨져 종료 코드까지 잃는다. 이 줄은 덤이라 조회가 실패해도 단계의 판정을 바꾸지 않는다. 토큰은 curl 인자가 아니라 표준입력 설정(`-K -`)으로 넘기고 트레이스를 끈다 — Jenkins 는 `sh -xe` 로 돌고 토큰이 가려지지 않는다. 명령에 역슬래시를 쓰지 않는다(Jenkinsfile 의 `sh '''…'''` 는 Groovy 문자열이다).
+
+  **판정은 파이프라인 관점이다.** 단계 결과에는 정책이 섞여 있어(경고 정책이면 게이트 실패도 성공, 장애 허용이면 분석 실패도 성공) 리포트의 스캐너 종료 코드로 가른다 — 0 통과, 3 은 단계가 성공했으면 경고·실패했으면 차단, 그 밖은 분석 실패(`error`, 장애 허용 정책이 통과시켰어도 통과로 적지 않는다). **리포트를 읽은 실행만 남긴다** — 리포트를 남기기 전에 만든 파이프라인의 실패를 차단으로 적으면 분석기 장애가 "보안 문제로 막힌 배포" 로 보인다. 그 실행은 단계 상태만 보인다. 끝난 단계는 다시 내려받지 않되, 단계 시작 시각이 바뀌었으면(GitLab Retry · GitHub Re-run) 다시 읽는다 — 장애로 `error` 가 남은 실행을 고쳐 다시 돌리면 판정이 바뀐다. 읽지 못하면 다음 동기화 때 다시 읽는다. 저장은 요약·판정·위치만이다(`sast_results`, 이슈 원본은 SonarQube 가 갖는다). 지표는 NULL 을 허용한다 — 0 은 "문제 0건" 이다.
+
+  **SonarQube 링크는 스택의 공개 주소로 만든다** (`https://sonarqube.<접근 도메인>/dashboard?id=<프로젝트>`). 스캐너가 남기는 주소는 스캐너가 붙은 클러스터 내 주소라 브라우저에서 열리지 않는다 — 서버에 공개 주소 설정(`sonar.core.serverBaseURL`)이 있어도 그랬다(실측). 공개 주소를 모르는 스택이면 클러스터 내 주소를 링크로 남기지 않는다. GitLab·Jenkins 링크와 같이 https 로 만든다 — TLS 없이 연 스택에서는 링크가 열리지 않는다(같은 제약).
+
+  로컬 E2E(kind + GitLab + Argo CD + SonarQube, 실제 플랫폼)에서 새 파이프라인으로 확인했다 — 첫 실행은 `pass`(Quality Gate OK, 취약점 2·코드 줄 81), `eval` 을 넣은 커밋은 `block`(조건 `new_violations` 1, deploy skipped), 정책을 warn 으로 바꾼 커밋은 `warn`(배포됨). 화면에서 세 판정과 상세(걸린 조건·지표·링크)를 확인했다.
+
 - **파이프라인이 스택의 SonarQube 로 소스를 정적 분석하고 Quality Gate 로 배포를 막는다** (`internal/cicd/{adapter/scaffold,adapter/sastcreds,adapter/provisioning,adapter/repository,usecase,domain,port}`, `internal/stack/adapter/helm`, `internal/shared/domain`, `db/migrations/000088`, nullus-plan#64): 스택에 SonarQube 가 있으면 GitLab CI·GitHub Actions·Jenkins 파이프라인에 `sonar-scanner` 단계(`SAST`)를 만들고, 배포는 그 단계를 기다린다. `sonar.qualitygate.wait=true` 로 Quality Gate 판정까지 기다린다 — 없으면 스캐너는 결과만 올리고 성공으로 끝난다. 분석은 소스만 보므로 빌드를 기다리지 않고 바로 돈다.
 
   **기본은 차단, 스택 정책으로 경고.** Trivy 이미지 스캔 정책(`/stacks/:id/image-scan-policy`)에 `sast_on_gate_failure`(`block`·`warn`)를 더했다. 플랫폼이 `NULLUS_SAST_ON_GATE_FAILURE` 로 싣고(Jenkins 는 `nullus-scan-policy` ConfigMap), 스크립트가 종료 코드로 가른다 — sonar-scanner 는 Quality Gate 실패에 3, 서버에 닿지 못하면 1 로 끝난다(실측). 3 은 정책(차단·경고)을 따르고, 그 밖의 실패(SonarQube 장애·인증 실패)는 이미지 스캔과 같은 `on_scanner_unreachable` 을 따른다 — 경고 정책이 분석 실패까지 덮지 않는다. 필드를 보내지 않는 옛 클라이언트는 저장된 값을 그대로 둔다.
@@ -19,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   로컬 E2E(kind + GitLab + Argo CD + SonarQube, 실제 플랫폼)에서 확인했다 — 설치가 `nullus-ci` 토큰을 발급하고 발급 Job 을 지운다. 파이프라인을 만들면 단계가 `Build·SAST·Deploy` 이고 `SONAR_TOKEN`(masked)과 정책 변수가 등록된다. 첫 실행은 build·sast·deploy 모두 성공(SonarQube 에 프로젝트 생성, Quality Gate PASSED). `eval` 을 넣은 커밋은 sast 가 "차단 정책" 으로 실패하고 deploy 가 skipped 다. 정책을 warn 으로 바꾸면(플랫폼이 파이프라인 변수로 즉시 반영) 같은 코드가 "경고 정책에 따라 통과" 로 deploy 까지 간다. 화면으로 만든 파이프라인도 같은 단계를 갖는다.
 
-  스택 정보(`StackSummary`)에 SonarQube 주소를 더했다(외부 SonarQube 는 제외). 주소 규칙과 토큰 경로는 `internal/shared/domain` 이 갖는다. Quality Gate 결과를 화면에 보이는 일은 뒤따르는 변경이다.
+  스택 정보(`StackSummary`)에 SonarQube 주소를 더했다(외부 SonarQube 는 제외). 주소 규칙과 토큰 경로는 `internal/shared/domain` 이 갖는다.
 
 - **설치 화면에서 SonarQube(SAST)를 고를 수 있다** (`web/src/features/stack`, `web/src/features/cicd`, nullus-plan#64): 백엔드는 `security.sast` 슬롯과 설치 단계를 갖고 있었지만 화면에 고를 칸이 없어 템플릿 밖에서는 도달할 수 없었다. Security 탭에 Static Analysis (SAST) = SonarQube 를 두고, 템플릿·Golden Path 의 보안 도구를 마법사에 채우고, 템플릿 편집기에서 SAST 칸을 고를 수 있게 했다.
 

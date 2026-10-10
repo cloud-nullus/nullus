@@ -34,6 +34,8 @@ type SyncPipelineRuns struct {
 	artifacts port.CIArtifactReader
 	// policies 는 파이프라인이 속한 스택의 스캔 정책을 찾는다. nil 이면 기본 정책이다.
 	policies port.ScanPolicyRepository
+	// sastResults 는 분석 단계의 결과를 남긴다. nil 이면 남기지 않는다.
+	sastResults port.SASTResultRepository
 }
 
 const (
@@ -54,6 +56,8 @@ type SyncPipelineRunsInput struct {
 	JobName    string
 	Branch     string
 	Limit      int
+	// SASTWebURL 은 스택 SonarQube 의 공개 주소다. 분석 결과의 링크를 만든다.
+	SASTWebURL string
 	// Policy 는 판정에 쓸 스택 정책이다. nil 이면 기본 정책이다 — CI 는 푸시된 정책으로
 	// 막으므로, 동기화도 같은 정책으로 읽어야 차단과 스캔 오류를 바르게 가른다.
 	Policy *domain.ScanPolicy
@@ -109,6 +113,7 @@ func (uc *SyncPipelineRuns) Execute(ctx context.Context, input SyncPipelineRunsI
 	}
 
 	uc.recordImageScans(ctx, input, pipelineID, builds)
+	uc.recordSASTResults(ctx, input, pipelineID, builds)
 	return synced, nil
 }
 
@@ -503,15 +508,17 @@ func (uc *SyncPipelineRuns) syncWithBundle(ctx context.Context, pipeline *domain
 	}
 	sync := NewSyncPipelineRuns(reader, uc.deployments).
 		WithImageScans(uc.imageScans).
+		WithSASTResults(uc.sastResults).
 		WithArtifacts(artifacts)
 	return sync.Execute(ctx, SyncPipelineRunsInput{
 		PipelineID: pipeline.ID,
 		JobName:    pipeline.Name,
 		// 스캐폴딩한 파이프라인은 기본 브랜치에서만 돈다
 		// (Jenkinsfile 의 when { branch 'main' }, 워크플로의 on.push.branches).
-		Branch: defaultRunBranch,
-		Limit:  runSyncLimit,
-		Policy: uc.stackPolicy(ctx, pipeline.StackID),
+		Branch:     defaultRunBranch,
+		Limit:      runSyncLimit,
+		SASTWebURL: bundle.SASTWebURL,
+		Policy:     uc.stackPolicy(ctx, pipeline.StackID),
 	})
 }
 

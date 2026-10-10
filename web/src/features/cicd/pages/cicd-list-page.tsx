@@ -52,6 +52,7 @@ import {
   usePipelineDeployments,
   usePipelineImageScans,
   usePipelineResources,
+  usePipelineSASTResults,
   usePipelines,
   useTemplateById,
 } from "../api/cicd-api";
@@ -64,7 +65,15 @@ import {
   ImageScanRowSummary,
 } from "../components/image-scan-summary";
 import { PipelineScanVulnerabilities } from "../components/pipeline-scan-vulnerabilities";
-import type { Pipeline, PipelineImageScan } from "../api/cicd-api";
+import {
+  SASTResultDetail,
+  SASTRowSummary,
+} from "../components/sast-result-summary";
+import type {
+  Pipeline,
+  PipelineImageScan,
+  PipelineSASTResult,
+} from "../api/cicd-api";
 import { useScopedClusters as useClusters } from "../../admin/api/admin-api";
 import { useStacks } from "../../stack/api/stack-api";
 import { Button } from "../../../components/ui/button";
@@ -1464,6 +1473,19 @@ function indexScansByDeployment(scans: PipelineImageScan[] | undefined) {
   return byDeployment;
 }
 
+// 실행 하나에 분석 결과도 하나다(sast_<실행 id>). 스캔과 같이 가장 최근 분석을 쓴다.
+function indexSASTByDeployment(results: PipelineSASTResult[] | undefined) {
+  const byDeployment = new Map<string, PipelineSASTResult>();
+  for (const result of results ?? []) {
+    if (!result.deploymentId) continue;
+    const existing = byDeployment.get(result.deploymentId);
+    if (!existing || result.analyzedAt > existing.analyzedAt) {
+      byDeployment.set(result.deploymentId, result);
+    }
+  }
+  return byDeployment;
+}
+
 function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
   const { t, i18n } = useTranslation();
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language);
@@ -1483,6 +1505,15 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
   const scanByDeployment = useMemo(
     () => indexScansByDeployment(imageScansData?.items),
     [imageScansData],
+  );
+  // 소스 정적 분석도 같은 요청이 들인다. 실패해도(미배선 503) 분석 표시만 빠진다.
+  const { data: sastResultsData } = usePipelineSASTResults(
+    pipeline.id,
+    deploymentsUpdatedAt,
+  );
+  const sastByDeployment = useMemo(
+    () => indexSASTByDeployment(sastResultsData?.items),
+    [sastResultsData],
   );
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<
     string | null
@@ -1510,6 +1541,9 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
     deployments.find((d) => d.id === selectedDeploymentId) ?? null;
   const selectedScan = selectedDeployment
     ? scanByDeployment.get(selectedDeployment.id)
+    : undefined;
+  const selectedSAST = selectedDeployment
+    ? sastByDeployment.get(selectedDeployment.id)
     : undefined;
   const { data: deploymentStatus, isLoading: isDeploymentStatusLoading } =
     useDeploymentStatus(selectedDeploymentId);
@@ -1555,6 +1589,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
               : "-";
         const isSelected = d.id === selectedDeploymentId;
         const rowScan = scanByDeployment.get(d.id);
+        const rowSAST = sastByDeployment.get(d.id);
 
         return (
           <div
@@ -1579,6 +1614,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
               {d.version}
             </button>
             {rowScan && <ImageScanRowSummary scan={rowScan} />}
+            {rowSAST && <SASTRowSummary result={rowSAST} />}
             <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">
               {d.triggeredBy || "-"}
             </span>
@@ -1618,6 +1654,10 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
                 scanId={selectedScan.id}
               />
             </ImageScanDetail>
+          )}
+
+          {selectedSAST && (
+            <SASTResultDetail result={selectedSAST} locale={locale} />
           )}
 
           {stages.length > 0 && (

@@ -886,6 +886,41 @@
       "dbUpdatedAt": "취약점 DB",
       "scannedAt": "스캔 시각",
       "unknown": "알 수 없음"
+    },
+    "sast": {
+      "label": "SAST",
+      "title": "정적 분석 (SonarQube)",
+      "gate": {
+        "pass": "Quality Gate 통과",
+        "warn": "Quality Gate 실패 (경고)",
+        "block": "Quality Gate 차단",
+        "error": "분석 실패"
+      },
+      "warnHint": "Quality Gate 를 통과하지 못했지만 스택 정책이 경고라 배포가 진행됐습니다.",
+      "errorHint": "분석을 수행하지 못했습니다(SonarQube 연결 실패 또는 인증 실패). 코드 판정이 아닙니다.",
+      "failedConditions": "통과하지 못한 조건",
+      "failsWhen": "실패 기준",
+      "metrics": {
+        "vulnerabilities": "취약점",
+        "bugs": "버그",
+        "securityHotspots": "보안 핫스팟",
+        "codeSmells": "코드 스멜",
+        "coverage": "커버리지",
+        "duplications": "중복",
+        "ncloc": "코드 줄 수"
+      },
+      "metricNames": {
+        "new_violations": "새 이슈",
+        "new_coverage": "새 코드 커버리지",
+        "new_duplicated_lines_density": "새 코드 중복",
+        "new_security_hotspots_reviewed": "보안 핫스팟 검토율",
+        "new_reliability_rating": "새 코드 신뢰성 등급",
+        "new_security_rating": "새 코드 보안 등급",
+        "new_maintainability_rating": "새 코드 유지보수성 등급"
+      },
+      "metricsUnknown": "지표 없음",
+      "openInSonarQube": "SonarQube 에서 보기",
+      "analyzedAt": "분석 시각"
     }
   },
   "cicdHistoryPage": {

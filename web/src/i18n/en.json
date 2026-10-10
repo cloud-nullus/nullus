@@ -886,6 +886,41 @@
       "dbUpdatedAt": "Vulnerability DB",
       "scannedAt": "Scanned",
       "unknown": "Unknown"
+    },
+    "sast": {
+      "label": "SAST",
+      "title": "Static analysis (SonarQube)",
+      "gate": {
+        "pass": "Quality Gate passed",
+        "warn": "Quality Gate failed (warn)",
+        "block": "Blocked by Quality Gate",
+        "error": "Analysis failed"
+      },
+      "warnHint": "The Quality Gate failed, but the stack policy is set to warn, so the deployment went ahead.",
+      "errorHint": "The analysis could not run (SonarQube unreachable or authentication failed). This is not a code finding.",
+      "failedConditions": "Failed conditions",
+      "failsWhen": "fails when",
+      "metrics": {
+        "vulnerabilities": "Vulnerabilities",
+        "bugs": "Bugs",
+        "securityHotspots": "Security hotspots",
+        "codeSmells": "Code smells",
+        "coverage": "Coverage",
+        "duplications": "Duplications",
+        "ncloc": "Lines of code"
+      },
+      "metricNames": {
+        "new_violations": "New issues",
+        "new_coverage": "Coverage on new code",
+        "new_duplicated_lines_density": "Duplications on new code",
+        "new_security_hotspots_reviewed": "Security hotspots reviewed",
+        "new_reliability_rating": "Reliability rating on new code",
+        "new_security_rating": "Security rating on new code",
+        "new_maintainability_rating": "Maintainability rating on new code"
+      },
+      "metricsUnknown": "Metrics unavailable",
+      "openInSonarQube": "Open in SonarQube",
+      "analyzedAt": "Analyzed"
     }
   },
   "cicdHistoryPage": {
