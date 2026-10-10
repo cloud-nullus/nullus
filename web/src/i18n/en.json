@@ -362,6 +362,12 @@
       "name": "Name",
       "namePlaceholder": "e.g. Standard Web Backend",
       "description": "Description",
+      "appType": "Application Type",
+      "appTypeOptions": {
+        "web": "Web",
+        "backend": "Backend",
+        "batch": "Batch"
+      },
       "stages": "Capabilities"
     },
     "errors": {

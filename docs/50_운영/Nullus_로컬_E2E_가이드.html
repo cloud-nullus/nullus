@@ -704,7 +704,7 @@ grep '백업 모듈 준비 완료' .runbook-logs/api.log</code></pre></div>
         <tr><td>Batch Job Pipeline</td><td><code>batch-job-v1</code></td><td>nginx 자리표시자 이미지</td></tr>
       </tbody>
     </table></div>
-    <div class="callout warn"><b>"템플릿 생성"으로 만든 템플릿은 저장되지 않는다</b>버튼은 성공으로 응답하지만 DB 저장이 아직 구현되지 않았다(<a href="#ax-c">부록 C</a>). 지금은 위의 기본 템플릿을 쓴다. 어느 템플릿이든 저장소에 만들어지는 파일 구성은 같고, 템플릿은 화면 입력값을 채워 주는 역할을 한다.</div>
+    <div class="callout"><b>"템플릿 생성"으로 만든 템플릿은 DB 에 저장된다</b>목록과 아래 배포 화면에 바로 나오고, 같은 ID 로 다시 만들면 409 로 거부된다. 폼의 애플리케이션 유형은 <code>web</code>·<code>backend</code>·<code>batch</code> 중 하나다(파이프라인의 <code>app_type</code> ENUM 과 같다). 기본 템플릿을 수정하면 이름·설명·유형·기능만 바뀌고 Dockerfile 경로·환경 변수 같은 빌드 설정은 그대로 남는다. 어느 템플릿이든 저장소에 만들어지는 파일 구성은 같고, 템플릿은 화면 입력값을 채워 주는 역할을 한다.</div>
   </div>
 </section>
 
@@ -1104,7 +1104,6 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
   <div class="step-body">
     <p>가이드를 쓰며 코드에서 확인한 것들이다. 위 단계의 우회책은 모두 이것 때문에 생겼다.</p>
     <ol class="issues">
-      <li><b>CI/CD 템플릿 생성·수정·삭제가 저장되지 않는다.</b> Postgres 저장소의 Create/Update/Delete가 TODO로 성공만 돌려준다.<span class="ref">internal/cicd/adapter/repository/postgres_cicd_template.go:66-88</span></li>
       <li><b>GitLab 스택에서 "실행"이 Trigger CI에서 실패한다.</b> CI 넘김(CITrigger)이 Jenkins 번들에만 있다.<span class="ref">internal/cicd/adapter/provisioning/bundle_factory.go:217-232 · runner/delegate.go:75-79</span></li>
       <li><b>호스트에서 도는 API가 GitLab에 닿으려면 <code>NULLUS_GITLAB_URL</code>이 필요한데 runbook이 넣지 않는다.</b><span class="ref">cmd/api/main.go:353 · bundle_factory.go:189-192</span></li>
       <li><b>앱은 화면에서 고른 클러스터가 아니라 스택 클러스터에 배포된다.</b> Argo CD 목적지가 <code>kubernetes.default.svc</code>다. 모니터링 탭은 고른 클러스터를 읽어 비어 보일 수 있다.<span class="ref">internal/cicd/adapter/argocd/application.go:26-27, 89-92</span></li>

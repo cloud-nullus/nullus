@@ -19,6 +19,7 @@ import { resolveLocale } from "../../../lib/locale";
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from "../../../components/ui/search-input"
 import { Checkbox } from "../../../components/ui/checkbox"
+import { Select } from "../../../components/ui/select"
 
 const CAPABILITY_OPTIONS = ["CI", "CD", "Test", "Security"] as const;
 const PRIORITY_TEMPLATE_IDS = [
@@ -110,10 +111,33 @@ const TEMPLATE_DESCRIPTION_EN_TO_KO = Object.fromEntries(
   Object.entries(TEMPLATE_DESCRIPTION_KO_TO_EN).map(([ko, en]) => [en, ko]),
 ) as Record<string, string>;
 
+// 서버(pipelines.app_type ENUM)가 받는 세 값. 템플릿에 다른 값이 저장되면 그 템플릿으로
+// 만드는 파이프라인이 DB 에서 거부된다.
+const TEMPLATE_APP_TYPES = ["web", "backend", "batch"] as const;
+type TemplateAppType = (typeof TEMPLATE_APP_TYPES)[number];
+const APP_TYPE_LABEL_FALLBACK: Record<TemplateAppType, string> = {
+  web: "Web",
+  backend: "Backend",
+  batch: "Batch",
+};
+// 옛 화면이 쓰던 값(web-backend 등)을 서버 값으로 옮긴다. 모르는 값은 backend 로 본다.
+const LEGACY_APP_TYPE: Record<string, TemplateAppType> = {
+  "web-frontend": "web",
+  "batch-job": "batch",
+};
+
+function normalizeAppType(value: string | undefined): TemplateAppType {
+  if ((TEMPLATE_APP_TYPES as readonly string[]).includes(value ?? "")) {
+    return value as TemplateAppType;
+  }
+  return LEGACY_APP_TYPE[value ?? ""] ?? "backend";
+}
+
 interface TemplateFormState {
   id: string;
   name: string;
   description: string;
+  appType: TemplateAppType;
   stages: string[];
 }
 
@@ -121,6 +145,7 @@ const EMPTY_FORM: TemplateFormState = {
   id: "",
   name: "",
   description: "",
+  appType: "backend",
   stages: [],
 };
 
@@ -261,16 +286,21 @@ export function CicdTemplatePage() {
       id: template.id,
       name: template.name,
       description: template.description,
+      appType: normalizeAppType(template.appType),
       stages: resolveCapabilities(template.stages),
     });
     setFormOpen(true);
   };
 
   const handleFormChange = (
-    key: Exclude<keyof TemplateFormState, "stages">,
+    key: Exclude<keyof TemplateFormState, "stages" | "appType">,
     value: string,
   ) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleAppTypeChange = (value: string) => {
+    setForm((prev) => ({ ...prev, appType: normalizeAppType(value) }));
   };
 
   const toggleStage = (stage: string) => {
@@ -308,7 +338,7 @@ export function CicdTemplatePage() {
       id: templateId,
       name: form.name,
       description: form.description,
-      appType: "web-backend" as CicdTemplate["appType"],
+      appType: form.appType,
       stages: form.stages,
     };
 
@@ -626,6 +656,21 @@ export function CicdTemplatePage() {
             value={form.description}
             onChange={(e) => handleFormChange("description", e.target.value)}
           />
+          <Select
+            label={t("cicdTemplatePage.form.appType", "Application Type")}
+            value={form.appType}
+            onChange={(e) => handleAppTypeChange(e.target.value)}
+            className="w-full"
+          >
+            {TEMPLATE_APP_TYPES.map((appType) => (
+              <option key={appType} value={appType}>
+                {t(
+                  `cicdTemplatePage.form.appTypeOptions.${appType}`,
+                  APP_TYPE_LABEL_FALLBACK[appType],
+                )}
+              </option>
+            ))}
+          </Select>
           <div className="flex flex-col gap-2">
             <span className="text-xs font-medium tracking-[0.02em] text-[var(--color-text-secondary)]">
               {t("cicdTemplatePage.form.stages", "Capabilities")}

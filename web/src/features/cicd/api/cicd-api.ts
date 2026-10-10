@@ -176,6 +176,36 @@ function mapPipelineImageScan(raw: Record<string, unknown>): PipelineImageScan {
 
 // 테스트에서 매퍼를 직접 검증할 수 있도록 내보낸다. 훅을 거치면 react-query 목까지
 // 끼워야 해서 응답 표기 대응 같은 순수 변환 로직을 확인하기 어렵다.
+// 서버의 템플릿(snake_case)을 화면 모양으로 옮긴다. 목록·생성·수정 응답이 같은 모양이어야
+// 저장 직후 캐시를 갈아 끼울 때 카드가 어긋나지 않는다.
+function toCicdTemplate(t: any): CicdTemplate {
+  return {
+    id: t.id,
+    name: t.name,
+    description: t.description ?? "",
+    appType: (t.app_type ?? "") as CicdTemplate["appType"],
+    stages: t.stages ?? [],
+    createdBy: t.created_by,
+    gitRepoUrl: t.git_repo_url ?? "",
+    dockerfilePath: t.dockerfile_path ?? "",
+    dockerContext: t.docker_context ?? "",
+    envVars: t.env_vars ?? {},
+  };
+}
+
+// 서버는 `app_type` 을 읽는다. camelCase 로 보내면 유형이 빈 값으로 저장돼 그 템플릿으로 만드는
+// 파이프라인이 거부된다. 빌드 설정(git_repo_url 등)은 폼에 없으므로 보내지 않는다 — 서버는 요청에
+// 없는 필드를 저장된 값 그대로 둔다.
+function toCicdTemplateBody(data: CreateCicdTemplateRequest) {
+  return {
+    id: data.id,
+    name: data.name,
+    description: data.description,
+    app_type: data.appType,
+    stages: data.stages,
+  };
+}
+
 export const cicdApiCalls = {
   resolvePipelineMode: (stages: string[] | undefined): Pipeline["mode"] => {
     const normalized = (stages ?? []).map((stage) =>
@@ -206,30 +236,26 @@ export const cicdApiCalls = {
   getTemplates: async () => {
     const raw = await api.get<any[]>("/cicd/templates").then((r) => r.data);
 
-    return (raw ?? []).map((t: any) => ({
-      id: t.id,
-      name: t.name,
-      description: t.description ?? "",
-      appType: (t.app_type ?? "") as CicdTemplate["appType"],
-      stages: t.stages ?? [],
-      createdBy: t.created_by,
-      gitRepoUrl: t.git_repo_url ?? "",
-      dockerfilePath: t.dockerfile_path ?? "",
-      dockerContext: t.docker_context ?? "",
-      envVars: t.env_vars ?? {},
-    })) as CicdTemplate[];
+    return (raw ?? []).map(toCicdTemplate);
   },
 
   createTemplate: (data: CreateCicdTemplateRequest) =>
-    api.post<CicdTemplate>("/cicd/templates", data).then((r) => r.data),
+    api
+      .post<any>("/cicd/templates", toCicdTemplateBody(data))
+      .then((r) => toCicdTemplate(r.data)),
 
   updateTemplate: (data: CreateCicdTemplateRequest) =>
     api
-      .put<CicdTemplate>(`/cicd/templates/${data.id}`, data)
-      .then((r) => r.data),
+      .put<any>(
+        `/cicd/templates/${encodeURIComponent(data.id)}`,
+        toCicdTemplateBody(data),
+      )
+      .then((r) => toCicdTemplate(r.data)),
 
   deleteTemplate: (id: string) =>
-    api.delete<void>(`/cicd/templates/${id}`).then((r) => r.data),
+    api
+      .delete<void>(`/cicd/templates/${encodeURIComponent(id)}`)
+      .then((r) => r.data),
 
   getGoldenPaths: () =>
     api.get<CICDGoldenPath[]>("/cicd/golden-paths").then((r) => r.data),
