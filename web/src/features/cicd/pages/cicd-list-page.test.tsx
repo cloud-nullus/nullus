@@ -14,6 +14,7 @@ const mockUsePipelineDeployments = vi.fn();
 const mockUsePipelineResources = vi.fn();
 const mockUseDeploymentStatus = vi.fn();
 const mockUsePipelineImageScans = vi.fn();
+const mockUsePipelineSASTResults = vi.fn();
 const mockUsePipelineScanVulnerabilities = vi.fn();
 const mockDeployPipeline = vi.fn();
 
@@ -46,6 +47,8 @@ vi.mock("../api/cicd-api", () => ({
   useDeploymentStatus: (...args: unknown[]) => mockUseDeploymentStatus(...args),
   usePipelineImageScans: (...args: unknown[]) =>
     mockUsePipelineImageScans(...args),
+  usePipelineSASTResults: (...args: unknown[]) =>
+    mockUsePipelineSASTResults(...args),
   usePipelineScanVulnerabilities: (...args: unknown[]) =>
     mockUsePipelineScanVulnerabilities(...args),
 }));
@@ -76,6 +79,8 @@ describe("CicdListPage", () => {
     mockUsePipelineImageScans.mockReset();
     mockDeployPipeline.mockReset();
     mockUsePipelineImageScans.mockReturnValue({ data: undefined, isError: false });
+    mockUsePipelineSASTResults.mockReset();
+    mockUsePipelineSASTResults.mockReturnValue({ data: undefined, isError: false });
     mockUsePipelineScanVulnerabilities.mockReset();
     mockUsePipelineScanVulnerabilities.mockReturnValue({
       data: undefined,
@@ -389,6 +394,97 @@ describe("CicdListPage", () => {
 
       expect(screen.getByRole("button", { name: "v0.1.2" })).toBeTruthy();
       expect(screen.queryByText("Image scan")).toBeNull();
+    });
+  });
+
+  describe("실행 이력의 소스 정적 분석", () => {
+    const deployments = [
+      {
+        id: "dep_ci_pip_x_2",
+        pipelineId: "pipeline-1",
+        pipelineName: "frontend-web",
+        version: "v0.1.2",
+        status: "failed",
+        triggeredBy: "kim.dev",
+        startedAt: "2026-10-11T01:20:00Z",
+        completedAt: "2026-10-11T01:30:00Z",
+      },
+      {
+        // 리포트를 남기기 전에 만든 파이프라인의 실행 — 분석 결과가 없다.
+        id: "dep_ci_pip_x_1",
+        pipelineId: "pipeline-1",
+        pipelineName: "frontend-web",
+        version: "v0.1.1",
+        status: "success",
+        triggeredBy: "kim.dev",
+        startedAt: "2026-10-10T13:20:00Z",
+        completedAt: "2026-10-10T13:21:00Z",
+      },
+    ];
+
+    const blocked = {
+      id: "sast_dep_ci_pip_x_2",
+      pipelineId: "pipeline-1",
+      deploymentId: "dep_ci_pip_x_2",
+      projectKey: "frontend-web",
+      qualityGateStatus: "ERROR",
+      gateResult: "block",
+      conditions: [
+        { metric: "new_violations", comparator: "GT", threshold: "0", actual: "1", status: "ERROR" },
+      ],
+      metrics: { vulnerabilities: 3, bugs: 0 },
+      dashboardUrl: "https://sonarqube.example.com/dashboard?id=frontend-web",
+      analyzedAt: "2026-10-11T01:21:00Z",
+    };
+
+    function rowOf(version: string) {
+      return screen.getByRole("button", { name: version }).parentElement!;
+    }
+
+    function openHistory() {
+      renderWithProviders(<CicdListPage />);
+      fireEvent.click(screen.getByRole("button", { name: /^History$/ }));
+    }
+
+    beforeEach(() => {
+      mockUsePipelineDeployments.mockReturnValue({
+        data: { items: deployments, total: deployments.length },
+        isLoading: false,
+        dataUpdatedAt: 1234,
+      });
+    });
+
+    // 실행 목록 요청이 서버에서 분석 결과를 들인다. 실행 목록이 새로 올 때마다 다시 읽는다.
+    it("실행 목록이 갱신된 시각과 함께 분석 결과를 조회한다", () => {
+      mockUsePipelineSASTResults.mockReturnValue({ data: { items: [blocked], total: 1 } });
+
+      openHistory();
+
+      const calls = mockUsePipelineSASTResults.mock.calls;
+      expect(calls[calls.length - 1]).toEqual(["pipeline-1", 1234]);
+    });
+
+    it("이어진 실행 행에만 판정을 붙이고, 선택한 실행에 걸린 조건과 지표를 보여준다", () => {
+      mockUsePipelineSASTResults.mockReturnValue({ data: { items: [blocked], total: 1 } });
+
+      openHistory();
+
+      expect(within(rowOf("v0.1.2")).getByText("Blocked by Quality Gate")).toBeTruthy();
+      expect(within(rowOf("v0.1.1")).queryByText("SAST")).toBeNull();
+      expect(screen.getByText("Static analysis (SonarQube)")).toBeTruthy();
+      expect(screen.getByRole("list", { name: "Failed conditions" }).textContent).toContain("New issues");
+      expect(screen.getByLabelText("Vulnerabilities 3")).toBeTruthy();
+      expect(screen.getByRole("link", { name: /Open in SonarQube/ })).toBeTruthy();
+    });
+
+    // 미배선(503)이어도 이력 탭은 그대로 뜬다.
+    it("분석 결과 조회가 실패해도 이력은 그대로 보인다", () => {
+      mockUsePipelineSASTResults.mockReturnValue({ data: undefined, isError: true });
+
+      openHistory();
+
+      expect(screen.getByRole("button", { name: "v0.1.2" })).toBeTruthy();
+      expect(screen.queryByText("Static analysis (SonarQube)")).toBeNull();
     });
   });
 

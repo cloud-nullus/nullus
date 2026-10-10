@@ -131,6 +131,8 @@ func runSASTScript(t *testing.T, scannerExit int, env map[string]string) (int, s
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "sonar-scanner"), []byte(fake), 0o755))
 
 	cmd := exec.Command("sh", "-c", "set -eu\n"+strings.Join(sastScriptLines("api"), "\n"))
+	// 스크립트는 작업 디렉터리에 리포트를 쓴다. 패키지 디렉터리를 더럽히지 않는다.
+	cmd.Dir = dir
 	cmd.Env = []string{
 		"PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"FAKE_SCANNER_EXIT=" + strconv.Itoa(scannerExit),

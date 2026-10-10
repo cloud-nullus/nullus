@@ -34,7 +34,9 @@ const resourceStatusRunning = "running"
 // PipelineHandler handles HTTP requests for pipeline operations.
 type PipelineHandler struct {
 	// imageScans 는 스캔 결과 조회용이다. nil 이면 조회가 503 을 돌려준다.
-	imageScans     port.ImageScanResultRepository
+	imageScans port.ImageScanResultRepository
+	// sastResults 는 소스 정적 분석 결과 조회용이다. nil 이면 조회가 503 을 돌려준다.
+	sastResults    port.SASTResultRepository
 	createPipeline *usecase.CreatePipeline
 	listPipelines  *usecase.ListPipelines
 	deployPipeline *usecase.DeployPipeline
@@ -99,6 +101,13 @@ func (h *PipelineHandler) WithImageScans(repo port.ImageScanResultRepository) *P
 	return h
 }
 
+// WithSASTResults 는 소스 정적 분석 결과 조회를 배선한다. 이미지 스캔과 같이 대시보드(#65)가
+// 읽는 공개 경로다.
+func (h *PipelineHandler) WithSASTResults(repo port.SASTResultRepository) *PipelineHandler {
+	h.sastResults = repo
+	return h
+}
+
 func (h *PipelineHandler) WithRunSync(uc *usecase.SyncPipelineRuns) *PipelineHandler {
 	h.syncRuns = uc
 	return h
@@ -142,6 +151,7 @@ func (h *PipelineHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/pipelines/:id/resources", h.GetPipelineResources)
 	g.GET("/pipelines/:id/image-scans", h.ListImageScans)
 	g.GET("/pipelines/:id/image-scans/:scanId/vulnerabilities", h.ListScanVulnerabilities)
+	g.GET("/pipelines/:id/sast-results", h.ListSASTResults)
 	g.GET("/deployments", h.ListDeployments)
 	g.GET("/deployments/:id", h.GetDeployment)
 	g.GET("/app-templates", h.ListAppTemplates)
@@ -1226,4 +1236,28 @@ func (h *PipelineHandler) ListImageScans(c echo.Context) error {
 		items = append(items, imageScanView{ImageScanResult: r, DBStale: domain.IsDBStale(r.DBUpdatedAt, now)})
 	}
 	return c.JSON(http.StatusOK, map[string]any{"items": items, "total": len(items)})
+}
+
+// ListSASTResults handles GET /pipelines/:id/sast-results.
+//
+// 실행 기록 동기화가 남긴 분석 결과다. 실행 기록과는 deployment_id 로 잇는다.
+func (h *PipelineHandler) ListSASTResults(c echo.Context) error {
+	if h.sastResults == nil {
+		// 빈 목록을 돌려주지 않는다 — "분석한 적 없음" 으로 읽힌다.
+		return errorResponse(c, http.StatusServiceUnavailable, "SAST_RESULTS_NOT_CONFIGURED",
+			"sast result store is not configured")
+	}
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		return errorResponse(c, http.StatusBadRequest, "PIPELINE_ID_REQUIRED", "pipeline id is required")
+	}
+	if _, err := h.pipelineRepo.GetByID(c.Request().Context(), id); err != nil {
+		return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
+	}
+
+	results, err := h.sastResults.ListByPipelineID(c.Request().Context(), id)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, "SAST_RESULTS_LIST_FAILED", err.Error())
+	}
+	return c.JSON(http.StatusOK, map[string]any{"items": results, "total": len(results)})
 }

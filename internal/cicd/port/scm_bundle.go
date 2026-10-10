@@ -102,6 +102,9 @@ type SCMBundle struct {
 	// SASTServerEndpoint 는 스택 SonarQube 의 클러스터 내 주소다. SonarQube 를 고르지 않은
 	// 스택에서는 비어 있고, 그때는 스캐폴딩이 소스 정적 분석 단계를 만들지 않는다.
 	SASTServerEndpoint string
+	// SASTWebURL 은 사람이 여는 SonarQube 주소다(https://sonarqube.<접근 도메인>). 분석 결과의
+	// 링크를 만든다. SonarQube 가 없거나 접근 도메인이 없으면 비어 있다.
+	SASTWebURL string
 	// SASTToken 은 CI 가 분석에 쓸 토큰을 푼다. 스택 설치가 OpenBao 에 둔 값이다.
 	// SonarQube 가 없거나 시크릿 백엔드가 배선되지 않았으면 nil 이다.
 	SASTToken   SASTTokenResolver

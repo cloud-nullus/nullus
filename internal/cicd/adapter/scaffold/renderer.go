@@ -16,6 +16,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 const (
@@ -299,6 +300,14 @@ func renderGitHubWorkflow(in Input) string {
 		for _, line := range sastScriptLines(in.AppName) {
 			fmt.Fprintf(&b, "          %s\n", line)
 		}
+		// 리포트는 게이트에 걸려도 남긴다 — 무엇에 걸렸는지는 실패한 실행에서 봐야 한다.
+		b.WriteString("      - name: Upload report\n")
+		b.WriteString("        if: always()\n")
+		b.WriteString("        uses: actions/upload-artifact@v4\n")
+		b.WriteString("        with:\n")
+		// 이름은 실행 기록 동기화가 리포트를 찾는 열쇠다(port.SASTReportArtifact).
+		fmt.Fprintf(&b, "          name: %s\n", port.SASTReportArtifact)
+		fmt.Fprintf(&b, "          path: %s\n", port.SASTReportFile)
 		b.WriteString("\n")
 	}
 
@@ -423,11 +432,11 @@ func renderPipeline(in Input) string {
 
 	b.WriteString("build:\n")
 	b.WriteString("  stage: build\n")
-	b.WriteString("  image: docker:27\n")
+	fmt.Fprintf(&b, "  image: %s\n", shareddomain.GitLabCIBuildImage)
 	// 클러스터 내부 레지스트리는 보통 HTTP 로 노출된다. docker 는 기본적으로
 	// HTTPS 를 요구하므로 대상 호스트를 명시하지 않으면 push 가 TLS 오류로 죽는다.
 	b.WriteString("  services:\n")
-	b.WriteString("    - name: docker:27-dind\n")
+	fmt.Fprintf(&b, "    - name: %s\n", shareddomain.DindImage)
 	fmt.Fprintf(&b, "      command: [\"--insecure-registry=%s\"]\n", target.Host)
 	b.WriteString("  script:\n")
 	writeScriptLines(&b, []string{
@@ -458,6 +467,10 @@ func renderPipeline(in Input) string {
 		b.WriteString("    GIT_DEPTH: \"0\"\n")
 		b.WriteString("  script:\n")
 		writeScriptLines(&b, sastScriptLines(in.AppName))
+		// 리포트는 게이트에 걸려도 남긴다 — 무엇에 걸렸는지는 실패한 실행에서 봐야 한다.
+		b.WriteString("  artifacts:\n")
+		b.WriteString("    when: always\n")
+		fmt.Fprintf(&b, "    paths:\n      - %s\n", port.SASTReportFile)
 		// Community Edition 은 브랜치 분석이 없다. 기능 브랜치를 분석하면 결과가 같은 프로젝트에
 		// 덮여 기본 브랜치의 판정과 새 코드 기준이 흐트러진다 — 배포와 같은 브랜치에서만 돈다.
 		b.WriteString("  rules:\n")
@@ -494,7 +507,7 @@ func renderPipeline(in Input) string {
 
 	b.WriteString("deploy:\n")
 	b.WriteString("  stage: deploy\n")
-	b.WriteString("  image: alpine:3.20\n")
+	fmt.Fprintf(&b, "  image: %s\n", shareddomain.GitLabCIDeployImage)
 	// 게이트를 건너뛰고 배포되지 않도록 게이트 잡에 매단다.
 	b.WriteString("  needs:\n")
 	for _, need := range deployNeeds(opts) {

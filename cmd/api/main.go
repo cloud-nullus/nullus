@@ -312,6 +312,7 @@ func main() {
 	pgDeploymentRepo := cicdrepo.NewPostgresDeploymentRepository(pool)
 	// 이미지 스캔 게이트 판정. 대시보드(#65)가 cicd 의 공개 경로로 읽는다.
 	pgImageScanRepo := cicdrepo.NewPostgresImageScanResultRepository(pool)
+	pgSASTResultRepo := cicdrepo.NewPostgresSASTResultRepository(pool)
 	memGoldenPathRepo := cicdrepo.NewMemoryCICDGoldenPathRepository()
 	manifestApplier := cicdkube.NewManifestApplier()
 
@@ -377,6 +378,8 @@ func main() {
 		// 실행 기록을 들이면서 스캔 단계의 게이트 판정도 남긴다. 배선하지 않으면
 		// 차단된 배포가 어디에도 기록되지 않는다.
 		WithImageScans(pgImageScanRepo).
+		// 분석 단계가 남긴 리포트로 Quality Gate 판정·지표를 남긴다.
+		WithSASTResults(pgSASTResultRepo).
 		// CI 는 스택 정책으로 막는다. 동기화도 같은 정책으로 읽어야 차단과 스캔 오류를 가른다.
 		WithScanPolicies(pgScanPolicyRepo).
 		// 주기 동기화가 돌 파이프라인 목록. 화면을 열 때만 들이면 아무도 보지 않는
@@ -436,7 +439,8 @@ func main() {
 		// 넣어야 한다 — 한쪽만 배선하면 경로에 따라 추적이 갈린다.
 		WithStackReader(cicdStackReader).
 		// 스캔 결과 조회. 빠지면 503 으로 알린다 — 빈 목록은 "스캔한 적 없음" 으로 읽힌다.
-		WithImageScans(pgImageScanRepo)
+		WithImageScans(pgImageScanRepo).
+		WithSASTResults(pgSASTResultRepo)
 
 	// Observability: Prometheus with in-memory fallback
 	var dashboardRepo obsport.DashboardRepository

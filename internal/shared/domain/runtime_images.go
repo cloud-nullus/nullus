@@ -39,11 +39,26 @@ const (
 	// (internal/cicd/adapter/scaffold/react_app.go)
 	NodeBuilderImage = "node:22-alpine"
 
-	// JenkinsAgentImage / JenkinsDindImage — Jenkins kubernetes 플러그인이
-	// 빌드마다 띄우는 파드. GitLab CI 와 달리 실행기를 차트로 세우지 않는다.
+	// JenkinsAgentImage — Jenkins kubernetes 플러그인이 빌드마다 띄우는 파드.
+	// GitLab CI 와 달리 실행기를 차트로 세우지 않는다.
 	// (internal/cicd/adapter/scaffold/jenkins_renderer.go)
 	JenkinsAgentImage = "docker:27-cli"
-	JenkinsDindImage  = "docker:27-dind"
+
+	// DindImage — 이미지 빌드용 docker 데몬. Jenkins 빌드 파드의 사이드카이자
+	// GitLab build 잡의 서비스다.
+	// (internal/cicd/adapter/scaffold/{jenkins_renderer,renderer}.go)
+	DindImage = "docker:27-dind"
+
+	// GitLabCIBuildImage / GitLabCIDeployImage — 생성된 .gitlab-ci.yml 의 build·deploy 잡.
+	// 쿠버네티스 실행기가 잡마다 이 이미지로 파드를 띄운다.
+	// (internal/cicd/adapter/scaffold/renderer.go)
+	GitLabCIBuildImage  = "docker:27"
+	GitLabCIDeployImage = "alpine:3.20"
+
+	// SonarScannerImage — 파이프라인 SAST 단계(GitLab CI·Jenkins). amd64 빌드만 게시된다 —
+	// arm64 노드는 에뮬레이션(binfmt·rosetta)이 있어야 돈다. 폐쇄망도 같다.
+	// (internal/cicd/adapter/scaffold/sast.go)
+	SonarScannerImage = "sonarsource/sonar-scanner-cli:12.2"
 )
 
 // RuntimeImages 는 위 이미지 전부를 돌려준다.
@@ -56,6 +71,9 @@ func RuntimeImages() []string {
 		KubectlImage,
 		NodeBuilderImage,
 		JenkinsAgentImage,
-		JenkinsDindImage,
+		DindImage,
+		GitLabCIBuildImage,
+		GitLabCIDeployImage,
+		SonarScannerImage,
 	}
 }

@@ -526,6 +526,53 @@ export interface PipelineImageScan {
   dbStale: boolean;
 }
 
+/** SonarQube 가 낸 Quality Gate 판정 그대로. */
+export type SASTQualityGateStatus = "OK" | "ERROR" | "NONE";
+
+/** Quality Gate 조건 하나의 평가 결과. */
+export interface SASTCondition {
+  /** SonarQube 지표 키(new_violations, new_coverage …). */
+  metric: string;
+  /** GT · LT. 값이 기준을 이 방향으로 넘으면 실패다. */
+  comparator?: string;
+  threshold?: string;
+  actual?: string;
+  /** OK · ERROR */
+  status: string;
+}
+
+/** 프로젝트 전체 지표. 응답에 없는 지표는 없다(0 이 아니다). */
+export interface SASTMetrics {
+  bugs?: number;
+  vulnerabilities?: number;
+  codeSmells?: number;
+  securityHotspots?: number;
+  coverage?: number;
+  duplicatedLinesDensity?: number;
+  ncloc?: number;
+}
+
+/**
+ * 파이프라인 실행 하나의 소스 정적 분석 결과(GET /cicd/pipelines/{id}/sast-results).
+ * gateResult 는 이미지 스캔과 같은 어휘다 — error 는 분석하지 못했다는 뜻이고 코드 판정이 아니다.
+ */
+export interface PipelineSASTResult {
+  id: string;
+  pipelineId: string;
+  /** 분석한 실행. 실행 기록과 이 값으로 잇는다. */
+  deploymentId?: string;
+  projectKey?: string;
+  /** 분석하지 못했으면 없다. */
+  qualityGateStatus?: SASTQualityGateStatus;
+  gateResult: ImageScanGateResult;
+  conditions: SASTCondition[];
+  /** 없으면 지표를 모른다. */
+  metrics?: SASTMetrics;
+  /** SonarQube 프로젝트 화면 주소. */
+  dashboardUrl?: string;
+  analyzedAt: string;
+}
+
 export interface PipelineResource {
   kind: string;
   name: string;

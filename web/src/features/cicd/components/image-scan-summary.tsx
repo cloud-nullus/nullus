@@ -29,7 +29,8 @@ import { formatDate, formatDateTime } from "../../../lib/locale";
 import { shortImageDigest } from "../../../lib/vulnerability-counts";
 import type { ImageScanGateResult, PipelineImageScan } from "../../../types";
 
-const TONE_CLASS = {
+// 소스 정적 분석 배지(sast-result-summary)도 같은 색 규칙을 쓴다.
+export const TONE_CLASS = {
   success:
     "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
   warning:
