@@ -33,6 +33,17 @@ vi.mock("../../../stores/auth-store", () => ({
   })),
 }));
 
+vi.mock("../../stack/api/stack-api", () => ({
+  useStacks: () => ({
+    data: {
+      items: [
+        { id: "stk_a", name: "gitlab-stack", namespace: "nullus-gitlab", status: "completed" },
+      ],
+      total: 1,
+    },
+  }),
+}));
+
 vi.mock("../api/backup-api", async () => {
   const actual =
     await vi.importActual<typeof import("../api/backup-api")>(
@@ -100,15 +111,49 @@ describe("BackupPage", () => {
       screen.getByRole("button", { name: /백업 시작|Start backup/i }),
     );
 
+    // 스택 백업은 그 스택과 네임스페이스로 보낸다 — 스택 ID 가 없으면 서버가 스택 클러스터에 닿지 못한다.
     expect(mockMutate).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: "full",
-        namespace: "nullus-app",
+        stack_id: "stk_a",
+        namespace: "nullus-gitlab",
         scope: ["platform_db", "keycloak_db", "openbao_kv", "ns_resources"],
         confirm: undefined,
       }),
       expect.anything(),
     );
+  });
+
+  it("should send a platform-only backup without a stack", () => {
+    renderWithProviders(<BackupPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /백업 실행|Run backup/i }),
+    );
+    fireEvent.click(screen.getByRole("radio", { name: /Platform only|플랫폼만/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /백업 시작|Start backup/i }),
+    );
+
+    const body = mockMutate.mock.calls[0][0];
+    expect(body).toEqual(
+      expect.objectContaining({ mode: "platform_only", scope: ["platform_db", "keycloak_db"] }),
+    );
+    expect(body.stack_id).toBeUndefined();
+    expect(body.namespace).toBeUndefined();
+  });
+
+  it("should show which stack each run backed up", () => {
+    mockUseBackupRuns.mockReturnValue({
+      data: [
+        { id: "b3", stack_id: "stk_a", mode: "full", trigger: "manual", status: "succeeded", total_bytes: 10, created_at: "2026-10-11T01:00:00Z" },
+        { id: "b4", mode: "platform_only", trigger: "manual", status: "succeeded", total_bytes: 10, created_at: "2026-10-11T00:00:00Z" },
+      ],
+    });
+    renderWithProviders(<BackupPage />);
+
+    expect(screen.getByText("gitlab-stack")).toBeInTheDocument();
+    expect(screen.getByText(/^(Platform|플랫폼)$/)).toBeInTheDocument();
   });
 
   it("should say so when there is nothing yet", () => {

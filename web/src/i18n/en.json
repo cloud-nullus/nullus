@@ -2025,7 +2025,9 @@
       "mode": "Mode",
       "size": "Size",
       "quiesce": "Downtime",
-      "status": "Status"
+      "status": "Status",
+      "target": "Target",
+      "platform": "Platform"
     },
     "dialog": {
       "title": "Select backup targets",
@@ -2033,7 +2035,10 @@
       "start": "Start backup",
       "nothingSelected": "Select at least one target.",
       "quiesceWarning": "Including volumes stops the workloads while the backup runs.",
-      "confirmLabel": "Type the namespace to confirm"
+      "confirmLabel": "Type the namespace to confirm",
+      "stackLabel": "Backup target",
+      "platformOnly": "Platform only (no stack)",
+      "platformOnlyHint": "Vault, Kubernetes resources and volumes belong to a stack. Pick a stack to include them."
     },
     "target": {
       "platformDb": "Platform DB",

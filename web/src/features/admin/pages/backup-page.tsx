@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DatabaseBackup } from "lucide-react";
 import { PageHeader } from "../../../components/layout/page-header";
@@ -9,7 +9,11 @@ import {
   tableHeadRowClass,
   thClass,
 } from "../../../components/shared/table-chrome";
-import { BackupTargetDialog } from "../components/backup-target-dialog";
+import {
+  BackupTargetDialog,
+  type BackupStackOption,
+} from "../components/backup-target-dialog";
+import { useStacks } from "../../stack/api/stack-api";
 import {
   useBackupRuns,
   useCreateBackup,
@@ -48,10 +52,22 @@ export function BackupPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const { data: runs = [] } = useBackupRuns();
   const createBackup = useCreateBackup();
+  const { data: stackList } = useStacks();
 
-  // 확인 문구로 입력할 대상. 서버 기본값과 같아야 하므로 화면에서 정하지 않고
-  // 가장 최근 실행이 쓴 값을 따른다 — 없으면 플랫폼 기본 네임스페이스다.
-  const namespace = "nullus-app";
+  // 백업할 수 있는 스택. 스택 클러스터의 리소스·볼륨·금고는 스택 ID 가 있어야 서버가
+  // 그 클러스터에 닿는다 — 예전 화면은 네임스페이스를 nullus-app 으로 고정하고 스택을
+  // 보내지 않아, 스택 백업이 되지 않았다.
+  const stacks: BackupStackOption[] = useMemo(
+    () =>
+      (stackList?.items ?? [])
+        .filter((s) => s.status !== "deleted" && s.namespace)
+        .map((s) => ({ id: s.id, name: s.name, namespace: s.namespace ?? "" })),
+    [stackList],
+  );
+  const stackNames = useMemo(
+    () => new Map((stackList?.items ?? []).map((s) => [s.id, s.name])),
+    [stackList],
+  );
 
   return (
     <div>
@@ -77,6 +93,9 @@ export function BackupPage() {
               <th className={thClass}>
                 {t("backupPage.table.startedAt", "Started")}
               </th>
+              <th className={thClass}>
+                {t("backupPage.table.target", "Target")}
+              </th>
               <th className={thClass}>{t("backupPage.table.mode", "Mode")}</th>
               <th className={thClass}>{t("backupPage.table.size", "Size")}</th>
               <th className={thClass}>
@@ -91,7 +110,7 @@ export function BackupPage() {
             {runs.length === 0 && (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="p-6 text-center text-[var(--color-text-secondary)]"
                 >
                   {t("backupPage.empty", "No backups yet.")}
@@ -105,6 +124,11 @@ export function BackupPage() {
               >
                 <td className="p-3">
                   {new Date(run.created_at).toLocaleString()}
+                </td>
+                <td className="p-3">
+                  {run.stack_id
+                    ? (stackNames.get(run.stack_id) ?? run.stack_id)
+                    : t("backupPage.table.platform", "Platform")}
                 </td>
                 <td className="p-3">{run.mode}</td>
                 <td className="p-3">{formatBytes(run.total_bytes)}</td>
@@ -129,18 +153,27 @@ export function BackupPage() {
         </table>
       </div>
 
-      <BackupTargetDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        namespace={namespace}
-        submitting={createBackup.isPending}
-        onSubmit={({ scope, confirm }) => {
-          createBackup.mutate(
-            { mode: "full", namespace, scope, confirm },
-            { onSuccess: () => setDialogOpen(false) },
-          );
-        }}
-      />
+      {/* 열 때마다 새로 만든다 — 앞서 고른 대상·확인 문구가 남으면 다른 스택으로 착각한다. */}
+      {dialogOpen && (
+        <BackupTargetDialog
+          open
+          onClose={() => setDialogOpen(false)}
+          stacks={stacks}
+          submitting={createBackup.isPending}
+          onSubmit={({ stackId, namespace, scope, confirm }) => {
+            createBackup.mutate(
+              {
+                mode: stackId ? "full" : "platform_only",
+                stack_id: stackId,
+                namespace,
+                scope,
+                confirm,
+              },
+              { onSuccess: () => setDialogOpen(false) },
+            );
+          }}
+        />
+      )}
     </div>
   );
 }

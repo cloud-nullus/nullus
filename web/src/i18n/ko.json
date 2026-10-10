@@ -2025,7 +2025,9 @@
       "mode": "모드",
       "size": "크기",
       "quiesce": "정지 시간",
-      "status": "상태"
+      "status": "상태",
+      "target": "대상",
+      "platform": "플랫폼"
     },
     "dialog": {
       "title": "백업 대상 선택",
@@ -2033,7 +2035,10 @@
       "start": "백업 시작",
       "nothingSelected": "적어도 하나는 골라야 합니다.",
       "quiesceWarning": "볼륨을 포함하면 백업이 도는 동안 워크로드가 멈춥니다.",
-      "confirmLabel": "확인을 위해 네임스페이스를 입력하세요"
+      "confirmLabel": "확인을 위해 네임스페이스를 입력하세요",
+      "stackLabel": "백업 대상",
+      "platformOnly": "플랫폼만 (스택 없음)",
+      "platformOnlyHint": "금고·Kubernetes 리소스·볼륨은 스택에 속합니다. 담으려면 스택을 고르세요."
     },
     "target": {
       "platformDb": "플랫폼 DB",
