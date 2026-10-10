@@ -58,6 +58,7 @@ func TestDelegateBuild_ReportsMissingCIPlatform(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Jenkins")
 	assert.Contains(t, err.Error(), "GitLab")
+	assert.Contains(t, err.Error(), "GitHub Actions")
 }
 
 // job 이 없다는 404 는 "프로비저닝이 끝나지 않았다" 는 뜻이다. 그대로 옮기면

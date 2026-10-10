@@ -241,7 +241,9 @@ func renderGitHubWorkflow(in Input) string {
 
 	fmt.Fprintf(&b, "name: nullus-ci-%s\n\n", app)
 
-	b.WriteString("on:\n  push:\n    branches:\n      - main\n      - master\n\n")
+	// workflow_dispatch 는 화면의 "실행" 이 커밋 없이 워크플로를 시작시키는 길이다.
+	// 없으면 GitHub 이 dispatch 를 422 로 거절해 실행이 push 로만 돈다.
+	b.WriteString("on:\n  push:\n    branches:\n      - main\n      - master\n  workflow_dispatch:\n\n")
 
 	// 최소 권한만 준다. contents 는 매니페스트 되쓰기, packages 는 GHCR push 용이다.
 	b.WriteString("permissions:\n  contents: write\n  packages: write\n\n")

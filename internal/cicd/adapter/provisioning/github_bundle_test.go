@@ -194,3 +194,17 @@ func TestPlatformFor_NormalizesToolNames(t *testing.T) {
 		assert.Equal(t, want, platformFor(name), "tool=%q", name)
 	}
 }
+
+// GitHub 스택의 "실행" 도 CI 에 넘어가야 한다. 트리거가 없어 Trigger CI 단계가 늘 실패했다.
+func TestFor_GitHubBundleCanTriggerCI(t *testing.T) {
+	apiURL := stubGitHubAPI(t, "")
+	f := NewBundleFactory(&fakeStackReader{summary: githubStack()}, &fakeTokenIssuer{}, Options{}).
+		WithGitHub(&fakeTokenIssuer{token: "ghp"}, &fakeConnectionReader{
+			conn: &port.SCMConnection{Owner: "acme", APIBaseURL: apiURL},
+		})
+
+	bundle, err := f.For(context.Background(), "stk_gh")
+	require.NoError(t, err)
+
+	assert.NotNil(t, bundle.CITrigger)
+}

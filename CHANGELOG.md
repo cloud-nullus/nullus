@@ -158,11 +158,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **GitHub 스택에서 "실행"이 Trigger CI 단계에서 실패하던 것과, Dockerfile 경로 없이 만든 스택 파이프라인이 플랫폼 직접 적용으로 새던 것** (`internal/cicd/adapter/github/workflow_trigger.go` 신규, `internal/cicd/adapter/scaffold/renderer.go`, `internal/cicd/adapter/provisioning/bundle_factory.go`, `internal/cicd/domain/pipeline.go`): GitLab 에 이어 GitHub 번들에도 트리거를 실었다 — 같은 PAT 로 `POST /repos/{owner}/{repo}/actions/workflows/nullus-ci.yml/dispatches` 를 불러 `main` 에서 워크플로를 시작시킨다. GitHub 은 dispatch 에 실행 id 를 돌려주지 않으므로 몇 초 안에 새로 생긴 `workflow_dispatch` 실행을 찾아 그 주소를 실행 기록에 남기고, 못 찾으면 워크플로 페이지 주소를 준다(지어낸 실행 주소는 열리지 않는 링크가 된다). 그 브랜치의 최신 실행이 아직 돌고 있으면 새로 시작하지 않고 붙는다(GitLab 과 같은 이유). 리포·워크플로가 없으면(404) "프로비저닝을 다시", `workflow_dispatch` 가 없어 422 로 거절되면 워크플로의 `on:` 에 트리거를 더하거나 다시 프로비저닝하라고 말한다.
+
+  **스캐폴딩 워크플로에 `workflow_dispatch` 를 둔다.** 없으면 GitHub 이 API 실행 요청을 거절해 실행이 push 로만 돈다. 이 변경 전에 만들어진 GitHub 파이프라인은 워크플로에 트리거가 없어 "실행"이 그 안내로 실패한다 — 파이프라인을 다시 프로비저닝하거나 `.github/workflows/nullus-ci.yml` 의 `on:` 에 `workflow_dispatch:` 를 더하면 된다.
+
+  **스택에 묶인 파이프라인은 Dockerfile 경로가 비어 있어도 러너가 실행한다.** 위임 판정이 Dockerfile 경로를 요구해, API 로 경로 없이 만든 파이프라인(로컬 E2E 가이드의 "화면 대신 API 로 만들기")은 "실행"이 플랫폼의 직접 적용 경로로 가서 Argo CD 가 동기화하는 같은 리소스를 서로 덮어썼다. 이제 스택에 묶였으면 긴급모드만 빼고 모두 CI 에 넘긴다 — 통합모드 설계("플랫폼은 직접 git clone·docker build·kubectl apply 를 하지 않는다")대로다. "CI 플랫폼이 없다" 안내는 GitLab CI·GitHub Actions·Jenkins 를 함께 말한다.
+
 - **GitLab 스택에서 "실행"이 Trigger CI 단계에서 실패하던 것** (`internal/cicd/adapter/gitlab/pipeline_trigger.go` 신규, `internal/cicd/adapter/provisioning/bundle_factory.go`, `internal/cicd/adapter/runner/delegate.go`, `internal/cicd/adapter/jenkins/client.go`, `internal/cicd/port/ci_server.go`): 스택에 묶인 파이프라인의 배포 실행은 플랫폼이 빌드하지 않고 CI 러너에 넘기는데, 그 넘김(`CITrigger`)이 Jenkins 번들에만 있어 GitLab 스택에서는 "실행을 넘길 CI 플랫폼이 없다"로 늘 실패했다(로컬 E2E 가이드 부록 C). GitLab 번들에 트리거를 실었다 — 같은 자동화 토큰으로 `POST /projects/:id/pipeline` 을 불러 `main` 파이프라인을 만들고 그 주소를 실행 기록에 남긴다. 프로젝트가 없으면(404) 상태 코드 대신 "프로비저닝이 끝나지 않았다"로 말하고, 그 밖의 거절(`.gitlab-ci.yml` 없음 등)은 GitLab 의 설명을 그대로 싣는다.
 
   **그 브랜치의 최신 파이프라인이 아직 돌고 있으면 새로 만들지 않고 그 실행에 붙는다.** 화면은 파이프라인을 만든 직후 "실행"을 한 번 더 부르는데, 스캐폴딩 커밋이 이미 파이프라인을 시작한 뒤라 또 만들면 같은 커밋의 배포 잡 둘이 같은 브랜치에 되커밋을 밀어 둘째가 non-fast-forward 로 실패한다. 이력 조회가 실패하면 중복 여부를 보지 않고 실행한다 — 조회는 중복을 피하기 위한 것이지 실행의 전제가 아니다.
 
-  실행 주소는 플랫폼마다 모양이 달라(Jenkins `/job/…`, GitLab `/-/pipelines/…`) 위임기가 Jenkins 모양으로 지어내던 것을 트리거가 돌려주도록 포트를 바꿨다(`TriggerBuild` 가 주소를 함께 돌려준다). Jenkins 는 외부 주소(`jenkins.<도메인>`)를 알면 그것으로 링크를 만든다 — 클러스터 안 주소는 화면에서 열리지 않는다. "CI 플랫폼이 없다" 안내는 GitLab CI·Jenkins 를 함께 말한다. GitHub Actions·Gitea 스택의 넘김은 아직 없다.
+  실행 주소는 플랫폼마다 모양이 달라(Jenkins `/job/…`, GitLab `/-/pipelines/…`) 위임기가 Jenkins 모양으로 지어내던 것을 트리거가 돌려주도록 포트를 바꿨다(`TriggerBuild` 가 주소를 함께 돌려준다). Jenkins 는 외부 주소(`jenkins.<도메인>`)를 알면 그것으로 링크를 만든다 — 클러스터 안 주소는 화면에서 열리지 않는다. "CI 플랫폼이 없다" 안내는 GitLab CI·Jenkins 를 함께 말한다. Gitea 스택의 CI 는 Jenkins 라 그 번들의 Jenkins 트리거가 이미 맡는다.
 
 - **CI/CD 템플릿 생성·수정·삭제가 저장되지 않던 것** (`internal/cicd/adapter/repository/postgres_cicd_template.go`, `internal/cicd/adapter/handler/cicd_template_handler.go`, `internal/cicd/domain`, `db/migrations/000089`, `web/src/features/cicd`, `api/openapi.yaml`): Postgres 저장소의 Create·Update·Delete 가 TODO 로 성공만 돌려줘, 템플릿 화면의 버튼은 성공으로 응답하는데 목록은 바뀌지 않았다(로컬 E2E 가이드 부록 C 의 첫 항목). 세 메서드를 구현했다 — 같은 ID 는 덮어쓰지 않고 409 로 거부하고, 없는 템플릿의 수정·삭제는 404 다. 인메모리 저장소도 같은 에러를 낸다. 만든 사람(`created_by`)은 API 와 도메인이 받고 돌려주면서도 열이 없어 버려졌으므로 열을 더했다(시드 템플릿은 NULL).
 

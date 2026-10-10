@@ -173,3 +173,24 @@ func TestRender_EmptyPlatformDefaultsToGitLab(t *testing.T) {
 
 	assert.Contains(t, fileMap(t, files), ".gitlab-ci.yml")
 }
+
+// 화면의 "실행" 은 커밋 없이 워크플로를 API 로 시작시킨다(workflow_dispatch). 이 트리거가
+// 없으면 GitHub 이 dispatch 를 422 로 거절해 실행이 push 로만 돈다.
+func TestRender_GitHubWorkflowAcceptsManualDispatch(t *testing.T) {
+	files, err := Render(githubInput())
+	require.NoError(t, err)
+
+	var doc map[string]any
+	raw := fileMap(t, files)[".github/workflows/nullus-ci.yml"]
+	require.NoError(t, yaml.Unmarshal([]byte(raw), &doc))
+
+	// YAML 1.1 파서는 따옴표 없는 on 을 불리언 true 로 읽는다. GitHub 은 on 으로 읽으므로
+	// 출력은 그대로 두고 테스트가 두 키를 모두 본다.
+	on, ok := doc["on"].(map[string]any)
+	if !ok {
+		on, ok = doc["true"].(map[string]any)
+	}
+	require.True(t, ok, "on 이 매핑이어야 한다")
+	assert.Contains(t, on, "workflow_dispatch")
+	assert.Contains(t, on, "push", "push 트리거는 그대로 둔다")
+}
