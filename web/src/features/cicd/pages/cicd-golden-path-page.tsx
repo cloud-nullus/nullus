@@ -35,10 +35,12 @@ const TOOL_NAME_TO_ID: Record<string, string> = {
   'Elasticsearch': 'elasticsearch',
   'Tempo': 'tempo',
   'Jaeger': 'jaeger',
+  'Trivy': 'trivy',
+  'SonarQube': 'sonarqube',
 }
 
 /** Golden Path 도구 목록을 Stack 설정 오버라이드로 변환 */
-function goldenPathToStackOverrides(tools: CICDTool[]) {
+export function goldenPathToStackOverrides(tools: CICDTool[]) {
   const artifacts = {
     packageRegistry: { tool: 'gitlab', version: 'latest' },
     sourceRepository: { tool: 'gitlab', version: 'latest' },
@@ -58,6 +60,11 @@ function goldenPathToStackOverrides(tools: CICDTool[]) {
     search: { tool: 'opensearch', version: 'latest' },
     traceLayer: { tool: 'tempo', version: 'latest' },
     traceExporter: { tool: 'opentelemetry-collector', version: 'latest' },
+  }
+  // 보안 도구는 선택이다 — Golden Path 가 담고 있을 때만 고른다.
+  const security = {
+    imageScanner: { tool: '', version: '' },
+    sast: { tool: '', version: '' },
   }
 
   for (const tool of tools) {
@@ -91,10 +98,16 @@ function goldenPathToStackOverrides(tools: CICDTool[]) {
       case 'log_aggregation':
         logging.search = { tool: toolId, version }
         break
+      case 'image_scanner':
+        security.imageScanner = { tool: toolId, version }
+        break
+      case 'sast':
+        security.sast = { tool: toolId, version }
+        break
     }
   }
 
-  return { artifacts, pipeline, monitoring, logging }
+  return { artifacts, pipeline, monitoring, logging, security }
 }
 
 const TOOL_CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {

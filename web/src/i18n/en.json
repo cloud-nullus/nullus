@@ -180,7 +180,9 @@
       "traces": "Traces",
       "traceExporter": "Exporter / Agent",
       "imageScanner": "Image Scanner",
-      "imageScannerHint": "Not installed unless selected. Harbor's built-in scanner can serve instead."
+      "imageScannerHint": "Not installed unless selected. Harbor's built-in scanner can serve instead.",
+      "sast": "Static Analysis (SAST)",
+      "sastHint": "Not installed unless selected. Uses the stack's PostgreSQL and signs in with Keycloak when SSO is on."
     },
     "resourceTotal": {
       "description": "Combined request/limit totals for {{count}} selected OSS"
@@ -600,6 +602,14 @@
       "victoriametrics": {
         "label": "VictoriaMetrics",
         "description": "High-performance time-series database"
+      },
+      "trivy": {
+        "label": "Trivy",
+        "description": "Container image vulnerability scanning (server mode)"
+      },
+      "sonarqube": {
+        "label": "SonarQube",
+        "description": "Static source code analysis (Community)"
       },
       "grafana": {
         "label": "Grafana",

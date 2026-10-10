@@ -14,6 +14,7 @@ func TestScanPolicyVariables(t *testing.T) {
 		BlockSeverity:        domain.SeverityHigh,
 		IgnoreUnfixed:        false,
 		OnScannerUnreachable: domain.UnreachableAllow,
+		SASTOnGateFailure:    domain.SASTGateWarn,
 	})
 
 	got := map[string]string{}
@@ -27,5 +28,6 @@ func TestScanPolicyVariables(t *testing.T) {
 		ScanSeverityVariable:      "HIGH,CRITICAL",
 		ScanIgnoreUnfixedVariable: "false",
 		ScanOnUnreachableVariable: "allow",
+		SASTOnGateFailureVariable: "warn",
 	}, got)
 }

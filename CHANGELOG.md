@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **파이프라인이 스택의 SonarQube 로 소스를 정적 분석하고 Quality Gate 로 배포를 막는다** (`internal/cicd/{adapter/scaffold,adapter/sastcreds,adapter/provisioning,adapter/repository,usecase,domain,port}`, `internal/stack/adapter/helm`, `internal/shared/domain`, `db/migrations/000088`, nullus-plan#64): 스택에 SonarQube 가 있으면 GitLab CI·GitHub Actions·Jenkins 파이프라인에 `sonar-scanner` 단계(`SAST`)를 만들고, 배포는 그 단계를 기다린다. `sonar.qualitygate.wait=true` 로 Quality Gate 판정까지 기다린다 — 없으면 스캐너는 결과만 올리고 성공으로 끝난다. 분석은 소스만 보므로 빌드를 기다리지 않고 바로 돈다.
+
+  **기본은 차단, 스택 정책으로 경고.** Trivy 이미지 스캔 정책(`/stacks/:id/image-scan-policy`)에 `sast_on_gate_failure`(`block`·`warn`)를 더했다. 플랫폼이 `NULLUS_SAST_ON_GATE_FAILURE` 로 싣고(Jenkins 는 `nullus-scan-policy` ConfigMap), 스크립트가 종료 코드로 가른다 — sonar-scanner 는 Quality Gate 실패에 3, 서버에 닿지 못하면 1 로 끝난다(실측). 3 은 정책(차단·경고)을 따르고, 그 밖의 실패(SonarQube 장애·인증 실패)는 이미지 스캔과 같은 `on_scanner_unreachable` 을 따른다 — 경고 정책이 분석 실패까지 덮지 않는다. 필드를 보내지 않는 옛 클라이언트는 저장된 값을 그대로 둔다.
+
+  **분석 토큰은 스택 설치가 발급한다.** `provisioning_sonarqube` 가 클러스터 안 Job 으로 분석 전용 토큰(`GLOBAL_ANALYSIS_TOKEN`, 이름 `nullus-ci`)을 발급해 스택 OpenBao(`security/sonarqube/analysis-token`)에 두고, 파이프라인을 만들 때 cicd 가 그 값을 읽어 시크릿 변수 `SONAR_TOKEN` 으로 건다(GitLab masked, GitHub 시크릿, Gitea·Jenkins 는 파이프라인 Secret). 플랫폼 API 가 SonarQube 에 닿지 않아도 된다. 토큰은 Job 의 표준 출력에 싣지 않는다 — 스택에 로그 수집(OTel agent → Loki)이 있으면 파드 로그가 보관되므로, 파드 안 파일에 두고 오케스트레이터가 `kubectl exec` 로 읽은 뒤 Job 을 지운다(읽기 전에 죽어도 `activeDeadlineSeconds`·`ttlSecondsAfterFinished` 로 정리된다). 다시 돌려도 토큰을 새로 만들지 않는다. OpenBao 에 값이 없을 때(경로 없음·빈 값)만 새 이름(`nullus-ci-<시각>`)으로 하나 더 발급하고 이전 토큰은 폐기하지 않는다 — 기존 파이프라인 변수의 사본이 계속 동작한다. OpenBao 를 읽지 못한 것(봉인·장애)은 값을 잃은 것과 구분해 단계를 멈춘다. 토큰을 못 구하면 파이프라인 단계는 두고 `SONAR_TOKEN` 을 사람이 채울 변수로 알린다.
+
+  GitLab 의 분석 잡은 배포와 같은 기본 브랜치에서만 돈다(Community Edition 은 브랜치 분석이 없어 기능 브랜치 결과가 같은 프로젝트를 덮는다). GitHub 컨테이너 잡은 `--user root` 로 돈다 — 스캐너 이미지가 비루트라 `actions/checkout` 이 작업 디렉터리에 쓰지 못한다. 컴파일 결과물 없이 소스만 분석해도 Java 분석은 통과한다(SonarQube 26.9 · scanner 12.2 실측).
+
+  로컬 E2E(kind + GitLab + Argo CD + SonarQube, 실제 플랫폼)에서 확인했다 — 설치가 `nullus-ci` 토큰을 발급하고 발급 Job 을 지운다. 파이프라인을 만들면 단계가 `Build·SAST·Deploy` 이고 `SONAR_TOKEN`(masked)과 정책 변수가 등록된다. 첫 실행은 build·sast·deploy 모두 성공(SonarQube 에 프로젝트 생성, Quality Gate PASSED). `eval` 을 넣은 커밋은 sast 가 "차단 정책" 으로 실패하고 deploy 가 skipped 다. 정책을 warn 으로 바꾸면(플랫폼이 파이프라인 변수로 즉시 반영) 같은 코드가 "경고 정책에 따라 통과" 로 deploy 까지 간다. 화면으로 만든 파이프라인도 같은 단계를 갖는다.
+
+  스택 정보(`StackSummary`)에 SonarQube 주소를 더했다(외부 SonarQube 는 제외). 주소 규칙과 토큰 경로는 `internal/shared/domain` 이 갖는다. 에어갭 번들의 `sonar-scanner` 이미지 반입과 Quality Gate 결과를 화면에 보이는 일은 뒤따르는 변경이다.
+
+- **설치 화면에서 SonarQube(SAST)를 고를 수 있다** (`web/src/features/stack`, `web/src/features/cicd`, nullus-plan#64): 백엔드는 `security.sast` 슬롯과 설치 단계를 갖고 있었지만 화면에 고를 칸이 없어 템플릿 밖에서는 도달할 수 없었다. Security 탭에 Static Analysis (SAST) = SonarQube 를 두고, 템플릿·Golden Path 의 보안 도구를 마법사에 채우고, 템플릿 편집기에서 SAST 칸을 고를 수 있게 했다.
+
+  보안 도구를 **설치 목록에 넣었다** — 빠져 있으면 화면이 만든 게이트웨이(서버 기본값을 대신한다)에 `sonarqube.<도메인>` 라우트가 없어 주소가 열리지 않고, 그 주소가 SAML ACS 라 Keycloak 로그인도 실패한다. 같은 목록이 자원 계획(분석 수/일·프로젝트 수, Go `PlanningOptionDefs` 와 같은 값)과 helm 자원 오버라이드(`installing_sonarqube`·`installing_trivy` 의 `resources`)에도 쓰인다. Trivy 는 화면이 없어 게이트웨이로 열지 않는다(서버와 같다). 호환성 게이트는 서버(`stackConfigToCategoryMap`)처럼 보안 도구를 매트릭스 대조에서 뺀다 — 넣으면 보안 칸이 있는 몇몇 템플릿 밖에서는 고르는 순간 "일치하는 매트릭스 없음"으로 막힌다. DB 를 외부 연결로 고른 스택에 SonarQube 를 고르면 저장·배포 전에 막는다(백엔드는 앞 단계를 다 깐 뒤 `installing_sonarqube` 에서야 거부했다).
+
+  버전 표에 Trivy·SonarQube 를 넣어 고른 버전이 `1.0.0` 으로 보이던 것을 고쳤고(`connection.go` 와 대조하는 테스트에 묶었다), en/ko 에 두 도구의 설명을 넣어 영어 화면에 한국어 설명이 뜨던 것을 고쳤다. OSS 자원 기본값 화면은 두 도구를 Artifacts 대신 Security 로 분류한다.
+
 - **SonarQube 가 Keycloak 으로 로그인한다 (SAML)** (`internal/auth/adapter/keycloak`, `internal/stack/{port,adapter/helm}`, nullus-plan#64): SonarQube Community 는 SSO 로 OIDC 를 받지 않고 SAML 만 받는다. `provisioning_sso` 가 다른 도구와 함께 SAML 클라이언트(`<스택>-sonarqube`, ACS `https://sonarqube.<도메인>/oauth2/callback/saml`)를 등록하고, SonarQube 는 렐름의 활성 RS256 서명 인증서를 values(`sonar.auth.saml.*`)로 받아 로그인 화면에 Keycloak 버튼이 생긴다. Keycloak 기본값 두 가지를 이 클라이언트에서만 바꾼다 — 요청 서명 요구를 끄고(SonarQube 는 요청에 서명하지 않아 켜 두면 "Invalid requester"), 기본 범위 `role_list` 를 뺀다(역할마다 `Role` 속성을 따로 실어 SonarQube 가 "duplicated Name" 으로 응답을 거부한다). 사용자 속성 `login`·`name`·`email` 의 이름은 포트 상수로 두 모듈이 함께 쓴다.
 
   SAML 도구는 client secret 이 없다. 포트 `SSOProvisioner` 에 `UsesClientSecret`·`SAMLSigningCertificate` 를 두고, 시크릿 평면과 프로비저닝이 그 값을 만들지도 읽지도 않게 했다. 인증서는 설치 직전에 읽고, SSO 를 쓰는데 못 읽으면 단계를 멈춘다 — SAML 없이 깔고 넘어가면 다시 깔 때까지 로컬 계정으로만 뜬다. SSO 사용자는 일반 사용자(`sonar-users`)로 만들어지고 관리는 `admin` 계정으로 한다. 렐름 키를 회전하면 SonarQube 단계를 다시 돌려야 새 인증서를 받는다 — 배포된 values 를 편집해 저장된 스냅샷이 옛 인증서·주소를 얼려 그 재실행을 이기지 못하도록, 서버 주소와 SAML 설정은 플랫폼 소유 값으로 오버라이드 위에 다시 못박고 values 편집기의 보호 경로에도 넣었다(사용자가 더한 다른 `sonarProperties` 는 그대로 둔다). kind + Keycloak 26.0.8 에서 브라우저의 SAML 흐름(SonarQube 시작 → Keycloak 로그인 → 응답 → SonarQube 세션)을 스크립트로 따라 해 `externalProvider: saml` 로그인, 다시 로그인해도 같은 계정, admin 계정 유지, 단계 재실행(파드 유지·클라이언트와 매퍼 중복 없음), 스택 삭제 경로의 클라이언트 회수를 확인했다.
@@ -139,6 +157,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **아직 아닌 것**: **실환경 리허설이 남았다** — 실제 OSS 데이터(GitLab 커밋 · Harbor digest · Jenkins 빌드) · OpenBao 금고 · RTO/정지 창 실측 · 다중 노드. 축소 리허설은 *메커니즘*을 검증했지 *규모와 도구별 정합성*을 검증하지 않았고, **그것이 끝나야 B4-1 완료다.** 알림은 구조화 로그까지이고 채널 발송은 #63 에 달렸다. UI(B3-2)와 운영 런북(B3-4)도 남아 있다.
 
 ### Fixed
+
+- **설치 화면에서 고른 보안 도구가 설치 요청에서 빠지던 것** (`web/src/features/stack/pages/stack-install-page.tsx`): 요청을 만드는 `buildStackRequest` 가 `security` 를 싣지 않아, Security 탭에서 Trivy 를 골라도 요청 본문에는 `enabled: false` 로 나가 스캐너가 설치되지 않았다. 요청 변환(`toCreateStackBody`)은 그 값을 읽고 있어 단위 테스트로는 드러나지 않았다 — 화면에서 고르고 저장한 요청을 보는 테스트를 더했다(수정을 빼면 실패함을 확인).
 
 - **values 편집기가 키에 점이 든 보호 경로를 찾지 못하던 것** (`internal/stack/domain/release_values.go`): 경로를 점마다 쪼개 찾아서 `grafana.ini.auth.generic_oauth` 처럼 키 자체에 점이 든 경로는 한 번도 찾지 못했다. Grafana 의 OIDC 블록을 지우거나 바꿔도 경고가 뜨지 않았다. 각 단계에서 남은 조각을 이어 붙인 긴 키부터 맞춰 본다.
 

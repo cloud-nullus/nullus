@@ -95,6 +95,8 @@ func (uc *ProvisionPipelineRepository) Execute(
 	// 사용자가 준 값이 우선이다 — 외부 레지스트리를 쓰는 구성에서는 그쪽이 유일한
 	// 출처다. 비어 있는 것만 채운다.
 	registryCredentials := uc.resolveRegistryCredentials(ctx, bundle, input)
+	// 분석 토큰도 플랫폼이 갖고 있다(스택 설치가 OpenBao 에 둔다).
+	sastToken := resolveSASTToken(ctx, bundle, stackID)
 
 	commonOut, err := NewProvisionCommonProject(bundle.Provisioner).Execute(ctx, ProvisionCommonProjectInput{
 		GroupPath:   bundle.GroupPath,
@@ -130,6 +132,8 @@ func (uc *ProvisionPipelineRepository) Execute(
 
 			ImageScannerEndpoint:         bundle.ImageScannerEndpoint,
 			ImageScannerJavaDBRepository: bundle.ImageScannerJavaDBRepository,
+			SASTServerEndpoint:           bundle.SASTServerEndpoint,
+			SASTToken:                    sastToken,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("provision app project: %w", err)
@@ -162,6 +166,22 @@ func (uc *ProvisionPipelineRepository) Execute(
 	// 없었다 — 클라이언트가 읽든 말든 서버 로그에는 남아야 한다.
 	logProvisioningWarnings(app, stackID, out)
 	return out, nil
+}
+
+// resolveSASTToken 은 스택 SonarQube 의 분석 토큰을 읽는다.
+//
+// 못 읽어도 파이프라인 생성을 멈추지 않는다. 비워 두면 프로비저닝이 SONAR_TOKEN 을
+// 사람이 채울 변수로 알린다 — 레지스트리 자격증명을 못 푼 경우와 같은 방침이다.
+func resolveSASTToken(ctx context.Context, bundle *port.SCMBundle, stackID string) string {
+	if bundle == nil || strings.TrimSpace(bundle.SASTServerEndpoint) == "" || bundle.SASTToken == nil {
+		return ""
+	}
+	token, err := bundle.SASTToken.AnalysisToken(ctx)
+	if err != nil {
+		slog.Warn("SonarQube 분석 토큰을 읽지 못했습니다", "stack_id", stackID, "error", err)
+		return ""
+	}
+	return token
 }
 
 // logProvisioningWarnings 는 준비되지 못한 것을 서버 로그에 남긴다.

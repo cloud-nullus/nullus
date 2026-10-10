@@ -26,7 +26,7 @@ const EMPTY_ROW: EditableRow = {
   is_default: true,
 }
 
-type ToolCategory = 'nullus' | 'Artifacts' | 'Storage' | 'CI/CD' | 'Observability'
+type ToolCategory = 'nullus' | 'Artifacts' | 'Storage' | 'CI/CD' | 'Observability' | 'Security'
 
 const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   'cert-manager': 'nullus',
@@ -64,6 +64,9 @@ const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   tempo: 'Observability',
   jaeger: 'Observability',
   'opentelemetry-collector': 'Observability',
+  // 보안 도구도 자원 기본값이 시드돼 있다. 빠지면 기본값인 Artifacts 로 보인다.
+  trivy: 'Security',
+  sonarqube: 'Security',
 }
 
 const CATEGORY_BADGE_CLASSNAME: Record<ToolCategory, string> = {
@@ -72,6 +75,7 @@ const CATEGORY_BADGE_CLASSNAME: Record<ToolCategory, string> = {
   Storage: 'bg-[color-mix(in_srgb,_var(--color-warning)_14%,_transparent)] text-[var(--color-warning)]',
   'CI/CD': 'bg-[color-mix(in_srgb,_var(--color-success)_14%,_transparent)] text-[var(--color-success)]',
   Observability: 'bg-[color-mix(in_srgb,_var(--color-warning)_14%,_transparent)] text-[var(--color-warning)]',
+  Security: 'bg-[color-mix(in_srgb,_var(--color-error)_14%,_transparent)] text-[var(--color-error)]',
 }
 
 const CATEGORY_ORDER: Record<ToolCategory, number> = {
@@ -80,12 +84,17 @@ const CATEGORY_ORDER: Record<ToolCategory, number> = {
   Storage: 2,
   'CI/CD': 3,
   Observability: 4,
+  Security: 5,
 }
 
 const CATEGORY_HINTS: Array<{ category: ToolCategory; patterns: RegExp[] }> = [
   {
     category: 'nullus',
     patterns: [/cert[- ]?manager/, /cloudnative[- ]?pg/, /\bcnpg\b/],
+  },
+  {
+    category: 'Security',
+    patterns: [/trivy/, /sonar/, /\bsast\b/, /scanner/],
   },
   {
     category: 'CI/CD',

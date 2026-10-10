@@ -47,6 +47,11 @@ type ProvisionAppProjectInput struct {
 	ImageScannerEndpoint string
 	// ImageScannerJavaDBRepository 는 에어갭 CI 잡이 Java DB 를 받을 내부 미러다. 비면 업스트림.
 	ImageScannerJavaDBRepository string
+	// SASTServerEndpoint 는 스택 SonarQube 주소다. 비면 소스 정적 분석 단계를 만들지 않는다.
+	SASTServerEndpoint string
+	// SASTToken 은 CI 가 분석에 쓸 토큰이다. 스택 설치가 발급해 OpenBao 에 둔 값이다.
+	// 비어 있으면 단계는 만들되 사람이 채울 변수로 알린다.
+	SASTToken string
 	// AppType 은 어떤 앱을 스캐폴딩할지다. web 이면 바로 도는 React 앱을 만든다.
 	AppType domain.AppType
 	// AccessDomain / GatewayName / GatewayNamespace 가 있으면
@@ -234,6 +239,7 @@ func (uc *ProvisionAppProject) Execute(
 
 		ImageScannerEndpoint:         input.ImageScannerEndpoint,
 		ImageScannerJavaDBRepository: input.ImageScannerJavaDBRepository,
+		SASTServerEndpoint:           input.SASTServerEndpoint,
 	}
 	files, err := scaffold.Render(scaffoldInput)
 	if err != nil {
@@ -328,6 +334,15 @@ func (uc *ProvisionAppProject) configureGiteaPipeline(
 			continue
 		}
 		vars = append(vars, port.PipelineVariable{Key: key, Value: value})
+	}
+
+	// 분석 토큰도 같은 Secret 에 싣는다. Jenkinsfile 의 분석 컨테이너가 envFrom 으로 읽는다.
+	if strings.TrimSpace(input.SASTServerEndpoint) != "" {
+		if token := strings.TrimSpace(input.SASTToken); token != "" {
+			vars = append(vars, port.PipelineVariable{Key: port.SASTTokenVariable, Value: token})
+		} else {
+			reportMissingSASTToken(out)
+		}
 	}
 
 	if len(vars) == 0 {
@@ -428,6 +443,7 @@ func (uc *ProvisionAppProject) configurePipeline(
 ) {
 	if input.Platform == port.SCMPlatformGitHub {
 		uc.configureGitHubPipeline(ctx, project, target, input, out)
+		uc.setSASTVariables(ctx, project, input, out)
 		return
 	}
 	if input.Platform == port.SCMPlatformGitea {
@@ -435,6 +451,57 @@ func (uc *ProvisionAppProject) configurePipeline(
 		return
 	}
 	uc.configureGitLabPipeline(ctx, project, target, input, out)
+	uc.setSASTVariables(ctx, project, input, out)
+}
+
+// setSASTVariables 는 분석 토큰을 파이프라인 시크릿 변수로 건다(GitLab 프로젝트 변수,
+// GitHub 리포 시크릿). SonarQube 가 없는 스택이면 아무 일도 하지 않는다.
+//
+// 빈 토큰은 등록하지 않는다. 분석이 엉뚱한 인증 오류로 죽어 원인이 한 겹 멀어진다 —
+// 대신 사람이 채울 변수로 알린다.
+func (uc *ProvisionAppProject) setSASTVariables(
+	ctx context.Context,
+	project *port.SCMProject,
+	input ProvisionAppProjectInput,
+	out *ProvisionAppProjectOutput,
+) {
+	if strings.TrimSpace(input.SASTServerEndpoint) == "" {
+		return
+	}
+	token := strings.TrimSpace(input.SASTToken)
+	if token == "" {
+		reportMissingSASTToken(out)
+		return
+	}
+	if uc.pipeline == nil {
+		out.Warnings = append(out.Warnings, "파이프라인 설정 어댑터가 없어 분석 토큰 변수를 등록하지 못했습니다")
+		out.MissingVariables = append(out.MissingVariables, port.SASTTokenVariable)
+		return
+	}
+
+	// GitHub 은 시크릿이라 늘 가려진다. GitLab 은 마스킹 요건을 따져야 한다 — SonarQube
+	// 토큰(sqa_ + 40자 16진수)은 요건을 만족하지만, 못 채우는 값을 masked 로 밀면 등록이
+	// 통째로 거부된다.
+	masked := input.Platform == port.SCMPlatformGitHub || canMaskVariableValue(token)
+	if !masked {
+		out.Warnings = append(out.Warnings, fmt.Sprintf(
+			"변수 %s 는 GitLab 마스킹 요건을 만족하지 않아 마스킹 없이 등록합니다 — job 로그에 노출될 수 있습니다",
+			port.SASTTokenVariable))
+	}
+	if err := uc.pipeline.SetProjectVariable(ctx, project.ID, port.ProjectVariable{
+		Key: port.SASTTokenVariable, Value: token, Masked: masked,
+	}); err != nil {
+		out.Warnings = append(out.Warnings, fmt.Sprintf("변수 %s 등록 실패: %v", port.SASTTokenVariable, err))
+		out.MissingVariables = append(out.MissingVariables, port.SASTTokenVariable)
+	}
+}
+
+// reportMissingSASTToken 은 분석 토큰을 구하지 못했음을 알린다.
+func reportMissingSASTToken(out *ProvisionAppProjectOutput) {
+	out.Warnings = append(out.Warnings, fmt.Sprintf(
+		"SonarQube 분석 토큰을 찾지 못했습니다 — %s 를 등록하기 전까지 소스 정적 분석 단계가 실패합니다",
+		port.SASTTokenVariable))
+	out.MissingVariables = append(out.MissingVariables, port.SASTTokenVariable)
 }
 
 // configureGitHubPipeline 은 GitHub 리포의 파이프라인 설정을 맞춘다.

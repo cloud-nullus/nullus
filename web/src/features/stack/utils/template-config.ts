@@ -66,12 +66,13 @@ export const TOOL_SECTIONS: ToolSectionDefinition[] = [
     ],
   },
   {
-    // 설치 마법사의 security.imageScanner 슬롯에 대응한다. 여기 없으면 스캐너를
+    // 설치 마법사의 security.imageScanner·security.sast 슬롯에 대응한다. 여기 없으면 스캐너를
     // 넣은 템플릿을 화면에서 만들 수 없다.
     id: 'security',
     label: 'Security',
     categories: [
       { category: 'image_scanner', label: 'Image Scanner', options: ['Trivy'] },
+      { category: 'sast', label: 'SAST', options: ['SonarQube'] },
     ],
   },
 ]

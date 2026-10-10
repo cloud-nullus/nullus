@@ -40,6 +40,8 @@ func TestRenderScanPolicyConfigMap(t *testing.T) {
 	assert.Equal(t, map[string]string{
 		port.ScanSeverityVariable:      "HIGH,CRITICAL",
 		port.ScanIgnoreUnfixedVariable: "true",
+		// SAST 분석 컨테이너도 같은 ConfigMap 을 읽는다. 비우면 차단이다.
+		port.SASTOnGateFailureVariable: "block",
 		port.ScanOnUnreachableVariable: "block",
 	}, doc.Data)
 }
