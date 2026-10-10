@@ -30,7 +30,7 @@ func NewMemoryCICDTemplateRepository() *MemoryCICDTemplateRepository {
 func (r *MemoryCICDTemplateRepository) GetByID(_ context.Context, id string) (*domain.PipelineTemplate, error) {
 	t, ok := r.templates[id]
 	if !ok {
-		return nil, fmt.Errorf("pipeline template %q not found", id)
+		return nil, fmt.Errorf("pipeline template %q: %w", id, domain.ErrTemplateNotFound)
 	}
 	return t, nil
 }
@@ -44,8 +44,11 @@ func (r *MemoryCICDTemplateRepository) List(_ context.Context) ([]*domain.Pipeli
 	return result, nil
 }
 
-// Create stores a new pipeline template.
+// Create stores a new pipeline template. Postgres 저장소와 같이 같은 ID 는 거부한다.
 func (r *MemoryCICDTemplateRepository) Create(_ context.Context, tmpl *domain.PipelineTemplate) error {
+	if _, ok := r.templates[tmpl.ID]; ok {
+		return fmt.Errorf("pipeline template %q: %w", tmpl.ID, domain.ErrTemplateAlreadyExists)
+	}
 	r.templates[tmpl.ID] = tmpl
 	return nil
 }
@@ -53,7 +56,7 @@ func (r *MemoryCICDTemplateRepository) Create(_ context.Context, tmpl *domain.Pi
 // Update replaces an existing pipeline template.
 func (r *MemoryCICDTemplateRepository) Update(_ context.Context, tmpl *domain.PipelineTemplate) error {
 	if _, ok := r.templates[tmpl.ID]; !ok {
-		return fmt.Errorf("pipeline template %q not found", tmpl.ID)
+		return fmt.Errorf("pipeline template %q: %w", tmpl.ID, domain.ErrTemplateNotFound)
 	}
 	r.templates[tmpl.ID] = tmpl
 	return nil
@@ -62,7 +65,7 @@ func (r *MemoryCICDTemplateRepository) Update(_ context.Context, tmpl *domain.Pi
 // Delete removes a pipeline template by ID.
 func (r *MemoryCICDTemplateRepository) Delete(_ context.Context, id string) error {
 	if _, ok := r.templates[id]; !ok {
-		return fmt.Errorf("pipeline template %q not found", id)
+		return fmt.Errorf("pipeline template %q: %w", id, domain.ErrTemplateNotFound)
 	}
 	delete(r.templates, id)
 	return nil

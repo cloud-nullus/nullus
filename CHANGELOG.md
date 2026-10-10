@@ -158,6 +158,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CI/CD 템플릿 생성·수정·삭제가 저장되지 않던 것** (`internal/cicd/adapter/repository/postgres_cicd_template.go`, `internal/cicd/adapter/handler/cicd_template_handler.go`, `internal/cicd/domain`, `db/migrations/000089`, `web/src/features/cicd`): Postgres 저장소의 Create·Update·Delete 가 TODO 로 성공만 돌려줘, 템플릿 화면의 버튼은 성공으로 응답하는데 목록은 바뀌지 않았다(로컬 E2E 가이드 부록 C 의 첫 항목). 세 메서드를 구현했다 — 같은 ID 는 덮어쓰지 않고 409 로 거부하고, 없는 템플릿의 수정·삭제는 404 다. 인메모리 저장소도 같은 에러를 낸다. 만든 사람(`created_by`)은 API 와 도메인이 받고 돌려주면서도 열이 없어 버려졌으므로 열을 더했다(시드 템플릿은 NULL).
+
+  **수정은 요청에 있는 필드만 덧씌운다.** 화면은 이름·설명·유형·단계만 보내므로, 요청 그대로 전체를 바꾸면 시드 템플릿의 이름만 고쳐도 Dockerfile 경로와 환경 변수가 지워진다. 빌드 설정과 설명은 "안 보냄"과 "빈 값으로 지움"을 가려 받는다. 저장 전에 ID·이름·유형(`web`·`backend`·`batch`)·단계를 검사해 400 으로 알린다 — 유형이 틀린 템플릿으로 파이프라인을 만들면 `pipelines.app_type` ENUM 이 거부하므로 템플릿에서 먼저 막는다. 화면이 `appType: "web-backend"` 를 camelCase 키로 하드코딩해 보내 서버가 유형을 빈 값으로 받던 것도 함께 고쳤다 — 폼에 애플리케이션 유형 선택을 두고 서버 필드명(`app_type`)으로 보낸다. 실제 Postgres(testcontainers)에서 생성 → 조회 → 중복 거부 → 수정 → 삭제 왕복과 시드 템플릿의 빈 `created_by` 읽기를 확인했다.
+
 - **설치 화면에서 고른 보안 도구가 설치 요청에서 빠지던 것** (`web/src/features/stack/pages/stack-install-page.tsx`): 요청을 만드는 `buildStackRequest` 가 `security` 를 싣지 않아, Security 탭에서 Trivy 를 골라도 요청 본문에는 `enabled: false` 로 나가 스캐너가 설치되지 않았다. 요청 변환(`toCreateStackBody`)은 그 값을 읽고 있어 단위 테스트로는 드러나지 않았다 — 화면에서 고르고 저장한 요청을 보는 테스트를 더했다(수정을 빼면 실패함을 확인).
 
 - **values 편집기가 키에 점이 든 보호 경로를 찾지 못하던 것** (`internal/stack/domain/release_values.go`): 경로를 점마다 쪼개 찾아서 `grafana.ini.auth.generic_oauth` 처럼 키 자체에 점이 든 경로는 한 번도 찾지 못했다. Grafana 의 OIDC 블록을 지우거나 바꿔도 경고가 뜨지 않았다. 각 단계에서 남은 조각을 이어 붙인 긴 키부터 맞춰 본다.

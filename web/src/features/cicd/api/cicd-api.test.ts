@@ -426,3 +426,88 @@ describe('getDeployments 응답 표기 대응', () => {
     expect(item.completedAt).toBe('2026-08-11T10:07:46+09:00')
   })
 })
+
+// 템플릿 생성·수정은 서버 필드명(snake_case)으로 보내야 한다. camelCase `appType` 로 보내던 동안
+// 서버는 유형을 빈 값으로 받았다 — 저장소가 TODO 로 성공만 돌려줘 드러나지 않았다.
+describe('cicd-api template mutations', () => {
+  const rawTemplate = {
+    id: 'team-backend-v1',
+    name: 'Team Backend',
+    description: '팀 표준',
+    app_type: 'backend',
+    stages: ['CI', 'CD'],
+    created_by: 'alice',
+    git_repo_url: 'https://gitlab.example.com/team/backend',
+    dockerfile_path: 'Dockerfile',
+    docker_context: '.',
+    env_vars: { PORT: '8080' },
+  }
+
+  beforeEach(() => {
+    vi.mocked(mockApi.post).mockReset()
+    vi.mocked(mockApi.put).mockReset()
+    vi.mocked(mockApi.delete).mockReset()
+  })
+
+  it('생성은 서버 필드명으로 보내고 응답을 화면 모양으로 옮긴다', async () => {
+    vi.mocked(mockApi.post).mockResolvedValueOnce({ data: rawTemplate } as never)
+
+    const result = await cicdApiCalls.createTemplate({
+      id: 'team-backend-v1',
+      name: 'Team Backend',
+      description: '팀 표준',
+      appType: 'backend',
+      stages: ['CI', 'CD'],
+    })
+
+    expect(vi.mocked(mockApi.post)).toHaveBeenCalledWith('/cicd/templates', {
+      id: 'team-backend-v1',
+      name: 'Team Backend',
+      description: '팀 표준',
+      app_type: 'backend',
+      stages: ['CI', 'CD'],
+    })
+    expect(result).toEqual({
+      id: 'team-backend-v1',
+      name: 'Team Backend',
+      description: '팀 표준',
+      appType: 'backend',
+      stages: ['CI', 'CD'],
+      createdBy: 'alice',
+      gitRepoUrl: 'https://gitlab.example.com/team/backend',
+      dockerfilePath: 'Dockerfile',
+      dockerContext: '.',
+      envVars: { PORT: '8080' },
+    })
+  })
+
+  it('수정은 경로의 ID 로 PUT 하고 같은 필드명을 쓴다', async () => {
+    vi.mocked(mockApi.put).mockResolvedValueOnce({ data: { ...rawTemplate, name: 'Renamed' } } as never)
+
+    const result = await cicdApiCalls.updateTemplate({
+      id: 'team-backend-v1',
+      name: 'Renamed',
+      description: '',
+      appType: 'web',
+      stages: ['CI'],
+    })
+
+    expect(vi.mocked(mockApi.put)).toHaveBeenCalledWith('/cicd/templates/team-backend-v1', {
+      id: 'team-backend-v1',
+      name: 'Renamed',
+      description: '',
+      app_type: 'web',
+      stages: ['CI'],
+    })
+    expect(result.name).toBe('Renamed')
+    expect(result.appType).toBe('backend')
+  })
+
+  it('삭제는 경로의 ID 로 DELETE 한다', async () => {
+    vi.mocked(mockApi.delete).mockResolvedValueOnce({ data: undefined } as never)
+
+    await cicdApiCalls.deleteTemplate('team-backend-v1')
+
+    expect(vi.mocked(mockApi.delete)).toHaveBeenCalledWith('/cicd/templates/team-backend-v1')
+  })
+})

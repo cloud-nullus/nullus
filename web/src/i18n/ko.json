@@ -362,6 +362,12 @@
       "name": "이름",
       "namePlaceholder": "예: Standard Web Backend",
       "description": "설명",
+      "appType": "애플리케이션 유형",
+      "appTypeOptions": {
+        "web": "웹",
+        "backend": "백엔드",
+        "batch": "배치"
+      },
       "stages": "기능"
     },
     "errors": {

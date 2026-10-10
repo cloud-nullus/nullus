@@ -53,7 +53,7 @@ const templates = [
     id: "helm-release-v1",
     name: "Helm Release",
     description: "Helm based deployment",
-    appType: "web-backend",
+    appType: "web",
     stages: ["Build", "HelmDeploy"],
     createdBy: "admin",
   },
@@ -187,5 +187,78 @@ describe("CicdTemplatePage", () => {
     expect(mockNavigate).toHaveBeenCalledWith(
       "/cicd/developer-deploy?template=web-backend-standard&appType=web-backend",
     );
+  });
+
+  // 서버는 web·backend·batch 만 받는다. 폼에 유형 선택이 없던 동안 "web-backend" 를 하드코딩해 보냈고,
+  // 저장이 되기 시작하면 그 템플릿으로 만드는 파이프라인이 ENUM 열에서 거부된다.
+  const pickAppType = (name: string) => {
+    fireEvent.mouseDown(screen.getByLabelText("Application Type"));
+    fireEvent.click(screen.getByRole("option", { name }));
+  };
+
+  it("submits the create payload with the chosen application type", () => {
+    renderWithProviders(<CicdTemplatePage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create Template" }));
+    fireEvent.change(screen.getByLabelText("Template ID"), {
+      target: { value: "team-web-v1" },
+    });
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Team Web" },
+    });
+    fireEvent.click(screen.getByLabelText("CI"));
+    pickAppType("Web");
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(mockCreateMutate).toHaveBeenCalledTimes(1);
+    expect(mockCreateMutate.mock.calls[0][0]).toEqual({
+      id: "team-web-v1",
+      name: "Team Web",
+      description: "",
+      appType: "web",
+      stages: ["CI"],
+    });
+  });
+
+  it("defaults the application type to backend", () => {
+    renderWithProviders(<CicdTemplatePage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create Template" }));
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Plain Backend" },
+    });
+    fireEvent.click(screen.getByLabelText("CD"));
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(mockCreateMutate.mock.calls[0][0]).toMatchObject({
+      id: "plain-backend",
+      appType: "backend",
+    });
+  });
+
+  it("prefills the application type when editing and sends it on save", () => {
+    renderWithProviders(<CicdTemplatePage />);
+
+    // Edit 버튼 순서: Default(2) → Helm(1) → Cronjob/Job(2). 세 번째가 Helm Release(web)다.
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[2]);
+
+    expect(screen.getByLabelText("Application Type").textContent).toBe("Web");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(mockUpdateMutate).toHaveBeenCalledTimes(1);
+    expect(mockUpdateMutate.mock.calls[0][0]).toMatchObject({
+      id: "helm-release-v1",
+      appType: "web",
+    });
+  });
+
+  it("maps a legacy application type to backend when editing", () => {
+    renderWithProviders(<CicdTemplatePage />);
+
+    // 첫 Edit 은 web-backend-standard(appType "web-backend")다.
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]);
+
+    expect(screen.getByLabelText("Application Type").textContent).toBe("Backend");
   });
 });
