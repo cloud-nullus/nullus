@@ -58,6 +58,14 @@ func TestChartVersionsMatchCompatibilityMatrix(t *testing.T) {
 		{matrixID: "gitlab-harbor-trivy-v1", category: "storage_backend", step: "installing_minio"},
 		{matrixID: "gitlab-harbor-trivy-v1", category: "cd_tool", step: "installing_argocd"},
 		{matrixID: "gitlab-harbor-trivy-v1", category: "image_scanner", step: "installing_trivy"},
+		// SonarQube 를 기본으로 고른 템플릿도 모든 도구가 실제 설치 버전을 말해야 한다.
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "source_repository", step: "installing_gitlab"},
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "ci_platform", step: "installing_gitlab"},
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "storage_backend", step: "installing_minio"},
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "cd_tool", step: "installing_argocd"},
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "monitoring_collection", step: "installing_prometheus"},
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "monitoring_visualization", step: "installing_grafana"},
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "sast", step: "installing_sonarqube"},
 	}
 
 	for _, tc := range cases {
