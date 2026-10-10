@@ -298,9 +298,11 @@ curl -sX POST localhost:8090/api/v1/admin/backups \
 curl -sX POST localhost:8090/api/v1/admin/backups \
   -H 'Content-Type: application/json' \
   -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
-  -d '{"mode":"full","namespace":"nullus",
+  -d '{"mode":"full","stack_id":"<스택 ID>","namespace":"nullus",
        "scope":["platform_db","keycloak_db","openbao_kv","ns_resources"]}' | jq
 ```
+
+리소스·볼륨은 스택 클러스터에서 뜨므로 `stack_id` 가 있어야 한다 — 서버가 스택으로 그 클러스터를 찾는다. 빠지면 `BACKUP_STACK_REQUIRED` 로 거절된다(금고는 스택이 없으면 거절하지 않고 건너뛴다).
 
 | 값 | 무엇이 들어가나 | 빠지면 |
 |---|---|---|
@@ -378,9 +380,10 @@ openbao   0.28.4   rev=1
 
 ```bash
 # 스택 네임스페이스를 통째로 지운다 (부분 초기화는 검증이 되지 않는다)
-kubectl delete ns nullus
+kubectl delete ns nullus --wait=true
 
-# 복구 — 파괴적이므로 백업 ID 를 다시 입력해야 한다
+# 복구 — 파괴적이므로 백업 ID 를 다시 입력해야 한다. 네임스페이스는 복구가 만든다(없을 때만).
+# full 복구는 플랫폼 DB 를 되돌리지만 백업 이력(backup_runs·backup_artifacts·restore_runs)은 건드리지 않는다
 curl -sX POST localhost:8090/api/v1/admin/restores \
   -H 'Content-Type: application/json' \
   -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
@@ -481,7 +484,7 @@ kubectl -n <네임스페이스> annotate applications.argoproj.io <앱> \
 | 파이프라인 생성이 `ENCRYPTION_KEY must be 32 bytes` | 같은 원인 | 위와 같다. 설치 직후 파드 수를 세면 훨씬 일찍 잡힌다 |
 | 스택 생성이 `stack name ... already exists` | 네임스페이스만 지우면 `stacks` 레코드가 남는다 | DB 의 스택 행도 지운다. 외래키는 `pipelines.stack_id` 와 `stack_config_versions.stack_id` 둘뿐이다 |
 | 복구 뒤 앱이 `ImagePullBackOff`, 태그가 `:bootstrap` | Argo CD 가 아직 조정하지 않았다 | §4.9. `:bootstrap` 은 레지스트리에 없는 초기값이다 |
-| 복구 뒤 도메인이 옛 IP 를 가리킨다 | **복구는 Service 의 ClusterIP 를 보존하지 않는다** | 클러스터 안에서는 DNS 로 해석하므로 무해하다. IP 를 박아 둔 외부 배선(kind 노드 `/etc/hosts` 등)이 있으면 다시 쓴다 |
+| 복구 뒤 도메인이 옛 IP 를 가리킨다 | 복구는 Service 를 백업 때의 ClusterIP 로 되살리되, 그 IP 를 쓸 수 없으면(다른 클러스터·이미 쓰임) 새 주소로 되살린다(API 로그에 경고) | 설치가 게이트웨이 IP 를 러너·Argo CD hostAliases 와 kind 노드 `/etc/hosts` 에 박는다 — 새 주소로 다시 쓴다(로컬 E2E 가이드 13단계) |
 | kind 노드 `/etc/hosts` 에서 항목이 안 지워진다 | 그 파일은 bind mount 라 `sed -i` 가 새 파일을 만들어 갈아끼우지 못한다 | `grep -v ... > /tmp/h && cat /tmp/h > /etc/hosts` 로 **제자리 덮어쓰기** 한다. 안 그러면 낡은 항목이 누적되고 앞의 것이 이긴다 |
 | 네임스페이스를 지운 뒤 port-forward 가 안 돌아온다 | 대상 파드가 사라져 세션이 끊긴다 | 복구 후 다시 건다. 지문 수집이 이것 때문에 실패하면 **대조를 하지 말고** 포워드부터 살린다 |
 | Jenkins 빌드가 `SUCCESS` 인데 아무것도 안 만들어졌다 | HEAD 가 CD 의 `[skip ci]` 커밋이라 Build·Deploy 단계가 `when` 조건에서 걸러졌다 | 콘솔 로그에서 `Stage "Build" skipped due to when conditional` 을 확인한다. **성공 표시만으로 파이프라인이 돈다고 말할 수 없다** |
@@ -502,7 +505,7 @@ kubectl -n <네임스페이스> annotate applications.argoproj.io <앱> \
 - **다중 노드** — RWO 볼륨이 노드에 흩어지면 §3.5 의 "한 Job 이 전부 마운트" 전제가 깨진다. 리허설은 단일 워커였다
 - **에어갭** — 이미지 반입과 egress 경로(B4-2)
 - **Argo CD 자동 동기화** — 리허설에서는 `refresh=hard` 로 앞당겼다. 기본 주기 3분 내 자동 회복은 **추정이지 관찰이 아니다**
-- **Service ClusterIP 미보존의 영향** — 클러스터 안에서는 DNS 로 해석되어 무해했으나, IP 에 고정된 외부 배선이 있는 환경에서는 재설정이 필요하다
+- **다른 클러스터로의 복구** — Service 는 백업 때의 ClusterIP 로 되살리지만, 그 IP 를 쓸 수 없는 클러스터에서는 새 주소를 받는다. 설치가 IP 를 박아 둔 러너·Argo CD hostAliases 는 그때 다시 맞춰야 한다
 - **차트 버전이 다른 대상으로의 복구** — 매니페스트에 `helm_releases` 를 기록하고 대조해 경고까지는 하지만, 실제로 버전이 어긋난 상태로 복구했을 때 무엇이 깨지는지는 재보지 않았다
 
 ---
