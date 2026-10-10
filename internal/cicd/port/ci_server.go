@@ -87,8 +87,11 @@ type CIBuild struct {
 //
 // webhook 은 커밋이 있을 때만 돈다. 사용자가 화면에서 "배포 실행" 을 누르는
 // 것은 커밋 없이 지금 실행하겠다는 뜻이라, 트리거가 따로 필요하다.
+//
+// 돌려주는 주소는 사람이 열어 볼 실행 주소다. 플랫폼마다 모양이 다르므로(Jenkins 는
+// /job/…, GitLab 은 /-/pipelines/…) 호출부가 지어내지 않고 트리거가 준다. 모르면 빈 값이다.
 type CIBuildTrigger interface {
-	TriggerBuild(ctx context.Context, jobName, branch string) error
+	TriggerBuild(ctx context.Context, jobName, branch string) (runURL string, err error)
 }
 
 // CIBuildReader 는 CI 서버에서 빌드 이력을 읽는다.

@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
@@ -34,16 +33,16 @@ func NewDelegate(factory port.SCMBundleFactory, tracker *kube.StepTracker) *Dele
 func (d *Delegate) DelegateBuild(ctx context.Context, opts port.DelegateBuildOpts) (string, error) {
 	d.markRunning(opts.DeploymentID, opts.StepIndex)
 
-	trigger, baseURL, err := d.resolveTrigger(ctx, opts.StackID)
+	trigger, err := d.resolveTrigger(ctx, opts.StackID)
 	if err != nil {
 		d.markFailed(opts.DeploymentID, opts.StepIndex, err.Error())
 		return "", err
 	}
 
-	runURL := jobRunURL(baseURL, opts.JobName, opts.Branch)
 	d.log(opts.DeploymentID, opts.StepIndex, "$ CI 실행 요청: %s (%s)", opts.JobName, opts.Branch)
 
-	if err := trigger.TriggerBuild(ctx, opts.JobName, opts.Branch); err != nil {
+	runURL, err := trigger.TriggerBuild(ctx, opts.JobName, opts.Branch)
+	if err != nil {
 		// job 이 없으면 프로비저닝이 끝나지 않은 것이다. 그 사실을 그대로 말해
 		// 준다 — "trigger failed" 만으로는 무엇을 해야 하는지 알 수 없다.
 		message := err.Error()
@@ -57,41 +56,31 @@ func (d *Delegate) DelegateBuild(ctx context.Context, opts port.DelegateBuildOpt
 		return "", fmt.Errorf("trigger ci build: %s", message)
 	}
 
-	d.log(opts.DeploymentID, opts.StepIndex, "CI 가 실행을 받았습니다. 이후 빌드·배포는 %s 에서 진행됩니다", runURL)
+	if runURL != "" {
+		d.log(opts.DeploymentID, opts.StepIndex, "CI 가 실행을 받았습니다. 이후 빌드·배포는 %s 에서 진행됩니다", runURL)
+	} else {
+		d.log(opts.DeploymentID, opts.StepIndex, "CI 가 실행을 받았습니다. 이후 빌드·배포는 CI 서버에서 진행됩니다")
+	}
 	d.markSuccess(opts.DeploymentID, opts.StepIndex, "CI 러너에 실행을 넘겼습니다")
 	slog.Info("ci build delegated", "job", opts.JobName, "branch", opts.Branch, "run_url", runURL)
 	return runURL, nil
 }
 
 // resolveTrigger 는 이 스택의 CI 서버를 찾는다.
-func (d *Delegate) resolveTrigger(ctx context.Context, stackID string) (port.CIBuildTrigger, string, error) {
+func (d *Delegate) resolveTrigger(ctx context.Context, stackID string) (port.CIBuildTrigger, error) {
 	if d.factory == nil {
-		return nil, "", fmt.Errorf("스택 연결이 배선돼 있지 않아 CI 러너를 찾을 수 없습니다")
+		return nil, fmt.Errorf("스택 연결이 배선돼 있지 않아 CI 러너를 찾을 수 없습니다")
 	}
 	bundle, err := d.factory.For(ctx, stackID)
 	if err != nil {
-		return nil, "", fmt.Errorf("스택 %s 의 CI 연결을 읽지 못했습니다: %w", stackID, err)
+		return nil, fmt.Errorf("스택 %s 의 CI 연결을 읽지 못했습니다: %w", stackID, err)
 	}
 	if bundle == nil || bundle.CITrigger == nil {
-		return nil, "", fmt.Errorf(
-			"스택 %s 에 실행을 넘길 CI 플랫폼이 없습니다. 스택에 Jenkins 가 설치되어 있고 자격증명이 준비되었는지 확인하세요",
+		return nil, fmt.Errorf(
+			"스택 %s 에 실행을 넘길 CI 플랫폼이 없습니다. 스택에 GitLab CI 또는 Jenkins 가 설치되어 있고 자격증명이 준비되었는지 확인하세요",
 			stackID)
 	}
-	return bundle.CITrigger, bundle.CIBaseURL, nil
-}
-
-// jobRunURL 은 사람이 열어 볼 실행 주소다. 주소를 모르면 빈 값이다 —
-// 지어내면 열리지 않는 링크가 화면에 남는다.
-func jobRunURL(baseURL, job, branch string) string {
-	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	if base == "" || strings.TrimSpace(job) == "" {
-		return ""
-	}
-	path := base + "/job/" + url.PathEscape(strings.TrimSpace(job))
-	if b := strings.TrimSpace(branch); b != "" {
-		path += "/job/" + url.PathEscape(b)
-	}
-	return path + "/"
+	return bundle.CITrigger, nil
 }
 
 func (d *Delegate) log(deploymentID string, stepIndex int, format string, args ...any) {

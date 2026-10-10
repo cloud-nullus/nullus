@@ -214,12 +214,18 @@ func (f *BundleFactory) gitLabBundle(
 	// 기록되지 않는다.
 	runs := gitlab.NewBuildReader(client, f.opts.GroupPath).
 		WithWebBaseURL(toolWebBaseURL("gitlab", summary.AccessDomain))
+	// 같은 토큰으로 실행도 시작시킨다 — 스택에 묶인 파이프라인의 "배포 실행" 은
+	// 플랫폼이 빌드하지 않고 GitLab CI 에 넘긴다. 이 자리가 비어 있으면 Trigger CI
+	// 단계가 "CI 플랫폼이 없다" 로 끝난다.
+	trigger := gitlab.NewPipelineTrigger(client, f.opts.GroupPath).
+		WithWebBaseURL(toolWebBaseURL("gitlab", summary.AccessDomain))
 
 	bundle := &port.SCMBundle{
 		Provisioner:                  client,
 		Pipeline:                     client,
 		CIBuilds:                     runs,
 		CIArtifacts:                  runs,
+		CITrigger:                    trigger,
 		Registry:                     resolver,
 		Platform:                     port.SCMPlatformGitLab,
 		GroupPath:                    f.opts.GroupPath,
