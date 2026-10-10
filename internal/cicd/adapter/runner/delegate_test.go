@@ -14,12 +14,13 @@ import (
 type fakeTrigger struct {
 	job    string
 	branch string
+	runURL string
 	err    error
 }
 
-func (f *fakeTrigger) TriggerBuild(_ context.Context, job, branch string) error {
+func (f *fakeTrigger) TriggerBuild(_ context.Context, job, branch string) (string, error) {
 	f.job, f.branch = job, branch
-	return f.err
+	return f.runURL, f.err
 }
 
 type fakeFactory struct {
@@ -31,12 +32,11 @@ func (f *fakeFactory) For(context.Context, string) (*port.SCMBundle, error) {
 	return f.bundle, f.err
 }
 
+// 실행 주소는 CI 플랫폼마다 모양이 다르다(Jenkins 는 /job/…, GitLab 은 /-/pipelines/…).
+// 위임기가 지어내지 않고 트리거가 돌려준 것을 그대로 쓴다.
 func TestDelegateBuild_TriggersJobAndReturnsRunURL(t *testing.T) {
-	trigger := &fakeTrigger{}
-	d := NewDelegate(&fakeFactory{bundle: &port.SCMBundle{
-		CITrigger: trigger,
-		CIBaseURL: "http://jenkins.nullus-stack.svc:8080",
-	}}, nil)
+	trigger := &fakeTrigger{runURL: "https://gitlab.nullus.local/acme/orders-api/-/pipelines/12"}
+	d := NewDelegate(&fakeFactory{bundle: &port.SCMBundle{CITrigger: trigger}}, nil)
 
 	runURL, err := d.DelegateBuild(context.Background(), port.DelegateBuildOpts{
 		StackID: "stk-1", JobName: "orders-api", Branch: "main",
@@ -45,10 +45,11 @@ func TestDelegateBuild_TriggersJobAndReturnsRunURL(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "orders-api", trigger.job)
 	assert.Equal(t, "main", trigger.branch)
-	assert.Equal(t, "http://jenkins.nullus-stack.svc:8080/job/orders-api/job/main/", runURL)
+	assert.Equal(t, "https://gitlab.nullus.local/acme/orders-api/-/pipelines/12", runURL)
 }
 
 // CI 플랫폼이 없는 스택에 실행을 넘기라고 하면, 무엇이 없는지 말하고 멈춘다.
+// 넘길 수 있는 플랫폼을 모두 말한다 — Jenkins 만 말하면 GitLab 스택 사용자는 길을 잃는다.
 func TestDelegateBuild_ReportsMissingCIPlatform(t *testing.T) {
 	d := NewDelegate(&fakeFactory{bundle: &port.SCMBundle{}}, nil)
 
@@ -56,6 +57,7 @@ func TestDelegateBuild_ReportsMissingCIPlatform(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Jenkins")
+	assert.Contains(t, err.Error(), "GitLab")
 }
 
 // job 이 없다는 404 는 "프로비저닝이 끝나지 않았다" 는 뜻이다. 그대로 옮기면
@@ -69,10 +71,4 @@ func TestDelegateBuild_ExplainsMissingJob(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "프로비저닝")
-}
-
-// 주소를 모르면 링크를 지어내지 않는다 — 열리지 않는 링크가 화면에 남는다.
-func TestJobRunURL_EmptyWhenBaseUnknown(t *testing.T) {
-	assert.Equal(t, "", jobRunURL("", "orders-api", "main"))
-	assert.Equal(t, "", jobRunURL("http://jenkins.local", "", "main"))
 }

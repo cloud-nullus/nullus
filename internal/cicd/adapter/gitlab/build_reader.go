@@ -36,16 +36,27 @@ func NewBuildReader(client *Client, groupPath string) *BuildReader {
 
 // projectPath 는 앱 프로젝트의 전체 경로다(그룹/앱).
 func (r *BuildReader) projectPath(app string) string {
-	if group := strings.Trim(strings.TrimSpace(r.groupPath), "/"); group != "" {
+	return appProjectPath(r.groupPath, app)
+}
+
+// projectBase 는 앱 프로젝트 API 경로의 접두사다.
+func (r *BuildReader) projectBase(app string) string {
+	return appProjectAPIBase(r.groupPath, app)
+}
+
+// appProjectPath 는 그룹 아래 앱 프로젝트의 전체 경로다(그룹/앱). 실행 이력을 읽는
+// 쪽과 실행을 시작시키는 쪽이 같은 규칙으로 프로젝트를 찾아야 한다.
+func appProjectPath(groupPath, app string) string {
+	if group := strings.Trim(strings.TrimSpace(groupPath), "/"); group != "" {
 		return group + "/" + app
 	}
 	return app
 }
 
-// projectBase 는 앱 프로젝트 API 경로의 접두사다. GitLab 은 경로를 한 조각으로
+// appProjectAPIBase 는 앱 프로젝트 API 경로의 접두사다. GitLab 은 경로를 한 조각으로
 // 인코딩해 받는다(그룹/앱 → 그룹%2F앱).
-func (r *BuildReader) projectBase(app string) string {
-	return "/api/v4/projects/" + url.PathEscape(r.projectPath(app))
+func appProjectAPIBase(groupPath, app string) string {
+	return "/api/v4/projects/" + url.PathEscape(appProjectPath(groupPath, app))
 }
 
 // maxPerPage 는 GitLab 목록 API 의 한 쪽 최대 크기다.

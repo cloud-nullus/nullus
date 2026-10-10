@@ -158,6 +158,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **GitLab 스택에서 "실행"이 Trigger CI 단계에서 실패하던 것** (`internal/cicd/adapter/gitlab/pipeline_trigger.go` 신규, `internal/cicd/adapter/provisioning/bundle_factory.go`, `internal/cicd/adapter/runner/delegate.go`, `internal/cicd/adapter/jenkins/client.go`, `internal/cicd/port/ci_server.go`): 스택에 묶인 파이프라인의 배포 실행은 플랫폼이 빌드하지 않고 CI 러너에 넘기는데, 그 넘김(`CITrigger`)이 Jenkins 번들에만 있어 GitLab 스택에서는 "실행을 넘길 CI 플랫폼이 없다"로 늘 실패했다(로컬 E2E 가이드 부록 C). GitLab 번들에 트리거를 실었다 — 같은 자동화 토큰으로 `POST /projects/:id/pipeline` 을 불러 `main` 파이프라인을 만들고 그 주소를 실행 기록에 남긴다. 프로젝트가 없으면(404) 상태 코드 대신 "프로비저닝이 끝나지 않았다"로 말하고, 그 밖의 거절(`.gitlab-ci.yml` 없음 등)은 GitLab 의 설명을 그대로 싣는다.
+
+  **그 브랜치의 최신 파이프라인이 아직 돌고 있으면 새로 만들지 않고 그 실행에 붙는다.** 화면은 파이프라인을 만든 직후 "실행"을 한 번 더 부르는데, 스캐폴딩 커밋이 이미 파이프라인을 시작한 뒤라 또 만들면 같은 커밋의 배포 잡 둘이 같은 브랜치에 되커밋을 밀어 둘째가 non-fast-forward 로 실패한다. 이력 조회가 실패하면 중복 여부를 보지 않고 실행한다 — 조회는 중복을 피하기 위한 것이지 실행의 전제가 아니다.
+
+  실행 주소는 플랫폼마다 모양이 달라(Jenkins `/job/…`, GitLab `/-/pipelines/…`) 위임기가 Jenkins 모양으로 지어내던 것을 트리거가 돌려주도록 포트를 바꿨다(`TriggerBuild` 가 주소를 함께 돌려준다). Jenkins 는 외부 주소(`jenkins.<도메인>`)를 알면 그것으로 링크를 만든다 — 클러스터 안 주소는 화면에서 열리지 않는다. "CI 플랫폼이 없다" 안내는 GitLab CI·Jenkins 를 함께 말한다. GitHub Actions·Gitea 스택의 넘김은 아직 없다.
+
 - **CI/CD 템플릿 생성·수정·삭제가 저장되지 않던 것** (`internal/cicd/adapter/repository/postgres_cicd_template.go`, `internal/cicd/adapter/handler/cicd_template_handler.go`, `internal/cicd/domain`, `db/migrations/000089`, `web/src/features/cicd`, `api/openapi.yaml`): Postgres 저장소의 Create·Update·Delete 가 TODO 로 성공만 돌려줘, 템플릿 화면의 버튼은 성공으로 응답하는데 목록은 바뀌지 않았다(로컬 E2E 가이드 부록 C 의 첫 항목). 세 메서드를 구현했다 — 같은 ID 는 덮어쓰지 않고 409 로 거부하고, 없는 템플릿의 수정·삭제는 404 다. 인메모리 저장소도 같은 에러를 낸다. 만든 사람(`created_by`)은 API 와 도메인이 받고 돌려주면서도 열이 없어 버려졌으므로 열을 더했다(시드 템플릿은 NULL).
 
   **수정은 요청에 있는 필드만 덧씌운다.** 화면은 이름·설명·유형·단계만 보내므로, 요청 그대로 전체를 바꾸면 시드 템플릿의 이름만 고쳐도 Dockerfile 경로와 환경 변수가 지워진다. 빌드 설정과 설명은 "안 보냄"과 "빈 값으로 지움"을 가려 받는다. 저장 전에 ID·이름·유형(`web`·`backend`·`batch`)·단계를 검사해 400 으로 알린다 — 유형이 틀린 템플릿으로 파이프라인을 만들면 `pipelines.app_type` ENUM 이 거부하므로 템플릿에서 먼저 막는다. 화면이 `appType: "web-backend"` 를 camelCase 키로 하드코딩해 보내 서버가 유형을 빈 값으로 받던 것도 함께 고쳤다 — 폼에 애플리케이션 유형 선택을 두고 서버 필드명(`app_type`)으로 보낸다. 실제 Postgres(testcontainers)에서 생성 → 조회 → 중복 거부 → 수정 → 삭제 왕복과 시드 템플릿의 빈 `created_by` 읽기를 확인했다. `api/openapi.yaml` 에 템플릿 생성·조회·수정·삭제 경로와 실제 응답 모양(snake_case, 빌드 설정·`created_by`)을 적고, `AppType` enum 을 옛 화면 값(`web-backend` 등)에서 서버 값(`web`·`backend`·`batch`)으로, `ErrorResponse` 를 실제 본문(`{"error": {code, http_status, message}}`)으로 맞췄다.

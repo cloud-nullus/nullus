@@ -280,3 +280,12 @@ func TestFor_NoSASTWithoutSonarQube(t *testing.T) {
 	assert.Empty(t, bundle.SASTServerEndpoint)
 	assert.Nil(t, bundle.SASTToken)
 }
+
+// GitLab 스택의 "실행" 도 CI 에 넘어가야 한다. 트리거가 Jenkins 번들에만 있어 GitLab
+// 스택에서는 Trigger CI 단계가 늘 "CI 플랫폼이 없다" 로 실패했다.
+func TestFor_GitLabBundleCanTriggerCI(t *testing.T) {
+	bundle, err := newFactory(t, gitlabStack(), &fakeTokenIssuer{token: "t"}).For(context.Background(), "stk_1")
+	require.NoError(t, err)
+
+	assert.NotNil(t, bundle.CITrigger)
+}
