@@ -51,6 +51,9 @@ type DBTarget struct {
 	Database  string
 	User      string
 	Password  string
+	// PreserveTables 는 복원이 건드리지 않는 테이블이다(public 스키마). 덤프에는 담긴다 —
+	// 플랫폼 DB 를 잃었을 때 손으로 되살릴 사본이다. 플랫폼 DB 의 백업 이력이 그렇다(domain.HistoryTables).
+	PreserveTables []string
 }
 
 type DumpResult struct {
