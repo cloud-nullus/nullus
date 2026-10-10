@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -29,16 +30,35 @@ func NewMemoryCompatibilityRepository() *MemoryCompatibilityRepository {
 	return r
 }
 
-// GetAll returns all compatibility matrices.
+// GetAll returns all compatibility matrices in id order, like the Postgres repository.
 func (r *MemoryCompatibilityRepository) GetAll(_ context.Context) ([]*domain.CompatibilityMatrix, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	result := make([]*domain.CompatibilityMatrix, 0, len(r.matrices))
-	for _, m := range r.matrices {
+	sorted := r.sortedMatricesLocked()
+	result := make([]*domain.CompatibilityMatrix, 0, len(sorted))
+	for _, m := range sorted {
 		cp := *m
 		result = append(result, &cp)
 	}
 	return result, nil
+}
+
+// sortedMatricesLocked 는 매트릭스를 id 순서로 돌려준다. 호출자가 읽기 잠금을 쥐고 있어야 한다.
+//
+// Postgres 저장소(ORDER BY id)와 같은 순서여야 한다. 맵 순서로 돌면 같은 요청이
+// 실행마다 다른 매트릭스로 판정된다 — 겹치는 매트릭스의 아키텍처 정보가 다르면
+// 배포 게이트의 통과·차단이 그때그때 갈린다.
+func (r *MemoryCompatibilityRepository) sortedMatricesLocked() []*domain.CompatibilityMatrix {
+	ids := make([]string, 0, len(r.matrices))
+	for id := range r.matrices {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]*domain.CompatibilityMatrix, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, r.matrices[id])
+	}
+	return out
 }
 
 // GetByID returns the compatibility matrix with the given ID.
@@ -54,12 +74,13 @@ func (r *MemoryCompatibilityRepository) GetByID(_ context.Context, id string) (*
 }
 
 // Validate finds the best matching matrix for the given tool map (tool category -> tool name).
-// Returns the first matrix whose tools all match. Returns an error if no match is found.
+// Returns the first matrix in id order whose tools all match — the same choice the
+// Postgres repository makes. Returns an error if no match is found.
 func (r *MemoryCompatibilityRepository) Validate(_ context.Context, tools map[string]string) (*domain.CompatibilityMatrix, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	for _, m := range r.matrices {
+	for _, m := range r.sortedMatricesLocked() {
 		if matchesMatrix(m, tools) {
 			cp := *m
 			return &cp, nil
