@@ -48,6 +48,10 @@ type Options struct {
 	ExternalRegistryPrefix string
 	// GitLabBaseURLOverride 는 클러스터 내부 서비스 DNS 대신 쓸 주소다.
 	//
+	// 주소 하나면 모든 GitLab 스택에 적용된다. "네임스페이스=주소" 를 쉼표로 이어 주면
+	// 스택마다 제 주소를 쓴다(로컬에서 스택이 여럿일 때 포트포워드도 여럿이다). 둘을
+	// 섞으면 항목이 있는 스택은 그 주소, 나머지는 bare 주소다. gitLabBaseURLOverrideFor 참조.
+	//
 	// 기본 경로는 gitlab-webservice-default.{ns}.svc 인데, 이는 API 서버가
 	// 클러스터 안에서 돌 때만 해석된다. 로컬 실행이나 외부 GitLab 을 붙일 때
 	// 이 값으로 대체한다.
@@ -189,7 +193,7 @@ func (f *BundleFactory) gitLabBundle(
 		return nil, fmt.Errorf("stack %s 의 네임스페이스를 알 수 없습니다", summary.ID)
 	}
 
-	baseURL := strings.TrimSpace(f.opts.GitLabBaseURLOverride)
+	baseURL := gitLabBaseURLOverrideFor(f.opts.GitLabBaseURLOverride, namespace)
 	if baseURL == "" {
 		baseURL = gitLabBaseURL(namespace)
 	}
@@ -487,6 +491,38 @@ func (f *BundleFactory) giteaBundle(
 		}
 	}
 	return bundle, nil
+}
+
+// gitLabBaseURLOverrideFor 는 override 설정에서 namespace 의 GitLab 주소를 고른다.
+//
+// override 는 주소 하나이거나 "네임스페이스=주소" 항목을 쉼표로 이은 목록이다. 항목은
+// 등호 앞에 경로·스킴 문자가 없을 때만 네임스페이스 키로 본다 — 쿼리에 = 가 든
+// 주소를 항목으로 오해하지 않기 위해서다. 그 네임스페이스의 항목이 없으면 bare
+// 주소를, 그것도 없으면 빈 값(클러스터 내부 DNS)을 돌려준다.
+func gitLabBaseURLOverrideFor(override, namespace string) string {
+	override = strings.TrimSpace(override)
+	if override == "" {
+		return ""
+	}
+	namespace = strings.TrimSpace(namespace)
+	bare := ""
+	for _, entry := range strings.Split(override, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		key, value, keyed := strings.Cut(entry, "=")
+		if keyed && !strings.ContainsAny(key, "/:?") {
+			if strings.TrimSpace(key) == namespace {
+				return strings.TrimSpace(value)
+			}
+			continue
+		}
+		if bare == "" {
+			bare = entry
+		}
+	}
+	return bare
 }
 
 // jenkinsBaseURL 은 클러스터 내부 Jenkins 주소다.
