@@ -131,23 +131,33 @@ func TestSanitize_서버_관리_필드를_걷어낸다(t *testing.T) {
 	assert.Equal(t, float64(3), items[0]["spec"].(map[string]any)["replicas"])
 }
 
-func TestSanitize_Service_의_clusterIP_를_뺀다(t *testing.T) {
-	// 클러스터가 배정하는 값이다. 그대로 되돌리면 이미 쓰이는 주소와
-	// 충돌하거나 다른 클러스터에서는 범위 밖이다.
-	items := sanitizedItems(t, rawList(map[string]any{
-		"kind":     "Service",
-		"metadata": map[string]any{"name": "gitlab"},
-		"spec": map[string]any{
-			"clusterIP":  "10.96.0.10",
-			"clusterIPs": []any{"10.96.0.10"},
-			"ports":      []any{map[string]any{"port": float64(80)}},
+// ClusterIP 를 남긴다. 설치는 스택 게이트웨이의 ClusterIP 를 러너·Argo CD 의 hostAliases 에 박는다
+// (stack/adapter/helm/gitlab-runner-host-aliases.go). 복구가 IP 를 버리면 게이트웨이는 새 주소를
+// 받는데 hostAliases 는 옛 주소를 가리켜, 파이프라인이 "Could not resolve host" 로 멈춘다.
+// 같은 클러스터로 되돌리면 그 IP 는 대개 비어 있다 — 못 쓰면 Apply 가 새 주소로 되돌린다.
+func TestSanitize_Service_의_clusterIP_를_남긴다(t *testing.T) {
+	items := sanitizedItems(t, rawList(
+		map[string]any{
+			"kind":     "Service",
+			"metadata": map[string]any{"name": "envoy-gateway"},
+			"spec": map[string]any{
+				"clusterIP":  "10.96.45.47",
+				"clusterIPs": []any{"10.96.45.47"},
+				"ports":      []any{map[string]any{"port": float64(80)}},
+			},
 		},
-	}))
-	require.Len(t, items, 1)
-	spec := items[0]["spec"].(map[string]any)
-	assert.NotContains(t, spec, "clusterIP")
-	assert.NotContains(t, spec, "clusterIPs")
-	assert.Contains(t, spec, "ports", "포트 정의는 남아야 한다")
+		// headless 는 None 이 정체다. 지우면 일반 Service 로 돌아와 StatefulSet 의 파드별 DNS
+		// (openbao-internal, gitlab-gitaly …)가 끊긴다.
+		map[string]any{
+			"kind":     "Service",
+			"metadata": map[string]any{"name": "openbao-internal"},
+			"spec":     map[string]any{"clusterIP": "None", "clusterIPs": []any{"None"}},
+		},
+	))
+	require.Len(t, items, 2)
+	assert.Equal(t, "10.96.45.47", items[0]["spec"].(map[string]any)["clusterIP"])
+	assert.Equal(t, []any{"10.96.45.47"}, items[0]["spec"].(map[string]any)["clusterIPs"])
+	assert.Equal(t, "None", items[1]["spec"].(map[string]any)["clusterIP"])
 }
 
 func TestSanitize_컨트롤러가_소유한_것은_뺀다(t *testing.T) {
