@@ -286,13 +286,18 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 
 		require.NoError(t, stackRepo.Delete(ctx, stackID))
 
+		// 스택 삭제는 soft delete 다(deleted_at). 이력 화면은 지운 스택도 띄우고 그 버전 이력을
+		// 불러오므로(include_deleted) 버전은 남아야 한다 — 지우면 그 화면이 빈 이력으로 보인다.
+		// 한때 hard delete(버전 cascade 삭제)였다가 이력 보존으로 되돌아왔는데 이 기대만 남아 있었다.
 		versionsAfterDelete, err := repo.ListVersions(ctx, stackID)
 		require.NoError(t, err)
-		require.Len(t, versionsAfterDelete, 0)
+		require.Len(t, versionsAfterDelete, 2)
+		assert.Equal(t, newer.ID, versionsAfterDelete[0].ID)
 
 		got, err := repo.GetVersion(ctx, stackID, older.ID)
 		require.NoError(t, err)
-		require.Nil(t, got)
+		require.NotNil(t, got)
+		assert.Equal(t, older.ID, got.ID)
 	})
 
 	t.Run("compatibility repository seeded data", func(t *testing.T) {
@@ -477,27 +482,6 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
 			return fmt.Errorf("apply migration %s: %w", filename, err)
 		}
-	}
-
-	return nil
-}
-
-func ensurePreMigrationTables(ctx context.Context, pool *pgxpool.Pool) error {
-	const q = `
-		CREATE TABLE IF NOT EXISTS golden_path_templates (
-			id VARCHAR(100) PRIMARY KEY,
-			name VARCHAR(255) NOT NULL,
-			description TEXT,
-			tools JSONB NOT NULL DEFAULT '[]',
-			estimated_install_time BIGINT NOT NULL DEFAULT 0,
-			recommended_use_case TEXT,
-			min_resources TEXT,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		)`
-
-	if _, err := pool.Exec(ctx, q); err != nil {
-		return fmt.Errorf("ensure golden_path_templates table: %w", err)
 	}
 
 	return nil
