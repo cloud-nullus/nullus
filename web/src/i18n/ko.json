@@ -2049,6 +2049,8 @@
       "openbaoKvDesc": "토큰과 자격증명. 빠지면 복구 후 도구들이 서로 인증하지 못합니다",
       "nsResources": "K8s 리소스",
       "nsResourcesDesc": "배선과 설정 — Deployment·Secret·CRD·Argo CD Application",
+      "sharedResources": "클러스터 공용 자원",
+      "sharedResourcesDesc": "마지막 스택을 지우면 회수되는 것 — Gateway CRD·GatewayClass·내부 CA. 복구 때 가장 먼저, 없을 때만 되살립니다",
       "volume": "볼륨",
       "volumeDesc": "OSS 내부 데이터 — Git 저장소·빌드 이력·컨테이너 이미지. 가장 크고, 이것만 서비스를 멈춥니다"
     }

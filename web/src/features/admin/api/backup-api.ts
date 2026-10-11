@@ -12,6 +12,7 @@ export type BackupComponent =
   | "keycloak_db"
   | "openbao_kv"
   | "ns_resources"
+  | "shared_resources"
   | "volume";
 
 export type BackupMode = "full" | "platform_only" | "stack_only";

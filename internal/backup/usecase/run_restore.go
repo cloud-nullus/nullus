@@ -35,6 +35,8 @@ type RestoreDeps struct {
 	Scaler    port.WorkloadScaler
 	Archiver  port.VolumeArchiver
 	Resources port.ResourceDumper
+	// Shared 는 클러스터 공용 자원을 없을 때만 되살린다. Resources 와 같이 스택 클러스터 어댑터다.
+	Shared port.SharedResourceDumper
 	// Namespaces 는 복구할 네임스페이스를 만든다. 없으면 이미 있다고 보고 건너뛴다.
 	Namespaces port.NamespaceEnsurer
 	// GatewayAliases 는 복구 뒤 러너·Argo CD hostAliases 를 게이트웨이의 지금 주소로 맞춘다.
@@ -236,6 +238,27 @@ func (uc *RestoreUseCase) restoreStackData(ctx context.Context, req RunRestoreRe
 	if uc.d.Namespaces != nil {
 		if err := uc.d.Namespaces.EnsureNamespace(ctx, req.Namespace, req.BackupRunID); err != nil {
 			return fmt.Errorf("네임스페이스 준비(%s): %w", req.Namespace, err)
+		}
+	}
+
+	// 2d. 클러스터 공용 자원 — 네임스페이스 리소스가 기대는 것(Gateway CRD·GatewayClass·내부 CA)을
+	// 볼륨보다 **먼저**, 없을 때만 되살린다. 클러스터의 마지막 스택을 지우면 회수되는 것들이다.
+	//
+	// 네임스페이스 준비 뒤다 — 내부 CA 가 스택 네임스페이스에 있는 구성(cert-manager 를 스택
+	// 네임스페이스에 깐 경우)에서 공용 자원 복원이 먼저 네임스페이스를 만들면 복구 라벨 없이 생긴다.
+	// 실패하면 여기서 멈춘다 — 빈 네임스페이스 말고는 아직 아무것도 건드리지 않았다. 볼륨까지
+	// 되돌린 뒤 Gateway CR 에서 "no matches for kind" 로 죽으면 되돌릴 방법이 없다.
+	for _, a := range arts {
+		if a.Component != domain.ComponentSharedResources {
+			continue
+		}
+		if uc.d.Shared == nil {
+			return fmt.Errorf("클러스터 공용 자원 복원이 배선되지 않았습니다")
+		}
+		if err := uc.pullStream(ctx, a, func(r io.Reader) error {
+			return uc.d.Shared.ApplyShared(ctx, r)
+		}); err != nil {
+			return fmt.Errorf("클러스터 공용 자원 복원: %w", err)
 		}
 	}
 

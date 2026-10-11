@@ -117,7 +117,7 @@ describe("BackupPage", () => {
         mode: "full",
         stack_id: "stk_a",
         namespace: "nullus-gitlab",
-        scope: ["platform_db", "keycloak_db", "openbao_kv", "ns_resources"],
+        scope: ["platform_db", "keycloak_db", "openbao_kv", "ns_resources", "shared_resources"],
         confirm: undefined,
       }),
       expect.anything(),

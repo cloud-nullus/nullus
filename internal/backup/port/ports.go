@@ -143,6 +143,21 @@ type ResourceDumper interface {
 	Apply(ctx context.Context, namespace string, in io.Reader) error
 }
 
+// SharedResourceDumper 는 클러스터의 마지막 스택을 지우면 회수되는, Nullus 가 설치한 공용 자원을
+// 뜨고 되살린다 — 설치 표시가 붙은 Gateway CRD·GatewayClass·내부 CA.
+//
+// 네임스페이스 덤프(ResourceDumper)는 네임스페이스 안의 것과 스택 릴리스가 소유한 클러스터 범위
+// 리소스만 담는다. Gateway API CRD 는 kubectl 로, GatewayClass 는 create 로 만들어져 Helm 소유
+// 어노테이션이 없고, 내부 CA 는 cert-manager 네임스페이스에 있다 — 둘 다 그 덤프 밖이다.
+type SharedResourceDumper interface {
+	// DumpShared 는 담을 것이 없으면 0 을 돌려주고 아무것도 쓰지 않는다.
+	DumpShared(ctx context.Context, out io.Writer) (int64, error)
+	// ApplyShared 는 공용 자원을 **없을 때만** 만든다. 다른 스택이 쓰는 지금의 CA 나 CRD 를
+	// 백업 때의 것으로 덮으면 그 스택이 깨진다. 종류의 CRD 가 없으면(cert-manager 없음)
+	// 무엇을 먼저 설치해야 하는지 말하고 오류를 돌려준다.
+	ApplyShared(ctx context.Context, in io.Reader) error
+}
+
 // Sealer 는 산출물을 잠그고 연다.
 //
 // #68(BYOK)의 교체점이다. v1 은 플랫폼 생성 키를 쓰되, 매니페스트에 KeyID 를
