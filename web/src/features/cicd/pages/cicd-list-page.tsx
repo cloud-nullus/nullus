@@ -55,11 +55,13 @@ import {
   usePipelineSASTResults,
   usePipelines,
   useTemplateById,
+  useRefreshPipelineDefinition,
 } from "../api/cicd-api";
 import {
   DeletePipelineDialog,
   type DeletePipelineSelection,
 } from "../components/delete-pipeline-dialog";
+import { RefreshDefinitionDialog } from "../components/refresh-definition-dialog";
 import {
   ImageScanDetail,
   ImageScanRowSummary,
@@ -1762,12 +1764,16 @@ function PipelineDetailPanel({
   onOpenLogs,
   onDelete,
   isDeleting,
+  onRefreshDefinition,
+  isRefreshingDefinition,
 }: {
   pipeline: Pipeline;
   onExecuteClick: () => void;
   onOpenLogs: () => void;
   onDelete: () => void;
   isDeleting: boolean;
+  onRefreshDefinition: () => void;
+  isRefreshingDefinition: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language);
@@ -1797,6 +1803,21 @@ function PipelineDetailPanel({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* 스택에 묶인 파이프라인만 — 플랫폼이 쓴 정의가 있어야 다시 쓸 것이 있다. */}
+          {pipeline.stackId && (
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={onRefreshDefinition}
+              disabled={isRefreshingDefinition}
+            >
+              <RefreshCw {...iconProps("xs")} />
+              {isRefreshingDefinition
+                ? t("cicdListPage.refreshDefinition.busy", "Refreshing…")
+                : t("cicdListPage.refreshDefinition.button", "Refresh definition")}
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="sm"
@@ -1876,6 +1897,16 @@ export function CicdListPage() {
   );
   // 삭제가 끝난 뒤 알려야 할 것들 — 지우지 못한 자원, 또는 삭제 실패 사유.
   const [deleteWarnings, setDeleteWarnings] = useState<string[]>([]);
+  // CI 정의 갱신 — 확인 대화상자와 결과 알림. 결과는 지우기 전까지 남는다(삭제 경고와 같다).
+  const [pipelinePendingRefresh, setPipelinePendingRefresh] =
+    useState<Pipeline | null>(null);
+  const [refreshingPipelineId, setRefreshingPipelineId] = useState<string | null>(null);
+  const [refreshNotice, setRefreshNotice] = useState<{
+    title: string;
+    items: string[];
+    failed: boolean;
+  } | null>(null);
+  const refreshDefinitionMutation = useRefreshPipelineDefinition();
   const [deployingPipelineId, setDeployingPipelineId] = useState<string | null>(
     null,
   );
@@ -2083,6 +2114,60 @@ export function CicdListPage() {
     }
   };
 
+  const confirmRefreshDefinition = async () => {
+    const pipeline = pipelinePendingRefresh;
+    if (!pipeline) return;
+    try {
+      setRefreshingPipelineId(pipeline.id);
+      setRefreshNotice(null);
+      const result = await refreshDefinitionMutation.mutateAsync(pipeline.id);
+      setPipelinePendingRefresh(null);
+      const items: string[] = [];
+      if (result.stages.length > 0) {
+        items.push(
+          t("cicdListPage.refreshDefinition.done", {
+            defaultValue: "단계: {{stages}}. 다음 실행부터 새 정의로 돕니다.",
+            stages: result.stages.join(" → "),
+          }),
+        );
+      }
+      if (result.repositoryRecreated) {
+        items.push(
+          t(
+            "cicdListPage.refreshDefinition.repositoryRecreated",
+            "저장소가 없어 다시 만들고 전체 스캐폴딩을 썼습니다 — 앱 코드를 다시 밀어야 합니다.",
+          ),
+        );
+      }
+      if (result.missingVariables.length > 0) {
+        items.push(
+          t("cicdListPage.refreshDefinition.missingVariables", {
+            defaultValue: "사람이 채워야 할 변수: {{variables}}",
+            variables: result.missingVariables.join(", "),
+          }),
+        );
+      }
+      items.push(...result.warnings);
+      setRefreshNotice({
+        title: t("cicdListPage.refreshDefinition.doneTitle", "CI 정의를 다시 썼습니다"),
+        items,
+        failed: false,
+      });
+    } catch (error) {
+      // 거부를 받아 두지 않으면 화면은 아무 일도 없었던 것처럼 보인다(삭제와 같다).
+      setRefreshNotice({
+        title: t("cicdListPage.refreshDefinition.failedTitle", "CI 정의를 다시 쓰지 못했습니다"),
+        items: [
+          deletePipelineErrorMessage(error) ||
+            t("cicdListPage.refreshDefinition.failed", "CI 정의를 다시 쓰지 못했습니다"),
+        ],
+        failed: true,
+      });
+    } finally {
+      setRefreshingPipelineId(null);
+    }
+  };
+
   const handleDeployPipeline = async (pipeline: Pipeline) => {
     try {
       setDeployingPipelineId(pipeline.id);
@@ -2155,6 +2240,43 @@ export function CicdListPage() {
               <li key={warning}>{warning}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {refreshNotice && (
+        <div
+          className={`mb-4 rounded-md border p-3 text-sm text-[var(--color-text-secondary)] ${
+            refreshNotice.failed
+              ? "border-[var(--color-error)]"
+              : "border-[var(--color-success)]"
+          }`}
+          data-testid="refresh-definition-notice"
+        >
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <p
+              className={`m-0 font-medium ${
+                refreshNotice.failed
+                  ? "text-[var(--color-error)]"
+                  : "text-[var(--color-success)]"
+              }`}
+            >
+              {refreshNotice.title}
+            </p>
+            <button
+              type="button"
+              className="text-xs underline"
+              onClick={() => setRefreshNotice(null)}
+            >
+              {t("common.dismiss", "Dismiss")}
+            </button>
+          </div>
+          {refreshNotice.items.length > 0 && (
+            <ul className="m-0 list-disc pl-4">
+              {refreshNotice.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -2237,6 +2359,8 @@ export function CicdListPage() {
                   pipeline={expandedPipeline}
                   onDelete={() => void handleDeletePipeline(expandedPipeline)}
                   isDeleting={deletingPipelineId === expandedPipeline.id}
+                  onRefreshDefinition={() => setPipelinePendingRefresh(expandedPipeline)}
+                  isRefreshingDefinition={refreshingPipelineId === expandedPipeline.id}
                   onExecuteClick={() =>
                     setExecuteModalPipeline(expandedPipeline)
                   }
@@ -2266,6 +2390,8 @@ export function CicdListPage() {
             pipeline={expandedPipeline}
             onDelete={() => void handleDeletePipeline(expandedPipeline)}
             isDeleting={deletingPipelineId === expandedPipeline.id}
+            onRefreshDefinition={() => setPipelinePendingRefresh(expandedPipeline)}
+            isRefreshingDefinition={refreshingPipelineId === expandedPipeline.id}
             onExecuteClick={() => setExecuteModalPipeline(expandedPipeline)}
             onOpenLogs={() =>
               navigate(`/cicd/pipelines/${expandedPipeline.id}/logs`)
@@ -2282,6 +2408,14 @@ export function CicdListPage() {
           isExecuting={deployingPipelineId === executeModalPipeline.id}
         />
       )}
+
+      <RefreshDefinitionDialog
+        open={pipelinePendingRefresh !== null}
+        pipelineName={pipelinePendingRefresh?.name ?? ""}
+        busy={refreshingPipelineId === pipelinePendingRefresh?.id}
+        onCancel={() => setPipelinePendingRefresh(null)}
+        onConfirm={() => void confirmRefreshDefinition()}
+      />
 
       <DeletePipelineDialog
         open={pipelinePendingDelete !== null}

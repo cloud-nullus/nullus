@@ -836,6 +836,14 @@
       "irreversible": "되돌릴 수 없습니다",
       "typeToConfirm": "확인을 위해 저장소 이름을 입력하세요: {{path}}",
       "typeToConfirmLabel": "저장소 이름 확인"
+    },
+    "refreshDefinitionDialog": {
+      "title": "CI 정의 갱신",
+      "intro": "파이프라인 \"{{name}}\" 의 CI 정의 파일을 플랫폼 기본으로 다시 씁니다.",
+      "overwrites": "덮어쓰는 것: 이 스택의 파이프라인 정의 파일(.gitlab-ci.yml · .github/workflows/nullus-ci.yml · Jenkinsfile 중 하나)과 SONAR_TOKEN 같은 CI 변수. 직접 고친 내용은 사라집니다.",
+      "keeps": "건드리지 않는 것: 앱 코드 · Dockerfile · deploy/ 매니페스트 · Argo CD Application.",
+      "why": "SAST 리포트처럼 단계가 생기기 전에 만든 파이프라인은 이렇게 해야 실행 기록에 결과가 붙습니다.",
+      "confirm": "정의 갱신"
     }
   },
   "cicdListPage": {
@@ -921,6 +929,16 @@
       "metricsUnknown": "지표 없음",
       "openInSonarQube": "SonarQube 에서 보기",
       "analyzedAt": "분석 시각"
+    },
+    "refreshDefinition": {
+      "button": "CI 정의 갱신",
+      "busy": "갱신 중…",
+      "doneTitle": "CI 정의를 다시 썼습니다",
+      "done": "단계: {{stages}}. 다음 실행부터 새 정의로 돕니다.",
+      "repositoryRecreated": "저장소가 없어 다시 만들고 전체 스캐폴딩을 썼습니다 — 앱 코드를 다시 밀어야 합니다.",
+      "missingVariables": "사람이 채워야 할 변수: {{variables}}",
+      "failedTitle": "CI 정의를 다시 쓰지 못했습니다",
+      "failed": "CI 정의를 다시 쓰지 못했습니다"
     }
   },
   "cicdHistoryPage": {

@@ -54,6 +54,10 @@ type PipelineHandler struct {
 	// 없으면 삭제는 종전대로 레코드만 지운다.
 	deletePipeline *usecase.DeletePipeline
 
+	// refreshDefinition 은 기존 파이프라인의 CI 정의 파일을 플랫폼 기본으로 다시 쓴다.
+	// 선택적으로 배선되며, 없으면 그 경로는 503 이다.
+	refreshDefinition *usecase.RefreshPipelineDefinition
+
 	// applier 는 직접 배포(POST /deploy-app)가 매니페스트를 클러스터에
 	// 적용하는 데 쓴다. 없으면 배포가 실패한다 — 적용하지 않고 성공을
 	// 기록하는 것보다 낫다.
@@ -113,6 +117,12 @@ func (h *PipelineHandler) WithRunSync(uc *usecase.SyncPipelineRuns) *PipelineHan
 	return h
 }
 
+// WithDefinitionRefresh 는 파이프라인 정의 갱신 경로를 배선한다.
+func (h *PipelineHandler) WithDefinitionRefresh(uc *usecase.RefreshPipelineDefinition) *PipelineHandler {
+	h.refreshDefinition = uc
+	return h
+}
+
 // WithDeletePipeline 은 부수 리소스 삭제 경로를 배선한다.
 func (h *PipelineHandler) WithDeletePipeline(uc *usecase.DeletePipeline) *PipelineHandler {
 	h.deletePipeline = uc
@@ -148,6 +158,7 @@ func (h *PipelineHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/pipelines", h.CreatePipeline)
 	g.DELETE("/pipelines/:id", h.DeletePipeline)
 	g.POST("/pipelines/:id/deploy", h.DeployPipeline)
+	g.POST("/pipelines/:id/refresh-definition", h.RefreshPipelineDefinition)
 	g.GET("/pipelines/:id/resources", h.GetPipelineResources)
 	g.GET("/pipelines/:id/image-scans", h.ListImageScans)
 	g.GET("/pipelines/:id/image-scans/:scanId/vulnerabilities", h.ListScanVulnerabilities)
@@ -549,6 +560,49 @@ func (h *PipelineHandler) ListDeployments(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{"items": results, "total": len(results)})
+}
+
+// RefreshPipelineDefinition 은 POST /pipelines/:id/refresh-definition 을 처리한다.
+//
+// SAST 리포트를 남기기 전에 만든 파이프라인은 실행 기록에 결과가 붙지 않았다 — 그 파이프라인의
+// sast 잡은 리포트를 남기지 않는다. 정의 파일을 플랫폼 기본으로 다시 쓰면 붙는다. 사용자가
+// 손본 정의 파일은 덮어쓰므로 화면이 먼저 묻는다.
+func (h *PipelineHandler) RefreshPipelineDefinition(c echo.Context) error {
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		return errorResponse(c, http.StatusBadRequest, "PIPELINE_ID_REQUIRED", "pipeline id is required")
+	}
+	if h.refreshDefinition == nil {
+		return errorResponse(c, http.StatusServiceUnavailable, "DEFINITION_REFRESH_NOT_CONFIGURED",
+			"파이프라인 정의 갱신이 배선되지 않았습니다")
+	}
+	ctx := c.Request().Context()
+	if _, err := h.pipelineRepo.GetByID(ctx, id); err != nil {
+		return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
+	}
+	out, err := h.refreshDefinition.Execute(ctx, id)
+	if err != nil {
+		if errors.Is(err, usecase.ErrPipelineNotStackBound) {
+			return errorResponse(c, http.StatusBadRequest, "PIPELINE_NOT_STACK_BOUND",
+				"스택에 묶이지 않은 파이프라인은 플랫폼이 쓴 정의가 없어 갱신할 수 없습니다")
+		}
+		return errorResponse(c, http.StatusBadGateway, "DEFINITION_REFRESH_FAILED", err.Error())
+	}
+	return c.JSON(http.StatusOK, map[string]any{
+		"pipeline":             out.Pipeline,
+		"stages":               nonNilStrings(out.Stages),
+		"warnings":             nonNilStrings(out.Warnings),
+		"missing_variables":    nonNilStrings(out.MissingVariables),
+		"repository_recreated": out.RepositoryRecreated,
+	})
+}
+
+// nonNilStrings 는 nil 을 빈 배열로 내보낸다 — 화면이 null 을 배열로 다루지 않게.
+func nonNilStrings(v []string) []string {
+	if v == nil {
+		return []string{}
+	}
+	return v
 }
 
 func (h *PipelineHandler) GetPipelineResources(c echo.Context) error {

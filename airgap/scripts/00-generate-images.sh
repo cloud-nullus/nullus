@@ -68,8 +68,9 @@ RUNTIME_IMAGES=(
   # 생성된 .gitlab-ci.yml 의 build · deploy 잡
   "docker:27"
   "alpine:3.20"
-  # 파이프라인 SAST 단계 — amd64 빌드만 있다(arm64 노드는 에뮬레이션이 있어야 돈다)
-  "sonarsource/sonar-scanner-cli:12.2"
+  # 파이프라인 SAST 단계 — 공식 이미지는 amd64 만 내서 우리가 멀티아치로 굽는다
+  # (deploy/images/sonar-scanner). 태그는 Dockerfile 의 스캐너 버전이다.
+  "ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389"
 )
 
 if [[ -t 1 ]]; then

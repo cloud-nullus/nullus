@@ -131,6 +131,17 @@ type StageOptions struct {
 //
 // 같은 입력이면 같은 결과다 — 재스캐폴딩이 의미 없는 diff 를 만들지 않도록
 // 파일 경로를 정렬해 돌려준다.
+// IsPipelineDefinitionPath 는 그 파일이 CI 파이프라인 정의인지 본다 — .gitlab-ci.yml ·
+// GitHub 워크플로 · Jenkinsfile. 기존 파이프라인의 정의 갱신은 이것만 다시 쓴다. 앱 코드·
+// Dockerfile·배포 매니페스트는 사용자 것이고, CI 가 갱신한 이미지 태그가 거기 있다.
+func IsPipelineDefinitionPath(path string) bool {
+	switch path {
+	case GitLabPipelinePath, GitHubWorkflowPath, JenkinsfilePath:
+		return true
+	}
+	return false
+}
+
 func Render(in Input) ([]port.CommitFile, error) {
 	app := strings.TrimSpace(in.AppName)
 	if app == "" {

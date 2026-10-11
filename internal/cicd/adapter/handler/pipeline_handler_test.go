@@ -90,7 +90,11 @@ func (m *mockPipelineRepository) ListByStackID(_ context.Context, stackID string
 	return result, nil
 }
 
-func (m *mockPipelineRepository) Update(_ context.Context, _ *domain.Pipeline) error { return nil }
+func (m *mockPipelineRepository) Update(_ context.Context, pipeline *domain.Pipeline) error {
+	copied := *pipeline
+	m.pipelines[pipeline.ID] = &copied
+	return nil
+}
 
 func (m *mockPipelineRepository) Delete(_ context.Context, id string) error {
 	if m.deleteErr != nil {
@@ -683,4 +687,99 @@ func TestPipelineHandler_Create_StackClusterMismatch(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "STACK_CLUSTER_MISMATCH")
 	assert.Equal(t, 0, pipelineRepo.created)
+}
+
+// ── 파이프라인 정의 갱신 ──────────────────────────────────────────────────
+
+type stubRepoProvisioner struct {
+	out   *usecase.ProvisionPipelineRepositoryOutput
+	err   error
+	calls []usecase.ProvisionPipelineRepositoryInput
+}
+
+func (s *stubRepoProvisioner) Execute(_ context.Context, in usecase.ProvisionPipelineRepositoryInput) (*usecase.ProvisionPipelineRepositoryOutput, error) {
+	s.calls = append(s.calls, in)
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.out, nil
+}
+
+func refreshEcho(t *testing.T, pipelineRepo *mockPipelineRepository, prov *stubRepoProvisioner) *echo.Echo {
+	t.Helper()
+	deployments := &mockDeploymentRepository{}
+	h := cicdhandler.NewPipelineHandler(
+		usecase.NewCreatePipeline(pipelineRepo, newMockPipelineTemplateRepository()),
+		usecase.NewListPipelines(pipelineRepo),
+		usecase.NewDeployPipeline(pipelineRepo, deployments, &noopKubeconfigProvider{}, &noopManifestApplier{}),
+		pipelineRepo, deployments, &noopKubeconfigProvider{}, kube.NewStepTracker(), nil,
+	)
+	if prov != nil {
+		h.WithDefinitionRefresh(usecase.NewRefreshPipelineDefinition(pipelineRepo, prov))
+	}
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/api/v1"))
+	return e
+}
+
+// SAST 리포트 전에 만든 파이프라인은 정의를 다시 써야 결과가 붙는다. 그 경로가 API 로 열려 있어야
+// 화면 버튼이 설 수 있다.
+func TestPipelineHandler_RefreshDefinition_정의를_다시_쓴다(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(&domain.Pipeline{
+		ID: "pip_1", Name: "orders", StackID: "stk_1", Namespace: "apps",
+		AppType: domain.AppTypeBackend, Stages: []string{"Build", "Deploy"},
+	})
+	prov := &stubRepoProvisioner{out: &usecase.ProvisionPipelineRepositoryOutput{
+		Stages: []string{"Build", "SAST", "Deploy"}, MissingVariables: []string{"SONAR_TOKEN"},
+		DefinitionRefreshed: true,
+	}}
+	e := refreshEcho(t, pipelineRepo, prov)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/pipelines/pip_1/refresh-definition", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, []any{"Build", "SAST", "Deploy"}, body["stages"])
+	assert.Equal(t, []any{"SONAR_TOKEN"}, body["missing_variables"])
+	require.Len(t, prov.calls, 1)
+	assert.True(t, prov.calls[0].RefreshDefinitionOnly)
+	updated, _ := pipelineRepo.GetByID(context.Background(), "pip_1")
+	assert.Equal(t, []string{"Build", "SAST", "Deploy"}, updated.Stages)
+}
+
+func TestPipelineHandler_RefreshDefinition_스택_없는_파이프라인은_400(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(&domain.Pipeline{ID: "pip_1", Name: "orders"})
+	e := refreshEcho(t, pipelineRepo, &stubRepoProvisioner{})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/pipelines/pip_1/refresh-definition", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "PIPELINE_NOT_STACK_BOUND")
+}
+
+func TestPipelineHandler_RefreshDefinition_배선되지_않으면_503(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(&domain.Pipeline{ID: "pip_1", Name: "orders", StackID: "stk_1"})
+	e := refreshEcho(t, pipelineRepo, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/pipelines/pip_1/refresh-definition", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Contains(t, rec.Body.String(), "DEFINITION_REFRESH_NOT_CONFIGURED")
+}
+
+func TestPipelineHandler_RefreshDefinition_없는_파이프라인은_404(t *testing.T) {
+	e := refreshEcho(t, newMockPipelineRepository(), &stubRepoProvisioner{})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/pipelines/nope/refresh-definition", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
