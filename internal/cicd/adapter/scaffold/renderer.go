@@ -142,6 +142,12 @@ func IsPipelineDefinitionPath(path string) bool {
 	return false
 }
 
+// githubImageExpression 은 리포 Actions 변수를 먼저 보고 없으면 기본값을 쓰는 컨테이너 이미지
+// 표현식이다. jobs.<id>.container.image 는 vars 컨텍스트를 받는다.
+func githubImageExpression(variable, fallback string) string {
+	return fmt.Sprintf("${{ vars.%s || '%s' }}", variable, fallback)
+}
+
 func Render(in Input) ([]port.CommitFile, error) {
 	app := strings.TrimSpace(in.AppName)
 	if app == "" {
@@ -300,7 +306,10 @@ func renderGitHubWorkflow(in Input) string {
 			fmt.Fprintf(&b, "      %s: ${{ vars.%s }}\n", v, v)
 		}
 		b.WriteString("    container:\n")
-		fmt.Fprintf(&b, "      image: %q\n", defaultSASTScannerImage)
+		// 이미지는 플랫폼이 리포 변수로 미는 값을 먼저 본다(정책과 함께 밀린다). 리터럴로 박으면
+		// 플랫폼이 이미지를 올려도(멀티아치 스캐너) 정의를 다시 쓰기 전까지 옛 이미지를 쓴다.
+		// 변수가 없으면(한 번도 밀리지 않은 리포) 파일의 기본값이다.
+		fmt.Fprintf(&b, "      image: %s\n", githubImageExpression(port.SASTImageVariable, defaultSASTScannerImage))
 		// 스캐너 이미지는 비루트로 돈다. 그대로면 actions/checkout 이 러너 소유의 작업
 		// 디렉터리에 쓰다 권한 오류로 죽고, 배포가 이 단계를 기다리므로 모든 배포가 막힌다.
 		b.WriteString("      options: --user root\n")
@@ -340,7 +349,7 @@ func renderGitHubWorkflow(in Input) string {
 		fmt.Fprintf(&b, "      TRIVY_USERNAME: %s\n", githubExpressionFor(target.UsernameVar))
 		fmt.Fprintf(&b, "      TRIVY_PASSWORD: %s\n", githubExpressionFor(target.PasswordVar))
 		b.WriteString("    container:\n")
-		fmt.Fprintf(&b, "      image: %q\n", defaultScannerImage)
+		fmt.Fprintf(&b, "      image: %s\n", githubImageExpression(scanImageVar, defaultScannerImage))
 		b.WriteString("    steps:\n")
 		b.WriteString("      - name: Scan image\n")
 		b.WriteString("        run: |\n")

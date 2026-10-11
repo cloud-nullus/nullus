@@ -135,3 +135,12 @@ func TestSonarScannerImage_우리가_굽는_멀티아치_이미지를_쓴다(t *
 	assert.Contains(t, string(cd), "nullus-sonar-scanner:", "CD 가 같은 이름으로 민다")
 	assert.Contains(t, string(cd), "SONAR_SCANNER_VERSION=", "CD 태그도 Dockerfile 의 버전에서 뽑는다")
 }
+
+// Trivy CLI 이미지는 CI 잡이 쓴다. 정책 변수와 함께 밀려야 하므로(port.ScanPolicyVariables)
+// 스캐폴드 어댑터가 아니라 여기 있어야 한다. 에어갭 번들은 Trivy 차트가 같은 태그를 이미 싣는다.
+func TestTrivyCLIImage_에어갭_번들에_있다(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "airgap", "images", "images.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), TrivyCLIImage,
+		"CI 잡의 Trivy 이미지가 에어갭 번들에 없다 — 폐쇄망에서 이미지 스캔 단계가 ImagePullBackOff 다")
+}

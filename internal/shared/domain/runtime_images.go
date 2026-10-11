@@ -55,6 +55,14 @@ const (
 	GitLabCIBuildImage  = "docker:27"
 	GitLabCIDeployImage = "alpine:3.20"
 
+	// TrivyCLIImage — 파이프라인 이미지 스캔 단계의 Trivy CLI. 취약점 DB 는 들어 있지 않다 —
+	// client 로 붙어 스택 Trivy 서버에 매칭을 맡긴다. 에어갭 번들은 Trivy 차트가 같은 태그를
+	// 이미 싣는다(images.txt). RuntimeImages 에 넣지 않는 이유다 — 넣으면 생성기가 두 번 싣는다.
+	// 정책 변수와 함께 CI 에 밀린다(port.ScanPolicyVariables) — 올리면 파이프라인 정의를
+	// 다시 쓰지 않아도 다음 실행부터 따라온다.
+	// (internal/cicd/adapter/scaffold/image_scan.go)
+	TrivyCLIImage = "aquasec/trivy:0.74.0"
+
 	// SonarScannerImage — 파이프라인 SAST 단계(GitLab CI·GitHub Actions·Jenkins). 공식
 	// sonarsource/sonar-scanner-cli 는 amd64 빌드만 게시해(Docker Hub 전 태그 실측, 2026-10)
 	// arm64 노드와 에어갭 arm64 번들에서 단계가 서지 않았다 — 플랫폼 독립 스캐너 zip 을 멀티아치
