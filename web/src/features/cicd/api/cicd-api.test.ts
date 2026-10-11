@@ -511,3 +511,61 @@ describe('cicd-api template mutations', () => {
     expect(vi.mocked(mockApi.delete)).toHaveBeenCalledWith('/cicd/templates/team-backend-v1')
   })
 })
+
+// 화면이 보여 주는 클러스터는 앱이 실제로 서 있는 곳이어야 한다. 스택 클러스터 규칙이
+// 생기기 전에 만든 스택 파이프라인에는 화면에서 고른 클러스터가 저장돼 있어, 그 값을
+// 쓰면 정보 탭과 클러스터 필터가 앱이 없는 클러스터를 가리켰다.
+describe('getPipelines 배포 클러스터', () => {
+  beforeEach(() => {
+    vi.mocked(mockApi.get).mockReset()
+    vi.mocked(mockApi.get).mockImplementation((url: string) => {
+      if (url === '/cicd/pipelines')
+        return Promise.resolve({
+          data: {
+            items: [
+              { id: 'pip_legacy', name: 'orders', stack_id: 'stk_1', cluster_id: 'c-chosen', deploy_cluster_id: 'c-stack' },
+              { id: 'pip_old_api', name: 'billing', cluster_id: 'c-chosen' },
+            ],
+          },
+        })
+      if (url === '/admin/clusters')
+        return Promise.resolve({
+          data: { items: [{ id: 'c-stack', name: 'stack-k8s' }, { id: 'c-chosen', name: 'chosen-k8s' }] },
+        })
+      if (url === '/cicd/templates') return Promise.resolve({ data: [] })
+      return Promise.resolve({ data: { items: [] } })
+    })
+  })
+
+  it('서버가 계산한 배포 클러스터를 보여 준다', async () => {
+    const result = await cicdApiCalls.getPipelines()
+    const legacy = result.items.find((p) => p.id === 'pip_legacy')
+
+    expect(legacy?.clusterId).toBe('c-stack')
+    expect(legacy?.clusterName).toBe('stack-k8s')
+  })
+
+  it('배포 클러스터가 없는 응답이면 저장된 클러스터를 쓴다', async () => {
+    const result = await cicdApiCalls.getPipelines()
+    const old = result.items.find((p) => p.id === 'pip_old_api')
+
+    expect(old?.clusterId).toBe('c-chosen')
+    expect(old?.clusterName).toBe('chosen-k8s')
+  })
+})
+
+describe('createPipeline 배포 클러스터', () => {
+  it('응답 최상위의 배포 클러스터를 쓴다', async () => {
+    vi.mocked(mockApi.post).mockReset()
+    vi.mocked(mockApi.post).mockResolvedValueOnce({
+      data: {
+        pipeline: { id: 'pip_1', name: 'orders', stack_id: 'stk_1', cluster_id: 'c-stack' },
+        deploy_cluster_id: 'c-stack',
+      },
+    } as never)
+
+    const created = await cicdApiCalls.createPipeline({ name: 'orders', appType: 'web-backend', clusterId: '', stackId: 'stk_1' })
+
+    expect(created.clusterId).toBe('c-stack')
+  })
+})

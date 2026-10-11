@@ -245,10 +245,13 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 	}
 
 	// 만들자마자 어디로 열리는지 알려 준다. 목록으로 돌아가 다시 찾게 하지 않는다.
-	views := h.withAccessURLs(c.Request().Context(), []*domain.Pipeline{out.Pipeline})
+	views := h.pipelineViews(c.Request().Context(), []*domain.Pipeline{out.Pipeline})
 	resp := map[string]any{"pipeline": out.Pipeline}
 	if len(views) == 1 && views[0].AccessURL != "" {
 		resp["access_url"] = views[0].AccessURL
+	}
+	if len(views) == 1 && views[0].DeployClusterID != "" {
+		resp["deploy_cluster_id"] = views[0].DeployClusterID
 	}
 	if out.StackWarning != "" {
 		resp["warning"] = out.StackWarning
@@ -283,18 +286,23 @@ type pipelineView struct {
 	// AccessURL 은 배포된 앱의 외부 접속 주소다.
 	// 스택에 접근 도메인이 없으면 비어 있다 — 앱이 클러스터 안에서만 닿는다.
 	AccessURL string `json:"access_url,omitempty"`
+	// DeployClusterID 는 앱이 실제로 서 있는 클러스터다. 스택 파이프라인의 앱은
+	// 스택의 Argo CD 가 스택 클러스터에 올린다 — cluster_id 에 다른 클러스터가
+	// 저장돼 있어도(스택 클러스터 규칙 전에 만든 파이프라인) 그렇다. 화면은 이 값을
+	// 배포 대상으로 보여 준다.
+	DeployClusterID string `json:"deploy_cluster_id,omitempty"`
 }
 
-// withAccessURLs 는 파이프라인 목록에 접속 주소를 붙인다.
+// pipelineViews 는 파이프라인 목록에 서버가 계산하는 값(접속 주소·배포 클러스터)을 붙인다.
 //
 // 스택마다 한 번만 조회한다. 같은 스택의 파이프라인이 여럿인 것이 보통이라,
 // 파이프라인 수만큼 조회하면 목록 한 번에 같은 질의가 수십 번 나간다.
 //
 // 조회에 실패해도 목록은 그대로 돌려준다. 주소를 못 보여 주는 것이 목록 전체를
-// 못 보여 줄 이유는 아니다.
-func (h *PipelineHandler) withAccessURLs(ctx context.Context, pipelines []*domain.Pipeline) []pipelineView {
+// 못 보여 줄 이유는 아니다. 배포 클러스터는 저장된 값으로 떨어진다.
+func (h *PipelineHandler) pipelineViews(ctx context.Context, pipelines []*domain.Pipeline) []pipelineView {
 	views := make([]pipelineView, 0, len(pipelines))
-	domains := make(map[string]string, 4)
+	stacks := make(map[string]*port.StackSummary, 4)
 
 	for _, pipeline := range pipelines {
 		if pipeline == nil {
@@ -302,17 +310,22 @@ func (h *PipelineHandler) withAccessURLs(ctx context.Context, pipelines []*domai
 		}
 		view := pipelineView{Pipeline: pipeline}
 
+		var accessDomain, stackCluster string
 		stackID := strings.TrimSpace(pipeline.StackID)
 		if stackID != "" && h.stackReader != nil {
-			accessDomain, seen := domains[stackID]
+			summary, seen := stacks[stackID]
 			if !seen {
-				if summary, err := h.stackReader.GetStackSummary(ctx, stackID); err == nil && summary != nil {
-					accessDomain = summary.AccessDomain
+				if got, err := h.stackReader.GetStackSummary(ctx, stackID); err == nil {
+					summary = got
 				}
-				domains[stackID] = accessDomain
+				stacks[stackID] = summary
+			}
+			if summary != nil {
+				accessDomain, stackCluster = summary.AccessDomain, summary.ClusterID
 			}
 			view.AccessURL = domain.AppAccessURL(pipeline.Name, accessDomain)
 		}
+		view.DeployClusterID = pipeline.DeployClusterID(stackCluster)
 
 		views = append(views, view)
 	}
@@ -330,7 +343,7 @@ func (h *PipelineHandler) ListPipelines(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_LIST_FAILED", err.Error())
 	}
 
-	views := h.withAccessURLs(c.Request().Context(), out.Pipelines)
+	views := h.pipelineViews(c.Request().Context(), out.Pipelines)
 	return c.JSON(http.StatusOK, map[string]any{"items": views, "total": len(views)})
 }
 
@@ -347,7 +360,7 @@ func (h *PipelineHandler) ListPipelinesByStack(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_LIST_FAILED", err.Error())
 	}
 
-	views := h.withAccessURLs(c.Request().Context(), pipelines)
+	views := h.pipelineViews(c.Request().Context(), pipelines)
 	return c.JSON(http.StatusOK, map[string]any{"items": views, "total": len(views)})
 }
 
@@ -1064,6 +1077,22 @@ func (h *PipelineHandler) DeployApp(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "DEPLOY_APP_INVALID", err.Error())
 	}
 
+	// 스택을 주면 생성과 같은 규칙을 따른다 — 클러스터는 스택 클러스터여야 한다
+	// (판정은 아래 usecase.MatchStackTarget). 스택을 확인하지 못한 채 요청한 클러스터에
+	// 적용하면 기록은 스택 파이프라인(러너·Argo CD 경로)으로 남아, 모니터링·삭제는 스택
+	// 클러스터를 뒤지고 앱은 요청한 클러스터에 남는다.
+	var stack *port.StackSummary
+	if stackID := strings.TrimSpace(req.StackID); stackID != "" && h.stackReader != nil {
+		summary, err := h.stackReader.GetStackSummary(c.Request().Context(), stackID)
+		if err != nil {
+			return errorResponse(c, http.StatusInternalServerError, "STACK_LOOKUP_FAILED", err.Error())
+		}
+		if summary == nil {
+			return errorResponse(c, http.StatusBadRequest, "STACK_NOT_FOUND", usecase.ErrStackNotFound.Error())
+		}
+		stack = summary
+	}
+
 	generated, err := manifests.Generate(manifests.DeployAppRequest{
 		AppName:   req.AppName,
 		GitURL:    req.GitURL,
@@ -1085,9 +1114,27 @@ func (h *PipelineHandler) DeployApp(c echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	orgID, err := h.resolveOrgID(ctx, c.Request().Header.Get("X-Org-ID"), req.ClusterID)
+	// 클러스터를 비우고 스택만 주면 스택 클러스터로 조직을 찾는다. 그 조직이 스택의
+	// 조직인지는 아래에서 본다.
+	orgCluster := req.ClusterID
+	if strings.TrimSpace(orgCluster) == "" && stack != nil {
+		orgCluster = stack.ClusterID
+	}
+	orgID, err := h.resolveOrgID(ctx, c.Request().Header.Get("X-Org-ID"), orgCluster)
 	if err != nil {
 		return errorResponse(c, http.StatusBadRequest, "DEPLOY_APP_INVALID", "cannot resolve organization: "+err.Error())
+	}
+	if stack != nil {
+		cluster, matchErr := usecase.MatchStackTarget(stack, orgID, req.ClusterID)
+		switch {
+		case errors.Is(matchErr, usecase.ErrStackOrgMismatch):
+			return errorResponse(c, http.StatusForbidden, "STACK_ORG_MISMATCH", matchErr.Error())
+		case errors.Is(matchErr, usecase.ErrStackClusterMismatch):
+			return errorResponse(c, http.StatusBadRequest, "STACK_CLUSTER_MISMATCH", matchErr.Error())
+		case matchErr != nil:
+			return errorResponse(c, http.StatusBadRequest, "DEPLOY_APP_INVALID", matchErr.Error())
+		}
+		req.ClusterID = cluster
 	}
 
 	// Pipeline 저장 (이미 존재하면 무시)

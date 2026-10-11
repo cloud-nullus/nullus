@@ -488,6 +488,27 @@ describe("CicdListPage", () => {
     });
   });
 
+  // 실행은 파이프라인에 정해진 클러스터로 간다 — 고른 값을 서버에 보내지 않는다.
+  // 고를 수 있게 두면 사용자는 고른 클러스터에 배포된 줄 안다. 스택 파이프라인은
+  // 스택의 Argo CD 가 스택 클러스터에 올리므로 더욱 그렇다.
+  it("실행 확인 창은 배포될 클러스터를 고르게 하지 않고 보여 준다", () => {
+    // 지운 선택지의 가짜 보기(c1/prod-k8s)와 겹치지 않는 이름을 쓴다.
+    mockUsePipelines.mockReturnValue({
+      data: {
+        items: [{ ...pipelines[0], clusterId: "c-stack", clusterName: "stack-cluster-a" }],
+        total: 1,
+      },
+      isLoading: false,
+    });
+    renderWithProviders(<CicdListPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Execute" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Execute Pipeline" });
+    expect(within(dialog).queryByRole("combobox")).toBeNull();
+    expect(within(dialog).getByText("stack-cluster-a")).toBeTruthy();
+  });
+
   it("deploys the selected pipeline from the list detail panel and opens logs", async () => {
     renderWithProviders(<CicdListPage />);
 
