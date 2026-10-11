@@ -1,5 +1,8 @@
 # Go
 bin/
+# 이미지 빌드 컨텍스트의 bin/ 은 산출물이 아니라 소스다. 공식 이미지 구조를 따라 bin/ 아래 둔
+# 엔트리포인트가 위 규칙에 걸려 커밋되지 않았고, CD 빌드가 COPY 에서 죽었다(#301 첫 CD).
+!deploy/images/*/bin/
 *.exe
 coverage.out
 coverage.html
