@@ -246,7 +246,6 @@ function ExecuteModal({
   onExecute: () => void;
   isExecuting: boolean;
 }) {
-  const { data: clustersData } = useClusters();
   const { data: executeStacksData } = useStacks();
   // 스택을 아직 못 받았거나 스택 없이 만든 파이프라인이면 아무것도 붙이지
   // 않는다. 모르는 값을 그럴듯하게 지어내지 않는다.
@@ -255,30 +254,7 @@ function ExecuteModal({
         (stack) => stack.id === pipeline.stackId,
       )?.name ?? pipeline.stackId)
     : "";
-  const clusterList = clustersData?.items ?? [];
-  const targetClusters = clusterList.filter((c) => {
-    const types = Array.isArray((c as any).types)
-      ? (c as any).types
-      : [(c as any).type ?? ""];
-    return types
-      .flatMap((t: string) => t.split(","))
-      .map((t: string) => t.trim().toLowerCase())
-      .includes("target");
-  });
-  const clusterOptions =
-    targetClusters.length > 0
-      ? targetClusters
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .map((c) => ({ id: c.id, name: c.name }))
-      : [
-          { id: "c1", name: "prod-k8s" },
-          { id: "c2", name: "dev-k8s" },
-        ];
-
   const [activeTab, setActiveTab] = useState<ExecuteSetupTab>("cluster");
-  const [clusterId, setClusterId] = useState(
-    pipeline.clusterId || clusterOptions[0]?.id || "",
-  );
   const [dockerfileId, setDockerfileId] = useState(
     EXECUTE_DOCKERFILE_PRESETS[0].id,
   );
@@ -303,6 +279,9 @@ function ExecuteModal({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="execute-modal-title"
         className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-surface-card)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -313,7 +292,10 @@ function ExecuteModal({
               <Rocket {...iconProps("sm")} />
             </div>
             <div>
-              <div className="text-[15px] font-bold text-[var(--color-text-primary)]">
+              <div
+                id="execute-modal-title"
+                className="text-[15px] font-bold text-[var(--color-text-primary)]"
+              >
                 Execute Pipeline
               </div>
               <div className="text-[12px] text-[var(--color-text-secondary)]">
@@ -344,18 +326,13 @@ function ExecuteModal({
         <div className="flex-1 overflow-y-auto p-5">
           {activeTab === "cluster" && (
             <div className="max-w-sm">
-              <Select
+              {/* 실행은 파이프라인에 정해진 클러스터로 간다 — 여기서 바꿀 수 없다.
+                  예전에는 고를 수 있었지만 고른 값을 서버에 보내지 않았다. 스택
+                  파이프라인은 스택의 Argo CD 가 스택 클러스터에 올린다. */}
+              <ConfigRow
                 label="Deploy Cluster"
-                value={clusterId}
-                onChange={(e) => setClusterId(e.target.value)}
-                className="w-full"
-              >
-                {clusterOptions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
+                value={pipeline.clusterName || pipeline.clusterId || "-"}
+              />
             </div>
           )}
 

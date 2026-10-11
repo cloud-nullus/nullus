@@ -501,6 +501,11 @@ paths:
       tags: [cicd]
       summary: Deploy application from template
       operationId: deployApp
+      description: |
+        stackId 가 있으면 생성과 같은 규칙을 따른다 — 없는 스택은 400 STACK_NOT_FOUND,
+        다른 조직의 스택은 403 STACK_ORG_MISMATCH, clusterId 는 스택이 설치된 클러스터여야
+        한다(다르면 400 STACK_CLUSTER_MISMATCH, 비우면 스택 클러스터로 채움). 스택을 읽지
+        못하면 500 STACK_LOOKUP_FAILED. 어느 경우도 적용·기록하지 않는다.
       requestBody:
         required: true
         content:
@@ -1309,6 +1314,10 @@ components:
           $ref: '#/components/schemas/AppType'
         clusterId:
           type: string
+          description: |
+            앱이 실제로 서 있는 클러스터(서버 응답의 deploy_cluster_id). 스택 파이프라인의
+            앱은 스택의 Argo CD 가 스택 클러스터에 올리므로, 저장된 cluster_id 가 다른
+            예전 파이프라인도 스택 클러스터를 가리킨다.
         clusterName:
           type: string
         status:
@@ -1617,7 +1626,7 @@ components:
 
     DeployAppRequest:
       type: object
-      required: [appName, gitUrl, clusterId, namespace, template, resources, envVars]
+      required: [appName, gitUrl, namespace, template, resources, envVars]
       properties:
         appName:
           type: string
@@ -1625,6 +1634,10 @@ components:
           type: string
         clusterId:
           type: string
+          description: 적용할 클러스터. stackId 가 없으면 필수다. stackId 가 있으면 스택 클러스터여야 하고(다르면 400 STACK_CLUSTER_MISMATCH), 비우면 채운다.
+        stackId:
+          type: string
+          description: 앱을 묶을 스택(관측 주소·접속 주소의 출처).
         namespace:
           type: string
         template:

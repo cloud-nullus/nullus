@@ -213,8 +213,8 @@ func (uc *DeletePipeline) deleteClusterResources(
 	// 실제로 그렇게 남았다. 번들의 클러스터가 스택의 것이다. 플랫폼이 직접 적용한
 	// 경로(긴급 직접 배포)는 파이프라인의 클러스터에 올렸으니 그쪽을 지운다.
 	clusterID := pipeline.ClusterID
-	if bundle != nil && pipeline.DelegatesBuildToRunner() && strings.TrimSpace(bundle.ClusterID) != "" {
-		clusterID = bundle.ClusterID
+	if bundle != nil {
+		clusterID = pipeline.DeployClusterID(bundle.ClusterID)
 	}
 	kubeconfig, err := uc.kubeconfig.GetKubeconfig(ctx, clusterID)
 	if err != nil {

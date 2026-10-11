@@ -395,31 +395,37 @@ export const cicdApiCalls = {
       }
     }
 
-    const items: Pipeline[] = (raw.items ?? []).map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      // 배포된 앱이 열리는 주소. 스택에 접근 도메인이 없으면 비어 있다 —
-      // 서버가 계산해 내려준다(도메인이 바뀌면 저장된 값은 그 순간 거짓이 된다).
-      accessUrl: p.access_url ?? "",
-      mode: cicdApiCalls.resolvePipelineMode(
-        templateStagesMap.get(p.template_id),
-      ),
-      appType: (p.app_type ?? "") as Pipeline["appType"],
-      templateId: p.template_id ?? "",
-      stackId: p.stack_id ?? "",
-      executionMode: p.execution_mode ?? "",
-      gitRepoUrl: p.git_repo_url ?? "",
-      clusterId: p.cluster_id ?? "",
-      clusterName: clusterMap.get(p.cluster_id) ?? "",
-      namespace: p.namespace ?? "default",
-      dockerfilePath: p.dockerfile_path ?? "",
-      dockerContext: p.docker_context ?? "",
-      envVars: p.env_vars ?? {},
-      status: (p.status ?? "pending") as Pipeline["status"],
-      lastDeployedAt: latestDeployByPipeline.get(p.id) ?? null,
-      createdAt: p.created_at ?? "",
-      stages: p.stages ?? [],
-    }));
+    const items: Pipeline[] = (raw.items ?? []).map((p: any) => {
+      // 앱이 실제로 서 있는 클러스터. 서버가 계산해 내려준다 — 스택 파이프라인의
+      // 앱은 스택의 Argo CD 가 스택 클러스터에 올리므로, 그 전에 만든 파이프라인에
+      // 저장된 클러스터(화면에서 고른 값)를 보여 주면 앱이 없는 곳을 가리킨다.
+      const deployClusterId = p.deploy_cluster_id || p.cluster_id || "";
+      return {
+        id: p.id,
+        name: p.name,
+        // 배포된 앱이 열리는 주소. 스택에 접근 도메인이 없으면 비어 있다 —
+        // 서버가 계산해 내려준다(도메인이 바뀌면 저장된 값은 그 순간 거짓이 된다).
+        accessUrl: p.access_url ?? "",
+        mode: cicdApiCalls.resolvePipelineMode(
+          templateStagesMap.get(p.template_id),
+        ),
+        appType: (p.app_type ?? "") as Pipeline["appType"],
+        templateId: p.template_id ?? "",
+        stackId: p.stack_id ?? "",
+        executionMode: p.execution_mode ?? "",
+        gitRepoUrl: p.git_repo_url ?? "",
+        clusterId: deployClusterId,
+        clusterName: clusterMap.get(deployClusterId) ?? "",
+        namespace: p.namespace ?? "default",
+        dockerfilePath: p.dockerfile_path ?? "",
+        dockerContext: p.docker_context ?? "",
+        envVars: p.env_vars ?? {},
+        status: (p.status ?? "pending") as Pipeline["status"],
+        lastDeployedAt: latestDeployByPipeline.get(p.id) ?? null,
+        createdAt: p.created_at ?? "",
+        stages: p.stages ?? [],
+      };
+    });
 
     return { items, total: raw.total ?? items.length };
   },
@@ -460,7 +466,8 @@ export const cicdApiCalls = {
       stackId: raw.stack_id ?? "",
       executionMode: raw.execution_mode ?? "ci_cd",
       gitRepoUrl: raw.git_repo_url ?? "",
-      clusterId: raw.cluster_id ?? "",
+      // 서버가 계산한 배포 클러스터는 응답 최상위에 온다.
+      clusterId: res.deploy_cluster_id || raw.cluster_id || "",
       clusterName: "",
       namespace: raw.namespace ?? "default",
       dockerfilePath: raw.dockerfile_path ?? "",
