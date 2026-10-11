@@ -116,6 +116,44 @@ func TestRunRestore_네임스페이스를_PVC보다_먼저_만든다(t *testing.
 	assert.Less(t, ns, tr.indexOf("res.apply"))
 }
 
+// 복구로 게이트웨이 주소가 바뀌면(다른 클러스터·ClusterIP 없는 옛 백업) 러너·Argo CD 의 hostAliases 가
+// 옛 주소를 가리킨다. 워크로드를 다시 띄운 뒤 지금 주소로 맞추고, 결과를 복구 기록에 남긴다.
+func TestRunRestore_워크로드_재개_뒤_게이트웨이_주소를_다시_맞춘다(t *testing.T) {
+	uc, tr, _, _, _, _, backupID := seedBackup(t, domain.ModeFull)
+	repin := &fakeGatewayAliases{tr: tr, ip: "10.96.200.9", updated: []string{"argo-cd", "gitlab-runner"}}
+	uc.d.GatewayAliases = repin
+	// 복구를 시작할 때(DB 를 되돌리기 전) 붙은 클러스터다. full 복구가 DB 의 클러스터 정보를 백업
+	// 시점으로 돌려도 재설정은 실제로 되돌린 클러스터를 봐야 한다.
+	uc.d.StackKubeconfig = []byte("restored-cluster")
+
+	rr, err := uc.Run(context.Background(), RunRestoreRequest{
+		BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, "stack-1", repin.stackID)
+	assert.Equal(t, "nullus", repin.namespace)
+	assert.Equal(t, "restored-cluster", repin.kubeconfig)
+	assert.Less(t, tr.indexOf("scale.up:gitlab"), tr.indexOf("gateway.repin"), "게이트웨이 Service 가 선 뒤에 읽는다")
+	require.NotNil(t, rr.IntegrityReport.GatewayAliases)
+	assert.Equal(t, "10.96.200.9", rr.IntegrityReport.GatewayAliases.GatewayIP)
+	assert.Equal(t, []string{"argo-cd", "gitlab-runner"}, rr.IntegrityReport.GatewayAliases.Updated)
+}
+
+// 재설정은 덤이다 — 실패해도 복구는 성공으로 두고 이유를 기록에 남긴다. 데이터는 이미 되돌아왔다.
+func TestRunRestore_게이트웨이_주소_재설정이_실패해도_복구는_성공한다(t *testing.T) {
+	uc, tr, _, _, _, _, backupID := seedBackup(t, domain.ModeFull)
+	uc.d.GatewayAliases = &fakeGatewayAliases{tr: tr, err: errors.New("게이트웨이 Service 가 없다")}
+
+	rr, err := uc.Run(context.Background(), RunRestoreRequest{
+		BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusSucceeded, rr.Status)
+	require.NotNil(t, rr.IntegrityReport.GatewayAliases)
+	assert.Contains(t, rr.IntegrityReport.GatewayAliases.Error, "게이트웨이 Service 가 없다")
+}
+
 // 플랫폼만 되돌리는 복구는 스택 네임스페이스를 건드리지 않는다.
 func TestRunRestore_플랫폼만이면_네임스페이스를_만들지_않는다(t *testing.T) {
 	uc, tr, _, _, _, _, backupID := seedBackup(t, domain.ModeFull)
@@ -125,6 +163,18 @@ func TestRunRestore_플랫폼만이면_네임스페이스를_만들지_않는다
 	})
 	require.NoError(t, err)
 	assert.Equal(t, -1, tr.indexOf("ns.ensure:nullus"))
+}
+
+func TestRunRestore_플랫폼만이면_게이트웨이_주소를_건드리지_않는다(t *testing.T) {
+	uc, tr, _, _, _, _, backupID := seedBackup(t, domain.ModeFull)
+	uc.d.GatewayAliases = &fakeGatewayAliases{tr: tr}
+
+	rr, err := uc.Run(context.Background(), RunRestoreRequest{
+		BackupRunID: backupID, Mode: domain.ModePlatformOnly,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, -1, tr.indexOf("gateway.repin"))
+	assert.Nil(t, rr.IntegrityReport.GatewayAliases)
 }
 
 // 설계 §6.1 0단계 — 키 없이 진행하면 "복구된 것처럼 보이는 망가진 상태" 가 된다.

@@ -484,7 +484,7 @@ kubectl -n <네임스페이스> annotate applications.argoproj.io <앱> \
 | 파이프라인 생성이 `ENCRYPTION_KEY must be 32 bytes` | 같은 원인 | 위와 같다. 설치 직후 파드 수를 세면 훨씬 일찍 잡힌다 |
 | 스택 생성이 `stack name ... already exists` | 네임스페이스만 지우면 `stacks` 레코드가 남는다 | DB 의 스택 행도 지운다. 외래키는 `pipelines.stack_id` 와 `stack_config_versions.stack_id` 둘뿐이다 |
 | 복구 뒤 앱이 `ImagePullBackOff`, 태그가 `:bootstrap` | Argo CD 가 아직 조정하지 않았다 | §4.9. `:bootstrap` 은 레지스트리에 없는 초기값이다 |
-| 복구 뒤 도메인이 옛 IP 를 가리킨다 | 복구는 Service 를 백업 때의 ClusterIP 로 되살리되, 그 IP 를 쓸 수 없으면(다른 클러스터·이미 쓰임) 새 주소로 되살린다(API 로그에 경고) | 설치가 게이트웨이 IP 를 러너·Argo CD hostAliases 와 kind 노드 `/etc/hosts` 에 박는다 — 새 주소로 다시 쓴다(로컬 E2E 가이드 13단계) |
+| 복구 뒤 도메인이 옛 IP 를 가리킨다 | 복구는 Service 를 백업 때의 ClusterIP 로 되살리되, 그 IP 를 쓸 수 없으면(다른 클러스터·이미 쓰임) 새 주소로 되살린다 | 러너·Argo CD hostAliases 는 복구가 새 주소로 맞춘다(응답 `integrity_report.gateway_aliases`). kind 노드 `/etc/hosts` 는 손으로 다시 쓴다(로컬 E2E 가이드 13단계) |
 | kind 노드 `/etc/hosts` 에서 항목이 안 지워진다 | 그 파일은 bind mount 라 `sed -i` 가 새 파일을 만들어 갈아끼우지 못한다 | `grep -v ... > /tmp/h && cat /tmp/h > /etc/hosts` 로 **제자리 덮어쓰기** 한다. 안 그러면 낡은 항목이 누적되고 앞의 것이 이긴다 |
 | 네임스페이스를 지운 뒤 port-forward 가 안 돌아온다 | 대상 파드가 사라져 세션이 끊긴다 | 복구 후 다시 건다. 지문 수집이 이것 때문에 실패하면 **대조를 하지 말고** 포워드부터 살린다 |
 | Jenkins 빌드가 `SUCCESS` 인데 아무것도 안 만들어졌다 | HEAD 가 CD 의 `[skip ci]` 커밋이라 Build·Deploy 단계가 `when` 조건에서 걸러졌다 | 콘솔 로그에서 `Stage "Build" skipped due to when conditional` 을 확인한다. **성공 표시만으로 파이프라인이 돈다고 말할 수 없다** |
@@ -505,7 +505,7 @@ kubectl -n <네임스페이스> annotate applications.argoproj.io <앱> \
 - **다중 노드** — RWO 볼륨이 노드에 흩어지면 §3.5 의 "한 Job 이 전부 마운트" 전제가 깨진다. 리허설은 단일 워커였다
 - **에어갭** — 이미지 반입과 egress 경로(B4-2)
 - **Argo CD 자동 동기화** — 리허설에서는 `refresh=hard` 로 앞당겼다. 기본 주기 3분 내 자동 회복은 **추정이지 관찰이 아니다**
-- **다른 클러스터로의 복구** — Service 는 백업 때의 ClusterIP 로 되살리지만, 그 IP 를 쓸 수 없는 클러스터에서는 새 주소를 받는다. 설치가 IP 를 박아 둔 러너·Argo CD hostAliases 는 그때 다시 맞춰야 한다
+- **다른 클러스터로의 복구** — Service 는 그 클러스터에서 새 주소를 받고, 복구가 러너·Argo CD hostAliases 를 새 주소로 맞춘다. 전체 복구로 다른 클러스터에 되돌리는 리허설은 아직 하지 않았다
 - **차트 버전이 다른 대상으로의 복구** — 매니페스트에 `helm_releases` 를 기록하고 대조해 경고까지는 하지만, 실제로 버전이 어긋난 상태로 복구했을 때 무엇이 깨지는지는 재보지 않았다
 
 ---

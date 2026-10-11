@@ -50,6 +50,8 @@ type Deps struct {
 	Kubeconfig      KubeconfigProvider
 	TokenSources    bridge.AdminTokenSourceRepo
 	RotationPausing Pausable
+	// GatewayAliases 는 복구 뒤 러너·Argo CD hostAliases 를 게이트웨이의 지금 주소로 맞춘다(스택 모듈).
+	GatewayAliases port.GatewayAliasRepinner
 	// EncryptionKey 는 clusters.kubeconfig 복호화 키다 (ENCRYPTION_KEY).
 	// 백업이 쓰지는 않지만, 복구 전제 조건 검사에 필요하다 — 이 키가 없으면
 	// 복구해도 어떤 클러스터에도 접근할 수 없다 (§1.3).
@@ -260,7 +262,9 @@ func (m *Module) Restore(ctx context.Context, stackID string) (*usecase.RestoreU
 		deps.Scaler, deps.Archiver, deps.Resources = a.Scaler, a.Archiver, a.Resources
 		deps.Releases = a.Releases
 		deps.Namespaces = a.Namespaces
+		deps.StackKubeconfig = a.Kubeconfig
 	}
+	deps.GatewayAliases = m.deps.GatewayAliases
 	return usecase.NewRestoreUseCase(deps), nil
 }
 

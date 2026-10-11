@@ -259,6 +259,30 @@ func (r *PostgresStackRepository) Update(ctx context.Context, stack *domain.Stac
 	return nil
 }
 
+// SetYAMLOverride 는 스택 설정의 yaml_overrides 에서 키 하나만 바꾼다.
+//
+// Update 는 행 전체(이름·상태·단계·config)를 덮어쓴다. 오래 걸리는 작업 뒤에 그 결과를 저장하면 그 사이
+// 들어온 상태 전이나 다른 키의 편집을 되돌린다 — 그리고 StackConfig 에 없는 config.tools 도 지운다.
+// 여기서는 그 키만 바꾼다.
+func (r *PostgresStackRepository) SetYAMLOverride(ctx context.Context, stackID, key, yamlText string) error {
+	const q = `
+		UPDATE stacks
+		SET config = jsonb_set(
+				COALESCE(config, '{}'::jsonb)
+					|| jsonb_build_object('yaml_overrides', COALESCE(config->'yaml_overrides', '{}'::jsonb)),
+				ARRAY['yaml_overrides', $2::text], to_jsonb($3::text), true),
+			updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`
+	ct, err := r.pool.Exec(ctx, q, stackID, key, yamlText)
+	if err != nil {
+		return fmt.Errorf("set yaml override: %w", err)
+	}
+	if ct.RowsAffected() == 0 {
+		return fmt.Errorf("stack %q not found", stackID)
+	}
+	return nil
+}
+
 func (r *PostgresStackRepository) UpdateTools(ctx context.Context, stack *domain.Stack) error {
 	const selectQ = `SELECT config FROM stacks WHERE id = $1 AND deleted_at IS NULL`
 

@@ -135,6 +135,35 @@ func (r *MemoryStackRepository) UpdateTools(ctx context.Context, stack *domain.S
 	return r.Update(ctx, stack)
 }
 
+// SetYAMLOverride 는 스택 설정의 yaml_overrides 에서 키 하나만 바꾼다. 행의 다른 값은 그대로다.
+func (r *MemoryStackRepository) SetYAMLOverride(_ context.Context, stackID, key, yamlText string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	existing, ok := r.stacks[stackID]
+	if !ok || existing.DeletedAt != nil {
+		return fmt.Errorf("stack %q not found", stackID)
+	}
+	var cfg domain.StackConfig
+	switch c := existing.Config.(type) {
+	case domain.StackConfig:
+		cfg = c
+	case *domain.StackConfig:
+		if c != nil {
+			cfg = *c
+		}
+	}
+	overrides := make(map[string]string, len(cfg.YAMLOverrides)+1)
+	for k, v := range cfg.YAMLOverrides {
+		overrides[k] = v
+	}
+	overrides[key] = yamlText
+	cfg.YAMLOverrides = overrides
+	cp := *existing
+	cp.Config = cfg
+	r.stacks[stackID] = &cp
+	return nil
+}
+
 // Delete removes a stack by ID.
 func (r *MemoryStackRepository) Delete(_ context.Context, id string) error {
 	r.mu.Lock()

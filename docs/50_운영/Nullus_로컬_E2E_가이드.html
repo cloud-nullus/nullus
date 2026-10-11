@@ -894,14 +894,15 @@ kubectl --context $CTX -n $NS get pods -w</code></pre></div>
   <div class="step-head">
     <span class="step-num">13</span>
     <div><h3>복구 후 배선</h3>
-      <div class="badges"><span class="badge warn" title="2026-10-11 kind: 네임스페이스를 지운 뒤 같은 ClusterIP 로 Service 가 되살아나는 것을 확인했다. 전체 복구 리허설로는 아직 재보지 않았다">코드 기준</span><span class="badge manual">수동</span></div></div>
+      <div class="badges"><span class="badge ok" title="2026-10-11 kind: 게이트웨이 Service 를 새 IP 로 다시 만든 뒤 재설정이 argo-cd·gitlab-runner values 를 바꿔 다시 적용했고, Argo CD 가 저장소를 다시 읽고 CI 잡이 clone·push 했다. 전체 복구 리허설로는 아직 재보지 않았다">실측 기록 (재설정)</span><span class="badge manual">수동 (kind 노드)</span></div></div>
     <label class="donebox"><input type="checkbox" data-step="s13"> 완료</label>
   </div>
   <div class="step-body">
-    <p>러너와 Argo CD는 설치 때의 게이트웨이 주소를 <code>hostAliases</code>로 박아 두었고, kind 노드의 <code>/etc/hosts</code>도 그 주소를 가리킨다. 복구는 Service를 <b>백업 때의 ClusterIP로</b> 되살리므로, 같은 클러스터로 되돌리면 게이트웨이 주소가 그대로이고 이 배선을 고칠 필요가 없다. 먼저 주소가 같은지 보고, 맥에서 도구를 여는 포워딩만 다시 건다.</p>
-    <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>NEW_IP=$(kubectl --context $CTX -n $NS get svc -l gateway.envoyproxy.io/owning-gateway-name \
+    <p>러너와 Argo CD는 설치 때의 게이트웨이 주소를 <code>hostAliases</code>로 박아 두었고, kind 노드의 <code>/etc/hosts</code>도 그 주소를 가리킨다. 복구는 Service를 <b>백업 때의 ClusterIP로</b> 되살리고, 그래도 주소가 바뀌면(다른 클러스터로 복구, ClusterIP가 없는 옛 백업) 복구 끝에 <b>러너·Argo CD의 hostAliases를 새 주소로 맞춘다</b> — 결과는 복구 응답의 <code>integrity_report.gateway_aliases</code>에 있다(<code>updated</code>가 비었으면 바꿀 것이 없었다 — 주소가 그대로였거나 박아 둔 주소가 없었다, <code>error</code>가 있으면 일부를 맞추지 못했다. Argo CD는 같은 차트 버전을 저장소에서 다시 받으므로 외부에 닿지 못하면 Argo CD만 실패로 남는다). 손으로 할 것은 kind 노드의 <code>/etc/hosts</code>와 맥의 포워딩뿐이다.</p>
+    <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>jq '.integrity_report.gateway_aliases' ~/nullus-restore.json   <span class="c"># 12단계에서 저장한 응답</span>
+NEW_IP=$(kubectl --context $CTX -n $NS get svc -l gateway.envoyproxy.io/owning-gateway-name \
   -o jsonpath='{.items[0].spec.clusterIP}')
-echo "$OLD_IP -&gt; $NEW_IP"   <span class="c"># 같으면 아래 접힌 수동 배선은 건너뛴다</span>
+echo "$OLD_IP -&gt; $NEW_IP"   <span class="c"># 같으면 아래 접힌 노드 배선은 건너뛴다</span>
 
 <span class="c"># 맥에서 도구를 여는 라우터와 GitLab 포트포워딩</span>
 ./scripts/port-forward-gateway.sh
@@ -909,31 +910,14 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8181/users/sign_in   <span cl
 
 <span class="c"># API 캐시를 비운다 (환경 파일과 GitLab 주소는 런북이 넣는다)</span>
 ./scripts/runbook_local.sh refresh</code></pre></div>
-    <details class="fold"><summary>주소가 바뀌었으면 — 다른 클러스터로 복구했거나 그 IP를 다른 Service가 차지했을 때</summary><div>
-    <p>복구는 그 IP를 쓸 수 없으면 멈추지 않고 새 주소로 되살리며 API 로그에 경고(<code>백업 때의 ClusterIP 로 Service 를 되살리지 못해</code>)를 남긴다. 그때는 옛 주소를 박아 둔 곳을 새 주소로 바꾼다.</p>
-    <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code><span class="c"># 1) kind 노드 /etc/hosts (runbook 의 노드 배선과 같은 방식)</span>
-for node in $(kind get nodes --name nullus-platform); do
+    <details class="fold"><summary>주소가 바뀌었으면 — kind 노드 /etc/hosts</summary><div>
+    <p>kind 노드는 스택 레지스트리(<code>registry.&lt;도메인&gt;</code>)에서 앱 이미지를 받으려고 <code>/etc/hosts</code>에 게이트웨이 주소를 둔다. kind에서만 하는 로컬 배선이라 복구가 고치지 않는다. 그대로 두면 앱 파드가 <code>ImagePullBackOff</code>에 걸린다.</p>
+    <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>for node in $(kind get nodes --name nullus-platform); do
   for host in gitlab.$DOMAIN registry.$DOMAIN; do
     docker exec "$node" sh -c "grep -v ' $host\$' /etc/hosts &gt; /tmp/h &amp;&amp; cat /tmp/h &gt; /etc/hosts &amp;&amp; rm -f /tmp/h; echo '$NEW_IP $host' &gt;&gt; /etc/hosts"
   done
-done
-
-<span class="c"># 2) hostAliases 에 옛 주소를 가진 워크로드 (러너·Argo CD)</span>
-for w in $(kubectl --context $CTX -n $NS get deploy,sts -o json \
-    | jq -r --arg old "$OLD_IP" '.items[] | select([.spec.template.spec.hostAliases[]?.ip] | index($old)) | "\(.kind|ascii_downcase)/\(.metadata.name)"'); do
-  kubectl --context $CTX -n $NS get "$w" -o json \
-    | jq --arg old "$OLD_IP" --arg new "$NEW_IP" \
-        '.spec.template.spec.hostAliases |= map(if .ip == $old then .ip = $new else . end)' \
-    | kubectl --context $CTX -n $NS replace -f -
-done
-
-<span class="c"># 3) 러너 설정(ConfigMap) 안의 주소</span>
-for cm in $(kubectl --context $CTX -n $NS get cm -o json \
-    | jq -r --arg old "$OLD_IP" '.items[] | select((.data // {}) | tostring | contains($old)) | .metadata.name'); do
-  kubectl --context $CTX -n $NS get cm "$cm" -o json | sed "s/$OLD_IP/$NEW_IP/g" \
-    | kubectl --context $CTX -n $NS replace -f -
-done
-kubectl --context $CTX -n $NS rollout restart deploy/gitlab-runner   <span class="c"># 이름이 다르면 get deploy 로 러너를 찾는다</span></code></pre></div>
+done</code></pre></div>
+    <p><code>integrity_report.gateway_aliases.error</code>가 있으면 러너·Argo CD도 손으로 맞춘다 — 러너 values의 <code>runners.config</code>(TOML <code>host_aliases</code>)와 Argo CD values의 <code>global.hostAliases</code>에서 옛 주소를 새 주소로 바꿔 스택 화면의 OSS 설정 편집으로 적용한다.</p>
     </div></details>
     <p class="check-title">확인</p>
     <ul class="check">
@@ -1109,7 +1093,6 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
       <li><b>SAST 결과 리포트 전에 만든 파이프라인은 실행 기록에 SAST 결과가 붙지 않는다.</b> 그 파이프라인의 <code>sast</code> 잡은 <code>sast-report.json</code> 을 남기지 않는다 — 단계 상태(성공 · 실패)만 보인다. 파이프라인을 다시 만들면 붙는다. <code>sonar-scanner</code> 이미지는 amd64 만 낸다 — arm64 노드는 에뮬레이션이 있어야 돈다(에어갭 설치도 같다).<span class="ref">internal/cicd/adapter/scaffold/sast.go</span></li>
       <li><b>배포 되커밋(<code>[skip ci]</code>)이 실행 기록에 실패로 남는다.</b> GitLab 은 그 커밋의 파이프라인을 <code>skipped</code> 로 만드는데, 동기화가 이를 중단(ABORTED)으로 읽어 화면에 실패로 보인다.<span class="ref">internal/cicd/adapter/gitlab/build_reader.go:166</span></li>
       <li><b>백업 문서의 <code>X-Org-Id</code>가 쓰지 않는 조직이다.</b> 그 ID로 만든 백업은 화면 목록에 보이지 않는다.<span class="ref">docs/50_운영/Nullus_백업복구_로컬_테스트_가이드.md · internal/shared/domain/org.go:8-16</span></li>
-      <li><b>다른 클러스터로 복구하면 게이트웨이 주소가 바뀐다.</b> 복구는 같은 ClusterIP를 쓸 수 없으면 새 주소로 되살리고 경고만 남긴다 — 러너·Argo CD의 hostAliases(helm values)는 옛 주소 그대로라 13단계의 수동 배선이 필요하다.<span class="ref">internal/backup/adapter/kube/resource_dumper.go · internal/stack/adapter/helm/gitlab-runner-host-aliases.go</span></li>
       <li><b>OpenBao KV 가져오기가 빈 stackID로 불려 전역 OpenBao를 향한다.</b> 스택 금고는 볼륨 복구로 돌아온다.<span class="ref">internal/backup/usecase/run_restore.go:254</span></li>
       <li><b>제품 기능으로 스택을 지운 뒤의 복구는 리허설되지 않았다.</b> 마지막 스택 삭제가 공용 자원(GatewayClass·Gateway CRD·cert-manager)을 회수하는데(#284) 백업은 이것을 담지 않는다.<span class="ref">internal/stack/usecase/delete_shared_resources.go · internal/backup/adapter/kube/resource_dumper.go:167-233</span></li>
       <li><b>동기 백업 요청을 끊으면 워크로드가 0으로 남을 수 있다.</b> 재개 처리가 요청 컨텍스트에 묶여 있다.<span class="ref">internal/backup/usecase/run_backup.go:289-296</span></li>
