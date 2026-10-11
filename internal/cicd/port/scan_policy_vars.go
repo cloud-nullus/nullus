@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // 이미지 스캔 단계가 읽는 변수 이름이다.
@@ -50,5 +51,11 @@ func ScanPolicyVariables(p domain.ScanPolicy) []ProjectVariable {
 		{Key: ScanIgnoreUnfixedVariable, Value: strconv.FormatBool(p.IgnoreUnfixed)},
 		{Key: ScanOnUnreachableVariable, Value: string(p.UnreachableActionOrDefault())},
 		{Key: SASTOnGateFailureVariable, Value: string(p.SASTGateActionOrDefault())},
+		// 스캐너 이미지도 정책과 함께 민다. 플랫폼이 이미지를 올리면(예: 멀티아치
+		// sonar-scanner) 파이프라인 정의를 다시 쓰지 않아도 다음 실행부터 따라온다 —
+		// GitLab 은 프로젝트 변수가 .gitlab-ci.yml 전역 variables 보다 앞서고, GitHub
+		// 워크플로는 vars 를 먼저 본다. Jenkins 파드 템플릿은 정적이라 정의 갱신이 답이다.
+		{Key: ScanImageVariable, Value: shareddomain.TrivyCLIImage},
+		{Key: SASTImageVariable, Value: shareddomain.SonarScannerImage},
 	}
 }

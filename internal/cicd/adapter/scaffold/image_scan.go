@@ -5,14 +5,14 @@ import (
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 const (
-	// defaultScannerImage 는 CI 잡이 쓸 Trivy CLI 이미지다.
-	//
-	// 취약점 DB 는 들어 있지 않다 — client 로 붙어 서버에 매칭을 맡기므로
-	// 필요 없다. 에어갭 설치는 내부 미러 경로로 파이프라인 변수를 덮는다.
-	defaultScannerImage = "aquasec/trivy:0.74.0"
+	// defaultScannerImage 는 CI 잡이 쓸 Trivy CLI 이미지다. 정의 파일의 기본값이고, 플랫폼이
+	// 정책과 함께 미는 변수(NULLUS_TRIVY_IMAGE)가 이를 덮는다 — 에어갭 설치도 같은 변수로
+	// 내부 미러 경로를 넣는다. 값은 공용 도메인이 가진다(정책 푸시와 같은 출처).
+	defaultScannerImage = shareddomain.TrivyCLIImage
 
 	// scanReportFile 은 실행 기록 동기화가 같은 이름으로 찾는다.
 	scanReportFile = port.ImageScanReportFile
