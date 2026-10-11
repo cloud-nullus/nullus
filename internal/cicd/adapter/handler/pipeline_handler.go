@@ -238,6 +238,9 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 		if errors.Is(err, usecase.ErrStackOrgMismatch) {
 			return errorResponse(c, http.StatusForbidden, "STACK_ORG_MISMATCH", err.Error())
 		}
+		if errors.Is(err, usecase.ErrStackClusterMismatch) {
+			return errorResponse(c, http.StatusBadRequest, "STACK_CLUSTER_MISMATCH", err.Error())
+		}
 		return errorResponse(c, http.StatusBadRequest, "PIPELINE_CONFIG_INVALID", err.Error())
 	}
 
@@ -550,12 +553,17 @@ func (h *PipelineHandler) GetPipelineResources(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "KUBECONFIG_PROVIDER_NOT_CONFIGURED", "kubeconfig provider not configured")
 	}
 
-	kubeconfig, err := h.kubeconfig.GetKubeconfig(c.Request().Context(), pipeline.ClusterID)
+	// 앱이 실제로 서 있는 클러스터를 읽는다. 스택 파이프라인의 앱은 스택의 Argo CD
+	// 가 스택 클러스터에 올리므로, 파이프라인에 적힌 클러스터를 읽으면 빈 네임스페이스를
+	// 보고 모니터링 탭이 비어 보인다 — 실제로 그랬다.
+	clusterID := usecase.DeployClusterID(c.Request().Context(), h.stackReader, pipeline)
+	kubeconfig, err := h.kubeconfig.GetKubeconfig(c.Request().Context(), clusterID)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "KUBECONFIG_LOAD_FAILED", err.Error())
 	}
 	if len(kubeconfig) == 0 {
-		return errorResponse(c, http.StatusBadRequest, "KUBECONFIG_NOT_REGISTERED", "kubeconfig is not registered for this cluster")
+		return errorResponse(c, http.StatusBadRequest, "KUBECONFIG_NOT_REGISTERED",
+			fmt.Sprintf("kubeconfig is not registered for cluster %s", clusterID))
 	}
 
 	items, err := collectPipelineResources(c.Request().Context(), pipeline, kubeconfig)

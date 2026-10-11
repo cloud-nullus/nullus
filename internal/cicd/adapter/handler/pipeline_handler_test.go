@@ -608,3 +608,79 @@ func TestPipelineHandler_RegisterStackRoutes_ServesStackPipelines(t *testing.T) 
 	require.Len(t, resp.Items, 1)
 	assert.Equal(t, "pip-1", resp.Items[0].ID)
 }
+
+type stubStackReader struct {
+	summary *port.StackSummary
+	err     error
+}
+
+func (s *stubStackReader) GetStackSummary(context.Context, string) (*port.StackSummary, error) {
+	return s.summary, s.err
+}
+
+// recordingKubeconfigProvider 는 어느 클러스터를 물었는지 남긴다. 등록되지 않은
+// 것으로 답해 네트워크에 나가지 않게 한다.
+type recordingKubeconfigProvider struct{ asked []string }
+
+func (r *recordingKubeconfigProvider) GetKubeconfig(_ context.Context, clusterID string) ([]byte, error) {
+	r.asked = append(r.asked, clusterID)
+	return nil, nil
+}
+
+// 모니터링 탭이 읽는 리소스는 앱이 실제로 서 있는 클러스터에서 찾아야 한다.
+// 스택 파이프라인의 앱은 스택의 Argo CD 가 스택 클러스터에 올린다 — 파이프라인에
+// 다른 클러스터가 적혀 있어도 그렇다. 그 클러스터를 읽으면 탭이 비어 보인다.
+func TestPipelineHandler_GetPipelineResources_ReadsStackCluster(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(&domain.Pipeline{
+		ID: "pip_1", Name: "orders", StackID: "stk_1", ClusterID: "c-chosen",
+		ExecutionMode: domain.ExecutionModeStackIntegrated, Namespace: "apps",
+	})
+	kubeconfigs := &recordingKubeconfigProvider{}
+	deployments := &mockDeploymentRepository{}
+	h := cicdhandler.NewPipelineHandler(
+		usecase.NewCreatePipeline(pipelineRepo, newMockPipelineTemplateRepository()),
+		usecase.NewListPipelines(pipelineRepo),
+		usecase.NewDeployPipeline(pipelineRepo, deployments, kubeconfigs, &noopManifestApplier{}),
+		pipelineRepo, deployments, kubeconfigs, kube.NewStepTracker(), nil,
+	).WithStackReader(&stubStackReader{summary: &port.StackSummary{ID: "stk_1", ClusterID: "c-stack"}})
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/api/v1"))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/pipelines/pip_1/resources", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, []string{"c-stack"}, kubeconfigs.asked)
+	// 대역이 kubeconfig 를 주지 않았으니 여기서 멈춘다 — 어느 클러스터를 물었는지가 요점이다.
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "KUBECONFIG_NOT_REGISTERED")
+}
+
+// 스택과 다른 클러스터로 만들려는 요청은 400 으로 거절한다. 받아 두면 앱은
+// 스택 클러스터에 뜨는데 화면은 고른 클러스터를 보여 준다.
+func TestPipelineHandler_Create_StackClusterMismatch(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository()
+	reader := &stubStackReader{summary: &port.StackSummary{
+		ID: "stk_1", OrgID: "11111111-1111-1111-1111-111111111111", ClusterID: "c-stack", State: "completed",
+	}}
+	deployments := &mockDeploymentRepository{}
+	h := cicdhandler.NewPipelineHandler(
+		usecase.NewCreatePipeline(pipelineRepo, newMockPipelineTemplateRepository(), reader),
+		usecase.NewListPipelines(pipelineRepo),
+		usecase.NewDeployPipeline(pipelineRepo, deployments, &noopKubeconfigProvider{}, &noopManifestApplier{}),
+		pipelineRepo, deployments, &noopKubeconfigProvider{}, kube.NewStepTracker(), nil,
+	)
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/api/v1"))
+
+	// X-Org-ID 를 보내지 않는다 — 조직 검증은 DB 를 쓰고, 없으면 기본 조직으로 떨어진다.
+	body := `{"name":"orders","cluster_id":"c-other","stack_id":"stk_1","namespace":"apps","app_type":"backend","execution_mode":"emergency_direct"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/pipelines", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "STACK_CLUSTER_MISMATCH")
+	assert.Equal(t, 0, pipelineRepo.created)
+}

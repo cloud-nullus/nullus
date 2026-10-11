@@ -44,9 +44,15 @@ func (f *fakeApplier) ApplyWithTracking(ctx context.Context, kc []byte, manifest
 	return f.Apply(ctx, kc, manifests)
 }
 
-type fakeKubeconfigProvider struct{ err error }
+type fakeKubeconfigProvider struct {
+	err error
+	// asked 는 어느 클러스터의 kubeconfig 를 요청했는지다. 클러스터를 잘못 고르면
+	// 호출은 성공하고 결과만 비어 보이므로, 어디를 봤는지를 직접 확인해야 한다.
+	asked []string
+}
 
-func (f *fakeKubeconfigProvider) GetKubeconfig(_ context.Context, _ string) ([]byte, error) {
+func (f *fakeKubeconfigProvider) GetKubeconfig(_ context.Context, clusterID string) ([]byte, error) {
+	f.asked = append(f.asked, clusterID)
 	if f.err != nil {
 		return nil, f.err
 	}

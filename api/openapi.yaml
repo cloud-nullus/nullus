@@ -408,6 +408,10 @@ paths:
       tags: [cicd]
       summary: Create pipeline
       operationId: createPipeline
+      description: |
+        stackId 가 있으면 clusterId 는 스택이 설치된 클러스터여야 한다(다르면 400
+        STACK_CLUSTER_MISMATCH, 비우면 스택 클러스터로 채움). 스택의 Argo CD 가
+        자기 클러스터에 배포하기 때문이다.
       requestBody:
         required: true
         content:
@@ -421,6 +425,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Pipeline'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         'default':
@@ -1566,7 +1572,7 @@ components:
 
     CreatePipelineRequest:
       type: object
-      required: [name, appType, clusterId]
+      required: [name, appType]
       properties:
         name:
           type: string
@@ -1574,6 +1580,16 @@ components:
           $ref: '#/components/schemas/AppType'
         clusterId:
           type: string
+          description: |
+            배포 클러스터. stackId 가 없으면 필수다.
+            stackId 가 있으면 스택이 설치된 클러스터여야 한다 — 스택의 Argo CD 는
+            자기 클러스터(kubernetes.default.svc)에만 배포하므로 앱은 늘 그곳에 선다.
+            다르면 400 STACK_CLUSTER_MISMATCH 로 거절하고, 비우면 스택 클러스터로 채운다.
+        stackId:
+          type: string
+          description: |
+            파이프라인을 묶을 스택. 저장소·CI 잡·Argo CD Application 을 이 스택의
+            도구로 만들고, 배포 클러스터는 이 스택의 클러스터로 정해진다.
         templateId:
           type: string
 
