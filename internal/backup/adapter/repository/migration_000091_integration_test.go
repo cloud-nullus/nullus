@@ -32,7 +32,8 @@ func TestMigration000091_고아_백업을_기본_조직으로_옮기고_FK를_�
 		domain.ModeComponents(domain.ModePlatformOnly))
 	require.NoError(t, repo.CreateRun(ctx, orphan), "FK 이전에는 들어가야 한다")
 
-	require.NoError(t, applyMigrationRange(ctx, pool, "000091_", ""))
+	// 000092 가 FK 를 다시 거두므로(복구가 막혀서 — 그 파일의 주석) FK 가 있던 창만 본다.
+	require.NoError(t, applyMigrationRange(ctx, pool, "000091_", "000092_"))
 
 	got, err := repo.GetRun(ctx, orphan.ID)
 	require.NoError(t, err)

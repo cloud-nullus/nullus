@@ -144,3 +144,43 @@ func writeScript(t *testing.T, dir, name, body string) string {
 	require.NoError(t, os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o755))
 	return path
 }
+
+// 이력 테이블이 플랫폼 테이블을 FK 로 참조하면 --clean 이 그 PK 를 지우지 못해 복원이 죽는다
+// (2026-10-12 리허설, 000091 의 backup_runs_org_id_fkey). pg_restore 의 원문만으로는 무엇을 고쳐야
+// 하는지 보이지 않는다 — 원인과 조치를 덧붙인다.
+func TestRestore_이력_테이블_FK_가_막으면_무엇을_고칠지_말한다(t *testing.T) {
+	dir := t.TempDir()
+	fake := writeScript(t, dir, "pg_restore", `
+for a in "$@"; do
+  if [ "$a" = "-l" ]; then cat <<'TOC'
+`+realTOC+`TOC
+exit 0; fi
+done
+echo 'pg_restore: error: could not execute query: ERROR:  cannot drop constraint organizations_pkey on table public.organizations because other objects depend on it' >&2
+echo 'DETAIL:  constraint backup_runs_org_id_fkey on table public.backup_runs depends on index public.organizations_pkey' >&2
+exit 1
+`)
+	d := &PgDumper{restoreBin: fake}
+	d.indexNames = func(context.Context, port.DBTarget, []string) ([]string, error) { return historyIndexes, nil }
+
+	err := d.Restore(context.Background(), port.DBTarget{
+		Component: domain.ComponentPlatformDB, Database: "nullus", PreserveTables: domain.HistoryTables,
+	}, strings.NewReader("PGDMP-archive"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "backup_runs_org_id_fkey", "원문은 남긴다")
+	assert.Contains(t, err.Error(), "backup_runs", "어느 이력 테이블인지")
+	assert.Contains(t, err.Error(), "FK", "원인 — 이력 테이블의 바깥 FK")
+	assert.Contains(t, err.Error(), "마이그레이션", "조치 — FK 를 거두는 마이그레이션")
+}
+
+func TestRestore_다른_실패는_원문_그대로다(t *testing.T) {
+	dir := t.TempDir()
+	fake := writeScript(t, dir, "pg_restore", `echo 'pg_restore: error: connection to server failed' >&2; exit 1`)
+	d := &PgDumper{restoreBin: fake}
+
+	err := d.Restore(context.Background(), port.DBTarget{Component: domain.ComponentKeycloakDB, Database: "keycloak"},
+		strings.NewReader("PGDMP-archive"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connection to server failed")
+	assert.NotContains(t, err.Error(), "FK")
+}
