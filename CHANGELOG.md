@@ -168,6 +168,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CD 의 sonar-scanner 이미지 빌드가 `entrypoint.sh: not found` 로 실패하던 것** (`deploy/images/sonar-scanner/{Dockerfile,entrypoint.sh}`, `.gitignore`): #301 이 공식 이미지 구조를 따라 엔트리포인트를 `bin/` 아래 두었는데, 저장소 루트의 `.gitignore` 가 Go 빌드 산출물용으로 `bin/` 을 무시해 그 파일은 커밋되지 않았다. 로컬 빌드는 파일이 있어 통과했고, main 의 첫 CD 가 `COPY` 에서 죽어 `nullus-sonar-scanner` 패키지가 만들어지지 않았다 — 그동안 코드 상수는 없는 이미지를 가리킨다(기존 파이프라인은 정의를 갱신하지 않는 한 옛 공식 이미지를 그대로 쓴다). 엔트리포인트를 빌드 컨텍스트 루트로 옮기고, `.gitignore` 에 `!deploy/images/*/bin/` 을 더해 이미지 디렉터리의 `bin/` 은 소스로 본다.
+
 - **SAST 리포트 전에 만든 파이프라인에 결과가 붙지 않던 것과, sonar-scanner 이미지가 amd64 에서만 돌던 것** (`internal/cicd/usecase/{refresh_pipeline_definition,provision_app_project,provision_pipeline_repository}.go`, `internal/cicd/adapter/handler/pipeline_handler.go`, `internal/cicd/adapter/scaffold/renderer.go`, `deploy/images/sonar-scanner` 신규, `.github/workflows/cd.yml`, `internal/shared/domain/runtime_images.go`, `web/src/features/cicd`, `api/openapi.yaml`): SAST 리포트(`sast-report.json`)는 파이프라인 정의 파일의 `sast` 잡이 남기는데, 스캐폴딩은 새 저장소에만 쓰인다 — 기존 저장소에 다시 쓰면 사용자가 고친 Dockerfile·매니페스트와 CI 가 갱신한 이미지 태그가 되돌아간다. 그래서 리포트 전에 만든 파이프라인은 실행 기록에 판정이 붙지 않았고(단계 상태만 보였다), 파이프라인을 다시 만드는 것 말고는 방법이 없었다.
 
   **CI 정의만 다시 쓰는 길을 열었다** — `POST /pipelines/:id/refresh-definition` 과 목록 상세의 "CI 정의 갱신" 버튼. 이 스택의 파이프라인 정의 파일(`.gitlab-ci.yml` · `.github/workflows/nullus-ci.yml` · `Jenkinsfile` 중 하나)을 플랫폼 기본으로 다시 쓰고 CI 변수(`SONAR_TOKEN` 등)를 다시 등록하며, 레코드의 단계를 돌아온 단계로 맞추고 스캔 정책을 다시 싣는다. 앱 코드 · Dockerfile · `deploy/` 매니페스트 · Argo CD Application 은 건드리지 않는다. 사용자가 손본 정의 파일은 덮어쓰므로 화면이 무엇을 덮어쓰고 무엇은 두는지 말하고 확인을 받는다. 저장소가 사라졌으면 다시 만들고 전체 스캐폴딩을 쓴 뒤 그 사실을 알린다. 스택 없는 파이프라인은 `400 PIPELINE_NOT_STACK_BOUND`.

@@ -71,7 +71,9 @@ RUN set -eux; \
     dnf upgrade -y --releasever=latest --security; \
     dnf clean all
 
-COPY --chown=scanner-cli:scanner-cli bin/entrypoint.sh /usr/bin/entrypoint.sh
+# 저장소 루트의 .gitignore 가 bin/ 을 무시한다(Go 빌드 산출물). 공식 이미지처럼 bin/ 아래 두면
+# 커밋되지 않아 CD 빌드가 COPY 에서 죽는다 — 실제로 그랬다(#301 첫 CD). 루트에 둔다.
+COPY --chown=scanner-cli:scanner-cli entrypoint.sh /usr/bin/entrypoint.sh
 RUN chmod 555 /usr/bin/entrypoint.sh
 
 USER 1000:1000
