@@ -44,13 +44,15 @@ func (t *trace) indexOf(s string) int {
 }
 
 type fakeRepo struct {
-	runs      map[string]*domain.BackupRun
-	restores  map[string]*domain.RestoreRun
-	artifacts map[string][]*domain.Artifact
-	summaries []domain.RunSummary
-	deleted   []string
-	seq       int
-	mu        sync.Mutex
+	// updatedStatus 는 UpdateRun 이 실제로 받아 적은 상태의 순서다.
+	updatedStatus []domain.Status
+	runs          map[string]*domain.BackupRun
+	restores      map[string]*domain.RestoreRun
+	artifacts     map[string][]*domain.Artifact
+	summaries     []domain.RunSummary
+	deleted       []string
+	seq           int
+	mu            sync.Mutex
 }
 
 func newFakeRepo() *fakeRepo {
@@ -69,10 +71,15 @@ func (f *fakeRepo) CreateRun(_ context.Context, run *domain.BackupRun) error {
 	f.runs[run.ID] = run
 	return nil
 }
-func (f *fakeRepo) UpdateRun(_ context.Context, run *domain.BackupRun) error {
+func (f *fakeRepo) UpdateRun(ctx context.Context, run *domain.BackupRun) error {
+	// 실제 저장소는 취소된 컨텍스트로는 쓰지 못한다.
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.runs[run.ID] = run
+	f.updatedStatus = append(f.updatedStatus, run.Status)
 	return nil
 }
 func (f *fakeRepo) GetRun(_ context.Context, id string) (*domain.BackupRun, error) {
@@ -251,7 +258,12 @@ type fakeScaler struct {
 func (f *fakeScaler) List(context.Context, string) ([]domain.Workload, error) {
 	return f.workloads, nil
 }
-func (f *fakeScaler) Scale(_ context.Context, t domain.QuiesceTarget, replicas int32) error {
+func (f *fakeScaler) Scale(ctx context.Context, t domain.QuiesceTarget, replicas int32) error {
+	// 실제 어댑터는 취소된 컨텍스트로는 API 서버에 닿지 못한다.
+	if ctx.Err() != nil {
+		f.tr.add(fmt.Sprintf("scale.canceled:%s=%d", t.Name, replicas))
+		return ctx.Err()
+	}
 	if f.scaleErr != nil && replicas == 0 {
 		return f.scaleErr
 	}
@@ -272,12 +284,20 @@ type fakeArchiver struct {
 	tr         *trace
 	pvcs       []domain.VolumeSpec
 	archiveErr error
+	// onArchive 는 아카이브가 시작될 때 불린다 — 요청이 끊기는 순간을 흉내 낸다.
+	onArchive func()
 }
 
 func (f *fakeArchiver) ListPVCs(context.Context, string) ([]domain.VolumeSpec, error) {
 	return f.pvcs, nil
 }
-func (f *fakeArchiver) Archive(_ context.Context, _, pvc string, out io.Writer) (int64, error) {
+func (f *fakeArchiver) Archive(ctx context.Context, _, pvc string, out io.Writer) (int64, error) {
+	if f.onArchive != nil {
+		f.onArchive()
+	}
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
 	if f.archiveErr != nil {
 		return 0, f.archiveErr
 	}
@@ -327,8 +347,15 @@ func (f *fakeNotifier) NotifyBackupResult(_ context.Context, run *domain.BackupR
 
 type fakePauser struct{ tr *trace }
 
-func (f *fakePauser) Pause(context.Context) error  { f.tr.add("rotation.pause"); return nil }
-func (f *fakePauser) Resume(context.Context) error { f.tr.add("rotation.resume"); return nil }
+func (f *fakePauser) Pause(context.Context) error { f.tr.add("rotation.pause"); return nil }
+func (f *fakePauser) Resume(ctx context.Context) error {
+	if ctx.Err() != nil {
+		f.tr.add("rotation.resume:canceled")
+		return ctx.Err()
+	}
+	f.tr.add("rotation.resume")
+	return nil
+}
 
 // assertNoSecrets 는 저장된 매니페스트에 비밀값으로 보이는 키가 없는지 본다.
 //
@@ -382,4 +409,23 @@ func (f *fakeGatewayAliases) RepinGatewayAliases(_ context.Context, stackID, nam
 	f.tr.add("gateway.repin")
 	f.stackID, f.namespace, f.kubeconfig = stackID, namespace, string(kubeconfig)
 	return f.ip, f.updated, f.err
+}
+
+// fakeShared 는 공용 자원 덤프·복원 대역이다. payload 가 비면 "담을 것이 없다" 다.
+type fakeShared struct {
+	tr       *trace
+	payload  string
+	applyErr error
+}
+
+func (f *fakeShared) DumpShared(_ context.Context, out io.Writer) (int64, error) {
+	f.tr.add("shared.dump")
+	n, _ := out.Write([]byte(f.payload))
+	return int64(n), nil
+}
+
+func (f *fakeShared) ApplyShared(_ context.Context, in io.Reader) error {
+	_, _ = io.ReadAll(in)
+	f.tr.add("shared.apply")
+	return f.applyErr
 }

@@ -95,14 +95,21 @@ PostgreSQL 과 MinIO 는 testcontainers 가 알아서 띄우고 지운다. 클�
 **통과하면 이런 출력이 나온다:**
 
 ```
-지문: file=fingerprint.bin sha256=bd4e9a3b1201fda9… replicas=2 db_rows=3
-[3.469s] 2. 백업 실행
-실제 정지 창: 3.097s
-산출물 5 건, 총 277923 bytes
-[48.1s] 3. 환경 초기화
-[6.39s] 4. 복구 실행
---- PASS: TestRecoveryRehearsal
+[8.341s] 1. 기준 환경 구성
+[7ms] 1b. 공용 자원 심기
+지문: file=fingerprint.bin sha256=b7188838ce7f7e44… replicas=2 db_rows=3
+[3.846s] 2. 백업 실행
+실제 정지 창: 3.1s
+산출물 5 건, 총 280005 bytes
+[48.586s] 3. 환경 초기화
+[4.873s] 4. 복구 실행
+[2ms] 4b. 공용 자원 확인
+[2.004s] 5. 워크로드 기동 대기
+[193ms] 6. 지문 대조
+--- PASS: TestRecoveryRehearsal (70.41s)
 ```
+
+`1b`·`4b` 는 **제품이 마지막 스택을 지울 때 회수하는 공용 자원**을 흉내 낸다. 설치 표시(`nullus.io/installed-by=nullus`)가 붙은 Gateway 계열 CRD 와 내부 CA Secret(`nullus-internal-ca`)을 심고, 3단계에서 네임스페이스와 함께 CRD 까지 지운 뒤, 복구가 `shared_resources` 산출물로 둘을 되살렸는지(CRD 는 설치 표시까지, Secret 은 키 바이트까지 같은지) 본다. 산출물 5 건에 `shared_resources` 가 든다.
 
 > ⚠️ **여기 나오는 시간은 RTO 근거가 아니다.** 데이터가 256KiB 다. 설계 §2.2 의 RTO 4시간은 100Gi 급 전제이고, 실환경 리허설로만 실측할 수 있다. 이 리허설이 검증하는 것은 시간이 아니라 **절차가 성립하는가** 다.
 
@@ -115,6 +122,7 @@ PostgreSQL 과 MinIO 는 testcontainers 가 알아서 띄우고 지운다. 클�
 | 리소스 덤프/복원, replica 복원 | RTO·정지 창 실측 |
 | 플랫폼 DB + Keycloak DB(같은 인스턴스, 별도 database) | 다중 노드 (RWO 볼륨이 노드에 흩어지는 경우) |
 | 산출물 봉인/해제, sha256 무결성 | |
+| **공용 자원** — 설치 표시가 붙은 Gateway 계열 CRD · 내부 CA Secret 을 심고, 회수된 뒤 복구가 **없을 때만** 되살리는 것 | 실제 GatewayClass · ClusterIssuer · cert-manager(컨트롤러가 있어야 만들 수 있다). cert-manager 가 없을 때 복구가 시작 전에 멈추는 것은 단위 테스트가 본다 |
 
 ---
 
@@ -512,6 +520,7 @@ kubectl -n <네임스페이스> annotate applications.argoproj.io <앱> \
 - **Argo CD 자동 동기화** — 리허설에서는 `refresh=hard` 로 앞당겼다. 기본 주기 3분 내 자동 회복은 **추정이지 관찰이 아니다**
 - **다른 클러스터로의 복구** — Service 는 그 클러스터에서 새 주소를 받고, 복구가 러너·Argo CD hostAliases 를 새 주소로 맞춘다. 전체 복구로 다른 클러스터에 되돌리는 리허설은 아직 하지 않았다
 - **차트 버전이 다른 대상으로의 복구** — 매니페스트에 `helm_releases` 를 기록하고 대조해 경고까지는 하지만, 실제로 버전이 어긋난 상태로 복구했을 때 무엇이 깨지는지는 재보지 않았다
+- **제품에서 마지막 스택을 지운 뒤의 복구** — 삭제는 Nullus 가 설치한 공용 자원(cert-manager · metrics-server · Gateway API · 내부 CA)을 회수한다. 백업의 `shared_resources` 가 설치 표시가 붙은 Gateway CRD · GatewayClass · 내부 CA 를 담고 복구가 그것을 먼저(없을 때만) 되살리는 것은 리허설 A 가 확인한다. **cert-manager · metrics-server 재설치는 백업 밖이다** — cert-manager 가 없으면 복구가 시작 전에 멈추고 설치를 요구한다. 실제 스택을 제품으로 지우고 되돌리는 전 과정 리허설은 아직 하지 않았다
 
 ---
 

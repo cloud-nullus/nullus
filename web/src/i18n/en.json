@@ -2049,6 +2049,8 @@
       "openbaoKvDesc": "Tokens and credentials. Without it the tools cannot authenticate to each other",
       "nsResources": "Kubernetes resources",
       "nsResourcesDesc": "Wiring and configuration — Deployments, Secrets, CRDs, Argo CD Applications",
+      "sharedResources": "Shared cluster resources",
+      "sharedResourcesDesc": "What deleting the last stack reclaims — Gateway CRDs, GatewayClass, the internal CA. Restored first, and only when missing",
       "volume": "Volumes",
       "volumeDesc": "Data inside the tools — Git repos, build history, container images. The largest, and the only one that stops the service"
     }

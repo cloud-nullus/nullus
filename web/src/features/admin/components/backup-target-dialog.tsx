@@ -36,6 +36,13 @@ const TARGETS: { id: BackupComponent; labelKey: string; descKey: string }[] = [
     descKey: "backupPage.target.nsResourcesDesc",
   },
   {
+    // 클러스터의 마지막 스택을 지우면 회수되는, Nullus 가 설치한 공용 자원. 네임스페이스
+    // 리소스가 기대는 것이라 복구는 이것을 먼저, 없을 때만 되살린다.
+    id: "shared_resources",
+    labelKey: "backupPage.target.sharedResources",
+    descKey: "backupPage.target.sharedResourcesDesc",
+  },
+  {
     id: "volume",
     labelKey: "backupPage.target.volume",
     descKey: "backupPage.target.volumeDesc",
@@ -51,6 +58,7 @@ const ALL: BackupComponent[] = TARGETS.map((t) => t.id);
 const STACK_TARGETS: ReadonlySet<BackupComponent> = new Set([
   "openbao_kv",
   "ns_resources",
+  "shared_resources",
   "volume",
 ]);
 const PLATFORM: BackupComponent[] = ALL.filter((id) => !STACK_TARGETS.has(id));

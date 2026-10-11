@@ -1,11 +1,13 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
 	"github.com/cloud-nullus/draft/internal/backup/port"
@@ -39,11 +41,14 @@ type BackupDeps struct {
 	Scaler    port.WorkloadScaler
 	Archiver  port.VolumeArchiver
 	Resources port.ResourceDumper
-	Sealer    port.Sealer
-	Store     port.ArtifactStore
-	Notifier  port.Notifier
-	Pauser    RotationPauser
-	Targets   DBTargets
+	// Shared 는 클러스터 공용 자원(Gateway CRD·GatewayClass·내부 CA)을 뜬다. Resources 와 같이
+	// 스택 클러스터 어댑터다.
+	Shared   port.SharedResourceDumper
+	Sealer   port.Sealer
+	Store    port.ArtifactStore
+	Notifier port.Notifier
+	Pauser   RotationPauser
+	Targets  DBTargets
 	// Releases 는 없어도 백업은 성립한다 — 버전을 모른 채 복구하게 될 뿐이다.
 	// 그래서 nil 이면 건너뛰되, 조회에 실패하면 그 사실을 남긴다.
 	Releases port.HelmReleaseLister
@@ -114,15 +119,36 @@ func (uc *BackupUseCase) Run(ctx context.Context, req RunBackupRequest) (*domain
 	_ = uc.d.Repo.UpdateRun(ctx, run)
 
 	res, err := uc.execute(ctx, req, run)
+	// 마무리(기록 갱신·알림)는 요청이 끊겼어도 해야 한다 — 취소된 컨텍스트로는 저장소에 쓰지
+	// 못해 실행 기록이 running 으로 영영 남는다.
+	finishCtx, cancel := detached(ctx, finishTimeout)
+	defer cancel()
 	if err != nil {
 		run.Fail(err.Error())
-		uc.finish(ctx, run, nil)
+		uc.finish(finishCtx, run, nil)
 		return run, err
 	}
 
 	run.Complete(res.results)
-	uc.finish(ctx, run, res)
+	uc.finish(finishCtx, run, res)
 	return run, nil
+}
+
+const (
+	// resumeTimeout 은 정지 창을 닫는(워크로드 재개) 데 허용하는 시간이다. 요청이 끊긴 뒤에도
+	// 이만큼은 끝까지 간다.
+	resumeTimeout = 5 * time.Minute
+	// finishTimeout 은 실행 기록 갱신과 알림에 허용하는 시간이다.
+	finishTimeout = 30 * time.Second
+)
+
+// detached 는 요청 취소와 무관한 컨텍스트다. 값(트레이스 등)은 이어받고 취소만 끊는다.
+//
+// 백업은 HTTP 요청 안에서 동기로 돈다. 클라이언트가 떠나면 요청 컨텍스트가 취소되는데, 그
+// 컨텍스트로 재개를 부르면 첫 호출부터 실패해 워크로드가 0 으로 남는다. 무한히 두지는 않는다 —
+// 시간 제한은 둔다.
+func detached(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), timeout)
 }
 
 type executeResult struct {
@@ -187,6 +213,18 @@ func (uc *BackupUseCase) execute(ctx context.Context, req RunBackupRequest, run 
 		out.results[domain.ComponentNamespaceResources] = err
 		if err == nil {
 			out.artifacts = append(out.artifacts, art)
+		}
+	}
+
+	// ── 1b. 공용 자원 — 클러스터의 마지막 스택을 지우면 회수되는 것 ──
+	//
+	// 네임스페이스 덤프 밖에 있어 따로 뜬다. 담을 것이 없으면(사용자가 깐 Gateway API 를
+	// 재사용한 스택) 산출물을 만들지 않는다 — 빈 산출물은 "담았다" 로 읽힌다.
+	if uc.inScope(run, domain.ComponentSharedResources) {
+		art, err := uc.dumpShared(ctx, run)
+		out.results[domain.ComponentSharedResources] = err
+		if err == nil && art != nil {
+			out.artifacts = append(out.artifacts, *art)
 		}
 	}
 
@@ -291,15 +329,20 @@ func (uc *BackupUseCase) withQuiesce(ctx context.Context, req RunBackupRequest, 
 
 	run.BeginQuiesce()
 	defer func() {
+		// 재개는 요청 취소와 무관하게 끝까지 간다. 요청이 끊겨(클라이언트 이탈) 컨텍스트가
+		// 취소된 채로 재개를 부르면 첫 호출부터 실패해 워크로드가 0 으로 남는다 — 그 상태로
+		// 백업 요청이 "실패" 로 끝나면 사용자는 서비스가 내려간 줄 모른다.
+		resumeCtx, cancel := detached(ctx, resumeTimeout)
+		defer cancel()
 		// 역순 재개. 실패해도 남은 대상은 계속 시도한다.
 		for _, t := range plan.ResumeOrder() {
-			if err := uc.d.Scaler.Scale(ctx, t, t.OriginalReplicas); err != nil {
+			if err := uc.d.Scaler.Scale(resumeCtx, t, t.OriginalReplicas); err != nil {
 				uc.d.Logger.Error("워크로드 재개 실패 — 수동 조치가 필요합니다",
 					"kind", t.Kind, "name", t.Name, "replicas", t.OriginalReplicas, "error", err)
 			}
 		}
 		if uc.d.Pauser != nil {
-			if err := uc.d.Pauser.Resume(ctx); err != nil {
+			if err := uc.d.Pauser.Resume(resumeCtx); err != nil {
 				uc.d.Logger.Error("회전 스케줄러 재개 실패", "error", err)
 			}
 		}
@@ -391,11 +434,34 @@ func (uc *BackupUseCase) missingStackAdapters(scope []domain.Component) []string
 	for _, c := range scope {
 		switch {
 		case c == domain.ComponentNamespaceResources && uc.d.Resources == nil,
+			c == domain.ComponentSharedResources && uc.d.Shared == nil,
 			c == domain.ComponentVolume && (uc.d.Archiver == nil || uc.d.Scaler == nil):
 			missing = append(missing, string(c))
 		}
 	}
 	return missing
+}
+
+// dumpShared 는 공용 자원을 뜬다. 작은 객체들이라 먼저 모아 보고 있을 때만 산출물로 올린다.
+func (uc *BackupUseCase) dumpShared(ctx context.Context, run *domain.BackupRun) (*domain.Artifact, error) {
+	var buf bytes.Buffer
+	n, err := uc.d.Shared.DumpShared(ctx, &buf)
+	if err != nil {
+		return nil, fmt.Errorf("공용 자원 덤프: %w", err)
+	}
+	if n == 0 {
+		if uc.d.Logger != nil {
+			uc.d.Logger.Info("Nullus 가 설치한 클러스터 공용 자원이 없어 담지 않습니다", "backup_run_id", run.ID)
+		}
+		return nil, nil
+	}
+	art, err := uc.putStream(ctx, run, domain.ComponentSharedResources, "",
+		key(run.ID, "shared-resources.json"),
+		func(w io.Writer) (int64, error) { return io.Copy(w, &buf) })
+	if err != nil {
+		return nil, err
+	}
+	return &art, nil
 }
 
 func (uc *BackupUseCase) inScope(run *domain.BackupRun, c domain.Component) bool {

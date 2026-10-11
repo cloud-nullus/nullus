@@ -44,8 +44,12 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -116,6 +120,19 @@ func TestRecoveryRehearsal(t *testing.T) {
 	step("1. 기준 환경 구성", func() {
 		fp = seedEnvironment(t, ctx, client, restCfg, pool)
 	})
+
+	// ── 1b. 공용 자원 심기 ───────────────────────────────────────────────
+	//
+	// 클러스터의 마지막 스택을 제품에서 지우면 Nullus 가 설치한 공용 자원이 회수된다 — 설치 표시가
+	// 붙은 Gateway CRD·GatewayClass·내부 CA. 여기서는 컨트롤러 없이 만들 수 있는 둘(표시가 붙은
+	// Gateway 계열 CRD, 내부 CA Secret)을 심고, 3단계에서 회수를 흉내 낸 뒤 복구가 되살리는지 본다.
+	dyn, err := dynamic.NewForConfig(restCfg)
+	require.NoError(t, err)
+	caData := map[string][]byte{"tls.crt": []byte("rehearsal-ca-cert"), "tls.key": []byte("rehearsal-ca-key")}
+	step("1b. 공용 자원 심기", func() {
+		seedSharedResources(t, ctx, client, dyn, caData)
+	})
+	t.Cleanup(func() { deleteSharedCRD(context.Background(), dyn) })
 	t.Logf("지문: file=%s sha256=%s replicas=%d db_rows=%d",
 		fp.FileName, fp.SHA256[:16]+"…", fp.Replicas, fp.DBRows)
 
@@ -131,7 +148,7 @@ func TestRecoveryRehearsal(t *testing.T) {
 
 	backupUC := usecase.NewBackupUseCase(usecase.BackupDeps{
 		Repo: repo, Dumper: dumper, KV: noopKV{}, Scaler: adapters.Scaler,
-		Archiver: adapters.Archiver, Resources: adapters.Resources,
+		Archiver: adapters.Archiver, Resources: adapters.Resources, Shared: adapters.Resources,
 		Sealer: sl, Store: objStore, Targets: targets, PlatformVersion: "rehearsal",
 	})
 
@@ -155,11 +172,19 @@ func TestRecoveryRehearsal(t *testing.T) {
 	assertHasComponent(t, arts, domain.ComponentVolume)
 	assertHasComponent(t, arts, domain.ComponentNamespaceResources)
 	assertHasComponent(t, arts, domain.ComponentPlatformDB)
+	assertHasComponent(t, arts, domain.ComponentSharedResources)
 
 	// ── 3. 환경 초기화 — 부분 초기화 금지 ───────────────────────────────
 	step("3. 환경 초기화", func() {
 		deleteNamespace(ctx, client, rehearsalNS)
 		waitNamespaceGone(t, ctx, client, rehearsalNS)
+		// 제품이 마지막 스택을 지울 때 공용 자원을 회수하는 것을 흉내 낸다 — 내부 CA Secret 은
+		// 네임스페이스와 함께 사라졌고, CRD 는 따로 지운다.
+		deleteSharedCRD(ctx, dyn)
+		require.Eventually(t, func() bool {
+			_, err := dyn.Resource(crdGVR).Get(ctx, sharedCRDName, metav1.GetOptions{})
+			return apierrors.IsNotFound(err)
+		}, 30*time.Second, 500*time.Millisecond, "CRD 가 실제로 사라졌어야 한다")
 
 		// 플랫폼 DB 도 실제로 잃은 상태를 만든다.
 		_, err := pool.Exec(ctx, `DROP TABLE IF EXISTS rehearsal_fingerprint`)
@@ -173,7 +198,7 @@ func TestRecoveryRehearsal(t *testing.T) {
 	// ── 4. 복구 ─────────────────────────────────────────────────────────
 	restoreUC := usecase.NewRestoreUseCase(usecase.RestoreDeps{
 		Repo: repo, Dumper: dumper, KV: noopKV{}, Scaler: adapters.Scaler,
-		Archiver: adapters.Archiver, Resources: adapters.Resources,
+		Archiver: adapters.Archiver, Resources: adapters.Resources, Shared: adapters.Resources,
 		Sealer: sl, Store: objStore, Targets: targets,
 		Prereq: func(context.Context) domain.Prerequisites {
 			return domain.Prerequisites{
@@ -194,6 +219,16 @@ func TestRecoveryRehearsal(t *testing.T) {
 	})
 	require.Equal(t, domain.StatusSucceeded, rr.Status, "복구 실패: %s", rr.Error)
 	assert.True(t, rr.SchemaCheck.Allowed)
+
+	step("4b. 공용 자원 확인", func() {
+		got, err := dyn.Resource(crdGVR).Get(ctx, sharedCRDName, metav1.GetOptions{})
+		require.NoError(t, err, "회수된 Gateway CRD 가 되살아나야 한다")
+		assert.Equal(t, shareddomain.InstalledByNullus, got.GetLabels()[shareddomain.LabelInstalledBy],
+			"설치 표시가 남아야 다음 삭제가 다시 회수한다")
+		sec, err := client.CoreV1().Secrets(rehearsalNS).Get(ctx, shareddomain.InternalCASecretName, metav1.GetOptions{})
+		require.NoError(t, err, "내부 CA Secret 이 되살아나야 한다")
+		assert.Equal(t, caData, sec.Data, "CA 키가 백업 때와 같아야 한다 — 새로 만들면 발급된 인증서와 신뢰가 어긋난다")
+	})
 
 	// ── 5. 지문 대조 ────────────────────────────────────────────────────
 	step("5. 워크로드 기동 대기", func() {
@@ -229,6 +264,52 @@ func TestRecoveryRehearsal(t *testing.T) {
 		t.Log("  " + l)
 	}
 	t.Logf("  %-28s %s", "그중 실제 정지 창", quiesce)
+}
+
+// ── 공용 자원 ───────────────────────────────────────────────────────────
+
+// sharedCRDName 은 게이트웨이 단계가 까는 CRD 의 접미사를 가진 가짜 CRD 다 — 판별은 접미사와
+// 설치 표시 라벨로 하므로 실제 Gateway API 없이도 같은 경로를 탄다.
+const sharedCRDName = "rehearsalroutes.gateway.networking.x-k8s.io"
+
+var crdGVR = schema.GroupVersionResource{
+	Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions",
+}
+
+func seedSharedResources(t *testing.T, ctx context.Context, c kubernetes.Interface, dyn dynamic.Interface, caData map[string][]byte) {
+	t.Helper()
+	crd := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "apiextensions.k8s.io/v1",
+		"kind":       "CustomResourceDefinition",
+		"metadata": map[string]any{
+			"name":   sharedCRDName,
+			"labels": map[string]any{shareddomain.LabelInstalledBy: shareddomain.InstalledByNullus},
+		},
+		"spec": map[string]any{
+			"group": "gateway.networking.x-k8s.io",
+			"names": map[string]any{"plural": "rehearsalroutes", "singular": "rehearsalroute", "kind": "RehearsalRoute"},
+			"scope": "Namespaced",
+			"versions": []any{map[string]any{
+				"name": "v1alpha1", "served": true, "storage": true,
+				"schema": map[string]any{"openAPIV3Schema": map[string]any{
+					"type": "object", "x-kubernetes-preserve-unknown-fields": true,
+				}},
+			}},
+		},
+	}}
+	if _, err := dyn.Resource(crdGVR).Create(ctx, crd, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(err) {
+		require.NoError(t, err, "공용 CRD 심기")
+	}
+	_, err := c.CoreV1().Secrets(rehearsalNS).Create(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: shareddomain.InternalCASecretName, Namespace: rehearsalNS},
+		Type:       corev1.SecretTypeTLS,
+		Data:       caData,
+	}, metav1.CreateOptions{})
+	require.NoError(t, err, "내부 CA Secret 심기")
+}
+
+func deleteSharedCRD(ctx context.Context, dyn dynamic.Interface) {
+	_ = dyn.Resource(crdGVR).Delete(ctx, sharedCRDName, metav1.DeleteOptions{})
 }
 
 // ── 환경 구성 ───────────────────────────────────────────────────────────

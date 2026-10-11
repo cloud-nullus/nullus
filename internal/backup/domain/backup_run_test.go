@@ -84,10 +84,33 @@ func TestModeComponents_모드별_대상(t *testing.T) {
 		ModeComponents(ModePlatformOnly))
 
 	assert.ElementsMatch(t,
-		[]Component{ComponentNamespaceResources, ComponentVolume},
+		[]Component{ComponentSharedResources, ComponentNamespaceResources, ComponentVolume},
 		ModeComponents(ModeStackOnly))
 
-	assert.Len(t, ModeComponents(ModeFull), 5, "full 은 다섯 컴포넌트를 모두 담는다")
+	assert.Len(t, ModeComponents(ModeFull), 6, "full 은 여섯 컴포넌트를 모두 담는다")
+}
+
+// 클러스터의 마지막 스택을 지우면 Nullus 가 설치한 공용 자원(Gateway CRD·GatewayClass·
+// 내부 CA)까지 회수된다. 네임스페이스 리소스만 되돌리면 Gateway CR 이 "no matches for
+// kind" 로 죽는다 — 스택 백업은 기본으로 공용 자원을 담는다.
+func TestModeComponents_스택_대상에_공용_자원이_든다(t *testing.T) {
+	assert.Contains(t, ModeComponents(ModeFull), ComponentSharedResources)
+	assert.Contains(t, ModeComponents(ModeStackOnly), ComponentSharedResources)
+	assert.NotContains(t, ModeComponents(ModePlatformOnly), ComponentSharedResources,
+		"플랫폼만 뜨는 백업은 스택 클러스터에 붙지 않는다")
+}
+
+func TestParseComponents_공용_자원을_받는다(t *testing.T) {
+	got, err := ParseComponents([]string{"shared_resources"})
+	require.NoError(t, err)
+	assert.Equal(t, []Component{ComponentSharedResources}, got)
+}
+
+// 공용 자원은 클러스터 범위의 작은 객체들이다. 뜨는 데 정지 창이 필요 없다.
+func TestBackupRun_공용_자원은_정지창을_열지_않는다(t *testing.T) {
+	run := NewBackupRun("o", ModeStackOnly, TriggerManual,
+		[]Component{ComponentSharedResources, ComponentNamespaceResources})
+	assert.False(t, run.RequiresQuiesce())
 }
 
 func TestBackupRun_RequiresQuiesce(t *testing.T) {

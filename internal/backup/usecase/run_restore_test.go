@@ -16,6 +16,11 @@ import (
 // 백업을 한 번 돌려 복구 대상을 만든다. 실제 산출물이 스토어에 있어야
 // 복구가 그것을 읽는 경로까지 검증된다.
 func seedBackup(t *testing.T, mode domain.Mode) (*RestoreUseCase, *trace, *fakeRepo, *fakeDumper, *fakeKV, *fakeScaler, string) {
+	return seedBackupWithShared(t, mode, nil)
+}
+
+// seedBackupWithShared 는 공용 자원 복원이 실패하는 경우를 흉내 낼 수 있다.
+func seedBackupWithShared(t *testing.T, mode domain.Mode, sharedApplyErr error) (*RestoreUseCase, *trace, *fakeRepo, *fakeDumper, *fakeKV, *fakeScaler, string) {
 	t.Helper()
 	tr := &trace{}
 	repo := newFakeRepo()
@@ -33,7 +38,8 @@ func seedBackup(t *testing.T, mode domain.Mode) (*RestoreUseCase, *trace, *fakeR
 
 	buc := NewBackupUseCase(BackupDeps{
 		Repo: repo, Dumper: dumper, KV: kv, Scaler: scaler, Archiver: archiver,
-		Resources: &fakeResources{tr: tr}, Sealer: fakeSealer{}, Store: store,
+		Resources: &fakeResources{tr: tr}, Shared: &fakeShared{tr: tr, payload: "shared"},
+		Sealer: fakeSealer{}, Store: store,
 		Notifier: &fakeNotifier{tr: tr}, Targets: targets,
 	})
 	run, err := buc.Run(context.Background(), RunBackupRequest{
@@ -46,8 +52,9 @@ func seedBackup(t *testing.T, mode domain.Mode) (*RestoreUseCase, *trace, *fakeR
 
 	ruc := NewRestoreUseCase(RestoreDeps{
 		Repo: repo, Dumper: dumper, KV: kv, Scaler: scaler, Archiver: archiver,
-		Resources: &fakeResources{tr: tr}, Namespaces: &fakeNamespaces{tr: tr},
-		Sealer: fakeSealer{}, Store: store,
+		Resources: &fakeResources{tr: tr}, Shared: &fakeShared{tr: tr, applyErr: sharedApplyErr},
+		Namespaces: &fakeNamespaces{tr: tr},
+		Sealer:     fakeSealer{}, Store: store,
 		Targets: targets,
 		TokenSources: &fakeTokenLister{refs: []port.TokenSourceRef{
 			{ID: "ts-1", Path: "kv/nullus/dev/org-1/cicd/github/api-token"},
@@ -301,4 +308,52 @@ func (d *selectiveFailDumper) Restore(ctx context.Context, t port.DBTarget, r io
 		return errors.New("keycloak 복원 실패")
 	}
 	return d.DBDumper.Restore(ctx, t, r)
+}
+
+// ── 공용 자원 ────────────────────────────────────────────────────────────
+
+// 공용 자원(Gateway CRD·GatewayClass·내부 CA)은 네임스페이스 리소스가 기대는 것이다.
+// 볼륨·리소스보다 먼저 되살려야 하고, 클러스터 범위라 되돌리는 것 자체가 싸다. 네임스페이스
+// 준비는 그보다 앞이다 — 공용 자원 복원이 스택 네임스페이스를 먼저 만들면 복구 라벨이 빠진다.
+func TestRunRestore_공용_자원을_볼륨보다_먼저_되살린다(t *testing.T) {
+	uc, tr, _, _, _, _, backupID := seedBackup(t, domain.ModeFull)
+
+	_, err := uc.Run(context.Background(), RunRestoreRequest{
+		BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull,
+	})
+	require.NoError(t, err)
+
+	shared := tr.indexOf("shared.apply")
+	require.GreaterOrEqual(t, shared, 0, "공용 자원을 되살렸어야 한다")
+	assert.Less(t, tr.indexOf("ns.ensure:nullus"), shared, "네임스페이스는 복구 라벨과 함께 먼저 선다")
+	assert.Less(t, shared, tr.indexOf("vol.ensure:data-gitlab"))
+	assert.Less(t, shared, tr.indexOf("res.apply"))
+}
+
+// 공용 자원을 되살리지 못하면(예: cert-manager 가 없어 ClusterIssuer 의 CRD 가 없다)
+// 아무것도 건드리기 전에 멈춘다. 볼륨까지 되돌린 뒤 죽으면 되돌릴 방법이 없다.
+func TestRunRestore_공용_자원_복원이_실패하면_볼륨을_건드리기_전에_멈춘다(t *testing.T) {
+	uc, tr, _, _, _, _, backupID := seedBackupWithShared(t, domain.ModeFull,
+		errors.New("ClusterIssuer 의 CRD 가 없습니다"))
+
+	rr, err := uc.Run(context.Background(), RunRestoreRequest{
+		BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ClusterIssuer")
+	assert.Equal(t, domain.StatusFailed, rr.Status)
+	assert.Equal(t, -1, tr.indexOf("vol.ensure:data-gitlab"), "볼륨을 건드리면 안 된다")
+	assert.Equal(t, -1, tr.indexOf("vol.restore:data-gitlab"))
+	assert.Equal(t, -1, tr.indexOf("db.restore:platform_db"), "플랫폼 DB 도 건드리면 안 된다")
+}
+
+// 플랫폼만 되돌리는 복구는 스택 클러스터에 붙지 않는다 — 공용 자원도 건드리지 않는다.
+func TestRunRestore_platform_only_는_공용_자원을_건드리지_않는다(t *testing.T) {
+	uc, tr, _, _, _, _, backupID := seedBackup(t, domain.ModeFull)
+
+	_, err := uc.Run(context.Background(), RunRestoreRequest{
+		BackupRunID: backupID, Mode: domain.ModePlatformOnly,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, -1, tr.indexOf("shared.apply"))
 }

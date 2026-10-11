@@ -24,7 +24,12 @@ import (
 // kubectl 은 API 이미지에 이미 있다 (Dockerfile).
 type ResourceDumper struct {
 	kubeconfig []byte
+	// exec 는 kubectl 호출이다. nil 이면 실제 kubectl 을 실행한다 — 테스트가 가짜를 끼운다.
+	exec kubectlRunner
 }
+
+// kubectlRunner 는 kubectl 한 번의 실행이다(stdin → stdout).
+type kubectlRunner func(ctx context.Context, stdin io.Reader, stdout io.Writer, args ...string) error
 
 func NewResourceDumper(kubeconfig []byte) *ResourceDumper {
 	return &ResourceDumper{kubeconfig: kubeconfig}
@@ -93,6 +98,13 @@ func (d *ResourceDumper) writeKubeconfig() (string, error) {
 }
 
 func (d *ResourceDumper) run(ctx context.Context, stdin io.Reader, stdout io.Writer, args ...string) error {
+	if d.exec != nil {
+		return d.exec(ctx, stdin, stdout, args...)
+	}
+	return d.runKubectl(ctx, stdin, stdout, args...)
+}
+
+func (d *ResourceDumper) runKubectl(ctx context.Context, stdin io.Reader, stdout io.Writer, args ...string) error {
 	path, err := d.writeKubeconfig()
 	if err != nil {
 		return fmt.Errorf("kubeconfig 임시 파일: %w", err)
@@ -476,4 +488,7 @@ func (d *ResourceDumper) applyDoc(ctx context.Context, namespace string, payload
 	return d.run(ctx, bytes.NewReader(payload), io.Discard, args...)
 }
 
-var _ port.ResourceDumper = (*ResourceDumper)(nil)
+var (
+	_ port.ResourceDumper       = (*ResourceDumper)(nil)
+	_ port.SharedResourceDumper = (*ResourceDumper)(nil)
+)

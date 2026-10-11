@@ -9,6 +9,7 @@ const ALL = [
   "keycloak_db",
   "openbao_kv",
   "ns_resources",
+  "shared_resources",
   "volume",
 ];
 
@@ -58,7 +59,7 @@ describe("BackupTargetDialog", () => {
 
   it("should submit only the chosen targets", () => {
     const { onSubmit } = setup();
-    for (const id of ["volume", "keycloak_db", "openbao_kv", "ns_resources"]) {
+    for (const id of ["volume", "keycloak_db", "openbao_kv", "ns_resources", "shared_resources"]) {
       fireEvent.click(box(id));
     }
     fireEvent.click(startButton());
@@ -125,7 +126,7 @@ describe("BackupTargetDialog", () => {
     const { onSubmit } = setup();
     fireEvent.click(screen.getByRole("radio", { name: /Platform only|플랫폼만/ }));
 
-    for (const id of ["openbao_kv", "ns_resources", "volume"]) {
+    for (const id of ["openbao_kv", "ns_resources", "shared_resources", "volume"]) {
       expect(box(id)).toBeDisabled();
       expect(box(id)).not.toBeChecked();
     }
@@ -138,6 +139,26 @@ describe("BackupTargetDialog", () => {
       scope: ["platform_db", "keycloak_db"],
       confirm: undefined,
     });
+  });
+
+  // 클러스터의 마지막 스택을 지우면 Nullus 가 설치한 공용 자원(Gateway CRD·GatewayClass·
+  // 내부 CA)이 회수된다. 스택 백업은 기본으로 그것을 담고, 정지 창과는 무관하다.
+  it("should include shared cluster resources by default for a stack without asking for confirmation", () => {
+    const { onSubmit } = setup();
+
+    expect(box("shared_resources")).toBeChecked();
+    expect(
+      screen.getByText(/Shared cluster resources|클러스터 공용 자원/),
+    ).toBeInTheDocument();
+
+    fireEvent.click(box("volume"));
+    fireEvent.click(startButton());
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: ["platform_db", "keycloak_db", "openbao_kv", "ns_resources", "shared_resources"],
+        confirm: undefined,
+      }),
+    );
   });
 
   it("should offer only the platform when there is no stack", () => {

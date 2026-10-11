@@ -1,6 +1,6 @@
 package domain
 
-import "strings"
+import shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 
 // 스택이 클러스터에 하나만 두고 함께 쓰는 공용 자원.
 //
@@ -15,44 +15,31 @@ import "strings"
 // 충돌을 낸다(ESO·Argo CD CRD 에서 겪은 것과 같다).
 const (
 	// LabelInstalledBy 는 Nullus 가 새로 설치한 공용 자원의 표시다.
-	LabelInstalledBy  = "nullus.io/installed-by"
-	InstalledByNullus = "nullus"
+	LabelInstalledBy  = shareddomain.LabelInstalledBy
+	InstalledByNullus = shareddomain.InstalledByNullus
 
 	CertManagerReleaseName   = "cert-manager"
 	MetricsServerReleaseName = "metrics-server"
 
 	// 내부 CA — 설치가 cert-manager 단계에서 만든다. 이름이 Nullus 전용이라 표시 없이도
-	// Nullus 것이다.
-	InternalCABootstrapIssuerName = "nullus-selfsigned-bootstrap"
-	InternalCAIssuerName          = "nullus-internal-ca-issuer"
-	InternalCACertName            = "nullus-internal-ca-cert"
-	InternalCASecretName          = "nullus-internal-ca"
+	// Nullus 것이다. 백업도 같은 이름으로 담는다(shared/domain).
+	InternalCABootstrapIssuerName = shareddomain.InternalCABootstrapIssuerName
+	InternalCAIssuerName          = shareddomain.InternalCAIssuerName
+	InternalCACertName            = shareddomain.InternalCACertName
+	InternalCASecretName          = shareddomain.InternalCASecretName
 
 	// EnvoyGatewayClassName 은 설치기가 만드는 GatewayClass 다.
-	EnvoyGatewayClassName      = "envoy"
-	EnvoyGatewayControllerName = "gateway.envoyproxy.io/gatewayclass-controller"
+	EnvoyGatewayClassName      = shareddomain.EnvoyGatewayClassName
+	EnvoyGatewayControllerName = shareddomain.EnvoyGatewayControllerName
 
 	// CertManagerCRDSuffix 는 cert-manager CRD 의 API 그룹이다(acme.cert-manager.io 포함).
-	CertManagerCRDSuffix = ".cert-manager.io"
+	CertManagerCRDSuffix = shareddomain.CertManagerCRDSuffix
 )
 
-// gatewayCRDSuffixes 는 게이트웨이 단계가 까는 CRD 의 API 그룹이다. Gateway API 표준 CRD 와 함께
-// Envoy Gateway 차트가 실험용 Gateway API CRD 와 자기 CRD 를 crds/ 로 깐다 — 이름 목록으로 고르면
-// backendtlspolicies·x-k8s.io·envoyproxy.io 를 놓친다(kind-nullus-platform 실측).
-var gatewayCRDSuffixes = []string{
-	".gateway.networking.k8s.io",
-	".gateway.networking.x-k8s.io",
-	".gateway.envoyproxy.io",
-}
-
-// IsGatewayCRD 는 게이트웨이 단계가 까는 CRD 인지 본다.
+// IsGatewayCRD 는 게이트웨이 단계가 까는 CRD 인지 본다. 판별 규칙은 백업과 같아야 하므로
+// 공용 도메인의 것이다.
 func IsGatewayCRD(name string) bool {
-	for _, suffix := range gatewayCRDSuffixes {
-		if strings.HasSuffix(name, suffix) {
-			return true
-		}
-	}
-	return false
+	return shareddomain.IsGatewayCRD(name)
 }
 
 // installMarkerValuePaths 는 공용 릴리스 values 에서 설치 표시가 들어가는 자리다. 두 차트 모두
