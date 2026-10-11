@@ -212,7 +212,7 @@ target_branch                      = deployment update branch
 
 Pipeline 생성 이후 Stack의 설정이 변경될 수 있으므로, Pipeline은 프로비저닝 시 사용한 integration binding snapshot을 보존한다. 사용자가 명시적으로 재연결할 때에만 최신 Stack integration으로 갱신한다.
 
-**배포 클러스터는 Stack 의 클러스터다.** CD Tool(Argo CD)의 Application 은 자기 클러스터(`kubernetes.default.svc`)를 목적지로 하고 Application 자체도 Stack 클러스터에 적용되므로, 일반모드 Pipeline 의 앱은 늘 Stack 이 설치된 클러스터에 선다. 따라서 `cluster_id` 는 `stack_id` 의 클러스터와 같아야 하며(다르면 생성을 거절, 비우면 채움), 모니터링·삭제도 그 클러스터를 읽는다. Stack 클러스터 밖으로 배포하는 멀티 클러스터는 Argo CD 에 대상 클러스터를 등록하고 대상에서 Image Registry·Gateway 에 닿게 하는 별도 기능으로, 이 설계의 범위가 아니다.
+**배포 클러스터는 Stack 의 클러스터다.** CD Tool(Argo CD)의 Application 은 자기 클러스터(`kubernetes.default.svc`)를 목적지로 하고 Application 자체도 Stack 클러스터에 적용되므로, 일반모드 Pipeline 의 앱은 늘 Stack 이 설치된 클러스터에 선다. 따라서 `cluster_id` 는 `stack_id` 의 클러스터와 같아야 하며(다르면 생성을 거절, 비우면 채움 — 직접 배포 `POST /cicd/deploy-app` 도 같다), 모니터링·삭제도 그 클러스터를 읽는다. 이 규칙 전에 만들어져 다른 `cluster_id` 가 저장된 Pipeline 도 있으므로, 목록 응답은 앱이 실제로 선 클러스터를 `deploy_cluster_id` 로 계산해 내려주고 화면(정보 탭·클러스터 필터·실행 확인 창)은 그 값을 보여 준다. 실행 확인 창에서는 클러스터를 고를 수 없다. Stack 클러스터 밖으로 배포하는 멀티 클러스터는 Argo CD 에 대상 클러스터를 등록하고 대상에서 Image Registry·Gateway 에 닿게 하는 별도 기능으로, 이 설계의 범위가 아니다.
 
 ## 7. 검증 및 허용 정책
 
