@@ -5,15 +5,19 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
+	"github.com/cloud-nullus/draft/internal/backup/port"
 	"github.com/cloud-nullus/draft/internal/backup/usecase"
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
+	sharedmw "github.com/cloud-nullus/draft/internal/shared/middleware"
 )
 
 // UseCaseFactory 는 스택별 유스케이스를 만든다.
@@ -30,6 +34,8 @@ type BackupHandler struct {
 	verify    *usecase.VerifyUseCase
 	repo      backupReader
 	defaultNS string
+	// orgs 는 헤더로 받은 조직이 실제로 있는지 본다. nil 이면 헤더를 그대로 믿는다.
+	orgs port.OrganizationChecker
 }
 
 type backupReader interface {
@@ -41,6 +47,15 @@ type backupReader interface {
 
 func NewBackupHandler(f UseCaseFactory, v *usecase.VerifyUseCase, repo backupReader, defaultNS string) *BackupHandler {
 	return &BackupHandler{factory: f, verify: v, repo: repo, defaultNS: defaultNS}
+}
+
+// WithOrganizationChecker 는 X-Org-ID 헤더의 조직 존재 확인을 배선한다.
+//
+// 없는 조직으로 만든 백업은 어떤 화면에도 보이지 않는다 — 목록은 로그인 사용자의
+// 조직으로만 거른다. 문서의 유령 조직(00000000-…-0001)으로 실제로 그랬다.
+func (h *BackupHandler) WithOrganizationChecker(orgs port.OrganizationChecker) *BackupHandler {
+	h.orgs = orgs
+	return h
 }
 
 func (h *BackupHandler) RegisterRoutes(g *echo.Group) {
@@ -151,12 +166,17 @@ func (h *BackupHandler) CreateBackup(c echo.Context) error {
 		}
 	}
 
+	// 유스케이스를 만들기 전에 조직부터 본다 — 없는 조직이면 어댑터를 조립할 이유가 없다.
+	orgID, err := h.resolveOrgID(c)
+	if err != nil {
+		return err
+	}
 	uc, err := h.factory.Backup(c.Request().Context(), req.StackID)
 	if err != nil {
 		return err
 	}
 	run, err := uc.Run(c.Request().Context(), usecase.RunBackupRequest{
-		OrgID: resolveOrgID(c), StackID: req.StackID, Namespace: ns,
+		OrgID: orgID, StackID: req.StackID, Namespace: ns,
 		Mode: mode, Trigger: domain.TriggerManual, Scope: scope,
 	})
 	if err != nil {
@@ -170,7 +190,11 @@ func (h *BackupHandler) CreateBackup(c echo.Context) error {
 
 func (h *BackupHandler) ListBackups(c echo.Context) error {
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	runs, err := h.repo.ListRuns(c.Request().Context(), resolveOrgID(c), limit)
+	orgID, err := h.resolveOrgID(c)
+	if err != nil {
+		return err
+	}
+	runs, err := h.repo.ListRuns(c.Request().Context(), orgID, limit)
 	if err != nil {
 		return err
 	}
@@ -254,12 +278,16 @@ func (h *BackupHandler) CreateRestore(c echo.Context) error {
 		}
 		ns = h.defaultNS
 	}
+	orgID, err := h.resolveOrgID(c)
+	if err != nil {
+		return err
+	}
 	uc, err := h.factory.Restore(c.Request().Context(), backup.StackID)
 	if err != nil {
 		return err
 	}
 	rr, err := uc.Run(c.Request().Context(), usecase.RunRestoreRequest{
-		BackupRunID: req.BackupRunID, OrgID: resolveOrgID(c), Namespace: ns, Mode: mode,
+		BackupRunID: req.BackupRunID, OrgID: orgID, Namespace: ns, Mode: mode,
 	})
 	if err != nil {
 		if rr != nil {
@@ -293,15 +321,40 @@ func restoreResponse(rr *domain.RestoreRun) map[string]any {
 	}
 }
 
-// resolveOrgID 는 인증 미들웨어가 넣은 조직 식별자를 읽는다.
-func resolveOrgID(c echo.Context) string {
-	if v, ok := c.Get("org_id").(string); ok && v != "" {
-		return v
+// resolveOrgID 는 요청의 조직을 정한다.
+//
+// 순서는 다른 핸들러(스택·관측)와 같다: 인증된 principal → X-Org-ID 헤더 → 시드
+// 기본 조직. 인증이 꺼진 개발 모드에는 principal 도 헤더도 없으므로 기본 조직이
+// 필요하다 — 종전에는 빈 조직으로 UUID 오류를 냈다.
+//
+// 헤더는 호출자가 적는 값이라 존재를 확인한다. 없는 조직으로 만든 백업은 만들어
+// 지되 어떤 화면에도 보이지 않는다(목록은 로그인 사용자의 조직으로만 거른다).
+// 문서의 유령 조직 00000000-…-0001 로 실제로 그랬다. 확인기가 배선되지 않았으면
+// 종전대로 믿는다. 확인 자체가 실패하면 거절도 통과도 아니다 — 통과시키면 유령
+// 조직이 다시 새고, 거절하면 DB 장애가 "조직 없음" 으로 보인다.
+func (h *BackupHandler) resolveOrgID(c echo.Context) (string, error) {
+	if orgID := sharedmw.OrgIDFromEchoContext(c); orgID != "" {
+		return orgID, nil
 	}
-	if v := c.Request().Header.Get("X-Org-Id"); v != "" {
-		return v
+	orgID := strings.TrimSpace(c.Request().Header.Get("X-Org-ID"))
+	if orgID == "" {
+		return shareddomain.DefaultOrgID(), nil
 	}
-	return ""
+	if h.orgs != nil {
+		exists, err := h.orgs.OrganizationExists(c.Request().Context(), orgID)
+		if err != nil {
+			return "", fmt.Errorf("조직 %s 확인 실패: %w", orgID, err)
+		}
+		if !exists {
+			return "", &shareddomain.AppError{
+				Code:       "ORG_NOT_FOUND",
+				HTTPStatus: http.StatusBadRequest,
+				Message:    "X-Org-ID 의 조직이 없습니다. 로그인한 조직의 ID 를 쓰세요 — 다른 조직으로 만든 백업은 화면에 보이지 않습니다",
+				Detail:     orgID,
+			}
+		}
+	}
+	return orgID, nil
 }
 
 // requiresQuiesce 는 고른 대상이 서비스를 멈추게 하는지 본다.

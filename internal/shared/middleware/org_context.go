@@ -32,6 +32,15 @@ func OrgIDFromContext(ctx context.Context) (string, bool) {
 	return orgID, true
 }
 
+// OrgIDFromEchoContext 는 인증 미들웨어가 넣은 principal 의 조직을 읽는다.
+//
+// 미들웨어를 거치지 않는 핸들러가 쓴다. 각 핸들러가 리플렉션을 복사해 갖는
+// 대신 여기 하나에 둔다 — 인증 모듈의 사용자 타입은 이 패키지가 알지 못하고,
+// 알아서도 안 된다(모듈 간 직접 import 금지). principal 이 없으면 빈 문자열이다.
+func OrgIDFromEchoContext(c echo.Context) string {
+	return orgIDFromEchoContext(c)
+}
+
 func orgIDFromEchoContext(c echo.Context) string {
 	if orgID := orgIDFromUser(c.Get("current_user")); orgID != "" {
 		return orgID

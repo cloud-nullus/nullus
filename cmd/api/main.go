@@ -27,6 +27,7 @@ import (
 	authtoken "github.com/cloud-nullus/draft/internal/auth/adapter/token"
 	authusecase "github.com/cloud-nullus/draft/internal/auth/usecase"
 	"github.com/cloud-nullus/draft/internal/backup"
+	backupbridge "github.com/cloud-nullus/draft/internal/backup/adapter/bridge"
 	backuphandler "github.com/cloud-nullus/draft/internal/backup/adapter/handler"
 	backupdomain "github.com/cloud-nullus/draft/internal/backup/domain"
 	backupscheduler "github.com/cloud-nullus/draft/internal/backup/scheduler"
@@ -690,7 +691,10 @@ func main() {
 	if backupModule != nil {
 		backupHandler := backuphandler.NewBackupHandler(
 			backupModule, backupModule.Verify, backupModule.Repo, cfg.Platform.Namespace,
-		)
+		).
+			// X-Org-ID 의 조직이 실제로 있는지 admin 의 공개 인터페이스로 본다. 없는
+			// 조직으로 만든 백업은 어떤 화면에도 보이지 않는다.
+			WithOrganizationChecker(backupbridge.NewOrganizationChecker(orgRepo))
 		backupHandler.RegisterRoutes(admin)
 
 		if sc := cfg.Backup.Schedule; sc.Enabled {
