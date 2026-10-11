@@ -148,6 +148,8 @@ func New(d Deps) (*Module, error) {
 			Component: domain.ComponentPlatformDB,
 			Host:      d.PlatformDB.Host, Port: d.PlatformDB.Port,
 			Database: d.PlatformDB.Name, User: d.PlatformDB.User, Password: d.PlatformDB.Password,
+			// 백업 이력은 플랫폼 DB 안에 있다. 되돌리면 지금의 이력이 백업 시점으로 돌아간다.
+			PreserveTables: domain.HistoryTables,
 		},
 		Keycloak: port.DBTarget{
 			Component: domain.ComponentKeycloakDB,
@@ -257,6 +259,7 @@ func (m *Module) Restore(ctx context.Context, stackID string) (*usecase.RestoreU
 	if a != nil {
 		deps.Scaler, deps.Archiver, deps.Resources = a.Scaler, a.Archiver, a.Resources
 		deps.Releases = a.Releases
+		deps.Namespaces = a.Namespaces
 	}
 	return usecase.NewRestoreUseCase(deps), nil
 }

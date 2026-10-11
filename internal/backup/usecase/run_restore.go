@@ -29,12 +29,14 @@ import (
 //	9  참조 정합성    — 경고하되 중단하지 않는다
 
 type RestoreDeps struct {
-	Repo         port.BackupRepository
-	Dumper       port.DBDumper
-	KV           port.KVExporter
-	Scaler       port.WorkloadScaler
-	Archiver     port.VolumeArchiver
-	Resources    port.ResourceDumper
+	Repo      port.BackupRepository
+	Dumper    port.DBDumper
+	KV        port.KVExporter
+	Scaler    port.WorkloadScaler
+	Archiver  port.VolumeArchiver
+	Resources port.ResourceDumper
+	// Namespaces 는 복구할 네임스페이스를 만든다. 없으면 이미 있다고 보고 건너뛴다.
+	Namespaces   port.NamespaceEnsurer
 	Sealer       port.Sealer
 	Store        port.ArtifactStore
 	TokenSources port.TokenSourceLister
@@ -198,6 +200,14 @@ func (uc *RestoreUseCase) verifyArtifacts(ctx context.Context, arts []*domain.Ar
 }
 
 func (uc *RestoreUseCase) restoreStackData(ctx context.Context, req RunRestoreRequest, m domain.Manifest, arts []*domain.Artifact) error {
+	// 2c. 네임스페이스 — 새 클러스터나 지운 네임스페이스로 되돌리면 없다. 리소스 덤프는
+	// 네임스페이스 안의 것만 담으므로 여기서 만들지 않으면 첫 PVC 생성부터 실패한다.
+	if uc.d.Namespaces != nil {
+		if err := uc.d.Namespaces.EnsureNamespace(ctx, req.Namespace, req.BackupRunID); err != nil {
+			return fmt.Errorf("네임스페이스 준비(%s): %w", req.Namespace, err)
+		}
+	}
+
 	// 3. PVC 재생성 — 매니페스트의 크기·StorageClass 대로.
 	for _, v := range m.Volumes {
 		if err := uc.d.Archiver.EnsurePVC(ctx, req.Namespace, v, req.BackupRunID); err != nil {

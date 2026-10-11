@@ -46,7 +46,8 @@ func seedBackup(t *testing.T, mode domain.Mode) (*RestoreUseCase, *trace, *fakeR
 
 	ruc := NewRestoreUseCase(RestoreDeps{
 		Repo: repo, Dumper: dumper, KV: kv, Scaler: scaler, Archiver: archiver,
-		Resources: &fakeResources{tr: tr}, Sealer: fakeSealer{}, Store: store,
+		Resources: &fakeResources{tr: tr}, Namespaces: &fakeNamespaces{tr: tr},
+		Sealer: fakeSealer{}, Store: store,
 		Targets: targets,
 		TokenSources: &fakeTokenLister{refs: []port.TokenSourceRef{
 			{ID: "ts-1", Path: "kv/nullus/dev/org-1/cicd/github/api-token"},
@@ -97,6 +98,33 @@ func TestRunRestore_PVC를_먼저_만든다(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Less(t, tr.indexOf("vol.ensure:data-gitlab"), tr.indexOf("vol.restore:data-gitlab"))
+}
+
+// 새 클러스터나 지운 네임스페이스로 복구하면 네임스페이스부터 없다. 만들지 않으면 첫 PVC
+// 생성이 "namespaces not found" 로 실패한다 — 백업이 멀쩡해도 복구가 시작조차 못 한다.
+func TestRunRestore_네임스페이스를_PVC보다_먼저_만든다(t *testing.T) {
+	uc, tr, _, _, _, _, backupID := seedBackup(t, domain.ModeFull)
+
+	_, err := uc.Run(context.Background(), RunRestoreRequest{
+		BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull,
+	})
+	require.NoError(t, err)
+
+	ns := tr.indexOf("ns.ensure:nullus")
+	require.NotEqual(t, -1, ns, "복구할 네임스페이스를 보장해야 한다")
+	assert.Less(t, ns, tr.indexOf("vol.ensure:data-gitlab"))
+	assert.Less(t, ns, tr.indexOf("res.apply"))
+}
+
+// 플랫폼만 되돌리는 복구는 스택 네임스페이스를 건드리지 않는다.
+func TestRunRestore_플랫폼만이면_네임스페이스를_만들지_않는다(t *testing.T) {
+	uc, tr, _, _, _, _, backupID := seedBackup(t, domain.ModeFull)
+
+	_, err := uc.Run(context.Background(), RunRestoreRequest{
+		BackupRunID: backupID, Mode: domain.ModePlatformOnly,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, -1, tr.indexOf("ns.ensure:nullus"))
 }
 
 // 설계 §6.1 0단계 — 키 없이 진행하면 "복구된 것처럼 보이는 망가진 상태" 가 된다.

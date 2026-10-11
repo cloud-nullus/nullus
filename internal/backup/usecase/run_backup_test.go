@@ -10,6 +10,7 @@ import (
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
 	"github.com/cloud-nullus/draft/internal/backup/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 func newBackupFixture(t *testing.T) (*BackupUseCase, *trace, *fakeRepo, *fakeStore, *fakeScaler, *fakeArchiver, *fakeNotifier) {
@@ -253,4 +254,42 @@ func TestRunBackup_고르지_않으면_모드에서_파생한다(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, domain.ModeComponents(domain.ModePlatformOnly), run.Scope)
+}
+
+// 스택 클러스터에 닿을 수단(스택 ID 로 만든 어댑터)이 없으면 리소스·볼륨은 뜰 수 없다. 예전
+// 화면은 스택을 보내지 않고 full 을 요청했고, 그 요청은 비어 있는 어댑터를 그대로 불렀다.
+// 실행 기록을 만들기 전에, 무엇이 빠졌는지 말하며 거절한다.
+func TestRunBackup_스택_클러스터_없이_리소스나_볼륨을_고르면_거부한다(t *testing.T) {
+	for _, scope := range [][]domain.Component{
+		{domain.ComponentVolume},
+		{domain.ComponentNamespaceResources},
+		nil, // full 모드에서 파생 — 둘 다 담긴다
+	} {
+		uc, _, repo, _, _, _, _ := newBackupFixture(t)
+		uc.d.Scaler, uc.d.Archiver, uc.d.Resources = nil, nil, nil // 스택 ID 없이 만든 유스케이스
+
+		_, err := uc.Run(context.Background(), RunBackupRequest{
+			OrgID: "org-1", Namespace: "nullus-app", Mode: domain.ModeFull, Scope: scope,
+		})
+
+		var appErr *shareddomain.AppError
+		require.ErrorAs(t, err, &appErr, "scope=%v", scope)
+		assert.Equal(t, "BACKUP_STACK_REQUIRED", appErr.Code)
+		assert.Equal(t, 400, appErr.HTTPStatus)
+		runs, _ := repo.ListRuns(context.Background(), "org-1", 0)
+		assert.Empty(t, runs, "거절한 요청이 실행 기록을 남기면 '실행 중' 으로 영영 남는다")
+	}
+}
+
+// DB 만 고르면 스택이 없어도 된다.
+func TestRunBackup_스택_클러스터_없이도_DB_는_뜬다(t *testing.T) {
+	uc, _, _, _, _, _, _ := newBackupFixture(t)
+	uc.d.Scaler, uc.d.Archiver, uc.d.Resources = nil, nil, nil
+
+	run, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", Mode: domain.ModePlatformOnly,
+		Scope: []domain.Component{domain.ComponentPlatformDB, domain.ComponentKeycloakDB},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusSucceeded, run.Status)
 }

@@ -100,6 +100,10 @@ func (uc *BackupUseCase) Run(ctx context.Context, req RunBackupRequest) (*domain
 	if needsStack && req.Namespace == "" {
 		return nil, fmt.Errorf("스택 대상 백업에는 네임스페이스가 필요합니다")
 	}
+	// 실행 기록을 만들기 전에 거절한다 — 만든 뒤 실패하면 그 기록이 남는다.
+	if missing := uc.missingStackAdapters(run.Scope); len(missing) > 0 {
+		return nil, domain.ErrStackRequired(strings.Join(missing, ", "))
+	}
 
 	if err := uc.d.Repo.CreateRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("백업 실행 기록 생성: %w", err)
@@ -376,6 +380,22 @@ func (uc *BackupUseCase) putStream(
 		return domain.Artifact{}, err
 	}
 	return art, nil
+}
+
+// missingStackAdapters 는 고른 대상 중 스택 클러스터 어댑터가 없어 뜰 수 없는 것이다.
+//
+// 어댑터는 스택 ID 로 그 스택의 클러스터에 붙어 만든다(wiring). 스택을 고르지 않은 요청에는
+// 없다 — 그대로 부르면 nil 어댑터를 호출한다.
+func (uc *BackupUseCase) missingStackAdapters(scope []domain.Component) []string {
+	var missing []string
+	for _, c := range scope {
+		switch {
+		case c == domain.ComponentNamespaceResources && uc.d.Resources == nil,
+			c == domain.ComponentVolume && (uc.d.Archiver == nil || uc.d.Scaler == nil):
+			missing = append(missing, string(c))
+		}
+	}
+	return missing
 }
 
 func (uc *BackupUseCase) inScope(run *domain.BackupRun, c domain.Component) bool {

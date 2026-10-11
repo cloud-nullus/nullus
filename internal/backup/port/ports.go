@@ -51,6 +51,9 @@ type DBTarget struct {
 	Database  string
 	User      string
 	Password  string
+	// PreserveTables 는 복원이 건드리지 않는 테이블이다(public 스키마). 덤프에는 담긴다 —
+	// 플랫폼 DB 를 잃었을 때 손으로 되살릴 사본이다. 플랫폼 DB 의 백업 이력이 그렇다(domain.HistoryTables).
+	PreserveTables []string
 }
 
 type DumpResult struct {
@@ -93,6 +96,15 @@ type VolumeArchiver interface {
 	Archive(ctx context.Context, namespace, pvc string, out io.Writer) (int64, error)
 	Restore(ctx context.Context, namespace, pvc string, in io.Reader) error
 	EnsurePVC(ctx context.Context, namespace string, spec domain.VolumeSpec, restoredFromBackupID string) error
+}
+
+// NamespaceEnsurer 는 복구할 네임스페이스를 보장한다.
+//
+// 새 클러스터나 지운 네임스페이스로 되돌리면 네임스페이스부터 없다. 리소스 덤프는
+// 네임스페이스 안의 것만 담으므로 Namespace 자체는 복구가 만들어야 한다 — 그러지 않으면 첫
+// PVC 생성이 "namespaces not found" 로 실패한다. 이미 있으면 그대로 둔다.
+type NamespaceEnsurer interface {
+	EnsureNamespace(ctx context.Context, namespace, restoredFromBackupID string) error
 }
 
 // HelmReleaseLister 는 네임스페이스에 설치된 차트의 버전을 읽는다.

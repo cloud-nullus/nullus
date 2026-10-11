@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/backup/port"
@@ -310,14 +312,11 @@ func sanitize(raw []byte) ([]byte, error) {
 			delete(meta, f)
 		}
 
-		// Service 의 clusterIP 는 클러스터가 배정한다. 그대로 되돌리면
-		// 이미 쓰이는 주소와 충돌하거나, 다른 클러스터에서는 범위 밖이다.
-		if kind, _ := item["kind"].(string); kind == "Service" {
-			if spec, ok := item["spec"].(map[string]any); ok {
-				delete(spec, "clusterIP")
-				delete(spec, "clusterIPs")
-			}
-		}
+		// Service 의 clusterIP 는 남긴다. 설치가 스택 게이트웨이의 ClusterIP 를 러너·Argo CD 의
+		// hostAliases 에 박는다 — 복구가 IP 를 버리면 게이트웨이는 새 주소를 받는데 hostAliases 는
+		// 옛 주소를 가리켜 파이프라인이 "Could not resolve host" 로 멈춘다. headless(None)는 IP 가
+		// 아니라 정체라 더욱 지우면 안 된다(StatefulSet 의 파드별 DNS). 그 IP 를 쓸 수 없으면
+		// (이미 쓰임·범위 밖) Apply 가 새 주소로 되돌린다.
 		kept = append(kept, item)
 	}
 
@@ -378,7 +377,7 @@ func (d *ResourceDumper) Apply(ctx context.Context, namespace string, in io.Read
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil || len(doc.Namespaced) == 0 {
 		// 옛 형식(단일 목록)도 받아 준다 — 이전 백업본을 복원할 수 있어야 한다.
-		return d.applyDoc(ctx, namespace, raw, false)
+		return d.applyNamespaced(ctx, namespace, raw)
 	}
 
 	if len(doc.ClusterScoped) > 0 {
@@ -393,7 +392,75 @@ func (d *ResourceDumper) Apply(ctx context.Context, namespace string, in io.Read
 			_ = err
 		}
 	}
-	return d.applyDoc(ctx, namespace, doc.Namespaced, false)
+	return d.applyNamespaced(ctx, namespace, doc.Namespaced)
+}
+
+// applyNamespaced 는 네임스페이스 리소스를 되돌린다. Service 는 백업 때의 ClusterIP 로 먼저 세운다.
+//
+// 그 IP 를 쓸 수 없으면(다른 Service 가 이미 씀·다른 클러스터라 범위 밖·이미 있는 Service 의 IP 와
+// 다름) API 서버가 spec.clusterIP 로 거절한다. 복구를 멈추지 않고 IP 를 빼고 다시 적용한다 — 새
+// 주소를 받은 Service 는 경고로 남긴다. 설치가 그 주소를 hostAliases 에 박은 게이트웨이라면 러너·
+// Argo CD 의 이름 해석을 다시 맞춰야 한다. headless(None)는 빼지 않는다.
+func (d *ResourceDumper) applyNamespaced(ctx context.Context, namespace string, payload []byte) error {
+	err := d.applyDoc(ctx, namespace, payload, false)
+	if err == nil || !strings.Contains(err.Error(), "spec.clusterIP") {
+		return err
+	}
+	// 거절된 Service 만 IP 를 뺀다. 나머지는 첫 적용에서 이미 백업 때의 IP 로 섰다 — 그것까지
+	// "새 주소" 라고 알리면 운영자가 멀쩡한 게이트웨이의 hostAliases 를 고치러 간다. 오류에서
+	// 이름을 못 읽으면 headless 가 아닌 모든 Service 에서 뺀다.
+	stripped, renumbered, serr := stripServiceClusterIPs(payload, rejectedServices(err.Error()))
+	if serr != nil || len(renumbered) == 0 {
+		return err
+	}
+	slog.Warn("백업 때의 ClusterIP 로 Service 를 되살리지 못해 새 주소로 복원합니다 — "+
+		"게이트웨이 주소가 바뀌었다면 러너·Argo CD 의 hostAliases 를 새 주소로 맞춰야 합니다",
+		"namespace", namespace, "services", renumbered, "cause", err)
+	return d.applyDoc(ctx, namespace, stripped, false)
+}
+
+// rejectedClusterIP 는 API 서버가 ClusterIP 를 거절한 Service 이름을 뽑는다(실측 문구:
+// `The Service "gw" is invalid: spec.clusterIPs: ... provided IP is already allocated`).
+var rejectedClusterIP = regexp.MustCompile(`The Service "([^"]+)" is invalid: spec\.clusterIP`)
+
+func rejectedServices(msg string) map[string]bool {
+	out := map[string]bool{}
+	for _, m := range rejectedClusterIP.FindAllStringSubmatch(msg, -1) {
+		out[m[1]] = true
+	}
+	return out
+}
+
+// stripServiceClusterIPs 는 headless 가 아닌 Service 의 clusterIP·clusterIPs 를 뺀다. only 가 비어 있지
+// 않으면 그 이름만 뺀다. 뺀 Service 이름을 돌려준다.
+func stripServiceClusterIPs(payload []byte, only map[string]bool) ([]byte, []string, error) {
+	var list map[string]any
+	if err := json.Unmarshal(payload, &list); err != nil {
+		return nil, nil, err
+	}
+	items, _ := list["items"].([]any)
+	var names []string
+	for _, it := range items {
+		item, _ := it.(map[string]any)
+		if kind, _ := item["kind"].(string); kind != "Service" {
+			continue
+		}
+		spec, _ := item["spec"].(map[string]any)
+		ip, has := spec["clusterIP"].(string)
+		if !has || ip == "" || ip == "None" {
+			continue
+		}
+		meta, _ := item["metadata"].(map[string]any)
+		name, _ := meta["name"].(string)
+		if len(only) > 0 && !only[name] {
+			continue
+		}
+		delete(spec, "clusterIP")
+		delete(spec, "clusterIPs")
+		names = append(names, name)
+	}
+	out, err := json.Marshal(list)
+	return out, names, err
 }
 
 // applyDoc 은 한 덩어리를 적용한다.

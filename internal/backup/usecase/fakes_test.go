@@ -360,3 +360,10 @@ func (f *failingDeleteStore) Delete(context.Context, string) error {
 func dbTarget(comp domain.Component, database string) port.DBTarget {
 	return port.DBTarget{Component: comp, Host: "db.test", Port: 5432, Database: database, User: "u", Password: "p"}
 }
+
+type fakeNamespaces struct{ tr *trace }
+
+func (f *fakeNamespaces) EnsureNamespace(_ context.Context, namespace, _ string) error {
+	f.tr.add("ns.ensure:" + namespace)
+	return nil
+}

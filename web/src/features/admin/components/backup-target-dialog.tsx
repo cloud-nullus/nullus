@@ -44,25 +44,64 @@ const TARGETS: { id: BackupComponent; labelKey: string; descKey: string }[] = [
 
 const ALL: BackupComponent[] = TARGETS.map((t) => t.id);
 
+/**
+ * 스택이 있어야 뜰 수 있는 대상. 금고는 스택마다 배포되고, 리소스·볼륨은 스택
+ * 클러스터에서 뜬다 — 서버는 스택 ID 로 그 클러스터를 찾는다.
+ */
+const STACK_TARGETS: ReadonlySet<BackupComponent> = new Set([
+  "openbao_kv",
+  "ns_resources",
+  "volume",
+]);
+const PLATFORM: BackupComponent[] = ALL.filter((id) => !STACK_TARGETS.has(id));
+
+/** 백업할 수 있는 스택. 네임스페이스는 볼륨을 뜰 때 확인 문구가 된다. */
+export interface BackupStackOption {
+  id: string;
+  name: string;
+  namespace: string;
+}
+
 export interface BackupTargetDialogProps {
   open: boolean;
   onClose: () => void;
-  /** 확인 문구로 입력해야 하는 네임스페이스. 정지 창이 생길 때만 쓰인다. */
-  namespace: string;
+  /** 고를 수 있는 스택. 없으면 플랫폼만 뜬다. */
+  stacks: BackupStackOption[];
   submitting?: boolean;
-  onSubmit: (input: { scope: BackupComponent[]; confirm?: string }) => void;
+  /** stackId·namespace 가 비어 있으면 플랫폼만 뜨는 백업이다. */
+  onSubmit: (input: {
+    stackId?: string;
+    namespace?: string;
+    scope: BackupComponent[];
+    confirm?: string;
+  }) => void;
 }
 
 export function BackupTargetDialog({
   open,
   onClose,
-  namespace,
+  stacks,
   submitting = false,
   onSubmit,
 }: BackupTargetDialogProps) {
   const { t } = useTranslation();
-  const [scope, setScope] = useState<BackupComponent[]>(ALL);
+  // 빈 문자열은 "플랫폼만" 이다. 스택이 있으면 첫 스택을 고른다 — 볼륨까지 담는 완전한
+  // 백업이 기본이어야 한다.
+  const [stackId, setStackId] = useState(stacks[0]?.id ?? "");
+  const [scope, setScope] = useState<BackupComponent[]>(
+    stacks.length > 0 ? ALL : PLATFORM,
+  );
   const [confirm, setConfirm] = useState("");
+
+  const stack = stacks.find((s) => s.id === stackId);
+  const namespace = stack?.namespace ?? "";
+
+  const chooseStack = (id: string) => {
+    setStackId(id);
+    // 대상이 바뀌면 고를 수 있는 것이 바뀐다. 앞 대상의 확인 문구는 이 대상과 맞지 않는다.
+    setScope(id ? ALL : PLATFORM);
+    setConfirm("");
+  };
 
   const stops = useMemo(() => requiresQuiesce(scope), [scope]);
   const nothingSelected = scope.length === 0;
@@ -89,7 +128,12 @@ export function BackupTargetDialog({
           </Button>
           <Button
             onClick={() =>
-              onSubmit({ scope, confirm: stops ? confirm.trim() : undefined })
+              onSubmit({
+                stackId: stack?.id,
+                namespace: stack?.namespace,
+                scope,
+                confirm: stops ? confirm.trim() : undefined,
+              })
             }
             disabled={!canSubmit}
           >
@@ -106,6 +150,37 @@ export function BackupTargetDialog({
           )}
         </p>
 
+        <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
+          <legend className="mb-1 text-sm font-medium">
+            {t("backupPage.dialog.stackLabel", "Backup target")}
+          </legend>
+          {stacks.map((s) => (
+            <label key={s.id} className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="radio"
+                className="h-4 w-4 accent-[var(--color-primary)]"
+                name="backup-stack"
+                value={s.id}
+                checked={stackId === s.id}
+                onChange={() => chooseStack(s.id)}
+              />
+              <span>{s.name}</span>
+              <code className="text-xs text-[var(--color-text-secondary)]">{s.namespace}</code>
+            </label>
+          ))}
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="radio"
+              className="h-4 w-4 accent-[var(--color-primary)]"
+              name="backup-stack"
+              value=""
+              checked={stackId === ""}
+              onChange={() => chooseStack("")}
+            />
+            <span>{t("backupPage.dialog.platformOnly", "Platform only (no stack)")}</span>
+          </label>
+        </fieldset>
+
         <ul className="flex flex-col gap-2">
           {TARGETS.map((target) => (
             <li key={target.id} className="flex gap-2">
@@ -113,6 +188,7 @@ export function BackupTargetDialog({
                 id={`backup-target-${target.id}`}
                 align="start"
                 checked={scope.includes(target.id)}
+                disabled={!stack && STACK_TARGETS.has(target.id)}
                 onChange={() => toggle(target.id)}
               />
               <label
@@ -129,6 +205,15 @@ export function BackupTargetDialog({
             </li>
           ))}
         </ul>
+
+        {!stack && (
+          <p className="m-0 text-xs text-[var(--color-text-secondary)]">
+            {t(
+              "backupPage.dialog.platformOnlyHint",
+              "Vault, Kubernetes resources and volumes belong to a stack. Pick a stack to include them.",
+            )}
+          </p>
+        )}
 
         {nothingSelected && (
           <p role="alert" className="text-xs text-[var(--color-error)]">
