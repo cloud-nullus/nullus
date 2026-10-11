@@ -15,9 +15,9 @@ const (
 	sastStageID   = "sast"
 	sastStageName = "SAST"
 
-	// defaultSASTScannerImage 는 CI 잡이 쓸 sonar-scanner 이미지다. amd64 만 낸다 —
-	// arm64 노드에서는 에뮬레이션이 있어야 돈다. 에어갭 설치는 이름을 바꾸지 않고
-	// 노드의 레지스트리 미러가 번들에서 내준다(RuntimeImages 가 번들에 싣는다).
+	// defaultSASTScannerImage 는 CI 잡이 쓸 sonar-scanner 이미지다. 공식 이미지가 amd64 만
+	// 내서 우리가 멀티아치로 굽는다(shareddomain.SonarScannerImage). 에어갭 설치는 이름을
+	// 바꾸지 않고 노드의 레지스트리 미러가 번들에서 내준다(RuntimeImages 가 번들에 싣는다).
 	defaultSASTScannerImage = shareddomain.SonarScannerImage
 )
 

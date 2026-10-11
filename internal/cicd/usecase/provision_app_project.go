@@ -65,6 +65,11 @@ type ProvisionAppProjectInput struct {
 	// TemplateID 는 배포 매니페스트에 템플릿 라벨로 실린다.
 	// 템플릿별 자원 사용 비교나 템플릿 단위 조회에 쓴다.
 	TemplateID string
+	// RefreshDefinitionOnly 는 이미 있는 저장소에 파이프라인 정의 파일(.gitlab-ci.yml ·
+	// 워크플로 · Jenkinsfile)만 다시 쓴다. 앱 코드·Dockerfile·배포 매니페스트는 건드리지
+	// 않는다. SAST 리포트 같은 새 단계가 옛 파이프라인에 붙게 하는 길이다 — 전에는
+	// 파이프라인을 다시 만드는 것 말고 방법이 없었다.
+	RefreshDefinitionOnly bool
 }
 
 // argoReadTokenName 은 Argo CD 가 저장소를 읽을 때 쓰는 토큰 이름이다.
@@ -115,6 +120,11 @@ type ProvisionAppProjectOutput struct {
 	Warnings []string
 	// ScaffoldSkipped 는 이미 있던 저장소라 스캐폴딩을 쓰지 않았음을 알린다.
 	ScaffoldSkipped bool
+	// DefinitionRefreshed 는 파이프라인 정의 파일을 플랫폼 기본으로 다시 썼음을 알린다.
+	DefinitionRefreshed bool
+	// RepositoryRecreated 는 정의를 갱신하려던 저장소가 없어 새로 만들고 전체 스캐폴딩을
+	// 썼음을 알린다 — 앱 코드는 사용자가 다시 밀어야 한다.
+	RepositoryRecreated bool
 	// CIJobURL 은 만들어진 CI job 의 주소다. CI 가 SCM 과 분리된 플랫폼
 	// (Jenkins)에서만 채워진다.
 	CIJobURL string
@@ -252,8 +262,14 @@ func (uc *ProvisionAppProject) Execute(
 	// (:bootstrap)으로 되돌아간다 — 그 태그는 레지스트리에 없으므로 돌던 배포가
 	// ImagePullBackOff 로 떨어졌다가 CI 가 다시 돌아야 복구된다. 사용자가 고친
 	// Dockerfile·워크플로·매니페스트도 같이 사라진다.
-	scaffoldSkipped := !project.Created
-	if !scaffoldSkipped {
+	//
+	// 정의 갱신(RefreshDefinitionOnly)은 예외다 — 그때는 파이프라인 정의 파일 하나만 다시
+	// 쓴다. 그 파일은 플랫폼이 소유하고, 이미지 태그는 거기 없다.
+	scaffoldSkipped := !project.Created && !input.RefreshDefinitionOnly
+	definitionRefreshed := false
+	repositoryRecreated := false
+	switch {
+	case project.Created:
 		if err := uc.scm.CommitFiles(ctx, project.ID, port.CommitSpec{
 			Branch:  project.DefaultBranch,
 			Message: "chore(nullus): scaffold pipeline and deployment manifests",
@@ -261,12 +277,35 @@ func (uc *ProvisionAppProject) Execute(
 		}); err != nil {
 			return nil, fmt.Errorf("commit scaffold to %q: %w", project.FullPath, err)
 		}
+		if input.RefreshDefinitionOnly {
+			definitionRefreshed, repositoryRecreated = true, true
+		}
+	case input.RefreshDefinitionOnly:
+		definition := make([]port.CommitFile, 0, 1)
+		for _, f := range files {
+			if scaffold.IsPipelineDefinitionPath(f.Path) {
+				definition = append(definition, f)
+			}
+		}
+		if len(definition) == 0 {
+			return nil, fmt.Errorf("%s 플랫폼의 파이프라인 정의 파일을 렌더하지 못했습니다", input.Platform)
+		}
+		if err := uc.scm.CommitFiles(ctx, project.ID, port.CommitSpec{
+			Branch:  project.DefaultBranch,
+			Message: "chore(nullus): refresh pipeline definition",
+			Files:   definition,
+		}); err != nil {
+			return nil, fmt.Errorf("commit pipeline definition to %q: %w", project.FullPath, err)
+		}
+		definitionRefreshed = true
 	}
 
 	out := &ProvisionAppProjectOutput{
-		Project:         project,
-		ImageTarget:     target,
-		ScaffoldSkipped: scaffoldSkipped,
+		Project:             project,
+		ImageTarget:         target,
+		ScaffoldSkipped:     scaffoldSkipped,
+		DefinitionRefreshed: definitionRefreshed,
+		RepositoryRecreated: repositoryRecreated,
 	}
 	if !scaffoldSkipped {
 		// 렌더에 쓴 입력 그대로 단계를 낸다. 따로 판단하면 선언과 실제가 갈린다.
@@ -275,6 +314,11 @@ func (uc *ProvisionAppProject) Execute(
 	if scaffoldSkipped {
 		out.Warnings = append(out.Warnings, fmt.Sprintf(
 			"%s 저장소가 이미 있어 스캐폴딩을 건너뛰었습니다 — 기존 파일을 덮어쓰지 않습니다",
+			project.FullPath))
+	}
+	if repositoryRecreated {
+		out.Warnings = append(out.Warnings, fmt.Sprintf(
+			"%s 저장소가 없어 다시 만들었습니다 — 전체 스캐폴딩을 썼으므로 앱 코드를 다시 밀어야 합니다",
 			project.FullPath))
 	}
 	uc.configurePipeline(ctx, project, target, input, out)

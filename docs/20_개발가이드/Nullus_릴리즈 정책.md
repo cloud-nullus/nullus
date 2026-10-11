@@ -280,9 +280,16 @@ Jenkins 커스텀 이미지를 빌드하는데, 태그를 릴리즈 버전이 �
 | `nullus-api` | 릴리즈 태그 (`docker/metadata-action`) | 아니오 — `main` push 시에도 `main`·SHA 태그로 빌드 |
 | `nullus-web` | 릴리즈 태그 (`docker/metadata-action`) | 아니오 — 위와 같음 |
 | `nullus-jenkins` | `Dockerfile`의 `JENKINS_VERSION` | 아니오 — 릴리즈와 무관하게 갱신 |
+| `nullus-sonar-scanner` | `Dockerfile`의 `SONAR_SCANNER_VERSION` | 아니오 — 위와 같음 |
 
-따라서 `nullus-jenkins`는 릴리즈 산출물 표(§1)에 넣지 않고, 버전 동기화 대상(§8)에서도 제외합니다.
-Jenkins를 올리는 것은 릴리즈가 아니라 그 `ARG` 값을 바꾸는 PR입니다.
+따라서 `nullus-jenkins`·`nullus-sonar-scanner`는 릴리즈 산출물 표(§1)에 넣지 않고, 버전 동기화 대상(§8)에서도 제외합니다.
+Jenkins나 스캐너를 올리는 것은 릴리즈가 아니라 그 `ARG` 값을 바꾸는 PR입니다.
+
+`nullus-sonar-scanner`는 파이프라인 SAST 단계가 쓰는 sonar-scanner 이미지입니다. 공식 `sonarsource/sonar-scanner-cli`가
+amd64만 게시해 arm64 노드·에어갭 arm64 번들에서 단계가 서지 않아, 플랫폼 독립 스캐너 zip을 멀티아치 JRE 위에
+`build-and-push-sonar-scanner`가 굽습니다(`deploy/images/sonar-scanner`). 코드 상수(`internal/shared/domain/runtime_images.go`의
+`SonarScannerImage`)와 태그는 테스트로 묶여 있습니다. **이 패키지도 처음 만들어질 때 private이므로 §7.1과 같이 public으로 바꿔야**
+CI 잡(GitHub Actions 러너·kind 노드)이 익명으로 pull할 수 있습니다.
 
 ### 7.2 Helm 차트 게시 (v2 신설)
 

@@ -55,10 +55,15 @@ const (
 	GitLabCIBuildImage  = "docker:27"
 	GitLabCIDeployImage = "alpine:3.20"
 
-	// SonarScannerImage — 파이프라인 SAST 단계(GitLab CI·Jenkins). amd64 빌드만 게시된다 —
-	// arm64 노드는 에뮬레이션(binfmt·rosetta)이 있어야 돈다. 폐쇄망도 같다.
+	// SonarScannerImage — 파이프라인 SAST 단계(GitLab CI·GitHub Actions·Jenkins). 공식
+	// sonarsource/sonar-scanner-cli 는 amd64 빌드만 게시해(Docker Hub 전 태그 실측, 2026-10)
+	// arm64 노드와 에어갭 arm64 번들에서 단계가 서지 않았다 — 플랫폼 독립 스캐너 zip 을 멀티아치
+	// JRE 위에 우리가 굽는다(deploy/images/sonar-scanner, CD 의 build-and-push-sonar-scanner,
+	// 로컬은 scripts/build-sonar-scanner-image.sh). 태그는 Dockerfile 의 스캐너 버전이다
+	// (테스트가 둘을 묶는다). ghcr 패키지는 처음 만들어질 때 private 이므로 public 으로 바꿔야
+	// 익명 pull 이 된다(릴리즈 정책 §7.1).
 	// (internal/cicd/adapter/scaffold/sast.go)
-	SonarScannerImage = "sonarsource/sonar-scanner-cli:12.2"
+	SonarScannerImage = "ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389"
 )
 
 // RuntimeImages 는 위 이미지 전부를 돌려준다.

@@ -395,6 +395,10 @@ func main() {
 		WithRepositoryProvisioner(provisionRepoUC).
 		// 새 스캔 파이프라인에 스택 정책을 싣는다. 빠지면 새 파이프라인만 기본 정책으로 판정한다.
 		WithScanPolicyPublisher(scanPolicyUC)
+	// 기존 파이프라인의 CI 정의 파일을 플랫폼 기본으로 다시 쓰는 경로. SAST 리포트 같은 새 단계가
+	// 옛 파이프라인에 붙게 한다 — 전에는 파이프라인을 다시 만드는 것 말고 방법이 없었다.
+	refreshDefinitionUC := cicduc.NewRefreshPipelineDefinition(pgPipelineRepo, provisionRepoUC).
+		WithScanPolicyPublisher(scanPolicyUC)
 	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
 	// 이미지 준비기와 클러스터 타깃 제공자를 배선한다.
 	//
@@ -438,6 +442,7 @@ func main() {
 		// 직접 배포가 실제로 클러스터에 적용하도록 한다. 없으면 배포가
 		// 실패한다 — 적용 없이 성공으로 기록하는 것보다 낫다.
 		WithManifestApplier(manifestApplier).
+		WithDefinitionRefresh(refreshDefinitionUC).
 		// 직접 배포(POST /deploy-app)도 파이프라인 배포와 같은 수집기 주소를
 		// 넣어야 한다 — 한쪽만 배선하면 경로에 따라 추적이 갈린다.
 		WithStackReader(cicdStackReader).

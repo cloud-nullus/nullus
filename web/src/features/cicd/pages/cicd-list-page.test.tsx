@@ -8,6 +8,8 @@ const mockUsePipelines = vi.fn();
 const mockUseStackWorkloads = vi.fn();
 const mockUseStackWorkloadLogs = vi.fn();
 const mockUseDeletePipeline = vi.fn();
+const mockUseRefreshPipelineDefinition = vi.fn();
+const mockRefreshDefinition = vi.fn();
 const mockUseDeployPipeline = vi.fn();
 const mockUseTemplateById = vi.fn();
 const mockUsePipelineDeployments = vi.fn();
@@ -38,6 +40,8 @@ vi.mock("../../stack/api/stack-api", () => ({
 vi.mock("../api/cicd-api", () => ({
   usePipelines: (...args: unknown[]) => mockUsePipelines(...args),
   useDeletePipeline: (...args: unknown[]) => mockUseDeletePipeline(...args),
+  useRefreshPipelineDefinition: (...args: unknown[]) =>
+    mockUseRefreshPipelineDefinition(...args),
   useDeployPipeline: (...args: unknown[]) => mockUseDeployPipeline(...args),
   useTemplateById: (...args: unknown[]) => mockUseTemplateById(...args),
   usePipelineDeployments: (...args: unknown[]) =>
@@ -96,6 +100,12 @@ describe("CicdListPage", () => {
       mutateAsync: vi.fn().mockResolvedValue(undefined),
       isPending: false,
     });
+    mockRefreshDefinition.mockReset();
+    mockUseRefreshPipelineDefinition.mockReset();
+    mockUseRefreshPipelineDefinition.mockReturnValue({
+      mutateAsync: mockRefreshDefinition,
+      isPending: false,
+    });
     mockUseDeployPipeline.mockReturnValue({
       mutateAsync: mockDeployPipeline,
       isPending: false,
@@ -116,6 +126,43 @@ describe("CicdListPage", () => {
     });
     mockUseStackWorkloads.mockReturnValue({ data: undefined, dataUpdatedAt: 0 });
     mockUseStackWorkloadLogs.mockReturnValue({ data: undefined, isLoading: false });
+  });
+
+  // SAST 리포트 전에 만든 파이프라인은 정의를 다시 써야 결과가 붙는다. 사용자가 손본 정의를
+  // 덮어쓰므로 확인을 거치고, 결과(단계·채울 변수)를 화면에 남긴다.
+  describe("CI 정의 갱신", () => {
+    it("확인 뒤 정의를 다시 쓰고 결과를 보여 준다", async () => {
+      mockRefreshDefinition.mockResolvedValue({
+        stages: ["Build", "SAST", "Deploy"],
+        warnings: [],
+        missingVariables: ["SONAR_TOKEN"],
+        repositoryRecreated: false,
+      });
+      renderWithProviders(<CicdListPage />);
+
+      fireEvent.click(screen.getByRole("button", { name: /Refresh definition/i }));
+      // 대화상자가 열리면 같은 이름의 확인 버튼이 하나 더 생긴다.
+      const confirm = screen.getAllByRole("button", { name: /Refresh definition/i }).at(-1)!;
+      fireEvent.click(confirm);
+
+      await waitFor(() => {
+        expect(mockRefreshDefinition).toHaveBeenCalledWith("pipeline-1");
+      });
+      const notice = await screen.findByTestId("refresh-definition-notice");
+      expect(within(notice).getByText(/Build → SAST → Deploy/)).toBeTruthy();
+      expect(within(notice).getByText(/SONAR_TOKEN/)).toBeTruthy();
+    });
+
+    it("실패하면 이유를 화면에 남긴다", async () => {
+      mockRefreshDefinition.mockRejectedValue(new Error("gitlab down"));
+      renderWithProviders(<CicdListPage />);
+
+      fireEvent.click(screen.getByRole("button", { name: /Refresh definition/i }));
+      fireEvent.click(screen.getAllByRole("button", { name: /Refresh definition/i }).at(-1)!);
+
+      const notice = await screen.findByTestId("refresh-definition-notice");
+      expect(within(notice).getByText(/gitlab down/)).toBeTruthy();
+    });
   });
 
   it("renders loading state safely", () => {

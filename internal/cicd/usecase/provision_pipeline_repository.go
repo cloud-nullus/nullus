@@ -33,6 +33,9 @@ type ProvisionPipelineRepositoryInput struct {
 	CommonProjectPath string
 	// RegistryCredentials 는 외부 레지스트리 자격증명이다.
 	RegistryCredentials map[string]string
+	// RefreshDefinitionOnly 는 이미 있는 저장소의 파이프라인 정의 파일만 다시 쓰고 CI 변수를
+	// 다시 등록한다. Argo CD Application 은 건드리지 않는다.
+	RefreshDefinitionOnly bool
 }
 
 // ProvisionPipelineRepositoryOutput 은 준비 결과다.
@@ -48,6 +51,9 @@ type ProvisionPipelineRepositoryOutput struct {
 	Warnings               []string
 	// ScaffoldSkipped 는 이미 있던 저장소라 스캐폴딩을 쓰지 않았음을 알린다.
 	ScaffoldSkipped bool
+	// DefinitionRefreshed / RepositoryRecreated 는 정의 갱신의 결과다(ProvisionAppProjectOutput).
+	DefinitionRefreshed bool
+	RepositoryRecreated bool
 	// Stages 는 파이프라인 레코드에 남길 실효 단계다. 스캐폴딩을 건너뛰었으면 비어 있다.
 	Stages []string
 }
@@ -134,6 +140,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 			ImageScannerJavaDBRepository: bundle.ImageScannerJavaDBRepository,
 			SASTServerEndpoint:           bundle.SASTServerEndpoint,
 			SASTToken:                    sastToken,
+			RefreshDefinitionOnly:        input.RefreshDefinitionOnly,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("provision app project: %w", err)
@@ -144,20 +151,26 @@ func (uc *ProvisionPipelineRepository) Execute(
 		ctx, bundle, commonOut.Group.FullPath, input.RequestedByEmail)
 
 	out := &ProvisionPipelineRepositoryOutput{
-		CommonProject:    commonOut.Project,
-		Project:          appOut.Project,
-		RepoURL:          appOut.Project.HTTPCloneURL,
-		ImageRepository:  appOut.ImageTarget.Repository,
-		MissingVariables: appOut.MissingVariables,
-		Warnings:         appOut.Warnings,
-		ScaffoldSkipped:  appOut.ScaffoldSkipped,
-		Stages:           appOut.Stages,
+		CommonProject:       commonOut.Project,
+		Project:             appOut.Project,
+		RepoURL:             appOut.Project.HTTPCloneURL,
+		ImageRepository:     appOut.ImageTarget.Repository,
+		MissingVariables:    appOut.MissingVariables,
+		Warnings:            appOut.Warnings,
+		ScaffoldSkipped:     appOut.ScaffoldSkipped,
+		DefinitionRefreshed: appOut.DefinitionRefreshed,
+		RepositoryRecreated: appOut.RepositoryRecreated,
+		Stages:              appOut.Stages,
 	}
 	if memberWarning != "" {
 		out.Warnings = append(out.Warnings, memberWarning)
 	}
 
-	uc.applyArgoApplication(ctx, bundle, app, input.Namespace, appOut, out)
+	// 정의 갱신은 Argo CD Application 을 다시 적용하지 않는다 — 사용자가 손본 Application 을
+	// 기본값으로 되돌릴 이유가 없고, 갱신의 목적은 CI 정의와 변수다.
+	if !input.RefreshDefinitionOnly {
+		uc.applyArgoApplication(ctx, bundle, app, input.Namespace, appOut, out)
+	}
 
 	// 무엇이 준비되지 못했는지는 서버에도 남긴다.
 	//

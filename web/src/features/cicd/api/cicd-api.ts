@@ -78,6 +78,17 @@ export interface DeletePipelineResult {
  * 보고한다. 예전에는 이 값을 화면이 통째로 버려서, 저장소가 비어 있는데도
  * 파이프라인은 "정상" 으로 보였다.
  */
+/** POST /pipelines/:id/refresh-definition 의 결과. */
+export interface RefreshDefinitionResult {
+  /** 다시 쓴 정의의 단계. 비면 번들이 알려 주지 않은 것이다. */
+  stages: string[];
+  warnings: string[];
+  /** CI 가 필요로 하는데 등록되지 못한 변수들. */
+  missingVariables: string[];
+  /** 저장소가 없어 다시 만들고 전체 스캐폴딩을 썼다 — 앱 코드를 다시 밀어야 한다. */
+  repositoryRecreated: boolean;
+}
+
 export interface PipelineProvisioning {
   warnings: string[];
   /** 이미 있던 저장소라 스캐폴딩을 쓰지 않았다 — 리포에 Jenkinsfile 이 없을 수 있다. */
@@ -480,6 +491,22 @@ export const cicdApiCalls = {
     } as Pipeline & { provisioning: PipelineProvisioning };
   },
 
+  // 기존 파이프라인의 CI 정의 파일을 플랫폼 기본으로 다시 쓴다. SAST 리포트처럼 정의가 새로
+  // 하는 일을 옛 파이프라인에 붙이는 길이다 — 전에는 파이프라인을 다시 만드는 수밖에 없었다.
+  refreshPipelineDefinition: async (
+    pipelineId: string,
+  ): Promise<RefreshDefinitionResult> => {
+    const res = await api
+      .post<any>(`/cicd/pipelines/${pipelineId}/refresh-definition`)
+      .then((r) => r.data);
+    return {
+      stages: res?.stages ?? [],
+      warnings: res?.warnings ?? [],
+      missingVariables: res?.missing_variables ?? [],
+      repositoryRecreated: !!res?.repository_recreated,
+    };
+  },
+
   deployPipeline: async ({
     pipelineId,
     manifestTypes,
@@ -748,6 +775,17 @@ export function useDeletePipeline() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["cicd", "pipelines"] });
       void qc.invalidateQueries({ queryKey: ["cicd", "deployments"] });
+    },
+  });
+}
+
+export function useRefreshPipelineDefinition() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: cicdApiCalls.refreshPipelineDefinition,
+    onSuccess: () => {
+      // 단계가 바뀌었을 수 있다 — 목록이 실행 기록을 그 단계로 보여 준다.
+      void qc.invalidateQueries({ queryKey: ["cicd", "pipelines"] });
     },
   });
 }
