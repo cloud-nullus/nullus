@@ -4,7 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
@@ -125,5 +129,96 @@ func (uc *GatewayAliasRepin) RepinGatewayAliases(ctx context.Context, stackID, n
 		}
 		updated = append(updated, rel.ReleaseName)
 	}
+
+	keys, err := uc.repinOverrides(ctx, stack.ID, hostnames, ip)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	for _, k := range keys {
+		updated = append(updated, "overrides/"+k)
+	}
 	return ip, updated, errors.Join(errs...)
+}
+
+// overrideRepins 는 게이트웨이 주소가 박히는 오버라이드 키와 그 규칙이다. 설치는 단계 이름 → 릴리스 이름 →
+// 차트 이름 → "installing_" 을 뗀 이름 순으로 오버라이드를 찾는다(helm-values.go) — 모두 본다.
+var overrideRepins = map[string]func(map[string]any, []string, string) (bool, []string){
+	"installing_argocd":   domain.RepinArgoCDHostAliases,
+	argoCDChartName:       domain.RepinArgoCDHostAliases,
+	"argocd":              domain.RepinArgoCDHostAliases,
+	"installing_runner":   domain.RepinRunnerHostAliases,
+	gitLabRunnerChartName: domain.RepinRunnerHostAliases,
+	"runner":              domain.RepinRunnerHostAliases,
+}
+
+// yamlOverrideWriter 는 스택 설정의 오버라이드 키 하나만 바꾼다(Postgres·메모리 저장소). 행 전체를
+// 덮어쓰는 Update 와 달리 그 사이 들어온 다른 변경을 되돌리지 않는다.
+type yamlOverrideWriter interface {
+	SetYAMLOverride(ctx context.Context, stackID, key, yamlText string) error
+}
+
+// repinOverrides 는 스택 설정의 오버라이드에 굳은 게이트웨이 주소를 바꾼다. 바꾼 키를 돌려준다.
+//
+// OSS 설정 편집(live)은 배포된 values 를 통째로 오버라이드에 저장해 그 시점의 주소가 굳는다. 오버라이드는
+// 재설치 때 맨 마지막에 병합되므로, 릴리스만 고치면 다음 재설치에서 옛 주소가 돌아온다.
+//
+//   - helm 작업이 끝난 뒤 스택을 새로 읽는다 — Argo CD 차트를 다시 받으면 수 분이 걸린다.
+//   - 키 하나씩만 쓴다. 행 전체를 덮어쓰면 그 사이의 상태 전이·다른 키 편집을 되돌린다.
+//   - ip 값만 텍스트에서 바꾼다. 다시 직렬화하면 사용자가 쓴 주석·서식이 사라진다.
+func (uc *GatewayAliasRepin) repinOverrides(ctx context.Context, stackID string, hostnames []string, ip string) ([]string, error) {
+	stack, err := uc.stackRepo.GetByID(ctx, stackID)
+	if err != nil || stack == nil {
+		return nil, fmt.Errorf("스택 설정 다시 읽기: %w", err)
+	}
+	cfg, _ := stackConfigFromInterface(stack.Config)
+	writer, partial := uc.stackRepo.(yamlOverrideWriter)
+
+	var changed []string
+	for key, text := range cfg.YAMLOverrides {
+		repin, ok := overrideRepins[key]
+		if !ok || strings.TrimSpace(text) == "" {
+			continue
+		}
+		var values map[string]any
+		if err := yaml.Unmarshal([]byte(text), &values); err != nil {
+			continue // 읽지 못하는 오버라이드는 설치도 쓰지 못한다 — 여기서 고칠 일이 아니다
+		}
+		ok, old := repin(values, hostnames, ip)
+		if !ok {
+			continue
+		}
+		next := replaceAliasIPs(text, old, ip)
+		if next == text {
+			continue
+		}
+		if partial {
+			if err := writer.SetYAMLOverride(ctx, stackID, key, next); err != nil {
+				return changed, fmt.Errorf("오버라이드 저장(%s): %w", key, err)
+			}
+		} else {
+			cfg.YAMLOverrides[key] = next
+		}
+		changed = append(changed, key)
+	}
+	if len(changed) > 0 && !partial {
+		stack.Config = cfg
+		if err := uc.stackRepo.Update(ctx, stack); err != nil {
+			return nil, fmt.Errorf("스택 설정의 오버라이드 저장: %w", err)
+		}
+	}
+	sort.Strings(changed)
+	return changed, nil
+}
+
+// replaceAliasIPs 는 텍스트에서 ip 필드의 옛 주소만 새 주소로 바꾼다 — YAML `ip: x`·`- ip: "x"`,
+// TOML `ip = "x"`. 주석이나 다른 값에 같은 주소가 있어도 건드리지 않는다.
+func replaceAliasIPs(text string, old []string, ip string) string {
+	for _, o := range old {
+		if strings.TrimSpace(o) == "" {
+			continue
+		}
+		re := regexp.MustCompile(`(\bip\s*[:=]\s*["']?)` + regexp.QuoteMeta(o) + `(["']?(?:[^0-9.]|$))`)
+		text = re.ReplaceAllString(text, "${1}"+ip+"${2}")
+	}
+	return text
 }

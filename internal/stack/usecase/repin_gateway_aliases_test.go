@@ -197,3 +197,167 @@ func stackRepoOf(t *testing.T, accessDomain string) *stackrepo.MemoryStackReposi
 	}
 	return repo
 }
+
+const argoOverride = `# 운영팀이 늘린 레플리카. 예전 게이트웨이는 10.96.45.47 이었다 — 주석은 그대로 둔다
+server:
+  replicas: 2
+global:
+  hostAliases:
+    - ip: 10.96.45.47
+      hostnames: ["gitlab.nullus.local", "registry.nullus.local"]
+`
+
+const runnerOverride = `concurrent: 8
+runners:
+  config: |
+    [[runners]]
+      [runners.kubernetes]
+        [[runners.kubernetes.host_aliases]]
+          ip = "10.96.45.47"
+          hostnames = ["gitlab.nullus.local", "registry.nullus.local"]
+`
+
+func repinWithOverrides(t *testing.T, liveIP string) (*usecase.GatewayAliasRepin, *stackrepo.MemoryStackRepository) {
+	t.Helper()
+	repo := stackrepo.NewMemoryStackRepository()
+	if err := repo.Create(context.Background(), &domain.Stack{
+		ID: "stk_1", Name: "prod", ClusterID: "cls_1", Namespace: "nullus", State: domain.StateCompleted,
+		Config: domain.StackConfig{
+			AccessDomain: "nullus.local",
+			YAMLOverrides: map[string]string{
+				"installing_argocd": argoOverride,
+				"installing_runner": runnerOverride,
+				"installing_gitlab": "global:\n  hosts:\n    domain: nullus.local # 10.96.45.47 는 여기서 상관없다\n",
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeReleaseManager{
+		releases: []port.ReleaseInfo{{ReleaseName: "argo-cd", ChartName: "argo-cd", Namespace: "nullus"}},
+		values: map[string]map[string]any{"argo-cd": {"global": map[string]any{"hostAliases": []any{
+			map[string]any{"ip": liveIP, "hostnames": []any{"gitlab.nullus.local", "registry.nullus.local"}},
+		}}}},
+	}
+	uc := usecase.NewGatewayAliasRepin(repo, fakeKubeconfigProvider{},
+		func(_ []byte) port.HelmReleaseManager { return manager },
+		func(_ []byte) (port.GatewayAddressReader, error) { return &fakeGatewayReader{ip: "10.96.200.9"}, nil },
+	)
+	return uc, repo
+}
+
+// OSS 설정 편집(live)은 배포된 values 를 통째로 스택 설정의 오버라이드에 저장한다 — 그 시점의 게이트웨이
+// 주소도 함께 굳는다. 오버라이드는 재설치 때 맨 마지막에 병합되므로, 릴리스만 고치면 다음 재설치에서 옛
+// 주소가 돌아온다. 오버라이드에 박힌 주소도 같은 규칙으로 바꾼다 — 주석·서식·다른 값은 그대로 둔다.
+func TestGatewayAliasRepin_RepinsFrozenOverrides(t *testing.T) {
+	uc, repo := repinWithOverrides(t, "10.96.45.47")
+
+	_, updated, err := uc.RepinGatewayAliases(context.Background(), "stk_1", "nullus", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stack, _ := repo.GetByID(context.Background(), "stk_1")
+	cfg := stack.Config.(domain.StackConfig)
+	// ip 값만 바뀐다. 주석 속 옛 주소는 그대로다.
+	if cfg.YAMLOverrides["installing_argocd"] != strings.Replace(argoOverride, "- ip: 10.96.45.47", "- ip: 10.96.200.9", 1) {
+		t.Fatalf("argo override=\n%s", cfg.YAMLOverrides["installing_argocd"])
+	}
+	if cfg.YAMLOverrides["installing_runner"] != strings.Replace(runnerOverride, `ip = "10.96.45.47"`, `ip = "10.96.200.9"`, 1) {
+		t.Fatalf("runner override=\n%s", cfg.YAMLOverrides["installing_runner"])
+	}
+	if !strings.Contains(cfg.YAMLOverrides["installing_gitlab"], "10.96.45.47") {
+		t.Fatal("게이트웨이 핀이 아닌 오버라이드는 건드리지 않는다")
+	}
+	joined := strings.Join(updated, ",")
+	if !strings.Contains(joined, "overrides/installing_argocd") || !strings.Contains(joined, "overrides/installing_runner") {
+		t.Fatalf("updated=%v", updated)
+	}
+}
+
+// 릴리스는 이미 새 주소인데(예: 손으로 맞춘 뒤) 오버라이드만 옛 주소로 남은 경우도 바로잡는다.
+func TestGatewayAliasRepin_RepinsOverridesEvenWhenReleasesAreCurrent(t *testing.T) {
+	uc, repo := repinWithOverrides(t, "10.96.200.9")
+
+	_, updated, err := uc.RepinGatewayAliases(context.Background(), "stk_1", "nullus", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, _ := repo.GetByID(context.Background(), "stk_1")
+	if strings.Contains(stack.Config.(domain.StackConfig).YAMLOverrides["installing_argocd"], "- ip: 10.96.45.47") {
+		t.Fatal("오버라이드에 옛 주소가 남았다")
+	}
+	for _, u := range updated {
+		if u == "argo-cd" {
+			t.Fatal("릴리스는 이미 새 주소라 다시 적용하지 않는다")
+		}
+	}
+}
+
+// 설치는 오버라이드를 단계·릴리스·차트 이름과 "installing_" 을 뗀 이름(argocd·runner)으로 찾는다.
+// 그 키로 들어온 오버라이드도 바꿔야 한다.
+func TestGatewayAliasRepin_RepinsShortOverrideKeys(t *testing.T) {
+	uc, repo := repinWithOverrides(t, "10.96.200.9")
+	stack, _ := repo.GetByID(context.Background(), "stk_1")
+	cfg := stack.Config.(domain.StackConfig)
+	cfg.YAMLOverrides = map[string]string{"argocd": argoOverride, "runner": runnerOverride}
+	stack.Config = cfg
+	if err := repo.Update(context.Background(), stack); err != nil {
+		t.Fatal(err)
+	}
+
+	_, updated, err := uc.RepinGatewayAliases(context.Background(), "stk_1", "nullus", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(updated, ",") != "overrides/argocd,overrides/runner" {
+		t.Fatalf("updated=%v", updated)
+	}
+}
+
+// 오버라이드는 그 키만 바꾼다. helm 작업(Argo CD 차트를 다시 받으면 수 분)이 도는 사이 들어온 다른
+// 변경 — 상태 전이, 다른 키의 편집 — 을 오래된 읽기로 덮어쓰지 않는다.
+func TestGatewayAliasRepin_DoesNotClobberConcurrentChanges(t *testing.T) {
+	uc, repo := repinWithOverrides(t, "10.96.45.47")
+	uc = usecase.NewGatewayAliasRepin(repo, fakeKubeconfigProvider{},
+		func(_ []byte) port.HelmReleaseManager {
+			return &onUpgrade{fakeReleaseManager: &fakeReleaseManager{
+				releases: []port.ReleaseInfo{{ReleaseName: "argo-cd", ChartName: "argo-cd", Namespace: "nullus"}},
+				values: map[string]map[string]any{"argo-cd": {"global": map[string]any{"hostAliases": []any{
+					map[string]any{"ip": "10.96.45.47", "hostnames": []any{"gitlab.nullus.local"}},
+				}}}},
+			}, hook: func() {
+				// 업그레이드 도중 다른 요청이 스택을 바꾼다.
+				st, _ := repo.GetByID(context.Background(), "stk_1")
+				c := st.Config.(domain.StackConfig)
+				c.YAMLOverrides["installing_gitlab"] = "global: {edition: ee}\n"
+				st.Config = c
+				st.CurrentStep = "installing_gitlab"
+				_ = repo.Update(context.Background(), st)
+			}}
+		},
+		func(_ []byte) (port.GatewayAddressReader, error) { return &fakeGatewayReader{ip: "10.96.200.9"}, nil },
+	)
+
+	if _, _, err := uc.RepinGatewayAliases(context.Background(), "stk_1", "nullus", nil); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := repo.GetByID(context.Background(), "stk_1")
+	c := st.Config.(domain.StackConfig)
+	if c.YAMLOverrides["installing_gitlab"] != "global: {edition: ee}\n" || st.CurrentStep != "installing_gitlab" {
+		t.Fatalf("동시 변경을 덮어썼다: gitlab=%q step=%q", c.YAMLOverrides["installing_gitlab"], st.CurrentStep)
+	}
+	if strings.Contains(c.YAMLOverrides["installing_argocd"], "- ip: 10.96.45.47") {
+		t.Fatal("argo 오버라이드는 바뀌어야 한다")
+	}
+}
+
+type onUpgrade struct {
+	*fakeReleaseManager
+	hook func()
+}
+
+func (o *onUpgrade) Upgrade(ctx context.Context, req port.HelmUpgradeRequest) (*port.HelmUpgradeResult, error) {
+	o.hook()
+	return o.fakeReleaseManager.Upgrade(ctx, req)
+}
