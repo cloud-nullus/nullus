@@ -411,3 +411,13 @@ func TestDumpKinds_모니터링_CR_을_담는다(t *testing.T) {
 	// 모니터링 스택이 없는 클러스터(api-resources 에 없음)에서는 조회하지 않는다.
 	assert.NotContains(t, filterAvailable(dumpKinds, "deployments.apps\nsecrets\n"), "prometheuses.monitoring.coreos.com")
 }
+
+// 접근 도메인 인증서(nullus-access-domain-cert)는 cert-manager 의 Certificate 가 주체다. 그 Secret
+// (nullus-access-domain-tls)은 덤프에 담겨 되살아나지만 Certificate 가 빠지면 갱신할 주체가 없다 —
+// 복구 직후에는 멀쩡하다가 만기(기본 90일)에 게이트웨이 TLS 가 조용히 죽는다. 2026-10-12 리허설
+// 지문 대조에서 Certificate 가 복구 뒤 사라진 것이 드러났다. 복구가 cert-manager 를 먼저 세우므로
+// (EnsureSharedComponents) 네임스페이스 리소스 단계에서 CR 을 적용할 수 있다.
+func TestDumpKinds_cert_manager_Certificate_를_담는다(t *testing.T) {
+	assert.Contains(t, dumpKinds, "certificates.cert-manager.io")
+	assert.Contains(t, dumpKinds, "issuers.cert-manager.io")
+}

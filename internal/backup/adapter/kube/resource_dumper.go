@@ -99,6 +99,13 @@ var dumpKinds = []string{
 	"probes.monitoring.coreos.com",
 	"scrapeconfigs.monitoring.coreos.com",
 	"alertmanagerconfigs.monitoring.coreos.com",
+
+	// 인증서의 주체. 접근 도메인 인증서 Secret(nullus-access-domain-tls)은 Secret 으로 되살아나지만
+	// 그것을 발급·갱신하는 Certificate 가 빠지면 만기(기본 90일)에 게이트웨이 TLS 가 조용히 죽는다 —
+	// 같은 리허설의 지문 대조에서 드러났다. 복구가 cert-manager 를 먼저 세우므로 적용할 수 있다.
+	// 되살아난 Secret 의 발급 정보가 맞으면 cert-manager 는 그것을 채택하고 다시 발급하지 않는다.
+	"certificates.cert-manager.io",
+	"issuers.cert-manager.io",
 }
 
 func (d *ResourceDumper) writeKubeconfig() (string, error) {
