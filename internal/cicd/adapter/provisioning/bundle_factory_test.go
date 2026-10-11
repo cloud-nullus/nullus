@@ -292,3 +292,42 @@ func TestFor_GitLabBundleCanTriggerCI(t *testing.T) {
 
 	assert.NotNil(t, bundle.CITrigger)
 }
+
+// 로컬에서 GitLab 스택이 여럿이면 포트포워드도 여럿이다. 주소 하나로는 한 스택밖에
+// 못 가리키고, 다른 스택의 번들은 엉뚱한 GitLab 에 인증을 시도해 토큰을 돌린다.
+// "네임스페이스=주소" 목록이면 스택마다 제 주소를 쓴다.
+func TestGitLabBaseURLOverrideFor_NamespaceKeyedList(t *testing.T) {
+	override := "devsecops=http://127.0.0.1:8181, cicd-stack=http://127.0.0.1:8182"
+
+	assert.Equal(t, "http://127.0.0.1:8181", gitLabBaseURLOverrideFor(override, "devsecops"))
+	assert.Equal(t, "http://127.0.0.1:8182", gitLabBaseURLOverrideFor(override, "cicd-stack"))
+	// 목록에 없는 스택은 클러스터 내부 주소를 그대로 쓴다.
+	assert.Equal(t, "", gitLabBaseURLOverrideFor(override, "other"))
+}
+
+// 주소 하나만 주면 예전처럼 모든 스택에 적용된다. 네임스페이스 항목과 섞이면
+// 항목이 있는 스택은 그 주소, 나머지는 bare 주소다.
+func TestGitLabBaseURLOverrideFor_BareURLAppliesToAll(t *testing.T) {
+	assert.Equal(t, "http://127.0.0.1:8181", gitLabBaseURLOverrideFor("http://127.0.0.1:8181", "any"))
+	assert.Equal(t, "https://gitlab.example.com/?x=1", gitLabBaseURLOverrideFor("https://gitlab.example.com/?x=1", "any"),
+		"쿼리의 = 는 네임스페이스 구분자가 아니다")
+
+	mixed := "http://127.0.0.1:8181,special=http://127.0.0.1:9191"
+	assert.Equal(t, "http://127.0.0.1:9191", gitLabBaseURLOverrideFor(mixed, "special"))
+	assert.Equal(t, "http://127.0.0.1:8181", gitLabBaseURLOverrideFor(mixed, "other"))
+	assert.Equal(t, "", gitLabBaseURLOverrideFor("  ", "any"))
+}
+
+func TestFor_HonorsNamespaceKeyedGitLabOverride(t *testing.T) {
+	matching := stubGitLab(t)
+	issuer := &fakeTokenIssuer{token: "glpat-x"}
+	f := NewBundleFactory(&fakeStackReader{summary: gitlabStack()}, issuer, Options{
+		Env: "dev", GroupPath: "acme",
+		// gitlabStack() 의 네임스페이스는 devsecops 다. 다른 항목은 닿지 않는 주소다.
+		GitLabBaseURLOverride: "other=http://127.0.0.1:1,devsecops=" + matching,
+	})
+
+	bundle, err := f.For(context.Background(), "stk_1")
+	require.NoError(t, err)
+	assert.Equal(t, matching, bundle.Provisioner.(interface{ BaseURL() string }).BaseURL())
+}
