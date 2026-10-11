@@ -960,6 +960,49 @@ internal/backup/
 
 같은 이유로 "성공" 표시를 믿지 않는다. Jenkins 가 `SUCCESS` 인데 로그를 보니 `Stage "Build" skipped due to when conditional` 이었던 적이 있다 — HEAD 가 CD 의 `[skip ci]` 커밋이라 아무 일도 하지 않은 성공이었다.
 
+### 10.2.3 제품 삭제 뒤 복구 리허설 (2026-10-12) — **통과. Q16 해소**
+
+§10.2.2 는 네임스페이스를 지우고 되돌렸다 — 클러스터 공용 자원은 그대로였다. #284 뒤로 **제품 기능으로 클러스터의 마지막 스택을 지우면 cert-manager · metrics-server · Gateway API CRD · GatewayClass · 내부 CA 까지 회수**되므로, 그 뒤의 복구는 다른 길이다. 이번 리허설은 그 길을 실제 스택으로 끝까지 갔다: kind-nullus-platform 에 GitLab + Argo CD + SonarQube 스택을 설치 → 파이프라인 생성(CI 가 빌드 · SAST · 배포까지 돈 상태) → 백업(볼륨 포함) → **제품 API 로 삭제**(회수 확인) → full 복구 → 지문 대조. 세 번 돌렸다 — 1차는 결함 ①② 를, 2차는 ③④ 를 드러냈고, 3차가 고친 코드로 끝까지 통과했다.
+
+| | 3차(최종) |
+|---|---|
+| 스택 | GitLab + Argo CD + SonarQube, 파드 42 (워크로드 39 + 설치 Job 3), 릴리스 13 + cert-manager |
+| 산출물 | 11건 · 1.05 GB (볼륨 6 · 네임스페이스 리소스 15 MB · 공용 자원 3.2 MB · 플랫폼 DB · Keycloak DB · 금고 KV) |
+| **정지 창** | **73.7초** (1차 67.5초 · 2차 59.2초) |
+| 삭제 → 회수 완료 | **73초** (204 뒤 비동기. 네임스페이스 · cert-manager · GatewayClass · 라벨 CRD 25 · 내부 CA · metrics-server 모두 사라짐) |
+| **복구 요청** | **94.8초** — CA Secret +4초 → cert-manager Ready +14초 → ClusterIssuer Ready · CRD · metrics-server +25초 → PVC · 볼륨 → 리소스 |
+| 복구 후 기동 | 17분 30초 (06:16:15 → 06:33:45. GitLab webservice 기동과 Argo CD 재동기화가 대부분이다) (39/39 Running, Prometheus · Alertmanager StatefulSet 포함) |
+| **지문 대조** | **16/16 일치** — 내부 CA tls.crt sha `e81ef5ce788344a6` 동일, 접근 도메인 인증서 Secret · Certificate 동일, GatewayClass 라벨 · 라벨 CRD 25 · ClusterIssuer 2 Ready, GitLab 프로젝트 HEAD · 파이프라인 수, Argo CD Application Synced/Healthy · 앱 이미지 태그 |
+
+`integrity_report.shared_components` 는 `{"steps":["installing_cert_manager","installing_metrics_server"]}` — 경고 없음. 복구 순서는 설계대로였다: 네임스페이스 → **CA Secret** → cert-manager 설치 → ClusterIssuer Ready → GatewayClass · Gateway CRD · metrics-server → PVC → 볼륨 → 리소스. CA Secret 이 컨트롤러보다 먼저였기에 부트스트랩은 새 키를 만들지 않고 옛 키를 채택했다 — 그래서 sha 가 같다. 세 번 모두 같았다.
+
+#### 이 리허설이 잡아낸 것 — 결함 4건, 모두 코드와 CI 를 통과한 상태였다
+
+| # | 결함 | 성격 |
+|---|---|---|
+| ① | **000091(#298) 의 `backup_runs.org_id` FK 가 full 복구의 플랫폼 DB 단계를 막음** — 복구는 백업 이력 테이블을 보존한 채 나머지를 `pg_restore --clean` 으로 되돌리는데, `organizations_pkey` 를 지우는 순간 그 FK 가 `cannot drop constraint … depends on` 으로 막는다. #298 머지 뒤의 모든 full 복구가 이 자리에서 죽었다 | 스키마 · 복구 모델 |
+| ② | **스택 삭제가 다른 네임스페이스가 쓰는 ESO CRD · 검증 웹훅을 무조건 걷어냄** — DB 에만 남은 유령 스택(설치 실패 뒤 남은 레코드)을 지우자 살아 있던 스택의 ExternalSecret 이 CRD 와 함께 사라지고, 그 Secret 은 가비지 컬렉터가 거뒀다. 다음 파드 재시작에서 `secret "nullus-postgresql-credentials" not found` | 삭제 · 클러스터 공용 |
+| ③ | **Prometheus · Alertmanager CR 이 덤프에 없음** — 오퍼레이터가 CR 을 읽어 StatefulSet 을 만드는데 StatefulSet 은 ownerReferences 로 덤프에서 빠지고 CR 은 종류에 없었다. 복구는 `succeeded` 인데 두 StatefulSet 이 영영 돌아오지 않았고 워크로드 재개 단계가 `statefulsets … not found` 를 남겼다. ServiceMonitor · PrometheusRule 도 함께 빠져 있었다 | 덤프 범위 |
+| ④ | **접근 도메인 인증서의 `Certificate` 가 덤프에 없음** — Secret 은 되살아나 복구 직후엔 멀쩡하지만 갱신할 주체가 없어 만기(기본 90일)에 게이트웨이 TLS 가 조용히 죽는다. 지문 대조(`kubectl get certificate -A`)가 잡았다 | 덤프 범위 |
+
+①은 000092 로 FK 를 거두고 **"백업 이력 테이블은 플랫폼 테이블을 FK 로 참조하지 않는다"** 를 통합 테스트로 스키마 전체에 대해 지킨다 — 이력은 복구를 가로질러 살아남아야 하는 유일한 테이블이고, 되돌리는 쪽과 묶이면 그 복구를 막는다. 조직 검증은 요청 시점의 애플리케이션 검사가 그대로 한다. pg_restore 가 같은 모양으로 죽으면 어느 이력 테이블의 FK 인지와 조치를 오류에 덧붙인다.
+
+②는 Argo CD CRD · 공용 자원 회수와 같은 원칙으로 고쳤다 — 자기 네임스페이스 밖에 ExternalSecret · SecretStore · ClusterSecretStore 가 하나라도 있으면 CRD · 웹훅을 남긴다(확인하지 못하면 남긴다). 다음 설치는 남은 CRD 를 인수한다(`adoptExistingESOCRDs`).
+
+③④는 §10.2.2 의 ③⑥(ExternalSecret · Application)과 **같은 뿌리**다 — 컨트롤러가 다시 만드는 것의 원본은 덤프에 있어야 한다. `monitoring.coreos.com` 의 CR 8종과 cert-manager 의 `Certificate` · `Issuer` 를 덤프 종류에 넣었다. 3차에서 두 StatefulSet 이 오퍼레이터에 의해 되살아났고(워크로드 재개 단계의 `not found` 는 오퍼레이터가 아직 만들기 전이라 남는 로그다 — 멈추지 않는다) Certificate 는 되살아난 Secret 을 채택해 다시 발급하지 않았다(sha 동일). §11.2 의 근본안("빠진 것을 하나씩 세는 방식으로는 끝을 알 수 없다")은 그대로 유효하다 — 이번에도 둘을 더 셌다.
+
+#### 1차 시도의 교훈
+
+1차 시도는 ②가 망가뜨린 스택 위에서 백업을 떴다. 삭제 직후 파드가 `CreateContainerConfigError` · `Init:0/3` 에 멈춰 있었는데 "정지 창 뒤 재기동" 으로 읽고 넘겼다 — 백업의 네임스페이스 덤프를 열어 보니 ESO 가 만든 자격증명 Secret 과 ExternalSecret · SecretStore 가 **없었다**. 그 백업은 되살려도 같은 자리에서 멈춘다. **백업을 뜨기 전에 스택이 정상인지 본다** — 파드가 전부 Running 인지, `secret … not found` 가 없는지. 그리고 복구가 `succeeded` 가 아니라 **되살아난 것이 동작하는지** 를 본다(§10.2.2 의 교훈과 같다). 산출물은 `mc cat` 으로 받아 `sealer.Unseal` 로 열 수 있다 — 지문이 어긋나면 덤프를 연다.
+
+복구 자체도 ①로 플랫폼 DB 단계에서 실패했지만, 그 앞의 스택 단계 — CA Secret · cert-manager 재설치 · 공용 자원 · PVC · 볼륨 · 리소스 — 는 설계대로 끝나 있었다(내부 CA sha 동일). 플랫폼 DB 를 복원하지 못한 채 스택만 되살아난 상태는 **제품에서 보이지 않는 스택**이다 — ①을 고친 뒤 `platform_only` 복구(0.7초)로 레코드를 되살려 제품 삭제로 정리했다.
+
+#### 범위 밖으로 확인된 것
+
+- **앱 네임스페이스는 백업 범위 밖이다.** 앱의 Deployment 는 Argo CD 가 Git 에서 되살리지만, Nullus 가 파이프라인을 만들 때 앱 네임스페이스에 둔 이미지 pull Secret(`nullus-registry`)은 어디에도 담기지 않는다 — 2차에서 앱 네임스페이스까지 지운 뒤 복구하자 Deployment 는 돌아왔는데 `FailedToRetrieveImagePullSecret` 로 pull 이 실패했다. 스택 네임스페이스만 잃은 경우(3차)에는 영향이 없다. 앱 네임스페이스까지 잃으면 pull Secret 을 다시 만들어야 한다(GitLab deploy token `read_registry` → `kubectl create secret docker-registry nullus-registry`). 백업 범위에 넣을지는 Q12 와 같이 "복구가 설치기를 얼마나 부를지" 의 결정이다.
+- **금고 단계는 로컬 제약으로 실패한다.** 호스트에서 도는 API 는 플랫폼 OpenBao 에 닿지 못해 "금고 경로 27건 복원 실패" + `dangling` 5건이 남는다(로컬 테스트 가이드 §4.10). 복구 상태는 `succeeded` 다.
+- **워크로드 재개 단계의 `object has been modified`** (minio · prometheus-operator Deployment) — 리소스 단계가 이미 replicas 를 세운 뒤 재개가 같은 것을 다시 조정하다 충돌한 것이다. 워크로드는 떠 있다. 재시도 한 번으로 잠재울 수 있는 로그다(§11.2 후보).
+
 ### 10.3 B4-2 에어갭 검증
 
 `airgap/` 절차만으로 백업·복구가 도는지 확인한다. 확인 항목:
@@ -1030,7 +1073,7 @@ internal/backup/
 | **B3-2** UI | ✅ 구현 완료 | 관리 → 백업(`/admin/backup`) — 대상 항목별 선택, 정지 창 고지. [사용 가이드](../50_운영/Nullus_백업복구_사용_가이드.md) |
 | **B3-3** 실패 알림 | ⚠️ 구조화 로그까지 | 채널 발송은 #63 에 달렸다 |
 | **B3-4** 운영 런북 | ⚠️ 사용 가이드로 일부 대체 | 재해 시나리오별 런북은 남음 |
-| **B4-1** 복구 리허설 | ✅ **완료** — 축소(§10.2.1, 결함 5건) · 인클러스터(§10.2.1b, 결함 3건) · **실환경 2개 스택**(§10.2.2, 결함 8건). 지문 8/8 · 7/7 일치 | §10 |
+| **B4-1** 복구 리허설 | ✅ **완료** — 축소(§10.2.1, 결함 5건) · 인클러스터(§10.2.1b, 결함 3건) · **실환경 2개 스택**(§10.2.2, 결함 8건) · **제품 삭제 뒤 복구**(§10.2.3, 결함 2건). 지문 8/8 · 7/7 · 16/16 일치 일치 | §10 |
 | B4-2 에어갭 검증 | 절차 확정 | §10.3 |
 | **B1-5 / B1-6** 볼륨·리소스 | ✅ 구현 완료 | 정지 백업/복원, 리소스 덤프/복원 |
 | **분리 제안** | — | **Keycloak DB 통합**(§1.2 결정 1) · **로그 테이블 보존 정책**(Q4) · **Helm 재적용 복구**(Q12) · **복구 스모크 검증**(Q13) — 이 EPIC 밖 |
