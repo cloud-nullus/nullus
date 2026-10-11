@@ -476,6 +476,62 @@ kubectl -n <네임스페이스> annotate applications.argoproj.io <앱> \
 
 `Synced / Healthy` 가 되고 태그가 실제 커밋 SHA 로 바뀌면 된 것이다.
 
+### 4.10 제품에서 마지막 스택을 지운 뒤 복구
+
+§4.8 은 네임스페이스만 지운다 — 클러스터 공용 자원(cert-manager · metrics-server · Gateway API CRD · GatewayClass · 내부 CA)은 그대로다. **제품 기능으로 클러스터의 마지막 스택을 지우면 그것들까지 회수된다**(#284). 복구는 그 자리에서 cert-manager · metrics-server 를 스택 설치기로 다시 세운 뒤 공용 자원을 되살린다(설계 §11.3 Q16). 이 절은 그 전 과정을 kind 에서 돌린다. 2026-10-12 실측 기록은 설계 §10.2.3 이다.
+
+**회수가 일어나는 조건을 먼저 맞춘다.** 삭제는 "Nullus 가 설치했고 아무도 쓰지 않는 것" 만 회수한다. 둘 중 하나라도 어긋나면 cert-manager 가 남아 이 절이 검증하려는 길을 타지 않는다.
+
+```bash
+# (1) 이 클러스터에 다른 스택 레코드가 없어야 한다 — 네임스페이스가 없는 유령 레코드(설치 실패 뒤 남은 것)도 "다른 스택" 으로 센다
+curl -s -H "X-Org-ID: $ORG" localhost:8090/api/v1/stacks | jq -r '.items[] | "\(.id) \(.name) \(.state)"'
+
+# (2) 다른 네임스페이스에 Gateway API 리소스가 없어야 한다 — Argo CD 가 배포한 앱의 HTTPRoute 가 걸린다
+kubectl get httproute,gateway -A
+```
+
+앱 네임스페이스의 HTTPRoute 는 Argo CD 의 automated sync 가 되살리므로, 먼저 동기화를 끄고 지운다(백업은 이미 떠 두었으니 복구가 automated 설정을 그대로 돌려놓는다):
+
+```bash
+kubectl -n <네임스페이스> patch applications.argoproj.io <앱> --type merge \
+  -p '{"spec":{"syncPolicy":{"syncOptions":["CreateNamespace=true"]}}}'
+kubectl delete ns <앱 네임스페이스> --wait
+```
+
+**지문을 먼저 뜬다(§4.9)** — 그리고 공용 자원의 지문도 함께:
+
+```bash
+kubectl -n cert-manager get secret nullus-internal-ca -o jsonpath='{.data.tls\.crt}' | shasum -a 256   # 내부 CA
+kubectl get gatewayclass envoy -o jsonpath='{.metadata.labels.nullus\.io/installed-by}'                  # nullus
+kubectl get crd -l nullus.io/installed-by=nullus --no-headers | wc -l                                      # Gateway 계열 CRD 수
+kubectl get clusterissuer
+```
+
+백업(§4.6, `mode: full`)을 뜬 뒤 **제품으로 지운다**:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE -H "X-Org-ID: $ORG" localhost:8090/api/v1/stacks/$STACK_ID   # 204
+```
+
+204 는 레코드가 지워졌다는 뜻이고 **클러스터 정리는 비동기다**(상한 30분). 복구는 정리가 끝난 뒤 시작해야 한다 — 끝났는지는 회수 결과로 본다:
+
+```bash
+kubectl get ns <스택 네임스페이스> cert-manager            # 둘 다 NotFound
+kubectl get gatewayclass                                   # 없음
+kubectl get crd -l nullus.io/installed-by=nullus           # 없음
+kubectl get crd | grep -c cert-manager.io                  # 0
+helm list -A                                               # 비어 있음
+```
+
+42 파드 스택 기준 약 2분이다. argoproj.io CRD 3개는 남는다 — Argo CD 차트가 `crds/` 로 까는 것이라 Helm 소유가 아니고, 공용 자원 정의 밖이다(다음 설치가 그대로 쓴다).
+
+**복구(§4.8 과 같은 요청)** 뒤 응답의 `integrity_report.shared_components` 를 본다 — `steps` 에 `installing_cert_manager` · `installing_metrics_server` 가 있어야 하고, `warnings` 는 비어 있어야 한다(metrics-server 만 실패하면 거기 남는다. cert-manager 실패는 복구 자체가 `공용 컨트롤러 재설치: …` 로 실패한다). 그리고 지문을 다시 뜬다 — **내부 CA 의 sha 가 같아야 한다.** 다르면 cert-manager 가 Secret 보다 먼저 섰다는 뜻이다(설계 §11.3 Q16 의 순서 함정).
+
+> **로컬에서는 금고 복원이 실패하고 `dangling` 이 남는다.** 호스트에서 도는 API 는 플랫폼 OpenBao(`http://openbao.nullus.internal`)에 닿지 못한다(§4.4 와 같은 제약). `금고 복원 실패 — 참조 정합성 검사에서 드러납니다` 와 `dangling` 5건은 그 때문이고, 복구 상태는 그대로 `succeeded` 다. 스택 데이터·공용 자원 검증에는 영향이 없다.
+
+> **삭제 직후 재시작 중인 파드의 `CreateContainerConfigError` 를 "곧 풀린다" 로 넘기지 말 것.** 2026-10-12 1차 시도는 유령 스택 레코드를 지운 것이 살아 있던 스택의 ESO CRD 를 걷어내(그 뒤 고쳤다 — CHANGELOG) 자격증명 Secret 이 사라진 상태에서 백업을 떴다. 파드가 `secret "…-credentials" not found` 로 멈춰 있으면 **백업을 뜨기 전에** 원인을 본다 — 그 상태의 백업은 되살려도 같은 자리에서 멈춘다.
+
+
 ---
 
 ## 5. 걸리기 쉬운 곳

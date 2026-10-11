@@ -82,6 +82,23 @@ var dumpKinds = []string{
 	"applications.argoproj.io",
 	"appprojects.argoproj.io",
 	"applicationsets.argoproj.io",
+
+	// 모니터링의 주체. kube-prometheus-stack 의 Prometheus · Alertmanager StatefulSet 은
+	// **오퍼레이터가 CR 을 읽어 만든다** — StatefulSet 은 ownerReferences 때문에 덤프에서
+	// 빠지고(소유자가 다시 만든다), 소유자인 CR 까지 빠지면 다시 만들 주체가 없다.
+	//
+	// 2026-10-12 제품 삭제 뒤 복구 리허설에서 복구는 succeeded 인데 두 StatefulSet 이 영영
+	// 돌아오지 않았고, 워크로드 재개 단계가 "statefulsets … not found" 를 남겼다.
+	// ServiceMonitor · PrometheusRule 이 빠지면 스크랩 대상과 알림 규칙이 사라져 Grafana 가
+	// 비어 보인다. Application · ExternalSecret 과 같은 뿌리다.
+	"prometheuses.monitoring.coreos.com",
+	"alertmanagers.monitoring.coreos.com",
+	"servicemonitors.monitoring.coreos.com",
+	"podmonitors.monitoring.coreos.com",
+	"prometheusrules.monitoring.coreos.com",
+	"probes.monitoring.coreos.com",
+	"scrapeconfigs.monitoring.coreos.com",
+	"alertmanagerconfigs.monitoring.coreos.com",
 }
 
 func (d *ResourceDumper) writeKubeconfig() (string, error) {
