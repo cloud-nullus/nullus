@@ -156,6 +156,19 @@ type SharedResourceDumper interface {
 	// 백업 때의 것으로 덮으면 그 스택이 깨진다. 종류의 CRD 가 없으면(cert-manager 없음)
 	// 무엇을 먼저 설치해야 하는지 말하고 오류를 돌려준다.
 	ApplyShared(ctx context.Context, in io.Reader) error
+	// ApplySharedSecrets 는 덤프 가운데 CRD 가 필요 없는 것 — 내부 CA Secret 과 그 네임스페이스 — 만
+	// 없을 때 먼저 만든다. cert-manager 를 다시 세우기 **전에** 불러야 한다: 부트스트랩이 Secret 이
+	// 있으면 옛 키를 채택하고, 없으면 새 키를 발급해 백업의 CA 는 영영 돌아오지 못한다.
+	ApplySharedSecrets(ctx context.Context, in io.Reader) error
+}
+
+// SharedComponentsEnsurer 는 클러스터 공용 컨트롤러(cert-manager·metrics-server)를 없으면 세운다 —
+// 스택 모듈의 설치기가 구현한다. 클러스터의 마지막 스택을 지우면 컨트롤러까지 회수되는데, 컨트롤러는
+// 설치물이라 백업이 담지 않는다. 복구가 공용 자원(ClusterIssuer·Certificate)을 되살리기 전에 부른다.
+type SharedComponentsEnsurer interface {
+	// EnsureSharedComponents 는 돌린 단계 이름과, 멈추지 않고 넘긴 실패(metrics-server)를 돌려준다.
+	// cert-manager 를 세우지 못하면 오류다 — 그것 없이는 내부 CA 를 되살릴 수 없다.
+	EnsureSharedComponents(ctx context.Context, kubeconfig []byte, namespace string) (steps []string, warnings []string, err error)
 }
 
 // Sealer 는 산출물을 잠그고 연다.

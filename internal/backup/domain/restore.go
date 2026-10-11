@@ -102,6 +102,17 @@ type IntegrityReport struct {
 	// GatewayAliases 는 복구 뒤 러너·Argo CD hostAliases 를 게이트웨이의 지금 주소로 맞춘 결과다.
 	// 스택을 되돌리지 않았으면 없다.
 	GatewayAliases *GatewayAliasesOutcome `json:"gateway_aliases,omitempty"`
+	// SharedComponents 는 공용 자원을 되살리기 전에 cert-manager·metrics-server 를 다시 세운 결과다.
+	// 스택을 되돌리지 않았거나 설치기가 배선되지 않았으면 없다.
+	SharedComponents *SharedComponentsOutcome `json:"shared_components,omitempty"`
+}
+
+// SharedComponentsOutcome 은 공용 컨트롤러 재설치 결과다. Steps 는 끝까지 돌린 설치 단계, Warnings 는
+// 복구를 멈추지 않고 넘긴 실패다(metrics-server — HPA·자원 지표에만 쓰인다). cert-manager 실패는
+// 여기 남지 않는다 — 복구가 그 자리에서 실패한다.
+type SharedComponentsOutcome struct {
+	Steps    []string `json:"steps,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // GatewayAliasesOutcome 은 게이트웨이 주소 재설정 결과다. Updated 가 비어 있으면 바꿀 것이 없었다 —

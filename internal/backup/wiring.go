@@ -52,6 +52,9 @@ type Deps struct {
 	RotationPausing Pausable
 	// GatewayAliases 는 복구 뒤 러너·Argo CD hostAliases 를 게이트웨이의 지금 주소로 맞춘다(스택 모듈).
 	GatewayAliases port.GatewayAliasRepinner
+	// SharedComponents 는 복구 중 공용 자원을 되살리기 전에 cert-manager·metrics-server 를 다시
+	// 세운다(스택 모듈의 설치기). 마지막 스택을 지운 클러스터로 되돌릴 때 필요하다.
+	SharedComponents port.SharedComponentsEnsurer
 	// EncryptionKey 는 clusters.kubeconfig 복호화 키다 (ENCRYPTION_KEY).
 	// 백업이 쓰지는 않지만, 복구 전제 조건 검사에 필요하다 — 이 키가 없으면
 	// 복구해도 어떤 클러스터에도 접근할 수 없다 (§1.3).
@@ -265,6 +268,8 @@ func (m *Module) Restore(ctx context.Context, stackID string) (*usecase.RestoreU
 		deps.Releases = a.Releases
 		deps.Namespaces = a.Namespaces
 		deps.StackKubeconfig = a.Kubeconfig
+		// 스택 클러스터 kubeconfig 가 있을 때만 — 설치기는 그것으로 클러스터에 붙는다.
+		deps.SharedComponents = m.deps.SharedComponents
 	}
 	deps.GatewayAliases = m.deps.GatewayAliases
 	return usecase.NewRestoreUseCase(deps), nil

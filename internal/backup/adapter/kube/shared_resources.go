@@ -204,6 +204,64 @@ func (d *ResourceDumper) ApplyShared(ctx context.Context, in io.Reader) error {
 	return nil
 }
 
+// ApplySharedSecrets 는 덤프 가운데 CRD 가 필요 없는 것 — 내부 CA Secret 과 그 네임스페이스 — 만 없을 때
+// 만든다. cert-manager 를 다시 세우기 **전에** 부른다.
+//
+// 순서가 전부다. 설치기의 cert-manager 단계는 끝에 내부 CA 를 부트스트랩한다(Certificate
+// nullus-internal-ca-cert → Secret nullus-internal-ca). 그때 Secret 이 이미 있고 발급 정보가 맞으면
+// cert-manager 는 그것을 채택하고, 없으면 **새 키를 발급**한다. 새 키가 생긴 뒤에는 ApplyShared 의
+// 없을-때만-만들기가 옛 키를 되살릴 수 없다 — 도구들이 신뢰하는 CA 가 백업 때와 달라진다.
+// Secret 은 CRD 가 필요 없으니 컨트롤러보다 먼저 둘 수 있다. 그 밖의 것(CRD·GatewayClass·
+// ClusterIssuer·Certificate)은 ApplyShared 가 컨트롤러가 선 뒤에 만든다.
+//
+// 자리는 cert-manager 가 지금 있는 네임스페이스, 모르면(회수된 뒤라 보통 모른다) 백업 때의 자리다.
+// 설치기는 CRD 어노테이션이 없으면 차트 기본 네임스페이스에 깐다 — 백업이 그 기본 배치에서 떠졌으면
+// 같은 자리다.
+func (d *ResourceDumper) ApplySharedSecrets(ctx context.Context, in io.Reader) error {
+	raw, err := io.ReadAll(in)
+	if err != nil {
+		return err
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
+	var doc struct {
+		Namespaced json.RawMessage `json:"namespaced"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return fmt.Errorf("공용 자원 덤프 해석: %w", err)
+	}
+	namespaced, err := itemsOf(doc.Namespaced)
+	if err != nil {
+		return err
+	}
+	target := d.certManagerNamespace(ctx)
+	ensured := map[string]bool{}
+	for _, item := range namespaced {
+		if item["kind"] != "Secret" {
+			continue
+		}
+		ns := itemNamespace(item)
+		if target != "" {
+			ns = target
+			setNamespace(item, ns)
+		}
+		if ns == "" {
+			return fmt.Errorf("공용 자원 Secret/%s 의 네임스페이스를 알 수 없습니다", itemName(item))
+		}
+		if !ensured[ns] {
+			if err := d.ensureNamespace(ctx, ns); err != nil {
+				return err
+			}
+			ensured[ns] = true
+		}
+		if err := d.createIfMissing(ctx, ns, item); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // createIfMissing 은 하나를 만든다. 이미 있으면 그대로 둔다.
 func (d *ResourceDumper) createIfMissing(ctx context.Context, namespace string, item map[string]any) error {
 	payload, err := json.Marshal(item)

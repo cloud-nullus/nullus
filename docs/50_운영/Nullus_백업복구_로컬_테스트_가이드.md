@@ -122,7 +122,7 @@ PostgreSQL 과 MinIO 는 testcontainers 가 알아서 띄우고 지운다. 클�
 | 리소스 덤프/복원, replica 복원 | RTO·정지 창 실측 |
 | 플랫폼 DB + Keycloak DB(같은 인스턴스, 별도 database) | 다중 노드 (RWO 볼륨이 노드에 흩어지는 경우) |
 | 산출물 봉인/해제, sha256 무결성 | |
-| **공용 자원** — 설치 표시가 붙은 Gateway 계열 CRD · 내부 CA Secret 을 심고, 회수된 뒤 복구가 **없을 때만** 되살리는 것 | 실제 GatewayClass · ClusterIssuer · cert-manager(컨트롤러가 있어야 만들 수 있다). cert-manager 가 없을 때 복구가 시작 전에 멈추는 것은 단위 테스트가 본다 |
+| **공용 자원** — 설치 표시가 붙은 Gateway 계열 CRD · 내부 CA Secret 을 심고, 회수된 뒤 복구가 **없을 때만** 되살리는 것 | 실제 GatewayClass · ClusterIssuer · cert-manager 재설치(설치기가 차트를 받아야 한다). 복구가 CA Secret → cert-manager 재설치 → 공용 자원 순으로 가고 cert-manager 실패에 멈추는 것은 단위 테스트가 본다. 전 과정은 §4.10 |
 
 ---
 
@@ -520,7 +520,6 @@ kubectl -n <네임스페이스> annotate applications.argoproj.io <앱> \
 - **Argo CD 자동 동기화** — 리허설에서는 `refresh=hard` 로 앞당겼다. 기본 주기 3분 내 자동 회복은 **추정이지 관찰이 아니다**
 - **다른 클러스터로의 복구** — Service 는 그 클러스터에서 새 주소를 받고, 복구가 러너·Argo CD hostAliases 를 새 주소로 맞춘다. 전체 복구로 다른 클러스터에 되돌리는 리허설은 아직 하지 않았다
 - **차트 버전이 다른 대상으로의 복구** — 매니페스트에 `helm_releases` 를 기록하고 대조해 경고까지는 하지만, 실제로 버전이 어긋난 상태로 복구했을 때 무엇이 깨지는지는 재보지 않았다
-- **제품에서 마지막 스택을 지운 뒤의 복구** — 삭제는 Nullus 가 설치한 공용 자원(cert-manager · metrics-server · Gateway API · 내부 CA)을 회수한다. 백업의 `shared_resources` 가 설치 표시가 붙은 Gateway CRD · GatewayClass · 내부 CA 를 담고 복구가 그것을 먼저(없을 때만) 되살리는 것은 리허설 A 가 확인한다. **cert-manager · metrics-server 재설치는 백업 밖이다** — cert-manager 가 없으면 복구가 시작 전에 멈추고 설치를 요구한다. 실제 스택을 제품으로 지우고 되돌리는 전 과정 리허설은 아직 하지 않았다
 
 ---
 

@@ -337,3 +337,44 @@ func TestApplyShared_빈_입력은_아무것도_하지_않는다(t *testing.T) {
 	require.NoError(t, d.ApplyShared(context.Background(), strings.NewReader("")))
 	assert.Empty(t, k.calls)
 }
+
+// ── CA Secret 선복원 ──────────────────────────────────────────────────
+
+// cert-manager 가 서기 전에 내부 CA Secret 이 있어야 부트스트랩의 Certificate 가 옛 키를
+// 채택한다. Secret 은 CRD 가 필요 없으니 먼저 만들 수 있다 — 그 밖의 것(CRD·GatewayClass·
+// ClusterIssuer·Certificate)은 이 단계가 건드리지 않는다.
+func TestApplySharedSecrets_Secret_과_네임스페이스만_먼저_만든다(t *testing.T) {
+	payload := sharedPayload(t)
+	k := &fakeSharedKubectl{respond: func(args []string, in string) (string, error) {
+		a := strings.Join(args, " ")
+		if strings.HasPrefix(a, "get crd certificaterequests.cert-manager.io") {
+			return "", errors.New(`Error from server (NotFound): customresourcedefinitions.apiextensions.k8s.io "certificaterequests.cert-manager.io" not found`)
+		}
+		return "", nil
+	}}
+	d := &ResourceDumper{exec: k.run}
+
+	require.NoError(t, d.ApplySharedSecrets(context.Background(), strings.NewReader(payload)))
+
+	var created []string
+	var nsCreated bool
+	for i, c := range k.calls {
+		a := strings.Join(c, " ")
+		switch {
+		case strings.HasPrefix(a, "create namespace cert-manager"):
+			nsCreated = true
+		case strings.HasPrefix(a, "create -n") || strings.HasPrefix(a, "create -f"):
+			created = append(created, kindName(k.stdins[i]))
+			assert.Contains(t, a, "-n cert-manager", "cert-manager 를 아직 모르니 백업 때의 자리에 둔다")
+		}
+	}
+	assert.True(t, nsCreated, "네임스페이스가 없으면 만든다")
+	assert.Equal(t, []string{"Secret/nullus-internal-ca"}, created, "Secret 만 — CRD 가 필요한 것은 아직 아니다")
+}
+
+func TestApplySharedSecrets_빈_입력은_아무것도_하지_않는다(t *testing.T) {
+	k := &fakeSharedKubectl{}
+	d := &ResourceDumper{exec: k.run}
+	require.NoError(t, d.ApplySharedSecrets(context.Background(), strings.NewReader("")))
+	assert.Empty(t, k.calls)
+}
