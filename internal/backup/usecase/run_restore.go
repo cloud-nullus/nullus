@@ -36,11 +36,17 @@ type RestoreDeps struct {
 	Archiver  port.VolumeArchiver
 	Resources port.ResourceDumper
 	// Namespaces 는 복구할 네임스페이스를 만든다. 없으면 이미 있다고 보고 건너뛴다.
-	Namespaces   port.NamespaceEnsurer
-	Sealer       port.Sealer
-	Store        port.ArtifactStore
-	TokenSources port.TokenSourceLister
-	Targets      DBTargets
+	Namespaces port.NamespaceEnsurer
+	// GatewayAliases 는 복구 뒤 러너·Argo CD hostAliases 를 게이트웨이의 지금 주소로 맞춘다.
+	// 없으면 건너뛴다.
+	GatewayAliases port.GatewayAliasRepinner
+	// StackKubeconfig 는 복구가 붙은 스택 클러스터의 kubeconfig 다. 복구를 시작할 때(DB 를 되돌리기
+	// 전) 읽은 것이라, full 복구가 DB 의 클러스터 정보를 백업 시점으로 돌려도 실제 대상을 가리킨다.
+	StackKubeconfig []byte
+	Sealer          port.Sealer
+	Store           port.ArtifactStore
+	TokenSources    port.TokenSourceLister
+	Targets         DBTargets
 
 	// Prereq 는 실행 시점의 전제 조건을 읽어온다. 함수로 둔 이유는 키의
 	// 존재 여부가 프로세스 수명 동안 바뀔 수 있기 때문이다.
@@ -183,7 +189,32 @@ func (uc *RestoreUseCase) run(ctx context.Context, req RunRestoreRequest, rr *do
 
 	// ── 9. 참조 정합성. 경고하되 중단하지 않는다 ──
 	rr.IntegrityReport = uc.checkIntegrity(ctx, req, backup)
+
+	// ── 10. 게이트웨이 주소. 워크로드를 띄운 뒤 지금 주소로 hostAliases 를 맞춘다 ──
+	//
+	// Service 는 백업 때의 ClusterIP 로 되살아나지만, 그 IP 를 쓸 수 없거나(다른 클러스터) 백업에
+	// IP 가 없으면(옛 백업) 주소가 바뀐다. 실패해도 복구는 성공이다 — 데이터는 되돌아왔고, 결과를
+	// 기록에 남겨 손으로 맞출 수 있게 한다.
+	if touchStack && uc.d.GatewayAliases != nil && strings.TrimSpace(backup.StackID) != "" {
+		rr.IntegrityReport.GatewayAliases = uc.repinGatewayAliases(ctx, backup.StackID, req.Namespace)
+	}
 	return nil
+}
+
+func (uc *RestoreUseCase) repinGatewayAliases(ctx context.Context, stackID, namespace string) *domain.GatewayAliasesOutcome {
+	ip, updated, err := uc.d.GatewayAliases.RepinGatewayAliases(ctx, stackID, namespace, uc.d.StackKubeconfig)
+	out := &domain.GatewayAliasesOutcome{GatewayIP: ip, Updated: updated}
+	if err != nil {
+		out.Error = err.Error()
+		uc.d.Logger.Warn("게이트웨이 주소를 러너·Argo CD 에 맞추지 못했습니다 — hostAliases 를 손으로 맞춰야 합니다",
+			"stack_id", stackID, "namespace", namespace, "error", err)
+		return out
+	}
+	if len(updated) > 0 {
+		uc.d.Logger.Info("게이트웨이 주소가 바뀌어 러너·Argo CD 의 hostAliases 를 맞췄습니다",
+			"stack_id", stackID, "gateway_ip", ip, "releases", updated)
+	}
+	return out
 }
 
 func (uc *RestoreUseCase) verifyArtifacts(ctx context.Context, arts []*domain.Artifact) error {

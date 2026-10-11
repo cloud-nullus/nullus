@@ -658,6 +658,18 @@ func main() {
 	//
 	// 조립이 실패하면 기동을 멈춘다. 설정이 잘못된 채로 뜨면 "백업이 돌고
 	// 있다" 는 착각만 남고, 그 착각은 복구를 시도할 때에야 깨진다 (§9 F10).
+	// 복구 뒤 러너·Argo CD hostAliases 를 스택 게이트웨이의 지금 주소로 맞춘다. 복구는 Service 를 백업
+	// 때의 ClusterIP 로 되살리지만, 다른 클러스터이거나 옛 백업이면 주소가 바뀐다.
+	gatewayAliasRepinUC := stackuc.NewGatewayAliasRepin(
+		pgStackRepo,
+		kubeconfigProvider,
+		func(kubeconfig []byte) stackport.HelmReleaseManager {
+			return stackhelm.NewHelmInstaller(kubeconfig)
+		},
+		func(kubeconfig []byte) (stackport.GatewayAddressReader, error) {
+			return stackhelm.NewGatewayAddressReader(kubeconfig)
+		},
+	)
 	backupModule, err := backup.New(backup.Deps{
 		Pool:            pool,
 		Config:          cfg.Backup,
@@ -666,6 +678,7 @@ func main() {
 		Kubeconfig:      kubeconfigProvider,
 		TokenSources:    tokenSourceRepo,
 		RotationPausing: rotationScheduler,
+		GatewayAliases:  gatewayAliasRepinUC,
 		EncryptionKey:   []byte(os.Getenv("ENCRYPTION_KEY")),
 		PlatformVersion: platformVersion,
 		Logger:          slog.Default(),

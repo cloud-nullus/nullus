@@ -80,15 +80,10 @@ func gitLabRunnerArchValues(nodeArchs []string) map[string]any {
 // 만든 이미지를 스택 레지스트리에 올린다. 둘 다 접속 도메인 이름이고, 그 이름은
 // 클러스터 안에서는 아무도 풀어 주지 않는다 — 게이트웨이가 Host 헤더로 라우팅하므로
 // 서비스 주소로 대신할 수도 없다(포트가 다르다).
+//
+// 복구 뒤 재설정도 같은 이름을 본다 — 규칙은 domain.GatewayPinnedHostnames 하나다.
 func runnerCIHostnames(accessDomain string) []string {
-	domainName := strings.TrimSpace(accessDomain)
-	if domainName == "" {
-		return nil
-	}
-	return []string{
-		"gitlab." + domainName,
-		"registry." + domainName,
-	}
+	return domain.GatewayPinnedHostnames(accessDomain)
 }
 
 // gitLabRunnerHostAliasValues 는 CI 잡 파드가 스택 도구 이름을 풀게 하는 러너 values 다.

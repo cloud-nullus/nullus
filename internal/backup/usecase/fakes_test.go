@@ -367,3 +367,19 @@ func (f *fakeNamespaces) EnsureNamespace(_ context.Context, namespace, _ string)
 	f.tr.add("ns.ensure:" + namespace)
 	return nil
 }
+
+type fakeGatewayAliases struct {
+	tr         *trace
+	ip         string
+	updated    []string
+	err        error
+	stackID    string
+	namespace  string
+	kubeconfig string
+}
+
+func (f *fakeGatewayAliases) RepinGatewayAliases(_ context.Context, stackID, namespace string, kubeconfig []byte) (string, []string, error) {
+	f.tr.add("gateway.repin")
+	f.stackID, f.namespace, f.kubeconfig = stackID, namespace, string(kubeconfig)
+	return f.ip, f.updated, f.err
+}

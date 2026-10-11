@@ -107,6 +107,17 @@ type NamespaceEnsurer interface {
 	EnsureNamespace(ctx context.Context, namespace, restoredFromBackupID string) error
 }
 
+// GatewayAliasRepinner 는 복구 뒤 스택 게이트웨이의 지금 주소로 러너·Argo CD 의 hostAliases 를 맞춘다.
+//
+// 설치가 게이트웨이 ClusterIP 를 두 릴리스의 values 에 박는다. 복구는 Service 를 백업 때의 IP 로
+// 되살리지만, 그 IP 를 쓸 수 없거나(다른 클러스터) 백업에 IP 가 없으면(옛 백업) 주소가 바뀐다.
+// 스택 모듈이 구현한다 — 백업 모듈은 스택 내부를 모르므로 기본 타입만 주고받는다.
+// kubeconfig 는 복구가 실제로 되돌린 클러스터다(full 복구는 DB 의 클러스터 정보까지 백업 시점으로
+// 돌린다). 게이트웨이 주소와 다시 적용한 릴리스를 돌려준다.
+type GatewayAliasRepinner interface {
+	RepinGatewayAliases(ctx context.Context, stackID, namespace string, kubeconfig []byte) (gatewayIP string, updated []string, err error)
+}
+
 // HelmReleaseLister 는 네임스페이스에 설치된 차트의 버전을 읽는다.
 //
 // 복구가 다른 버전으로 재설치하면 도구들이 기동하며 스키마 마이그레이션을

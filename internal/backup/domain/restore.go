@@ -99,6 +99,19 @@ type IntegrityReport struct {
 	CheckedPaths int                 `json:"checked_paths"`
 	Dangling     []DanglingReference `json:"dangling"`
 	CheckedAt    time.Time           `json:"checked_at"`
+	// GatewayAliases 는 복구 뒤 러너·Argo CD hostAliases 를 게이트웨이의 지금 주소로 맞춘 결과다.
+	// 스택을 되돌리지 않았으면 없다.
+	GatewayAliases *GatewayAliasesOutcome `json:"gateway_aliases,omitempty"`
+}
+
+// GatewayAliasesOutcome 은 게이트웨이 주소 재설정 결과다. Updated 가 비어 있으면 바꿀 것이 없었다 —
+// 주소가 그대로였거나, 박아 둔 주소가 없었다(접근 도메인 없음·러너/Argo CD 릴리스 없음·설치 형식이
+// 아닌 러너 설정). Error 가 있으면 일부 또는 전부를 맞추지 못했다 — 파이프라인이 "Could not resolve
+// host" 로 멈출 수 있으니 손으로 맞춰야 한다(복구 자체는 성공이다).
+type GatewayAliasesOutcome struct {
+	GatewayIP string   `json:"gateway_ip,omitempty"`
+	Updated   []string `json:"updated,omitempty"`
+	Error     string   `json:"error,omitempty"`
 }
 
 func (r IntegrityReport) HasIssues() bool { return len(r.Dangling) > 0 }
