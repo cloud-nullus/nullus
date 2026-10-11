@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cloud-nullus/draft/e2e"
 	adminrepo "github.com/cloud-nullus/draft/internal/admin/adapter/repository"
 	admindomain "github.com/cloud-nullus/draft/internal/admin/domain"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
@@ -23,7 +24,7 @@ import (
 func TestDBIntegration_PostgresRepositories(t *testing.T) {
 	t.Parallel()
 
-	pool, cleanup := SetupPostgres(t)
+	pool, cleanup := e2e.SetupPostgres(t)
 	t.Cleanup(cleanup)
 
 	ctx := context.Background()
@@ -96,19 +97,36 @@ func TestDBIntegration_PostgresRepositories(t *testing.T) {
 
 		require.NoError(t, stackRepo.Create(ctx, stack))
 
-		stacks, err := stackRepo.List(ctx, stack.OrgID)
+		stacks, err := stackRepo.List(ctx, stack.OrgID, false)
 		require.NoError(t, err)
 		require.NotEmpty(t, stacks)
 		assert.True(t, containsStack(stacks, stack.ID))
 	})
 
 	t.Run("create pipeline deploy and list deployments", func(t *testing.T) {
+		// pipelines 의 org_id·cluster_id 는 실제 조직·클러스터를 가리킨다(UUID 외래키).
+		org := &admindomain.Organization{
+			ID:        uuid.NewString(),
+			Name:      "Pipeline Org",
+			Slug:      "pipeline-org-" + suffix,
+			Domain:    "pipeline.integration.test",
+			Status:    admindomain.OrgStatusActive,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		require.NoError(t, orgRepo.Create(ctx, org))
+		var clusterID string
+		require.NoError(t, pool.QueryRow(ctx,
+			`INSERT INTO clusters (name, type, endpoint, connection_status, org_id) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+			"pipeline-cluster-"+suffix, "pipeline", "https://k8s.integration.test", "connected", org.ID,
+		).Scan(&clusterID))
+
 		pipeline := &cicddomain.Pipeline{
 			ID:         "pipeline-" + suffix,
 			Name:       "Integration Pipeline",
 			TemplateID: "web-backend-v1",
-			OrgID:      "org-" + suffix,
-			ClusterID:  "cluster-" + suffix,
+			OrgID:      org.ID,
+			ClusterID:  clusterID,
 			Namespace:  "default",
 			AppType:    cicddomain.AppTypeBackend,
 			GitRepoURL: "https://github.com/cloud-nullus/draft",
