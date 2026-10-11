@@ -58,6 +58,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/backup/domain"
 	"github.com/cloud-nullus/draft/internal/backup/port"
 	"github.com/cloud-nullus/draft/internal/backup/usecase"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 const (
@@ -138,7 +139,7 @@ func TestRecoveryRehearsal(t *testing.T) {
 	var run *domain.BackupRun
 	step("2. 백업 실행", func() {
 		run, err = backupUC.Run(ctx, usecase.RunBackupRequest{
-			OrgID:     "00000000-0000-0000-0000-000000000001",
+			OrgID:     shareddomain.SeededDefaultOrgID,
 			Namespace: rehearsalNS, Mode: domain.ModeFull,
 		})
 		require.NoError(t, err)

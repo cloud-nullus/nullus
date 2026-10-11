@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -264,4 +265,154 @@ func TestCreateBackup_모르는_대상은_거부한다(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "BACKUP_INVALID_COMPONENT")
 	assert.False(t, f.backupCalled)
+}
+
+// ── 조직 해석 ────────────────────────────────────────────────────────────
+//
+// 백업은 조직 단위로 보인다 — 목록은 로그인 사용자의 조직으로만 거른다. 헤더에
+// 적은 조직이 없는 조직이면 백업은 만들어지되 어떤 화면에도 보이지 않는다.
+// 실제로 그랬다(문서의 유령 조직 00000000-…-0001).
+
+type stubOrgChecker struct {
+	exists bool
+	err    error
+	asked  []string
+}
+
+func (s *stubOrgChecker) OrganizationExists(_ context.Context, id string) (bool, error) {
+	s.asked = append(s.asked, id)
+	return s.exists, s.err
+}
+
+// recordingRepo 는 어느 조직으로 목록을 물었는지 남긴다.
+type recordingRepo struct {
+	stubRepo
+	listedOrg string
+}
+
+func (r *recordingRepo) ListRuns(_ context.Context, orgID string, _ int) ([]*domain.BackupRun, error) {
+	r.listedOrg = orgID
+	return r.runs, nil
+}
+
+func newOrgTestHandler(repo *recordingRepo, orgs *stubOrgChecker) (*echo.Echo, *stubFactory) {
+	e := echo.New()
+	e.HTTPErrorHandler = sharedmw.AppErrorHandler
+	f := &stubFactory{}
+	h := NewBackupHandler(f, nil, repo, "nullus")
+	if orgs != nil {
+		h.WithOrganizationChecker(orgs)
+	}
+	h.RegisterRoutes(e.Group("/api/v1"))
+	return e, f
+}
+
+func getWithOrg(e *echo.Echo, path, org string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	if org != "" {
+		req.Header.Set("X-Org-ID", org)
+	}
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	return rec
+}
+
+func postWithOrg(e *echo.Echo, path, body, org string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	if org != "" {
+		req.Header.Set("X-Org-ID", org)
+	}
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	return rec
+}
+
+// 인증이 꺼진 개발 모드에는 principal 도 헤더도 없다. 다른 핸들러처럼 시드
+// 기본 조직으로 떨어져야 한다 — 빈 조직으로 UUID 오류를 내던 것이 종전이다.
+func TestResolveOrgID_아무것도_없으면_기본_조직이다(t *testing.T) {
+	repo := &recordingRepo{}
+	e, _ := newOrgTestHandler(repo, &stubOrgChecker{exists: true})
+
+	rec := getWithOrg(e, "/api/v1/backups", "")
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, shareddomain.DefaultOrgID(), repo.listedOrg)
+}
+
+func TestResolveOrgID_없는_조직_헤더는_거부한다(t *testing.T) {
+	repo := &recordingRepo{}
+	orgs := &stubOrgChecker{exists: false}
+	e, f := newOrgTestHandler(repo, orgs)
+	ghost := "00000000-0000-0000-0000-000000000001"
+
+	rec := postWithOrg(e, "/api/v1/backups", `{"mode":"platform_only"}`, ghost)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "ORG_NOT_FOUND")
+	assert.Contains(t, rec.Body.String(), ghost)
+	assert.False(t, f.backupCalled, "없는 조직으로 백업을 만들면 안 된다")
+	assert.Equal(t, []string{ghost}, orgs.asked)
+
+	list := getWithOrg(e, "/api/v1/backups", ghost)
+	assert.Equal(t, http.StatusBadRequest, list.Code, "목록도 같은 규칙이다")
+}
+
+func TestResolveOrgID_있는_조직_헤더는_통과한다(t *testing.T) {
+	repo := &recordingRepo{}
+	e, f := newOrgTestHandler(repo, &stubOrgChecker{exists: true})
+
+	rec := postWithOrg(e, "/api/v1/backups", `{"mode":"platform_only"}`, "org-real")
+	assert.Equal(t, http.StatusTeapot, rec.Code, "유스케이스까지 간다")
+	assert.True(t, f.backupCalled)
+
+	list := getWithOrg(e, "/api/v1/backups", "org-real")
+	assert.Equal(t, http.StatusOK, list.Code)
+	assert.Equal(t, "org-real", repo.listedOrg)
+}
+
+// 조직 확인이 실패하면 거절도 통과도 아니다 — 조회 오류를 그대로 알린다.
+// 통과시키면 유령 조직이 다시 새고, 거절하면 DB 장애가 "조직 없음" 으로 보인다.
+func TestResolveOrgID_조직_확인_실패는_오류로_알린다(t *testing.T) {
+	repo := &recordingRepo{}
+	e, f := newOrgTestHandler(repo, &stubOrgChecker{err: errors.New("db down")})
+
+	rec := postWithOrg(e, "/api/v1/backups", `{"mode":"platform_only"}`, "org-real")
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.NotContains(t, rec.Body.String(), "ORG_NOT_FOUND")
+	assert.False(t, f.backupCalled)
+}
+
+// 인증된 사용자의 조직이 헤더보다 앞선다 — 헤더는 호출자가 적는 값이다.
+func TestResolveOrgID_principal_이_헤더보다_앞선다(t *testing.T) {
+	repo := &recordingRepo{}
+	orgs := &stubOrgChecker{exists: false}
+	e := echo.New()
+	e.HTTPErrorHandler = sharedmw.AppErrorHandler
+	h := NewBackupHandler(&stubFactory{}, nil, repo, "nullus").WithOrganizationChecker(orgs)
+	g := e.Group("/api/v1", func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			c.Set("current_user", &struct{ OrgID string }{OrgID: "org-principal"})
+			return next(c)
+		}
+	})
+	h.RegisterRoutes(g)
+
+	rec := getWithOrg(e, "/api/v1/backups", "00000000-0000-0000-0000-000000000001")
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "org-principal", repo.listedOrg)
+	assert.Empty(t, orgs.asked, "principal 의 조직은 헤더 검증을 타지 않는다")
+}
+
+// 확인기가 배선되지 않은 구성(테스트·옛 조립)은 종전대로 헤더를 믿는다.
+func TestResolveOrgID_확인기가_없으면_헤더를_믿는다(t *testing.T) {
+	repo := &recordingRepo{}
+	e, _ := newOrgTestHandler(repo, nil)
+
+	rec := getWithOrg(e, "/api/v1/backups", "org-any")
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "org-any", repo.listedOrg)
 }

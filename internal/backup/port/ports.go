@@ -31,6 +31,16 @@ type BackupRepository interface {
 	GetRestore(ctx context.Context, id string) (*domain.RestoreRun, error)
 }
 
+// OrganizationChecker 는 조직이 실제로 있는지 본다.
+//
+// 백업은 조직 단위로 보인다 — 목록은 로그인 사용자의 조직으로만 거른다. 호출자가
+// 헤더에 적은 조직을 확인 없이 받으면, 없는 조직의 백업이 만들어지되 어떤 화면에도
+// 보이지 않는다. 조직 테이블은 admin 모듈의 것이므로 그 공개 인터페이스를 감싼
+// 어댑터(adapter/bridge)로 구현한다.
+type OrganizationChecker interface {
+	OrganizationExists(ctx context.Context, orgID string) (bool, error)
+}
+
 // DBDumper 는 PostgreSQL 논리 백업/복원을 수행한다.
 //
 // 통합(§1.2 결정 1) 이후에도 database 는 둘이므로 대상을 명시적으로 받는다.

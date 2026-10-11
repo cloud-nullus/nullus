@@ -81,10 +81,14 @@
 실행이 끝나면 목록에서 상태를 본다. 그 이상이 필요하면 **무결성 검증**이 있다 — 복원하지 않고 "이 백업이 열리기는 하는가" 만 확인한다.
 
 ```bash
+NULLUS=http://localhost:8090            # API 주소
+ORG=<조직 ID>                            # 로그인한 조직. 로컬 시드는 11111111-1111-1111-1111-111111111111
 BID=<백업 ID>
 curl -sX POST "$NULLUS/api/v1/admin/backups/$BID/verify" \
-  -H "X-Org-Id: $ORG" | jq
+  -H "X-Org-ID: $ORG" | jq
 ```
+
+> `X-Org-ID` 는 화면이 보는 조직이어야 한다. 백업 목록은 로그인 사용자의 조직으로만 거르므로 다른 조직으로 만든 백업은 화면에 나타나지 않는다. 없는 조직을 적으면 `400 ORG_NOT_FOUND` 로 거절된다. 헤더를 빼면 시드 기본 조직으로 처리된다(인증이 켜진 환경에서는 로그인 사용자의 조직이 우선한다).
 
 복구 리허설을 상시로 돌릴 수 없는 상황에서 **최소한의 방어선**이다.
 
@@ -96,7 +100,7 @@ curl -sX POST "$NULLUS/api/v1/admin/backups/$BID/verify" \
 
 ```bash
 curl -sX POST "$NULLUS/api/v1/admin/restores" \
-  -H 'Content-Type: application/json' -H "X-Org-Id: $ORG" \
+  -H 'Content-Type: application/json' -H "X-Org-ID: $ORG" \
   -d "{\"backup_run_id\":\"$BID\",\"namespace\":\"<스택 네임스페이스>\",\"mode\":\"full\",\"confirm\":\"$BID\"}" | jq
 ```
 

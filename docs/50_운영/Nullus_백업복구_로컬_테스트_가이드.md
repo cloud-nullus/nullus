@@ -274,17 +274,22 @@ kubectl -n <네임스페이스> get pods --no-headers | wc -l   # 0 이면 시�
 
 ### 4.6 백업 실행
 
+조직 ID 는 **화면이 보는 조직**이어야 한다. 백업 목록은 로그인 사용자의 조직으로만 거르므로, 다른 조직으로 만든 백업은 어떤 화면에도 보이지 않는다. 로컬 시드 조직은 하나뿐이고, 없는 조직을 헤더에 적으면 API 가 `400 ORG_NOT_FOUND` 로 거절한다. 아래 `$ORG` 는 이 절부터 §4.9 까지 같은 셸에서 쓴다.
+
 ```bash
+# 시드 기본 조직 (db/migrations/000017). 다른 환경이면 GET /api/v1/admin/organizations 로 확인한다.
+ORG=11111111-1111-1111-1111-111111111111
+
 # 플랫폼 전용 — 무중단이라 확인 문자열이 필요 없다
 curl -sX POST localhost:8090/api/v1/admin/backups \
   -H 'Content-Type: application/json' \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
+  -H "X-Org-ID: $ORG" \
   -d '{"mode":"platform_only"}' | jq
 
 # 볼륨 포함 — 워크로드를 잠시 멈추므로 네임스페이스를 다시 입력해야 한다
 curl -sX POST localhost:8090/api/v1/admin/backups \
   -H 'Content-Type: application/json' \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
+  -H "X-Org-ID: $ORG" \
   -d '{"mode":"full","stack_id":"<스택 ID>","namespace":"nullus","confirm":"nullus"}' | jq
 ```
 
@@ -297,7 +302,7 @@ curl -sX POST localhost:8090/api/v1/admin/backups \
 ```bash
 curl -sX POST localhost:8090/api/v1/admin/backups \
   -H 'Content-Type: application/json' \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
+  -H "X-Org-ID: $ORG" \
   -d '{"mode":"full","stack_id":"<스택 ID>","namespace":"nullus",
        "scope":["platform_db","keycloak_db","openbao_kv","ns_resources"]}' | jq
 ```
@@ -330,15 +335,15 @@ curl -sX POST localhost:8090/api/v1/admin/backups \
 
 ```bash
 BID=$(curl -s localhost:8090/api/v1/admin/backups \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' | jq -r '.items[0].id')
+  -H "X-Org-ID: $ORG" | jq -r '.items[0].id')
 
 # 상세 — 매니페스트와 산출물 목록
 curl -s localhost:8090/api/v1/admin/backups/$BID \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' | jq
+  -H "X-Org-ID: $ORG" | jq
 
 # 무결성만 검증 (복원하지 않는다)
 curl -sX POST localhost:8090/api/v1/admin/backups/$BID/verify \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' | jq
+  -H "X-Org-ID: $ORG" | jq
 ```
 
 `verify` 는 복구 리허설을 상시로 돌릴 수 없는 상황에서 **"이 백업이 열리기는 하는가"** 를 확인하는 최소한의 방어선이다.
@@ -354,7 +359,7 @@ docker compose -f docker-compose.dev.yaml exec minio \
 
 ```bash
 curl -s localhost:8090/api/v1/admin/backups/$BID \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
+  -H "X-Org-ID: $ORG" \
   | jq '.manifest' | grep -iE 'password|secret|token|access_key' && echo "⚠️ 비밀값 발견" || echo "OK"
 ```
 
@@ -362,7 +367,7 @@ curl -s localhost:8090/api/v1/admin/backups/$BID \
 
 ```bash
 curl -s localhost:8090/api/v1/admin/backups/$BID \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
+  -H "X-Org-ID: $ORG" \
   | jq -r '.manifest.helm_releases[] | "\(.name)\t\(.version)\trev=\(.revision)"'
 ```
 
@@ -386,7 +391,7 @@ kubectl delete ns nullus --wait=true
 # full 복구는 플랫폼 DB 를 되돌리지만 백업 이력(backup_runs·backup_artifacts·restore_runs)은 건드리지 않는다
 curl -sX POST localhost:8090/api/v1/admin/restores \
   -H 'Content-Type: application/json' \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
+  -H "X-Org-ID: $ORG" \
   -d "{\"backup_run_id\":\"$BID\",\"namespace\":\"nullus\",\"mode\":\"full\",\"confirm\":\"$BID\"}" | jq
 ```
 
@@ -412,7 +417,7 @@ curl -sX POST localhost:8090/api/v1/admin/restores \
 # ① 클러스터 kubeconfig 복호화가 되는가
 #    이것이 안 되면 화면은 정상인데 어떤 클러스터도 조작할 수 없다 (설계 §1.3)
 curl -s localhost:8090/api/v1/admin/clusters/<클러스터 ID>/namespaces \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' | jq
+  -H "X-Org-ID: $ORG" | jq
 
 # ② 워크로드가 원래 replica 로 돌아왔는가
 kubectl -n nullus get deploy
