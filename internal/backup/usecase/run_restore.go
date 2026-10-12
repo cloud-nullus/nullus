@@ -37,6 +37,10 @@ type RestoreDeps struct {
 	Resources port.ResourceDumper
 	// Shared 는 클러스터 공용 자원을 없을 때만 되살린다. Resources 와 같이 스택 클러스터 어댑터다.
 	Shared port.SharedResourceDumper
+	// SharedComponents 는 공용 자원을 되살리기 전에 cert-manager·metrics-server 를 다시 세운다(스택 모듈의
+	// 설치기). 없으면 컨트롤러가 이미 있다고 보고 건너뛴다 — 없으면 ApplyShared 가 무엇을 깔아야 하는지
+	// 말하고 멈춘다.
+	SharedComponents port.SharedComponentsEnsurer
 	// Namespaces 는 복구할 네임스페이스를 만든다. 없으면 이미 있다고 보고 건너뛴다.
 	Namespaces port.NamespaceEnsurer
 	// GatewayAliases 는 복구 뒤 러너·Argo CD hostAliases 를 게이트웨이의 지금 주소로 맞춘다.
@@ -167,11 +171,14 @@ func (uc *RestoreUseCase) run(ctx context.Context, req RunRestoreRequest, rr *do
 	touchStack := req.Mode != domain.ModePlatformOnly
 	touchPlatform := req.Mode != domain.ModeStackOnly
 
-	// ── 3~5. 스택: PVC → 볼륨 → 리소스. 워크로드는 아직 띄우지 않는다 ──
+	// ── 3~5. 스택: 공용 컨트롤러·자원 → PVC → 볼륨 → 리소스. 워크로드는 아직 띄우지 않는다 ──
+	var sharedComponents *domain.SharedComponentsOutcome
 	if touchStack {
-		if err := uc.restoreStackData(ctx, req, manifest, arts); err != nil {
+		outcome, err := uc.restoreStackData(ctx, req, manifest, arts)
+		if err != nil {
 			return err
 		}
+		sharedComponents = outcome
 	}
 
 	// ── 6~7. 플랫폼: DB → 금고 ──
@@ -191,6 +198,7 @@ func (uc *RestoreUseCase) run(ctx context.Context, req RunRestoreRequest, rr *do
 
 	// ── 9. 참조 정합성. 경고하되 중단하지 않는다 ──
 	rr.IntegrityReport = uc.checkIntegrity(ctx, req, backup)
+	rr.IntegrityReport.SharedComponents = sharedComponents
 
 	// ── 10. 게이트웨이 주소. 워크로드를 띄운 뒤 지금 주소로 hostAliases 를 맞춘다 ──
 	//
@@ -232,40 +240,71 @@ func (uc *RestoreUseCase) verifyArtifacts(ctx context.Context, arts []*domain.Ar
 	return nil
 }
 
-func (uc *RestoreUseCase) restoreStackData(ctx context.Context, req RunRestoreRequest, m domain.Manifest, arts []*domain.Artifact) error {
+func (uc *RestoreUseCase) restoreStackData(ctx context.Context, req RunRestoreRequest, m domain.Manifest, arts []*domain.Artifact) (*domain.SharedComponentsOutcome, error) {
 	// 2c. 네임스페이스 — 새 클러스터나 지운 네임스페이스로 되돌리면 없다. 리소스 덤프는
 	// 네임스페이스 안의 것만 담으므로 여기서 만들지 않으면 첫 PVC 생성부터 실패한다.
 	if uc.d.Namespaces != nil {
 		if err := uc.d.Namespaces.EnsureNamespace(ctx, req.Namespace, req.BackupRunID); err != nil {
-			return fmt.Errorf("네임스페이스 준비(%s): %w", req.Namespace, err)
+			return nil, fmt.Errorf("네임스페이스 준비(%s): %w", req.Namespace, err)
 		}
 	}
 
-	// 2d. 클러스터 공용 자원 — 네임스페이스 리소스가 기대는 것(Gateway CRD·GatewayClass·내부 CA)을
-	// 볼륨보다 **먼저**, 없을 때만 되살린다. 클러스터의 마지막 스택을 지우면 회수되는 것들이다.
+	var shared []*domain.Artifact
+	for _, a := range arts {
+		if a.Component == domain.ComponentSharedResources {
+			shared = append(shared, a)
+		}
+	}
+	if len(shared) > 0 && uc.d.Shared == nil {
+		return nil, fmt.Errorf("클러스터 공용 자원 복원이 배선되지 않았습니다")
+	}
+
+	// 2d. 내부 CA Secret 선복원 — 컨트롤러보다 **먼저**. cert-manager 설치 단계는 끝에 내부 CA 를
+	// 부트스트랩하는데, 그때 Secret 이 있으면 옛 키를 채택하고 없으면 새 키를 발급한다. 새 키가
+	// 생긴 뒤에는 없을-때만-만들기(2f)가 옛 키를 되살릴 수 없다. Secret 은 CRD 가 필요 없다.
+	for _, a := range shared {
+		if err := uc.pullStream(ctx, a, func(r io.Reader) error {
+			return uc.d.Shared.ApplySharedSecrets(ctx, r)
+		}); err != nil {
+			return nil, fmt.Errorf("내부 CA Secret 선복원: %w", err)
+		}
+	}
+
+	// 2e. 공용 컨트롤러 — cert-manager·metrics-server 를 설치기로 다시 세운다. 클러스터의 마지막
+	// 스택을 지우면 회수되는데, 컨트롤러는 설치물이라 백업이 담지 않는다. 설치기는 이미 있으면 다시
+	// 쓰므로 다른 스택이 쓰는 클러스터에서도 안전하다. cert-manager 실패는 여기서 멈춘다 — 빈
+	// 네임스페이스와 CA Secret 말고는 아직 아무것도 건드리지 않았다.
+	var outcome *domain.SharedComponentsOutcome
+	if uc.d.SharedComponents != nil {
+		steps, warnings, err := uc.d.SharedComponents.EnsureSharedComponents(ctx, uc.d.StackKubeconfig, req.Namespace)
+		if err != nil {
+			return nil, fmt.Errorf("공용 컨트롤러 재설치: %w", err)
+		}
+		outcome = &domain.SharedComponentsOutcome{Steps: steps, Warnings: warnings}
+		for _, w := range warnings {
+			uc.d.Logger.Warn("공용 컨트롤러를 다 세우지 못했습니다 — 복구는 계속합니다", "warning", w)
+		}
+	}
+
+	// 2f. 클러스터 공용 자원 — 네임스페이스 리소스가 기대는 것(Gateway CRD·GatewayClass·내부 CA
+	// ClusterIssuer·Certificate)을 볼륨보다 **먼저**, 없을 때만 되살린다.
 	//
 	// 네임스페이스 준비 뒤다 — 내부 CA 가 스택 네임스페이스에 있는 구성(cert-manager 를 스택
 	// 네임스페이스에 깐 경우)에서 공용 자원 복원이 먼저 네임스페이스를 만들면 복구 라벨 없이 생긴다.
-	// 실패하면 여기서 멈춘다 — 빈 네임스페이스 말고는 아직 아무것도 건드리지 않았다. 볼륨까지
-	// 되돌린 뒤 Gateway CR 에서 "no matches for kind" 로 죽으면 되돌릴 방법이 없다.
-	for _, a := range arts {
-		if a.Component != domain.ComponentSharedResources {
-			continue
-		}
-		if uc.d.Shared == nil {
-			return fmt.Errorf("클러스터 공용 자원 복원이 배선되지 않았습니다")
-		}
+	// 실패하면 여기서 멈춘다. 볼륨까지 되돌린 뒤 Gateway CR 에서 "no matches for kind" 로 죽으면
+	// 되돌릴 방법이 없다.
+	for _, a := range shared {
 		if err := uc.pullStream(ctx, a, func(r io.Reader) error {
 			return uc.d.Shared.ApplyShared(ctx, r)
 		}); err != nil {
-			return fmt.Errorf("클러스터 공용 자원 복원: %w", err)
+			return nil, fmt.Errorf("클러스터 공용 자원 복원: %w", err)
 		}
 	}
 
 	// 3. PVC 재생성 — 매니페스트의 크기·StorageClass 대로.
 	for _, v := range m.Volumes {
 		if err := uc.d.Archiver.EnsurePVC(ctx, req.Namespace, v, req.BackupRunID); err != nil {
-			return fmt.Errorf("PVC 재생성(%s): %w", v.Name, err)
+			return nil, fmt.Errorf("PVC 재생성(%s): %w", v.Name, err)
 		}
 	}
 
@@ -277,7 +316,7 @@ func (uc *RestoreUseCase) restoreStackData(ctx context.Context, req RunRestoreRe
 		if err := uc.pullStream(ctx, a, func(r io.Reader) error {
 			return uc.d.Archiver.Restore(ctx, req.Namespace, a.ResourceName, r)
 		}); err != nil {
-			return fmt.Errorf("볼륨 복원(%s): %w", a.ResourceName, err)
+			return nil, fmt.Errorf("볼륨 복원(%s): %w", a.ResourceName, err)
 		}
 	}
 
@@ -289,10 +328,10 @@ func (uc *RestoreUseCase) restoreStackData(ctx context.Context, req RunRestoreRe
 		if err := uc.pullStream(ctx, a, func(r io.Reader) error {
 			return uc.d.Resources.Apply(ctx, req.Namespace, r)
 		}); err != nil {
-			return fmt.Errorf("네임스페이스 리소스 복원: %w", err)
+			return nil, fmt.Errorf("네임스페이스 리소스 복원: %w", err)
 		}
 	}
-	return nil
+	return outcome, nil
 }
 
 func (uc *RestoreUseCase) restorePlatform(ctx context.Context, arts []*domain.Artifact) error {

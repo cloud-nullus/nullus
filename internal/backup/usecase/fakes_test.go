@@ -429,3 +429,24 @@ func (f *fakeShared) ApplyShared(_ context.Context, in io.Reader) error {
 	f.tr.add("shared.apply")
 	return f.applyErr
 }
+
+func (f *fakeShared) ApplySharedSecrets(_ context.Context, in io.Reader) error {
+	_, _ = io.ReadAll(in)
+	f.tr.add("shared.secrets")
+	return nil
+}
+
+// fakeSharedComponents 는 공용 컨트롤러 보장 대역이다(스택 모듈이 구현한다).
+type fakeSharedComponents struct {
+	tr       *trace
+	err      error
+	warnings []string
+}
+
+func (f *fakeSharedComponents) EnsureSharedComponents(_ context.Context, _ []byte, _ string) ([]string, []string, error) {
+	f.tr.add("components.ensure")
+	if f.err != nil {
+		return nil, nil, f.err
+	}
+	return []string{"installing_cert_manager", "installing_metrics_server"}, f.warnings, nil
+}

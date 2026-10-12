@@ -107,7 +107,7 @@ curl -sX POST "$NULLUS/api/v1/admin/restores" \
 
 스택 백업을 스택까지 되돌리면(`full`·`stack_only`) `namespace` 를 반드시 적는다 — 없으면 `RESTORE_NAMESPACE_REQUIRED` 로 거절된다. 그 네임스페이스가 없으면 복구가 만든다. `full` 은 플랫폼 DB 를 백업 시점으로 되돌리지만 **백업 이력(백업·복구 기록)은 되돌리지 않는다** — 그 뒤의 백업과 이번 복구 기록이 그대로 남는다.
 
-> **스택을 제품에서 지운 뒤의 복구.** 클러스터의 마지막 스택을 지우면 Nullus 가 설치한 공용 자원(cert-manager · metrics-server · Gateway API · 내부 CA)까지 회수된다. 백업의 **클러스터 공용 자원**이 Gateway CRD · GatewayClass · 내부 CA 를 되살리지만, **cert-manager 와 metrics-server 는 담지 않는다** — 컨트롤러는 데이터가 아니라 설치다. cert-manager 가 없으면 복구는 아무것도 건드리기 전에 `ClusterIssuer … cert-manager 가 설치돼 있지 않습니다` 로 멈춘다. 스택 설치의 cert-manager 단계가 까는 것과 같은 차트(CRD 포함)를 먼저 설치하고 다시 실행한다. 공용 자원은 **없을 때만** 되살린다 — 다른 스택이 쓰는 지금의 CA 를 백업 때의 것으로 덮지 않는다.
+> **스택을 제품에서 지운 뒤의 복구.** 클러스터의 마지막 스택을 지우면 Nullus 가 설치한 공용 자원(cert-manager · metrics-server · Gateway API · 내부 CA)까지 회수된다. 복구는 먼저 **cert-manager 와 metrics-server 를 스택 설치기의 같은 단계로 다시 세우고**(이미 있으면 그대로 쓴다), 그 뒤 백업의 **클러스터 공용 자원**으로 Gateway CRD · GatewayClass · 내부 CA 를 되살린다. 내부 CA Secret 은 cert-manager 보다 먼저 두므로 백업 때의 CA 키가 그대로 돌아온다 — 도구들의 신뢰 저장소를 다시 만들 필요가 없다. cert-manager 를 세우지 못하면 복구는 볼륨을 건드리기 전에 `공용 컨트롤러 재설치: cert-manager 를 다시 세우지 못했습니다` 로 멈춘다(차트를 받을 수 있는지 확인한 뒤 다시 실행). metrics-server 실패는 복구를 멈추지 않고 결과(`integrity_report.shared_components.warnings`)에 남는다. 공용 자원은 **없을 때만** 되살린다 — 다른 스택이 쓰는 지금의 CA 를 백업 때의 것으로 덮지 않는다.
 
 ### 복구가 하는 일과 순서
 

@@ -21,6 +21,11 @@ func seedBackup(t *testing.T, mode domain.Mode) (*RestoreUseCase, *trace, *fakeR
 
 // seedBackupWithShared 는 공용 자원 복원이 실패하는 경우를 흉내 낼 수 있다.
 func seedBackupWithShared(t *testing.T, mode domain.Mode, sharedApplyErr error) (*RestoreUseCase, *trace, *fakeRepo, *fakeDumper, *fakeKV, *fakeScaler, string) {
+	return seedBackupWithComponents(t, mode, sharedApplyErr, nil)
+}
+
+// seedBackupWithComponents 는 공용 컨트롤러 보장 대역까지 끼운다. nil 이면 배선 없음.
+func seedBackupWithComponents(t *testing.T, mode domain.Mode, sharedApplyErr error, sharedComponents port.SharedComponentsEnsurer) (*RestoreUseCase, *trace, *fakeRepo, *fakeDumper, *fakeKV, *fakeScaler, string) {
 	t.Helper()
 	tr := &trace{}
 	repo := newFakeRepo()
@@ -53,8 +58,9 @@ func seedBackupWithShared(t *testing.T, mode domain.Mode, sharedApplyErr error) 
 	ruc := NewRestoreUseCase(RestoreDeps{
 		Repo: repo, Dumper: dumper, KV: kv, Scaler: scaler, Archiver: archiver,
 		Resources: &fakeResources{tr: tr}, Shared: &fakeShared{tr: tr, applyErr: sharedApplyErr},
-		Namespaces: &fakeNamespaces{tr: tr},
-		Sealer:     fakeSealer{}, Store: store,
+		SharedComponents: sharedComponents,
+		Namespaces:       &fakeNamespaces{tr: tr},
+		Sealer:           fakeSealer{}, Store: store,
 		Targets: targets,
 		TokenSources: &fakeTokenLister{refs: []port.TokenSourceRef{
 			{ID: "ts-1", Path: "kv/nullus/dev/org-1/cicd/github/api-token"},
@@ -356,4 +362,78 @@ func TestRunRestore_platform_only_는_공용_자원을_건드리지_않는다(t 
 	})
 	require.NoError(t, err)
 	assert.Equal(t, -1, tr.indexOf("shared.apply"))
+}
+
+// ── 공용 컨트롤러 ──────────────────────────────────────────────────────
+
+// 클러스터의 마지막 스택을 지우면 cert-manager·metrics-server 까지 회수된다. 컨트롤러는 설치라
+// 백업이 담지 않는다 — 복구가 설치기를 불러 다시 세운다. 순서가 핵심이다: CA Secret 을 먼저
+// 두고(CRD 불필요) cert-manager 를 세워야 부트스트랩이 새 키를 만들지 않고 옛 키를 채택한다.
+func TestRunRestore_CA_Secret_을_먼저_두고_컨트롤러를_세운_뒤_공용_자원을_되살린다(t *testing.T) {
+	tr0 := &trace{}
+	components := &fakeSharedComponents{tr: tr0}
+	uc, tr, _, _, _, _, backupID := seedBackupWithComponents(t, domain.ModeFull, nil, components)
+	components.tr = tr
+
+	rr, err := uc.Run(context.Background(), RunRestoreRequest{
+		BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusSucceeded, rr.Status)
+
+	ns := tr.indexOf("ns.ensure:nullus")
+	secrets := tr.indexOf("shared.secrets")
+	ensure := tr.indexOf("components.ensure")
+	shared := tr.indexOf("shared.apply")
+	require.GreaterOrEqual(t, secrets, 0)
+	require.GreaterOrEqual(t, ensure, 0)
+	assert.Less(t, ns, secrets, "네임스페이스가 먼저")
+	assert.Less(t, secrets, ensure, "CA Secret 이 cert-manager 보다 먼저 — 부트스트랩이 옛 키를 채택한다")
+	assert.Less(t, ensure, shared, "ClusterIssuer·Certificate 는 cert-manager 가 선 뒤")
+	assert.Less(t, shared, tr.indexOf("vol.ensure:data-gitlab"))
+	require.NotNil(t, rr.IntegrityReport.SharedComponents)
+	assert.Equal(t, []string{"installing_cert_manager", "installing_metrics_server"}, rr.IntegrityReport.SharedComponents.Steps)
+}
+
+func TestRunRestore_컨트롤러를_세우지_못하면_볼륨을_건드리기_전에_멈춘다(t *testing.T) {
+	components := &fakeSharedComponents{tr: &trace{}, err: errors.New("cert-manager chart pull failed")}
+	uc, tr, _, _, _, _, backupID := seedBackupWithComponents(t, domain.ModeFull, nil, components)
+	components.tr = tr
+
+	rr, err := uc.Run(context.Background(), RunRestoreRequest{
+		BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cert-manager")
+	assert.Equal(t, domain.StatusFailed, rr.Status)
+	assert.Equal(t, -1, tr.indexOf("shared.apply"))
+	assert.Equal(t, -1, tr.indexOf("vol.ensure:data-gitlab"))
+	assert.Equal(t, -1, tr.indexOf("db.restore:platform_db"))
+}
+
+// metrics-server 를 못 세워도 복구는 성공이다 — 사유는 기록에 남긴다.
+func TestRunRestore_컨트롤러_경고는_기록에_남는다(t *testing.T) {
+	components := &fakeSharedComponents{tr: &trace{}, warnings: []string{"metrics-server 를 다시 세우지 못했습니다"}}
+	uc, tr, _, _, _, _, backupID := seedBackupWithComponents(t, domain.ModeFull, nil, components)
+	components.tr = tr
+
+	rr, err := uc.Run(context.Background(), RunRestoreRequest{
+		BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusSucceeded, rr.Status)
+	require.NotNil(t, rr.IntegrityReport.SharedComponents)
+	assert.Equal(t, []string{"metrics-server 를 다시 세우지 못했습니다"}, rr.IntegrityReport.SharedComponents.Warnings)
+}
+
+// 플랫폼만 되돌리는 복구는 스택 클러스터에 붙지 않는다.
+func TestRunRestore_platform_only_는_컨트롤러를_건드리지_않는다(t *testing.T) {
+	components := &fakeSharedComponents{tr: &trace{}}
+	uc, tr, _, _, _, _, backupID := seedBackupWithComponents(t, domain.ModeFull, nil, components)
+	components.tr = tr
+
+	_, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Mode: domain.ModePlatformOnly})
+	require.NoError(t, err)
+	assert.Equal(t, -1, tr.indexOf("components.ensure"))
+	assert.Equal(t, -1, tr.indexOf("shared.secrets"))
 }

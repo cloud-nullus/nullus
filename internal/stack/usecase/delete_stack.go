@@ -140,13 +140,79 @@ var esoCRDGroupSuffixes = []string{
 	".external-secrets.io",
 }
 
+// esoUsageKinds 는 ESO CRD 를 "쓰는 중" 으로 세는 리소스다. ClusterSecretStore 는 Nullus 가 만들지
+// 않는다 — 있으면 사용자 것이다.
+var esoUsageKinds = []string{
+	"externalsecrets.external-secrets.io",
+	"secretstores.external-secrets.io",
+	"clustersecretstores.external-secrets.io",
+}
+
+// esoResourcesInUseOutside 는 스택 네임스페이스 **밖**에 ESO 리소스가 있는지 본다.
+//
+// ESO CRD 와 검증 웹훅은 클러스터에 하나뿐이고 모든 네임스페이스의 ESO 가 함께 쓴다. 스택 하나를
+// 지우며 걷어내면 다른 네임스페이스의 ExternalSecret 이 CRD 와 함께 사라지고, 그것이 만든 Secret
+// 은 가비지 컬렉터가 거둔다 — 그쪽 스택은 다음 파드 재시작에서 "secret not found" 로 죽는다.
+// 2026-10-12 리허설에서 DB 에만 남은 유령 스택을 지우자 살아 있던 스택의 자격증명 Secret 이 전부
+// 사라졌고, 그 뒤에 뜬 백업에는 그것들이 없었다. Argo CD CRD·공용 자원 회수와 같은 원칙이다 —
+// 쓰는 곳이 있으면 남기고, 확인하지 못하면 남긴다.
+func (uc *DeleteStack) esoResourcesInUseOutside(ctx context.Context, kubeconfig []byte, namespace string) bool {
+	if len(kubeconfig) == 0 {
+		return false
+	}
+	for _, kind := range esoUsageKinds {
+		out, err := uc.runKubectl(ctx, kubeconfig, "get", kind, "-A", "-o",
+			`jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}`)
+		if err != nil {
+			if isMissingResourceType(err) {
+				continue // 그 CRD 가 없다 — 지킬 것도 없다.
+			}
+			slog.Warn("eso 사용 여부를 확인하지 못해 CRD·웹훅을 남깁니다", "kind", kind, "error", err)
+			return true
+		}
+		if esoResourcesOutside(out, namespace) {
+			return true
+		}
+	}
+	return false
+}
+
+// esoResourcesOutside 는 `<namespace>/<name>` 줄 가운데 주어진 네임스페이스 밖의 것이 있는지 본다.
+// 네임스페이스가 빈 줄(클러스터 범위)도 밖이다.
+func esoResourcesOutside(out, namespace string) bool {
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		ns, _, _ := strings.Cut(line, "/")
+		if ns != namespace {
+			return true
+		}
+	}
+	return false
+}
+
+// isMissingResourceType 은 kubectl 이 그 종류 자체를 모를 때의 오류다(CRD 없음).
+func isMissingResourceType(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "doesn't have a resource type") || strings.Contains(msg, "the server could not find the requested resource")
+}
+
 // bestEffortDeleteExternalSecretsWebhooks 는 ESO 검증 웹훅 설정을 지운다.
 //
 // **ESO 커스텀 리소스보다 먼저** 불러야 한다. 웹훅이 살아 있는데 그것을 서빙하던
 // 서비스가 사라지면, 남은 ExternalSecret 을 지우려는 요청이 webhook 호출 실패로
 // 거부된다. 네임스페이스는 그 리소스를 회수하지 못해 영구 Terminating 이 되고,
 // 사람이 웹훅을 손으로 지워야만 풀린다(2026-09-10 실측).
-func (uc *DeleteStack) bestEffortDeleteExternalSecretsWebhooks(ctx context.Context, kubeconfig []byte, stackID string) {
+//
+// 다른 네임스페이스가 ESO 를 쓰면(usedElsewhere) 남긴다 — 웹훅은 클러스터에 하나뿐이라 지우면
+// 그쪽 ESO 의 검증이 깨진다. 그때 자기 CR 삭제는 아직 살아 있는 자기 웹훅 서비스를 거친다.
+func (uc *DeleteStack) bestEffortDeleteExternalSecretsWebhooks(ctx context.Context, kubeconfig []byte, stackID string, usedElsewhere bool) {
+	if usedElsewhere {
+		uc.emit(ctx, stackID, "deleting_crd", "info", "skipping eso webhook delete because another namespace still uses external-secrets")
+		return
+	}
 	for _, name := range esoWebhookConfigurationNames {
 		uc.emit(ctx, stackID, "deleting_crd", "info", fmt.Sprintf("deleting eso webhook %s", name))
 		if _, err := uc.runKubectl(ctx, kubeconfig,
@@ -162,7 +228,15 @@ func (uc *DeleteStack) bestEffortDeleteExternalSecretsWebhooks(ctx context.Conte
 // Argo CD·Gateway 와 같은 이유다 — helm uninstall 은 CRD 를 지우지 않고, 남으면
 // 소유 애노테이션이 삭제된 릴리스를 가리킨 채로 있어 다음 스택 설치가
 // "invalid ownership metadata" 로 막힌다.
-func (uc *DeleteStack) bestEffortDeleteExternalSecretsCRDs(ctx context.Context, kubeconfig []byte, stackID string) {
+//
+// 다른 네임스페이스가 ESO 를 쓰면(usedElsewhere) 남긴다 — CRD 를 지우면 그쪽 ExternalSecret 이
+// 함께 사라지고 그 Secret 은 가비지 컬렉터가 거둔다. 다음 설치는 남은 CRD 를 인수한다
+// (adoptExistingESOCRDs).
+func (uc *DeleteStack) bestEffortDeleteExternalSecretsCRDs(ctx context.Context, kubeconfig []byte, stackID string, usedElsewhere bool) {
+	if usedElsewhere {
+		uc.emit(ctx, stackID, "deleting_crd", "info", "skipping eso CRD delete because another namespace still uses external-secrets")
+		return
+	}
 	out, err := uc.runKubectl(ctx, kubeconfig, "get", "crd", "-o", "name")
 	if err != nil {
 		slog.Warn("eso crd cleanup skipped due to check failure", "error", err)
@@ -382,10 +456,14 @@ func (uc *DeleteStack) cleanupCluster(ctx context.Context, stack *domain.Stack, 
 	gatewayNames := uc.collectGatewayNames(ctx, kubeconfig, stack)
 	gatewayNames = uc.mergeGatewayNames(gatewayNames, uc.collectGatewayNamesFromManagedResources(ctx, kubeconfig, stack))
 	uc.bestEffortDeleteYAMLResources(ctx, kubeconfig, stack, stackID)
+	// ESO CRD·웹훅은 클러스터에 하나뿐이다. 다른 네임스페이스가 쓰고 있으면 남긴다 — 자기 CR 을
+	// 지우기 전에 한 번 보고 웹훅·CRD 양쪽에 같은 판단을 쓴다(자기 네임스페이스 밖만 보므로 그 뒤
+	// 자기 CR 을 지워도 답이 바뀌지 않는다).
+	esoUsedElsewhere := uc.esoResourcesInUseOutside(ctx, kubeconfig, stack.Namespace)
 	// 검증 웹훅을 가장 먼저 지운다. 웹훅이 남은 채 그것을 서빙하던 서비스가
 	// 사라지면 ExternalSecret 삭제 요청이 거부되어 네임스페이스가 영구
 	// Terminating 이 된다 — 아래 CR 삭제가 바로 그 요청이다.
-	uc.bestEffortDeleteExternalSecretsWebhooks(ctx, kubeconfig, stackID)
+	uc.bestEffortDeleteExternalSecretsWebhooks(ctx, kubeconfig, stackID, esoUsedElsewhere)
 	// ESO 커스텀 리소스를 오퍼레이터보다 먼저 지운다.
 	// 순서가 뒤바뀌면 ExternalSecret 의 finalizer 를 처리할 컨트롤러가 사라져
 	// 네임스페이스와 CRD 가 영구 Terminating 상태로 남는다.
@@ -402,7 +480,7 @@ func (uc *DeleteStack) cleanupCluster(ctx context.Context, stack *domain.Stack, 
 	uc.bestEffortDeleteLegacyReleaseArtifacts(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteOrphanGatewayTempoResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteArgoCDCRDs(ctx, kubeconfig, stackID)
-	uc.bestEffortDeleteExternalSecretsCRDs(ctx, kubeconfig, stackID)
+	uc.bestEffortDeleteExternalSecretsCRDs(ctx, kubeconfig, stackID, esoUsedElsewhere)
 	uc.bestEffortDeleteStackLabeledResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteLegacyGatewayPolicyResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteLegacyReleaseArtifacts(ctx, kubeconfig, stack, stackID)

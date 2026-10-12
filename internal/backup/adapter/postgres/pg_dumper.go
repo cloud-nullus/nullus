@@ -236,9 +236,38 @@ func (d *PgDumper) runRestore(ctx context.Context, target port.DBTarget, args []
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("pg_restore 실패: %w (%s)", err, strings.TrimSpace(stderr.String()))
+		msg := strings.TrimSpace(stderr.String())
+		if hint := preservedTableFKHint(msg, target.PreserveTables); hint != "" {
+			return fmt.Errorf("pg_restore 실패: %w (%s) — %s", err, msg, hint)
+		}
+		return fmt.Errorf("pg_restore 실패: %w (%s)", err, msg)
 	}
 	return nil
+}
+
+// preservedTableFKHint 는 보존하는 이력 테이블의 FK 가 --clean 을 막은 실패를 알아보고 조치를 말한다.
+//
+// 이력 테이블(backup_runs 등)이 되돌리는 테이블(organizations 등)을 FK 로 참조하면 pg_restore 가 그
+// 테이블의 PK 를 지우는 순간 "cannot drop constraint … because other objects depend on it / DETAIL:
+// constraint <fk> on table public.<이력 테이블> depends on …" 으로 죽는다. 2026-10-12 실환경 리허설에서
+// 000091 의 backup_runs_org_id_fkey 가 그랬다(000092 가 거뒀다). 원문만으로는 무엇을 고쳐야 하는지
+// 보이지 않는다 — 이력 테이블은 플랫폼 테이블을 참조하면 안 된다는 원칙과 조치를 덧붙인다.
+func preservedTableFKHint(stderr string, preserved []string) string {
+	if !strings.Contains(stderr, "cannot drop constraint") || !strings.Contains(stderr, "depends on") {
+		return ""
+	}
+	var blocking []string
+	for _, table := range preserved {
+		if strings.Contains(stderr, "on table public."+table+" ") || strings.Contains(stderr, "on table "+table+" ") {
+			blocking = append(blocking, table)
+		}
+	}
+	if len(blocking) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("보존하는 백업 이력 테이블(%s)이 되돌리는 테이블을 FK 로 참조해 --clean 을 막습니다. "+
+		"이력 테이블은 플랫폼 테이블을 FK 로 참조하면 안 됩니다 — 그 FK 를 거두는 마이그레이션을 적용한 뒤 다시 실행하세요(000092 참조)",
+		strings.Join(blocking, ", "))
 }
 
 // spool 은 아카이브 스트림을 임시 파일로 받는다. 파일은 소유자만 읽는다(평문 DB 덤프다).

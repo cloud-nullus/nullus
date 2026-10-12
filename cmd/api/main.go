@@ -203,6 +203,35 @@ func main() {
 
 	stackImageScanHandler := stackhandler.NewImageScanHandler(stackImageScanUC)
 
+	// 스택 설치기 팩토리. 설치와, 복구가 공용 컨트롤러(cert-manager·metrics-server)를 다시 세울 때
+	// 같은 것을 쓴다 — 두 길이 같은 차트 메타데이터·자원 기본값·이미지 프로젝트로 같은 결과를 낸다.
+	stackExecutorFactory := func(kubeconfig []byte) stackport.StepExecutor {
+		installer := stackhelm.NewHelmInstaller(kubeconfig)
+		orch := stackhelm.NewOrchestrator(
+			installer,
+			kubeconfig,
+			"",
+			stackhelm.WithHelmStepMetadataRepository(pgHelmStepMetadataRepo),
+			// 이게 빠지면 loadResourceDefault 가 repo nil 을 보고 바로 빠져나가
+			// 모든 차트가 resources 없이 설치된다 — 파드의 requests/limits 가
+			// 통째로 비고, 스케줄러가 자원을 예약하지 못한다.
+			stackhelm.WithResourceDefaultRepository(pgResourceDefaultRepo),
+			// 레지스트리 프로젝트 이름은 CI/CD 모듈의 그룹 경로와 같아야 한다.
+			// 두 모듈은 서로 import 할 수 없으므로 조립 지점인 여기서 같은
+			// 값을 넘겨 계약을 맞춘다 — 다르면 프로젝트는 만들어지는데 CI 가
+			// push 하는 주소는 다른 프로젝트를 가리켜 "project not found" 로 막힌다.
+			stackhelm.WithImageProjectName(cicdGroupPath()),
+			// 설치되는 OSS 가 브라우저를 보낼 Keycloak 주소. 포털이 로그인한
+			// 곳과 같아야 SSO 세션이 이어진다.
+			stackhelm.WithToolOIDCIssuer(cfg.ToolOIDCIssuerURL()),
+		)
+		// SSO 프로비저너 주입 — stack 모듈은 포트만 알고 구현은 auth 모듈이 제공한다.
+		if ssoFactory != nil {
+			orch.SetSSOProvisionerFactory(ssoFactory)
+		}
+		return orch
+	}
+
 	installStackUC := stackuc.NewInstallStack(
 		pgStackRepo,
 		memStreamer,
@@ -210,33 +239,10 @@ func main() {
 		stackuc.WithTokenSourceRegistry(stackrepo.NewPostgresTokenSourceRegistry(pool, secretRouter), tokenSourceEnvironment(cfg.Server.Mode)),
 		stackuc.WithSecretRouter(secretRouter),
 		stackuc.WithInstalledImageScan(stackImageScanUC),
-		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
-			installer := stackhelm.NewHelmInstaller(kubeconfig)
-			orch := stackhelm.NewOrchestrator(
-				installer,
-				kubeconfig,
-				"",
-				stackhelm.WithHelmStepMetadataRepository(pgHelmStepMetadataRepo),
-				// 이게 빠지면 loadResourceDefault 가 repo nil 을 보고 바로 빠져나가
-				// 모든 차트가 resources 없이 설치된다 — 파드의 requests/limits 가
-				// 통째로 비고, 스케줄러가 자원을 예약하지 못한다.
-				stackhelm.WithResourceDefaultRepository(pgResourceDefaultRepo),
-				// 레지스트리 프로젝트 이름은 CI/CD 모듈의 그룹 경로와 같아야 한다.
-				// 두 모듈은 서로 import 할 수 없으므로 조립 지점인 여기서 같은
-				// 값을 넘겨 계약을 맞춘다 — 다르면 프로젝트는 만들어지는데 CI 가
-				// push 하는 주소는 다른 프로젝트를 가리켜 "project not found" 로 막힌다.
-				stackhelm.WithImageProjectName(cicdGroupPath()),
-				// 설치되는 OSS 가 브라우저를 보낼 Keycloak 주소. 포털이 로그인한
-				// 곳과 같아야 SSO 세션이 이어진다.
-				stackhelm.WithToolOIDCIssuer(cfg.ToolOIDCIssuerURL()),
-			)
-			// SSO 프로비저너 주입 — stack 모듈은 포트만 알고 구현은 auth 모듈이 제공한다.
-			if ssoFactory != nil {
-				orch.SetSSOProvisionerFactory(ssoFactory)
-			}
-			return orch
-		}),
+		stackuc.WithExecutorFactory(stackExecutorFactory),
 	)
+	// 복구가 마지막 스택을 지운 클러스터로 되돌릴 때 회수된 컨트롤러를 설치기로 다시 세운다.
+	ensureSharedComponentsUC := stackuc.NewEnsureSharedComponents(stackExecutorFactory)
 	createStackUC := stackuc.NewCreateStack(
 		pgStackRepo,
 		pgTemplateRepo,
@@ -677,17 +683,18 @@ func main() {
 		},
 	)
 	backupModule, err := backup.New(backup.Deps{
-		Pool:            pool,
-		Config:          cfg.Backup,
-		PlatformDB:      cfg.Database,
-		SecretRouter:    secretRouter,
-		Kubeconfig:      kubeconfigProvider,
-		TokenSources:    tokenSourceRepo,
-		RotationPausing: rotationScheduler,
-		GatewayAliases:  gatewayAliasRepinUC,
-		EncryptionKey:   []byte(os.Getenv("ENCRYPTION_KEY")),
-		PlatformVersion: platformVersion,
-		Logger:          slog.Default(),
+		Pool:             pool,
+		Config:           cfg.Backup,
+		PlatformDB:       cfg.Database,
+		SecretRouter:     secretRouter,
+		Kubeconfig:       kubeconfigProvider,
+		TokenSources:     tokenSourceRepo,
+		RotationPausing:  rotationScheduler,
+		GatewayAliases:   gatewayAliasRepinUC,
+		SharedComponents: ensureSharedComponentsUC,
+		EncryptionKey:    []byte(os.Getenv("ENCRYPTION_KEY")),
+		PlatformVersion:  platformVersion,
+		Logger:           slog.Default(),
 	})
 	if err != nil {
 		slog.Error("백업 모듈 조립 실패", "error", err)

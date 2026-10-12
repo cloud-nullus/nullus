@@ -387,3 +387,37 @@ func TestDumpKinds_ArgoCD_애플리케이션을_담는다(t *testing.T) {
 			"%s 가 빠지면 복구 후 앱을 배포할 주체가 사라진다", kind)
 	}
 }
+
+// kube-prometheus-stack 의 Prometheus · Alertmanager 는 **CR 이 주체다** — 오퍼레이터가 CR 을 읽어
+// StatefulSet 을 만든다. 그 StatefulSet 은 ownerReferences 때문에 덤프에서 빠지는데(소유자가 다시
+// 만든다), 소유자인 CR 까지 빠지면 다시 만들 주체가 없다. 2026-10-12 제품 삭제 뒤 복구 리허설에서
+// 복구가 succeeded 인데 prometheus·alertmanager StatefulSet 이 영영 돌아오지 않았고, 워크로드 재개
+// 단계가 "statefulsets … not found" 를 남겼다. ServiceMonitor · PrometheusRule 이 빠지면 스크랩
+// 대상과 알림 규칙이 사라져 Grafana 가 비어 보인다. Application(Argo CD) · ExternalSecret 과 같은
+// 뿌리다 — 컨트롤러가 다시 만드는 것의 **원본**은 덤프에 있어야 한다.
+func TestDumpKinds_모니터링_CR_을_담는다(t *testing.T) {
+	for _, k := range []string{
+		"prometheuses.monitoring.coreos.com",
+		"alertmanagers.monitoring.coreos.com",
+		"servicemonitors.monitoring.coreos.com",
+		"podmonitors.monitoring.coreos.com",
+		"prometheusrules.monitoring.coreos.com",
+		"probes.monitoring.coreos.com",
+		"scrapeconfigs.monitoring.coreos.com",
+		"alertmanagerconfigs.monitoring.coreos.com",
+	} {
+		assert.Contains(t, dumpKinds, k, "오퍼레이터가 다시 만드는 StatefulSet 의 원본이다")
+	}
+	// 모니터링 스택이 없는 클러스터(api-resources 에 없음)에서는 조회하지 않는다.
+	assert.NotContains(t, filterAvailable(dumpKinds, "deployments.apps\nsecrets\n"), "prometheuses.monitoring.coreos.com")
+}
+
+// 접근 도메인 인증서(nullus-access-domain-cert)는 cert-manager 의 Certificate 가 주체다. 그 Secret
+// (nullus-access-domain-tls)은 덤프에 담겨 되살아나지만 Certificate 가 빠지면 갱신할 주체가 없다 —
+// 복구 직후에는 멀쩡하다가 만기(기본 90일)에 게이트웨이 TLS 가 조용히 죽는다. 2026-10-12 리허설
+// 지문 대조에서 Certificate 가 복구 뒤 사라진 것이 드러났다. 복구가 cert-manager 를 먼저 세우므로
+// (EnsureSharedComponents) 네임스페이스 리소스 단계에서 CR 을 적용할 수 있다.
+func TestDumpKinds_cert_manager_Certificate_를_담는다(t *testing.T) {
+	assert.Contains(t, dumpKinds, "certificates.cert-manager.io")
+	assert.Contains(t, dumpKinds, "issuers.cert-manager.io")
+}
