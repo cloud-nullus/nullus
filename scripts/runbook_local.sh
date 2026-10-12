@@ -261,6 +261,7 @@ Usage:
   ./scripts/runbook_local.sh stack-up [--template=<id>] [--name=<n>] [--namespace=<ns>]
                                       [--cluster=<ctx-name>] [--domain=<d>] [--wait]
   ./scripts/runbook_local.sh stack-status <stack-id> [--wait]
+  ./scripts/runbook_local.sh wire [--stack=<id>]
   ./scripts/runbook_local.sh stack-down [--all|<stack-id>]
   ./scripts/runbook_local.sh pipeline-down
   ./scripts/runbook_local.sh all [--seed] [--kind] [--auth=<keycloak|authentik|none>]
@@ -287,7 +288,10 @@ Commands:
                     도구 선택은 템플릿 응답에서 가져오고, 설치는 백엔드 API 가 수행한다
                     자원 계획은 템플릿의 planning_profile 로 백엔드가 계산한다
                     (Lite = local → 8Gi 노드 하나에 들어가는 크기)
-  stack-status <id> 스택 상태 조회. --wait 면 completed/failed 까지 폴링한다
+  stack-status <id> 스택 상태 조회. --wait 면 completed/failed 까지 폴링하고 완료 시 배선한다
+  wire [--stack=id] kind 의 completed 스택을 호스트·노드에 잇는다 — 노드 /etc/hosts 와 내부 CA
+                    (앱 이미지 pull), GitLab 포트포워드 + NULLUS_GITLAB_URL. 화면에서 설치했거나
+                    복구로 되살아난 스택에 쓴다. stack-up --wait 는 자동으로 한다
   stack-down [id]   설치된 스택을 제품 삭제 경로(helm uninstall + CRD 정리)로 삭제
                     인자 없으면 --all. 삭제 후 남은 helm 릴리스를 보고한다
   pipeline-down     CI/CD 파이프라인 전체 삭제 (스택보다 먼저 지워야 한다)
@@ -1452,7 +1456,49 @@ for c in items or []:
     return 1
   fi
 
-  wire_kind_nodes_for_stack "$namespace" "$domain" "kind-${cluster_name#kind-}"
+  wire_stack_host "$stack_id"
+}
+
+# wire_stack_host 는 설치가 끝난 스택 하나를 호스트·kind 노드에 잇는다.
+#
+# 두 가지다. (1) kind 노드의 /etc/hosts 와 신뢰 저장소 — kubelet 이 registry.<도메인> 을
+# 게이트웨이 ClusterIP 로 풀고 내부 CA 를 믿어야 앱 이미지를 받는다. (2) GitLab 스택이면
+# 호스트 포트포워드 + NULLUS_GITLAB_URL 로 API 를 다시 띄운다.
+#
+# 예전에는 stack-up --wait 만 이 일을 했다 — 화면에서 설치한 스택, --wait 없이 띄운 스택,
+# 복구로 되살아난 스택은 배선이 안 돼 ImagePullBackOff 로 멈췄다. 스택 ID 로 API 에서
+# 네임스페이스·클러스터·접근 도메인을 읽으므로 어느 길로 설치했든 같다(wire 명령).
+wire_stack_host() {
+  local stack_id="$1"
+  [[ -n "$stack_id" ]] || return 1
+  local info namespace cluster_name domain state
+  info="$(curl -sS -m 30 "$(api_base)/api/v1/stacks/$stack_id" 2>/dev/null | python3 -c '
+import json, sys
+try:
+    s = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+cfg = s.get("config") or {}
+print(s.get("namespace", ""))
+print(s.get("cluster_name", ""))
+print(cfg.get("access_domain", ""))
+print(s.get("state", ""))
+' 2>/dev/null)" || { echo "[nullus] 스택 $stack_id 를 API 에서 읽지 못했습니다"; return 1; }
+  namespace="$(sed -n 1p <<< "$info")"
+  cluster_name="$(sed -n 2p <<< "$info")"
+  domain="$(sed -n 3p <<< "$info")"
+  state="$(sed -n 4p <<< "$info")"
+  if [[ "$state" != "completed" ]]; then
+    echo "[nullus] 스택 $stack_id 는 아직 completed 가 아닙니다 (state=$state) — 배선을 건너뜁니다"
+    return 1
+  fi
+  if [[ "$cluster_name" != kind-* ]]; then
+    echo "[nullus] 스택 $stack_id 의 클러스터 $cluster_name 는 kind 가 아닙니다 — 노드 배선은 kind 전용입니다"
+    return 1
+  fi
+  [[ -n "$domain" ]] || domain="${LOCAL_DOMAIN:-nullus.local}"
+
+  wire_kind_nodes_for_stack "$namespace" "$domain" "$cluster_name"
 
   # 호스트의 API 가 이 스택의 GitLab 에 닿으려면 포트포워드와 NULLUS_GITLAB_URL 이
   # 필요하다. 스택이 GitLab 을 깔았으면 여기서 포워드를 띄우고 API 를 같은 환경으로
@@ -1469,6 +1515,49 @@ for c in items or []:
       restart_api
     fi
   fi
+}
+
+# do_wire 는 kind 에 설치된 completed 스택 전부(또는 --stack=<id> 하나)를 배선한다.
+# 화면에서 설치했거나 복구로 되살아난 스택을 위한 명령이다. 다시 돌려도 안전하다.
+do_wire() {
+  local only=""
+  for arg in "$@"; do
+    case "$arg" in
+      --stack=*) only="${arg#*=}" ;;
+      *) echo "[nullus] unknown option: $arg"; exit 1 ;;
+    esac
+  done
+  if ! api_is_up; then
+    echo "[nullus] API 가 떠 있지 않습니다 (:$API_PORT). 'up' 후 다시 실행하세요."
+    return 1
+  fi
+  local ids
+  if [[ -n "$only" ]]; then
+    ids="$only"
+  else
+    ids="$(curl -sS -m 30 "$(api_base)/api/v1/stacks" 2>/dev/null | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+items = data.get("items") if isinstance(data, dict) else data
+for s in items or []:
+    if s.get("state") == "completed" and str(s.get("cluster_name", "")).startswith("kind-"):
+        print(s["id"])
+' 2>/dev/null)"
+  fi
+  if [[ -z "$ids" ]]; then
+    echo "[nullus] 배선할 completed 스택이 kind 에 없습니다"
+    return 0
+  fi
+  local id rc=0
+  while IFS= read -r id; do
+    [[ -z "$id" ]] && continue
+    echo "[nullus] wiring stack $id"
+    wire_stack_host "$id" || rc=1
+  done <<< "$ids"
+  return $rc
 }
 
 # wire_kind_nodes_for_stack 은 kind 노드가 스택 레지스트리에서 이미지를 받을 수
@@ -1576,6 +1665,8 @@ do_stack_status() {
     case "$state" in
       completed)
         echo "[nullus] 설치 완료"
+        # --wait 로 끝까지 본 스택은 배선까지 한다 — stack-up --wait 와 같은 결과.
+        [[ "$wait_install" == "true" ]] && wire_stack_host "$stack_id"
         return 0
         ;;
       failed|rolled_back|cancelled)
@@ -1892,6 +1983,7 @@ main() {
     purge) do_purge "$@" ;;
     stack-up) do_stack_up "$@" ;;
     stack-status) do_stack_status "$@" ;;
+    wire) do_wire "$@" ;;
     stack-down) do_stack_down "${1:---all}" ;;
     pipeline-down) do_pipeline_down ;;
     all) do_all "$@" ;;
