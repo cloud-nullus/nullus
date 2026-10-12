@@ -69,7 +69,7 @@ type ManagedSecret struct {
 const (
 	ProvisionedPostgresSecret      = domain.ProvisionedPostgresSecret
 	ProvisionedMinIOSecret         = domain.ProvisionedMinIOSecret
-	ProvisionedGitLabRootSecret    = "gitlab-initial-root-password" // #nosec G101 -- Secret 리소스 이름
+	ProvisionedGitLabRootSecret    = domain.GitLabRootSecret
 	ProvisionedObjectStorageSecret = domain.ProvisionedObjectStorageSecret
 
 	// Container Registry 전용 스토리지 설정. Rails 의 object_store 와 형식이

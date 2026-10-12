@@ -611,7 +611,7 @@ kubectl --context $CTX -n $NS get secret argocd-initial-admin-secret \
 <span class="c"># SonarQube — 관리자 admin. 일반 사용자는 로그인 화면의 Keycloak 버튼으로 들어간다</span>
 kubectl --context $CTX -n $NS get secret nullus-sonarqube-credentials \
   -o jsonpath='{.data.admin-password}' | base64 -d; echo</code></pre></div>
-    <div class="callout"><b>연결 정보 창과 Secret 이름이 다를 수 있다</b>화면의 연결 정보는 <code>gitlab-gitlab-initial-root-password</code>를 가리키지만, 설치기는 GitLab 비밀번호를 <code>gitlab-initial-root-password</code>로 만든다. 앞의 것이 없으면 위 명령을 쓴다.</div>
+    <div class="callout"><b>Secret 이름</b>연결 정보 창과 설치기가 같은 <code>gitlab-initial-root-password</code>(금고 값을 ESO 가 프로비저닝)를 가리키고, GitLab 차트가 이것을 초기 root 비밀번호로 읽는다. <b>이 변경 전에 설치한 스택</b>은 차트가 스스로 만든 <code>gitlab-gitlab-initial-root-password</code>가 실제 비밀번호다 — 로그인이 안 되면 그쪽을 읽는다.</div>
     <p class="check-title">확인</p>
     <ul class="check">
       <li><code>https://gitlab.nullus.local</code>에 root로 로그인된다</li>
@@ -1087,7 +1087,6 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
   <div class="step-body">
     <p>가이드를 쓰며 코드에서 확인한 것들이다. 위 단계의 우회책은 모두 이것 때문에 생겼다.</p>
     <ol class="issues">
-      <li><b>연결 정보의 GitLab 비밀번호 Secret 이름이 설치기와 다르다.</b><span class="ref">internal/stack/domain/connection.go:266 ↔ adapter/helm/secret-provisioning.go:72</span></li>
       <li><b>낡은 문서.</b> CI/CD kind 배포 가이드의 요청 본문, 템플릿 추가 가이드의 API 설명, CLI 가이드의 <code>pipeline deploy</code>는 지금 코드와 맞지 않는다.<span class="ref">docs/guides/cicd-pipeline-kind-deploy-guide.md · docs/20_개발가이드/Nullus_템플릿_추가_가이드.md · Nullus_CLI_사용_가이드.md</span></li>
     </ol>
   </div>

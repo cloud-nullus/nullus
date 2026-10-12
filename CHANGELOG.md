@@ -176,6 +176,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **GitLab 초기 root 비밀번호가 금고·연결 정보와 다른 것이던 것** (`internal/stack/adapter/helm/values.go`, `internal/stack/domain/connection.go`): 설치는 금고 값(`artifacts/gitlab/root-password`)을 ESO 로 `gitlab-initial-root-password` 에 프로비저닝했지만 GitLab 차트 values 가 그것을 참조하지 않아, 차트가 `gitlab-gitlab-initial-root-password` 에 임의 비밀번호를 만들었다 — 금고의 값·백업·연결 정보 안내가 가리키는 것과 실제 root 비밀번호가 달랐다(실측: 두 Secret 의 값이 다르고 로그인되는 것은 차트 것). 이제 차트의 `global.initialRootPassword` 가 프로비저닝된 Secret 을 읽고, 연결 정보 안내도 같은 이름을 쓴다(값의 단일 출처는 domain). **이 변경 전에 설치한 스택은 차트가 만든 `gitlab-gitlab-initial-root-password` 가 실제 비밀번호다.** 에어갭 설치 values 와 이미지 목록을 함께 갱신했다.
+
 - **배포 되커밋(`[skip ci]`)이 실행 기록에 실패로 남던 것** (`internal/cicd/{usecase/sync_pipeline_runs.go,adapter/gitlab,adapter/github,port}`): GitLab 은 CD 가 매니페스트를 되커밋한 `[skip ci]` 커밋에 `skipped` 파이프라인을 만드는데, 동기화가 이를 중단(ABORTED)으로 읽어 실패로 기록했다 — 배포마다 실패 하나가 화면에 남았다(2026-10-12 리허설 실측). 아무 잡도 돌지 않은 빈 파이프라인은 실행이 아니다. GitLab·GitHub 의 `skipped` 를 `SKIPPED` 로 옮기고 동기화가 `SKIPPED`·`NOT_BUILT`(Jenkins) 를 기록하지 않는다. 이 변경 전에 실패로 남긴 기록은 다음 동기화가 거둔다(`DeploymentRepository.Delete`).
 
 - **복구의 금고(OpenBao KV) 가져오기가 빈 스택 ID 로 전역 금고를 향하던 것** (`internal/backup/usecase/run_restore.go`, 백업복구 설계 §6.1 8단계): 백업은 스택 ID 로 **스택 금고**를 뜨는데(`KV.Export`) 복구는 빈 스택 ID 로 `KV.Import` 를 불러 전역 주소(`OPENBAO_ADDR`)로 갔다 — 인클러스터면 다른 금고에 쓰고, 호스트에서는 닿지 못해 네 번의 리허설 모두 "금고 경로 27건 복원 실패" 로 남았다. 이제 뜬 곳으로 되돌린다. 스택을 되돌리는 복구에서는 금고 파드가 워크로드 재개 뒤에 뜨므로 재개 뒤로 미루고 응답할 때까지 기다려 다시 시도한다(기본 2분·10초 간격). 스택을 건드리지 않는 복구(`platform_only`)는 금고가 이미 떠 있어 바로 한다. 참조 정합성 검사는 원래 스택 금고를 봤으므로 이제 import 와 같은 금고를 본다.
