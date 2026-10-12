@@ -1089,7 +1089,6 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
     <ol class="issues">
       <li><b>연결 정보의 GitLab 비밀번호 Secret 이름이 설치기와 다르다.</b><span class="ref">internal/stack/domain/connection.go:266 ↔ adapter/helm/secret-provisioning.go:72</span></li>
       <li><b>배포 되커밋(<code>[skip ci]</code>)이 실행 기록에 실패로 남는다.</b> GitLab 은 그 커밋의 파이프라인을 <code>skipped</code> 로 만드는데, 동기화가 이를 중단(ABORTED)으로 읽어 화면에 실패로 보인다.<span class="ref">internal/cicd/adapter/gitlab/build_reader.go:166</span></li>
-      <li><b>OpenBao KV 가져오기가 빈 stackID로 불려 전역 OpenBao를 향한다.</b> 스택 금고는 볼륨 복구로 돌아온다.<span class="ref">internal/backup/usecase/run_restore.go:254</span></li>
       <li><b>낡은 문서.</b> CI/CD kind 배포 가이드의 요청 본문, 템플릿 추가 가이드의 API 설명, CLI 가이드의 <code>pipeline deploy</code>는 지금 코드와 맞지 않는다.<span class="ref">docs/guides/cicd-pipeline-kind-deploy-guide.md · docs/20_개발가이드/Nullus_템플릿_추가_가이드.md · Nullus_CLI_사용_가이드.md</span></li>
     </ol>
   </div>

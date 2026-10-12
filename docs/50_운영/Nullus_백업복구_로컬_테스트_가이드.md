@@ -527,7 +527,7 @@ helm list -A                                               # 비어 있음
 
 **복구(§4.8 과 같은 요청)** 뒤 응답의 `integrity_report.shared_components` 를 본다 — `steps` 에 `installing_cert_manager` · `installing_metrics_server` 가 있어야 하고, `warnings` 는 비어 있어야 한다(metrics-server 만 실패하면 거기 남는다. cert-manager 실패는 복구 자체가 `공용 컨트롤러 재설치: …` 로 실패한다). 그리고 지문을 다시 뜬다 — **내부 CA 의 sha 가 같아야 한다.** 다르면 cert-manager 가 Secret 보다 먼저 섰다는 뜻이다(설계 §11.3 Q16 의 순서 함정).
 
-> **로컬에서는 금고 복원이 실패하고 `dangling` 이 남는다.** 호스트에서 도는 API 는 플랫폼 OpenBao(`http://openbao.nullus.internal`)에 닿지 못한다(§4.4 와 같은 제약). `금고 복원 실패 — 참조 정합성 검사에서 드러납니다` 와 `dangling` 5건은 그 때문이고, 복구 상태는 그대로 `succeeded` 다. 스택 데이터·공용 자원 검증에는 영향이 없다.
+> **금고 복원은 스택 금고로 간다.** 복구는 백업이 뜬 곳(스택 금고)으로 KV 를 되돌리며, 워크로드가 다시 뜬 뒤 금고가 응답할 때까지(기본 2분) 기다려 다시 시도한다 — 로그에 `스택 금고가 아직 응답하지 않아 KV import 를 다시 시도합니다` 가 몇 번 찍히는 것은 정상이다. `dangling` 은 토큰 소스 경로가 그 금고에 없을 때 남는다 — 로컬에서는 토큰 회전이 전역 주소(`openbao.nullus.internal`, 호스트에서 못 품)로 쓰다 실패해 처음부터 어디에도 없는 경로가 그렇게 보인다. 복구 상태는 그대로 `succeeded` 다.
 
 > **삭제 직후 재시작 중인 파드의 `CreateContainerConfigError` 를 "곧 풀린다" 로 넘기지 말 것.** 2026-10-12 1차 시도는 유령 스택 레코드를 지운 것이 살아 있던 스택의 ESO CRD 를 걷어내(그 뒤 고쳤다 — CHANGELOG) 자격증명 Secret 이 사라진 상태에서 백업을 떴다. 파드가 `secret "…-credentials" not found` 로 멈춰 있으면 **백업을 뜨기 전에** 원인을 본다 — 그 상태의 백업은 되살려도 같은 자리에서 멈춘다.
 
