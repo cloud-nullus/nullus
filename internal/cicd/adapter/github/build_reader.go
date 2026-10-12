@@ -153,8 +153,11 @@ func runResult(status, conclusion string) (result string, building bool) {
 	switch strings.ToLower(strings.TrimSpace(conclusion)) {
 	case "success", "neutral":
 		return "SUCCESS", false
-	case "cancelled", "skipped":
+	case "cancelled":
 		return "ABORTED", false
+	case "skipped":
+		// 실행이 아니다(GitLab 의 skipped 와 같다) — 동기화가 기록하지 않는다.
+		return "SKIPPED", false
 	default: // failure, timed_out, startup_failure, action_required, stale
 		return "FAILURE", false
 	}

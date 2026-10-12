@@ -122,3 +122,26 @@ func TestBuildReader_ListBuilds_MissingProjectIsEmpty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, builds)
 }
+
+// 배포 되커밋([skip ci])에 GitLab 이 만드는 빈 파이프라인은 실행이 아니다. ABORTED 로 넘기면
+// 동기화가 실패로 기록해 "배포마다 실패 하나" 가 화면에 남았다.
+func TestBuildReader_ListBuilds_SkippedIsNotARun(t *testing.T) {
+	srv, _ := newStubGitLab(t, func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
+		switch r.URL.EscapedPath() {
+		case "/api/v4/projects/nullus%2Fshop/pipelines":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 2, "iid": 2, "status": "skipped",
+					"created_at": "2026-09-01T10:05:00Z", "updated_at": "2026-09-01T10:05:01Z"},
+			})
+		default:
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		}
+	})
+
+	builds, err := NewBuildReader(NewClient(srv.URL, "tok"), "nullus").
+		ListBuilds(context.Background(), "shop", "main", 5)
+	require.NoError(t, err)
+	require.Len(t, builds, 1)
+	assert.Equal(t, "SKIPPED", builds[0].Result)
+	assert.False(t, builds[0].Building)
+}

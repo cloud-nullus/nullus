@@ -71,7 +71,9 @@ type CIBuild struct {
 	// ID 는 CI API 가 실행을 가리키는 식별자다(GitLab pipeline id, GitHub run id).
 	// 번호와 다를 수 있고, 산출물 조회는 이것으로 한다.
 	ID string
-	// Result 는 CI 가 보고한 결과다(SUCCESS/FAILURE/ABORTED). 실행 중이면 빈 값이다.
+	// Result 는 CI 가 보고한 결과다(SUCCESS/FAILURE/ABORTED/SKIPPED). 실행 중이면 빈 값이다.
+	// SKIPPED(Jenkins 는 NOT_BUILT)는 실행이 아니다 — 아무 잡도 돌지 않은 빈 파이프라인이라
+	// 동기화가 실행 기록으로 남기지 않는다.
 	Result   string
 	Building bool
 	// StartedAt 은 빌드 시작 시각, Duration 은 실행 시간이다.

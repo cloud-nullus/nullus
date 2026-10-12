@@ -37,6 +37,10 @@ func (m *memDeployments) Update(_ context.Context, d *domain.Deployment) error {
 	m.rows[d.ID] = d
 	return nil
 }
+func (m *memDeployments) Delete(_ context.Context, id string) error {
+	delete(m.rows, id)
+	return nil
+}
 
 func started() time.Time { return time.UnixMilli(1786721616732) }
 
@@ -178,4 +182,27 @@ func TestSyncPipelineRuns_FillsStagesThatAppearLater(t *testing.T) {
 
 	assert.Equal(t, 1, n)
 	assert.Len(t, repo.rows[runDeploymentID("p", 1)].Steps, 2)
+}
+
+// 배포 되커밋([skip ci])에 GitLab 이 만드는 빈 파이프라인은 실행이 아니다 — 기록하지 않는다.
+// 이 변경 전에 실패로 남긴 기록이 있으면 거둔다(화면에 "배포마다 실패 하나" 가 남아 있었다).
+func TestSyncPipelineRuns_SkippedBuildIsNotARun(t *testing.T) {
+	repo := newMemDeployments()
+	// 예전 동기화가 실패로 남긴 기록
+	stale := &domain.Deployment{ID: runDeploymentID("pip_1", 2), PipelineID: "pip_1", Status: domain.DeploymentStatusFailed}
+	repo.rows[stale.ID] = stale
+
+	uc := NewSyncPipelineRuns(&stubBuildReader{builds: []port.CIBuild{
+		{Number: 1, Result: "SUCCESS", StartedAt: started(), Duration: time.Second},
+		{Number: 2, Result: "SKIPPED", StartedAt: started()},
+		{Number: 3, Result: "NOT_BUILT", StartedAt: started()}, // Jenkins 의 같은 뜻
+	}}, repo)
+
+	n, err := uc.Execute(context.Background(), SyncPipelineRunsInput{PipelineID: "pip_1", JobName: "app", Branch: "main"})
+	require.NoError(t, err)
+	assert.Equal(t, 2, n, "성공 1건 기록 + 묵은 실패 1건 거둠")
+
+	assert.NotNil(t, repo.rows[runDeploymentID("pip_1", 1)])
+	assert.Nil(t, repo.rows[runDeploymentID("pip_1", 2)], "실행이 아닌 것은 기록에 없어야 한다")
+	assert.Nil(t, repo.rows[runDeploymentID("pip_1", 3)])
 }

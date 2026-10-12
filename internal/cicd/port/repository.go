@@ -37,6 +37,9 @@ type DeploymentRepository interface {
 	GetByID(ctx context.Context, id string) (*domain.Deployment, error)
 	ListByPipelineID(ctx context.Context, pipelineID string) ([]*domain.Deployment, error)
 	Update(ctx context.Context, deployment *domain.Deployment) error
+	// Delete 는 기록 하나를 지운다. 없으면 오류가 아니다. 동기화가 실행이 아닌 것(SKIPPED 파이프라인)을
+	// 예전에 실패로 남긴 기록을 거둘 때 쓴다.
+	Delete(ctx context.Context, id string) error
 }
 
 // ImageScanResultRepository 는 이미지 스캔 결과를 보관한다.
