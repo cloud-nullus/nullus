@@ -92,7 +92,21 @@ jobs:
           artifact-name: sbom-nullus-api.spdx.json
           upload-release-assets: false
 
+      # Sigstore(Rekor) 는 가끔 시간 초과를 낸다 — 2026-10-12 #313 머지 런에서 Jenkins 잡의 SBOM attestation 이
+      # "network timeout at rekor.sigstore.dev" 로 죽어 이미지는 올라갔는데 스캔·배포가 통째로 건너뛰어졌다.
+      # 한 번은 다시 시도한다. 두 번 다 실패하면 잡이 실패한다 — 증적 없는 릴리즈가 조용히 나가는 것보다
+      # 낫고, 실패한 잡만 다시 돌리면(gh run rerun --failed) 복구된다.
       - name: Attest build provenance (SLSA)
+        id: attest-provenance
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-api
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest build provenance (SLSA) — retry
+        if: steps.attest-provenance.outcome == 'failure'
         uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/${{ github.repository }}/nullus-api
@@ -100,6 +114,17 @@ jobs:
           push-to-registry: true
 
       - name: Attest SBOM
+        id: attest-sbom
+        continue-on-error: true
+        uses: actions/attest-sbom@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-api
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom-nullus-api.spdx.json
+          push-to-registry: true
+
+      - name: Attest SBOM — retry
+        if: steps.attest-sbom.outcome == 'failure'
         uses: actions/attest-sbom@v4
         with:
           subject-name: ghcr.io/${{ github.repository }}/nullus-api
@@ -179,7 +204,21 @@ jobs:
           artifact-name: sbom-nullus-jenkins.spdx.json
           upload-release-assets: false
 
+      # Sigstore(Rekor) 는 가끔 시간 초과를 낸다 — 2026-10-12 #313 머지 런에서 Jenkins 잡의 SBOM attestation 이
+      # "network timeout at rekor.sigstore.dev" 로 죽어 이미지는 올라갔는데 스캔·배포가 통째로 건너뛰어졌다.
+      # 한 번은 다시 시도한다. 두 번 다 실패하면 잡이 실패한다 — 증적 없는 릴리즈가 조용히 나가는 것보다
+      # 낫고, 실패한 잡만 다시 돌리면(gh run rerun --failed) 복구된다.
       - name: Attest build provenance (SLSA)
+        id: attest-provenance
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-jenkins
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest build provenance (SLSA) — retry
+        if: steps.attest-provenance.outcome == 'failure'
         uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/${{ github.repository }}/nullus-jenkins
@@ -187,6 +226,17 @@ jobs:
           push-to-registry: true
 
       - name: Attest SBOM
+        id: attest-sbom
+        continue-on-error: true
+        uses: actions/attest-sbom@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-jenkins
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom-nullus-jenkins.spdx.json
+          push-to-registry: true
+
+      - name: Attest SBOM — retry
+        if: steps.attest-sbom.outcome == 'failure'
         uses: actions/attest-sbom@v4
         with:
           subject-name: ghcr.io/${{ github.repository }}/nullus-jenkins
@@ -264,7 +314,21 @@ jobs:
           artifact-name: sbom-nullus-sonar-scanner.spdx.json
           upload-release-assets: false
 
+      # Sigstore(Rekor) 는 가끔 시간 초과를 낸다 — 2026-10-12 #313 머지 런에서 Jenkins 잡의 SBOM attestation 이
+      # "network timeout at rekor.sigstore.dev" 로 죽어 이미지는 올라갔는데 스캔·배포가 통째로 건너뛰어졌다.
+      # 한 번은 다시 시도한다. 두 번 다 실패하면 잡이 실패한다 — 증적 없는 릴리즈가 조용히 나가는 것보다
+      # 낫고, 실패한 잡만 다시 돌리면(gh run rerun --failed) 복구된다.
       - name: Attest build provenance (SLSA)
+        id: attest-provenance
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-sonar-scanner
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest build provenance (SLSA) — retry
+        if: steps.attest-provenance.outcome == 'failure'
         uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/${{ github.repository }}/nullus-sonar-scanner
@@ -272,6 +336,17 @@ jobs:
           push-to-registry: true
 
       - name: Attest SBOM
+        id: attest-sbom
+        continue-on-error: true
+        uses: actions/attest-sbom@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-sonar-scanner
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom-nullus-sonar-scanner.spdx.json
+          push-to-registry: true
+
+      - name: Attest SBOM — retry
+        if: steps.attest-sbom.outcome == 'failure'
         uses: actions/attest-sbom@v4
         with:
           subject-name: ghcr.io/${{ github.repository }}/nullus-sonar-scanner
@@ -354,7 +429,21 @@ jobs:
           artifact-name: sbom-nullus-web.spdx.json
           upload-release-assets: false
 
+      # Sigstore(Rekor) 는 가끔 시간 초과를 낸다 — 2026-10-12 #313 머지 런에서 Jenkins 잡의 SBOM attestation 이
+      # "network timeout at rekor.sigstore.dev" 로 죽어 이미지는 올라갔는데 스캔·배포가 통째로 건너뛰어졌다.
+      # 한 번은 다시 시도한다. 두 번 다 실패하면 잡이 실패한다 — 증적 없는 릴리즈가 조용히 나가는 것보다
+      # 낫고, 실패한 잡만 다시 돌리면(gh run rerun --failed) 복구된다.
       - name: Attest build provenance (SLSA)
+        id: attest-provenance
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-web
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest build provenance (SLSA) — retry
+        if: steps.attest-provenance.outcome == 'failure'
         uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/${{ github.repository }}/nullus-web
@@ -362,6 +451,17 @@ jobs:
           push-to-registry: true
 
       - name: Attest SBOM
+        id: attest-sbom
+        continue-on-error: true
+        uses: actions/attest-sbom@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-web
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom-nullus-web.spdx.json
+          push-to-registry: true
+
+      - name: Attest SBOM — retry
+        if: steps.attest-sbom.outcome == 'failure'
         uses: actions/attest-sbom@v4
         with:
           subject-name: ghcr.io/${{ github.repository }}/nullus-web
