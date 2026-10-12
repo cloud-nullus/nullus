@@ -174,8 +174,13 @@ func pipelineResult(status string) (result string, building bool) {
 		return "SUCCESS", false
 	case "failed":
 		return "FAILURE", false
-	case "canceled", "cancelled", "skipped":
+	case "canceled", "cancelled":
 		return "ABORTED", false
+	case "skipped":
+		// 실행이 아니다 — 배포 되커밋([skip ci])이나 규칙에 맞는 잡이 없는 커밋에 GitLab 이
+		// 만드는 빈 파이프라인이다. ABORTED 로 넘기면 동기화가 실패로 기록해 화면에 실패로
+		// 보였다(2026-10-12 리허설). 동기화는 SKIPPED 를 기록하지 않는다.
+		return "SKIPPED", false
 	default:
 		return "", true
 	}

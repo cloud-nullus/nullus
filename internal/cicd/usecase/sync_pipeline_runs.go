@@ -87,6 +87,17 @@ func (uc *SyncPipelineRuns) Execute(ctx context.Context, input SyncPipelineRunsI
 
 	synced := 0
 	for _, b := range builds {
+		if isSkippedBuild(b) {
+			// 실행이 아니다 — 기록하지 않는다. 이 규칙 전에 실패로 남긴 기록이 있으면 거둔다.
+			id := runDeploymentID(pipelineID, b.Number)
+			if existing, getErr := uc.deployments.GetByID(ctx, id); getErr == nil && existing != nil {
+				if err := uc.deployments.Delete(ctx, id); err != nil {
+					return synced, fmt.Errorf("실행이 아닌 기록 정리 실패 (%s): %w", id, err)
+				}
+				synced++
+			}
+			continue
+		}
 		deployment := deploymentFromBuild(pipelineID, b)
 
 		// 이미 있으면 갱신한다 — 실행 중이던 빌드가 끝나면 상태가 바뀐다.
@@ -373,6 +384,20 @@ func stepsFromStages(stages []port.CIStage) []domain.DeployStep {
 		steps = append(steps, step)
 	}
 	return steps
+}
+
+// isSkippedBuild 는 아무 잡도 돌지 않은 빈 파이프라인이다 — 배포 되커밋([skip ci])이나 규칙에 맞는
+// 잡이 없는 커밋에 CI 가 만든다(GitLab·GitHub 은 skipped, Jenkins 는 NOT_BUILT). 실행이 아니라
+// 실행 기록에 넣지 않는다. 실패로 넣으면 "배포마다 실패 하나" 가 화면에 남는다(2026-10-12 리허설).
+func isSkippedBuild(b port.CIBuild) bool {
+	if b.Building {
+		return false
+	}
+	switch strings.ToUpper(strings.TrimSpace(b.Result)) {
+	case "SKIPPED", "NOT_BUILT":
+		return true
+	}
+	return false
 }
 
 func deploymentStatusFromBuild(b port.CIBuild) domain.DeploymentStatus {
