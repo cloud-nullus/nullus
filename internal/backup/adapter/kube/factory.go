@@ -15,6 +15,11 @@ type Adapters struct {
 	Scaler    *WorkloadScaler
 	Archiver  *VolumeArchiver
 	Resources *ResourceDumper
+	Releases  *HelmReleaseReader
+	// Namespaces 는 복구가 대상 네임스페이스를 만든다.
+	Namespaces *NamespaceEnsurer
+	// Kubeconfig 는 이 묶음이 붙은 클러스터다. 복구 뒤 게이트웨이 주소 재설정에 같은 클러스터를 넘긴다.
+	Kubeconfig []byte
 }
 
 // NewAdapters 는 kubeconfig 로 어댑터 묶음을 만든다.
@@ -34,5 +39,9 @@ func NewAdapters(kubeconfig []byte, helperImage string) (*Adapters, error) {
 		Scaler:    NewWorkloadScaler(client),
 		Archiver:  NewVolumeArchiver(client, cfg, helperImage),
 		Resources: NewResourceDumper(kubeconfig),
+		Releases:  NewHelmReleaseReader(client),
+
+		Namespaces: NewNamespaceEnsurer(client),
+		Kubeconfig: kubeconfig,
 	}, nil
 }

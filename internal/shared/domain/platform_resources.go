@@ -38,7 +38,59 @@ const (
 	// OTLP 수신 포트. 차트 기본값이며 애플리케이션이 붙는 지점이다.
 	OTelCollectorOTLPGRPCPort = 4317
 	OTelCollectorOTLPHTTPPort = 4318
+
+	// TrivyReleaseName 은 이미지 취약점 스캐너의 릴리스명이다.
+	//
+	// stack 은 이 이름으로 차트를 설치하고, cicd 는 CI 잡이 붙을 주소를 만든다.
+	// OTLP 와 같은 이유로 규칙을 여기 둔다.
+	TrivyReleaseName = "trivy"
+	// TrivyServicePort 는 client 가 CVE 매칭을 요청하는 포트다.
+	// aqua/trivy 차트의 service.port 기본값과 같아야 한다.
+	TrivyServicePort = 4954
 )
+
+// SonarQube 는 소스 정적 분석 서버다. stack 은 이 이름으로 차트를 설치하고(fullnameOverride),
+// cicd 는 CI 잡이 붙을 주소를 만든다. Trivy 와 같은 이유로 규칙을 여기 둔다.
+const (
+	SonarQubeReleaseName = "sonarqube"
+	// SonarQubeServicePort 는 차트 Service 의 포트다(service.externalPort).
+	SonarQubeServicePort = 9000
+	// SonarQubeAnalysisTokenPath 는 CI 가 분석에 쓸 토큰의 OpenBao 경로 접미사다.
+	// 스택 설치(provisioning_sonarqube)가 발급해 쓰고, cicd 가 파이프라인을 만들 때 읽는다.
+	SonarQubeAnalysisTokenPath = "security/sonarqube/analysis-token"
+)
+
+// SonarQubeServerEndpoint 는 CI 잡의 sonar-scanner 가 붙을 주소다.
+//
+// SonarQube 를 고르지 않은 스택에서는 부르지 않는다 — 호출부가 "있음" 으로 오해한다.
+// 네임스페이스가 비면 빈 문자열이다.
+func SonarQubeServerEndpoint(namespace string) string {
+	ns := strings.TrimSpace(namespace)
+	if ns == "" {
+		return ""
+	}
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", SonarQubeReleaseName, ns, SonarQubeServicePort)
+}
+
+// TrivyClientImage 는 스택 서버에 붙는 trivy client 이미지다. 서버(스택 차트)와
+// 버전을 맞춘다 — client 와 server 의 버전이 갈리면 스캔 요청이 거절될 수 있다.
+//
+// RuntimeImages 에는 넣지 않는다. 이 이미지를 쓰는 설치 이미지 스캔 Job 은
+// 에어갭에서 돌지 않는다.
+const TrivyClientImage = "aquasec/trivy:0.74.0"
+
+// TrivyServerEndpoint 는 CI 잡의 trivy client 가 붙을 주소다.
+//
+// 스캐너를 고르지 않은 스택에서는 네임스페이스만으로 주소를 만들면 안 된다 —
+// 호출부가 "스캐너 있음" 으로 오해한다. 네임스페이스가 비면 빈 문자열이다.
+func TrivyServerEndpoint(namespace string) string {
+	ns := strings.TrimSpace(namespace)
+	if ns == "" {
+		return ""
+	}
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d",
+		TrivyReleaseName, ns, TrivyServicePort)
+}
 
 // OTelCollectorServiceName 은 수집기 Service 이름이다.
 // 차트의 fullname 규칙이 "<릴리스>-<차트>" 라 릴리스명만으로는 맞지 않는다.

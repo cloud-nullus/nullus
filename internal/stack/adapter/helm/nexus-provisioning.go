@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strings"
 
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
@@ -92,7 +93,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: curl
-        image: curlimages/curl:8.11.1
+        image: %s
         env:
         - name: NEXUS_URL
           value: %q
@@ -115,7 +116,7 @@ spec:
           - |
 %s
 `,
-		nexusProvisionJobName, namespace,
+		nexusProvisionJobName, namespace, shareddomain.CurlImage,
 		fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", domain.NexusServiceName, namespace, domain.NexusServicePort),
 		domain.NexusAdminUser,
 		bootstrapPassword,

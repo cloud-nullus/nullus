@@ -42,6 +42,30 @@ func TestChartVersionsMatchCompatibilityMatrix(t *testing.T) {
 		{matrixID: "gitlab-nexus-v1", category: "cd_tool", step: "installing_argocd"},
 		// 관측 계층도 같은 규칙을 받는다. 수집기는 릴리스가 따로라 단계도 따로다.
 		{matrixID: "gitlab-argocd-otel-v1", category: "agent", step: "installing_otel_collector"},
+		// 이미지 스캐너도 같은 규칙을 받는다. 선택 항목이라고 예외를 두면
+		// 화면이 안내하는 버전과 설치가 갈라진다.
+		{matrixID: "gitlab-harbor-v1", category: "image_scanner", step: "installing_trivy"},
+		{matrixID: "gitlab-nexus-v1", category: "image_scanner", step: "installing_trivy"},
+		// 스캐너는 레지스트리 종류와 무관하다. 특정 조합에만 두면 "그 스택에서는
+		// 못 고르는" 임의의 구멍이 생긴다 — gitlab-argocd-v1 이 실제로 그랬다.
+		{matrixID: "gitlab-argocd-v1", category: "image_scanner", step: "installing_trivy"},
+		{matrixID: "gitlab-allinone-v1", category: "image_scanner", step: "installing_trivy"},
+		// 스캐너를 기본으로 고른 템플릿은 모든 도구가 실제 설치 버전을 말해야 한다.
+		// 시드 템플릿이 설치와 다른 버전을 안내하면 화면과 클러스터가 갈라진다.
+		{matrixID: "gitlab-harbor-trivy-v1", category: "source_repository", step: "installing_gitlab"},
+		{matrixID: "gitlab-harbor-trivy-v1", category: "ci_platform", step: "installing_gitlab"},
+		{matrixID: "gitlab-harbor-trivy-v1", category: "container_registry", step: "installing_harbor"},
+		{matrixID: "gitlab-harbor-trivy-v1", category: "storage_backend", step: "installing_minio"},
+		{matrixID: "gitlab-harbor-trivy-v1", category: "cd_tool", step: "installing_argocd"},
+		{matrixID: "gitlab-harbor-trivy-v1", category: "image_scanner", step: "installing_trivy"},
+		// SonarQube 를 기본으로 고른 템플릿도 모든 도구가 실제 설치 버전을 말해야 한다.
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "source_repository", step: "installing_gitlab"},
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "ci_platform", step: "installing_gitlab"},
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "storage_backend", step: "installing_minio"},
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "cd_tool", step: "installing_argocd"},
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "monitoring_collection", step: "installing_prometheus"},
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "monitoring_visualization", step: "installing_grafana"},
+		{matrixID: "gitlab-argocd-sonarqube-v1", category: "sast", step: "installing_sonarqube"},
 	}
 
 	for _, tc := range cases {

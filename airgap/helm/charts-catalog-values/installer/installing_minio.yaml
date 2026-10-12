@@ -1,0 +1,17 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_minio
+# chart: minio 5.4.0
+consoleIngress:
+    enabled: false
+existingSecret: nullus-minio-credentials
+ingress:
+    enabled: false
+mode: standalone
+namespace: nullus
+resources:
+    limits:
+        cpu: "1"
+        memory: 2Gi
+    requests:
+        cpu: 500m
+        memory: 512Mi

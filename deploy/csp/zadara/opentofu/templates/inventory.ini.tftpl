@@ -1,0 +1,27 @@
+[all]
+%{ for name, node in nodes ~}
+${name} ansible_host=${name == master ? master_public_ip : node.private_ip} ip=${node.private_ip} access_ip=${node.private_ip}%{ if name != master } ansible_ssh_common_args='-o ProxyCommand="ssh -i ${ssh_key} -o IdentitiesOnly=yes -W %h:%p ${ssh_user}@${master_public_ip}"'%{ endif }
+%{ endfor ~}
+
+[all:vars]
+ansible_user=${ssh_user}
+ansible_ssh_private_key_file=${ssh_key}
+
+[kube_control_plane]
+%{ for name in masters ~}
+${name}
+%{ endfor ~}
+
+[etcd]
+%{ for name in masters ~}
+${name}
+%{ endfor ~}
+
+[kube_node]
+%{ for name in kube_nodes ~}
+${name}
+%{ endfor ~}
+
+[k8s_cluster:children]
+kube_control_plane
+kube_node

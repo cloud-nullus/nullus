@@ -8,7 +8,14 @@ OPENBAO_TOKEN="${OPENBAO_TOKEN:-}"
 if command -v psql >/dev/null 2>&1; then
   PSQL=(psql "$DATABASE_URL")
 else
-  PSQL=(docker exec -i draft-postgres-1 psql -U nullus -d nullus)
+  # 컨테이너 이름은 compose 프로젝트 이름(= 체크아웃 디렉터리 이름)을 따라가므로
+  # 박아두지 않고 compose 에게 묻는다.
+  PG_CONTAINER="$(docker compose -f "$(cd "$(dirname "$0")/.." && pwd)/docker-compose.dev.yaml" ps -q postgres 2>/dev/null | head -1)"
+  if [[ -z "$PG_CONTAINER" ]]; then
+    echo "[seed] psql 도 postgres 컨테이너도 찾을 수 없습니다" >&2
+    exit 1
+  fi
+  PSQL=(docker exec -i "$PG_CONTAINER" psql -U nullus -d nullus)
 fi
 
 ORG_ID="${TOKEN_SOURCE_ORG_ID:-}"

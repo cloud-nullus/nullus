@@ -1,15 +1,146 @@
 #!/usr/bin/env bash
+# =============================================================================
+# port-forward-gateway.sh — 스택 도구를 로컬에서 도메인으로 연다
+# =============================================================================
+# 스택 도구는 게이트웨이 뒤에 있고 Host 헤더로 갈린다(gitlab.<도메인> ...).
+# 게이트웨이 Service 는 LoadBalancer 라 LB 연동이 없는 클러스터에서는 외부 주소를
+# 영영 받지 못하므로, 로컬에서는 이 스크립트가 그 앞을 대신 세운다.
+#
+# kind 클러스터면 도커 네트워크 안에 SNI 라우터를 띄운다. 그러면
+#   - sudo 가 필요 없다. 443 은 도커가 대신 잡는다
+#   - 스택을 여러 개 동시에 열 수 있다. 이름(SNI)으로 갈라 보낸다
+#   - NodePort 를 고정하지 않아도 된다. 돌고 있는 게이트웨이에서 찾아낸다
+# 그 외(원격 클러스터 등)는 종전대로 kubectl port-forward 로 하나를 연다.
+#
+# 사용법
+#   ./scripts/port-forward-gateway.sh           # 열기(갱신)
+#   ./scripts/port-forward-gateway.sh --down    # 라우터 내리기
+#   ./scripts/port-forward-gateway.sh --hosts   # /etc/hosts 에 넣을 줄만 출력
+#   STACK_NAMESPACE=... ./scripts/port-forward-gateway.sh   # 한 스택만 port-forward
+# =============================================================================
 set -euo pipefail
 
-STACK_NAMESPACE="${STACK_NAMESPACE:-nullus}"
-GATEWAY_NAME="${GATEWAY_NAME:-nullus-gateway}"
+# 기본값을 비워 둔다. 예전에는 nullus / nullus-gateway / nullus.internal 이
+# 박혀 있었는데 실제 스택은 nullus-<템플릿> 네임스페이스에 <도메인>-gateway 를
+# 세우므로, 그냥 실행하면 "네임스페이스가 없습니다" 로 끝났다.
+STACK_NAMESPACE="${STACK_NAMESPACE:-}"
+GATEWAY_NAME="${GATEWAY_NAME:-}"
 LOCAL_HTTP_PORT="${LOCAL_HTTP_PORT:-80}"
 REMOTE_HTTP_PORT="${REMOTE_HTTP_PORT:-80}"
 LOCAL_HTTPS_PORT="${LOCAL_HTTPS_PORT:-443}"
 REMOTE_HTTPS_PORT="${REMOTE_HTTPS_PORT:-443}"
 FORWARD_HTTPS="${FORWARD_HTTPS:-true}"
-ACCESS_HOST="${ACCESS_HOST:-nullus.internal}"
+ACCESS_HOST="${ACCESS_HOST:-}"
 KUBECONFIG_PATH="${KUBECONFIG:-$HOME/.kube/config}"
+
+ROUTER_CONTAINER="nullus-gateway-router"
+ROUTER_NETWORK="${NULLUS_KIND_NETWORK:-kind}"
+ROUTER_IMAGE="${NULLUS_ROUTER_IMAGE:-nginx:alpine}"
+
+MODE="auto"
+for arg in "$@"; do
+  case "$arg" in
+    --down)  MODE="down" ;;
+    --hosts) MODE="hosts" ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+  esac
+done
+
+if [[ "$MODE" == "down" ]]; then
+  docker rm -f "$ROUTER_CONTAINER" >/dev/null 2>&1 || true
+  echo "게이트웨이 라우터를 내렸습니다"
+  exit 0
+fi
+
+# discover_gateways 는 "호스트이름 노드IP:NodePort" 줄을 만든다.
+#
+# 노드는 envoy 파드가 도는 것을 고른다. 게이트웨이 Service 의
+# externalTrafficPolicy 가 Local 이면 엔드포인트가 없는 노드는 트래픽을 버린다 —
+# 아무 노드나 고르면 조용히 닿지 않는다.
+discover_gateways() {
+  local cluster ctx ns svc node_name node_ip node_port
+  while IFS= read -r cluster; do
+    [[ -z "$cluster" ]] && continue
+    ctx="kind-${cluster}"
+    kubectl --context "$ctx" get ns >/dev/null 2>&1 || continue
+
+    while IFS=$'\t' read -r ns svc; do
+      [[ -z "$ns" || -z "$svc" ]] && continue
+      node_port="$(kubectl --context "$ctx" get svc "$svc" -n "$ns" \
+        -o jsonpath='{.spec.ports[?(@.port==443)].nodePort}' 2>/dev/null || true)"
+      [[ -n "$node_port" ]] || continue
+      node_name="$(kubectl --context "$ctx" get pods -n "$ns" \
+        -l gateway.envoyproxy.io/owning-gateway-name \
+        -o jsonpath='{.items[0].spec.nodeName}' 2>/dev/null || true)"
+      [[ -n "$node_name" ]] || continue
+      node_ip="$(docker inspect "$node_name" --format "{{.NetworkSettings.Networks.${ROUTER_NETWORK}.IPAddress}}" 2>/dev/null || true)"
+      [[ -n "$node_ip" ]] || continue
+
+      # 이 게이트웨이가 받는 이름은 HTTPRoute 가 알고 있다.
+      kubectl --context "$ctx" get httproute -n "$ns" \
+        -o jsonpath='{range .items[*]}{range .spec.hostnames[*]}{@}{"\n"}{end}{end}' 2>/dev/null |
+        sort -u | while IFS= read -r host; do
+          [[ -z "$host" ]] && continue
+          printf '%s %s:%s\n' "$host" "$node_ip" "$node_port"
+        done
+    done < <(kubectl --context "$ctx" get svc --all-namespaces \
+      -l gateway.envoyproxy.io/owning-gateway-name \
+      -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\n"}{end}' 2>/dev/null)
+  done < <(kind get clusters 2>/dev/null)
+}
+
+hosts_line() { printf '127.0.0.1'; printf ' %s' $(awk '{print $1}' <<<"$1"); printf '\n'; }
+
+# 스택을 콕 집어 주지 않았고 kind 가 있으면 SNI 라우터로 전부 연다.
+if [[ -z "$STACK_NAMESPACE" ]] && command -v kind >/dev/null 2>&1 && command -v docker >/dev/null 2>&1; then
+  BACKENDS="$(discover_gateways | sort -u)"
+  if [[ -n "$BACKENDS" ]]; then
+    if [[ "$MODE" == "hosts" ]]; then hosts_line "$BACKENDS"; exit 0; fi
+
+    ROUTER_CONF="$(mktemp)"
+    {
+      echo 'events {}'
+      echo 'stream {'
+      echo '  map $ssl_preread_server_name $nullus_backend {'
+      echo '    default "";'
+      while IFS=' ' read -r host backend; do
+        [[ -z "$host" ]] && continue
+        printf '    %s %s;\n' "$host" "$backend"
+      done <<<"$BACKENDS"
+      echo '  }'
+      echo '  server {'
+      echo '    listen 443;'
+      echo '    ssl_preread on;'
+      echo '    proxy_pass $nullus_backend;'
+      echo '  }'
+      echo '}'
+    } >"$ROUTER_CONF"
+
+    docker rm -f "$ROUTER_CONTAINER" >/dev/null 2>&1 || true
+    docker run -d --name "$ROUTER_CONTAINER" --network "$ROUTER_NETWORK" \
+      -p "${LOCAL_HTTPS_PORT}:443" "$ROUTER_IMAGE" >/dev/null
+    # 설정은 컨테이너 안에 둔다. 호스트 임시 파일을 마운트하면 그 파일이 지워진 뒤
+    # 컨테이너가 다시 뜨지 못한다.
+    docker cp "$ROUTER_CONF" "$ROUTER_CONTAINER:/etc/nginx/nginx.conf" >/dev/null
+    docker restart "$ROUTER_CONTAINER" >/dev/null
+    rm -f "$ROUTER_CONF"
+
+    echo "게이트웨이 라우터가 :${LOCAL_HTTPS_PORT} 에서 돕니다 (SNI 로 스택을 가른다)"
+    while IFS=' ' read -r host backend; do
+      [[ -z "$host" ]] && continue
+      printf '  https://%-30s → %s\n' "$host" "$backend"
+    done <<<"$BACKENDS"
+    echo ""
+    echo "/etc/hosts 에 아래 한 줄이 필요합니다 (sudo 필요):"
+    echo ""
+    echo "  echo '$(hosts_line "$BACKENDS")' | sudo tee -a /etc/hosts"
+    exit 0
+  fi
+fi
+
+# 여기부터는 종전 경로다 — 스택을 콕 집었거나 kind 가 아닌 클러스터.
+STACK_NAMESPACE="${STACK_NAMESPACE:-nullus}"
+ACCESS_HOST="${ACCESS_HOST:-nullus.local}"
 
 if [[ ! -f "$KUBECONFIG_PATH" && "${EUID:-0}" -eq 0 && -n "${SUDO_USER:-}" ]]; then
   SUDO_USER_KUBECONFIG="/Users/${SUDO_USER}/.kube/config"
@@ -75,7 +206,7 @@ fi
 
 GW_SVC=""
 
-# 1) 가장 엄격한 선택: gateway name + namespace 라벨
+# 1) 가장 엄격한 선택: gateway name + namespace 라벨 (이름을 준 경우만)
 GW_SVC_LIST="$(kubectl --kubeconfig "$KUBECONFIG_PATH" --context "$KUBE_CONTEXT" -n "$STACK_NAMESPACE" get svc -l "gateway.envoyproxy.io/owning-gateway-name=$GATEWAY_NAME,gateway.envoyproxy.io/owning-gateway-namespace=$STACK_NAMESPACE" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)"
 GW_SVC="$(pick_single_or_empty "$GW_SVC_LIST")"
 

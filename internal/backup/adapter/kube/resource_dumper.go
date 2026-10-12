@@ -6,11 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/backup/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // ResourceDumper 는 네임스페이스 리소스와 Helm 릴리스를 뜬다 (D1).
@@ -22,7 +26,12 @@ import (
 // kubectl 은 API 이미지에 이미 있다 (Dockerfile).
 type ResourceDumper struct {
 	kubeconfig []byte
+	// exec 는 kubectl 호출이다. nil 이면 실제 kubectl 을 실행한다 — 테스트가 가짜를 끼운다.
+	exec kubectlRunner
 }
+
+// kubectlRunner 는 kubectl 한 번의 실행이다(stdin → stdout).
+type kubectlRunner func(ctx context.Context, stdin io.Reader, stdout io.Writer, args ...string) error
 
 func NewResourceDumper(kubeconfig []byte) *ResourceDumper {
 	return &ResourceDumper{kubeconfig: kubeconfig}
@@ -46,6 +55,59 @@ var dumpKinds = []string{
 	"secrets", "serviceaccounts", "roles",
 	"rolebindings", "ingresses", "gateways.gateway.networking.k8s.io",
 	"httproutes.gateway.networking.k8s.io",
+
+	// ESO 의 시크릿 배선. **빠뜨리면 복구가 성공했다고 보고하고도 스택이
+	// 뜨지 않는다** — 실환경 리허설에서 실제로 그랬다.
+	//
+	// ESO 가 만든 Secret 은 ownerReferences 때문에 skipResource 가 건너뛴다
+	// (소유자가 다시 만들 것이므로 그게 맞다). 그런데 그 소유자인 CR 까지
+	// 빠지면 다시 만들 주체가 사라진다. 결과는 Gitea·Harbor·Jenkins 가
+	// CreateContainerConfigError 로 멈춘 채 남는 것이다.
+	//
+	// 값 자체는 금고(OpenBao)가 SoT 다(§B1). 여기서 되살리는 것은 **배선**이고,
+	// 값은 KV import 가 되돌린 금고에서 ESO 가 다시 끌어온다.
+	"externalsecrets.external-secrets.io",
+	"secretstores.external-secrets.io",
+	"pushsecrets.external-secrets.io",
+
+	// 배포의 주체. 앱의 Deployment 는 **Git 에서 파생된다** — Argo CD 가
+	// 매니페스트를 읽어 만든다. Deployment 만 되돌리면 백업 시점의 이미지
+	// 태그가 그대로 굳고, 그것을 다시 맞춰 줄 주체가 없다.
+	//
+	// 실환경 리허설에서 복구 뒤 Application 이 하나도 없었고, 되살아난 앱
+	// Deployment 는 스캐폴드 초기값 :bootstrap 을 가리킨 채 남았다 — 그 태그는
+	// 레지스트리에 존재한 적이 없다(renderer.go 의 InitialImageTag). CI 가
+	// 다시 돌기 전에는 아무도 고쳐 주지 않는다.
+	//
+	// delete_stack.go 의 argoCDCRDNames 가 이 셋을 이미 알고 있었다 — 지우는
+	// 쪽은 알고 백업하는 쪽은 몰랐다.
+	"applications.argoproj.io",
+	"appprojects.argoproj.io",
+	"applicationsets.argoproj.io",
+
+	// 모니터링의 주체. kube-prometheus-stack 의 Prometheus · Alertmanager StatefulSet 은
+	// **오퍼레이터가 CR 을 읽어 만든다** — StatefulSet 은 ownerReferences 때문에 덤프에서
+	// 빠지고(소유자가 다시 만든다), 소유자인 CR 까지 빠지면 다시 만들 주체가 없다.
+	//
+	// 2026-10-12 제품 삭제 뒤 복구 리허설에서 복구는 succeeded 인데 두 StatefulSet 이 영영
+	// 돌아오지 않았고, 워크로드 재개 단계가 "statefulsets … not found" 를 남겼다.
+	// ServiceMonitor · PrometheusRule 이 빠지면 스크랩 대상과 알림 규칙이 사라져 Grafana 가
+	// 비어 보인다. Application · ExternalSecret 과 같은 뿌리다.
+	"prometheuses.monitoring.coreos.com",
+	"alertmanagers.monitoring.coreos.com",
+	"servicemonitors.monitoring.coreos.com",
+	"podmonitors.monitoring.coreos.com",
+	"prometheusrules.monitoring.coreos.com",
+	"probes.monitoring.coreos.com",
+	"scrapeconfigs.monitoring.coreos.com",
+	"alertmanagerconfigs.monitoring.coreos.com",
+
+	// 인증서의 주체. 접근 도메인 인증서 Secret(nullus-access-domain-tls)은 Secret 으로 되살아나지만
+	// 그것을 발급·갱신하는 Certificate 가 빠지면 만기(기본 90일)에 게이트웨이 TLS 가 조용히 죽는다 —
+	// 같은 리허설의 지문 대조에서 드러났다. 복구가 cert-manager 를 먼저 세우므로 적용할 수 있다.
+	// 되살아난 Secret 의 발급 정보가 맞으면 cert-manager 는 그것을 채택하고 다시 발급하지 않는다.
+	"certificates.cert-manager.io",
+	"issuers.cert-manager.io",
 }
 
 func (d *ResourceDumper) writeKubeconfig() (string, error) {
@@ -62,6 +124,13 @@ func (d *ResourceDumper) writeKubeconfig() (string, error) {
 }
 
 func (d *ResourceDumper) run(ctx context.Context, stdin io.Reader, stdout io.Writer, args ...string) error {
+	if d.exec != nil {
+		return d.exec(ctx, stdin, stdout, args...)
+	}
+	return d.runKubectl(ctx, stdin, stdout, args...)
+}
+
+func (d *ResourceDumper) runKubectl(ctx context.Context, stdin io.Reader, stdout io.Writer, args ...string) error {
 	path, err := d.writeKubeconfig()
 	if err != nil {
 		return fmt.Errorf("kubeconfig 임시 파일: %w", err)
@@ -127,6 +196,82 @@ func filterAvailable(want []string, apiResourcesOutput string) []string {
 	return out
 }
 
+// clusterScopedKinds 는 스택이 만든 **클러스터 범위** 리소스다.
+//
+// 네임스페이스 리소스만 뜨면 복구가 깨진다 — CRD 가 없는 상태에서
+// ExternalSecret/SecretStore 를 apply 하면 "no matches for kind" 로 죽는다.
+// 실환경 리허설에서 실제로 그랬다.
+//
+// 스택이 소유한 것만 고른다(Helm 의 release-namespace 어노테이션). 클러스터
+// 범위라 다른 것까지 건드리면 클러스터 전체에 영향을 준다.
+var clusterScopedKinds = []string{
+	"customresourcedefinitions.apiextensions.k8s.io",
+
+	// 컨트롤러의 권한. **CRD 와 CR 만 되돌리면 모자란다** — 컨트롤러가 자기
+	// CR 을 볼 권한을 잃어 조정이 아예 시작되지 않는다. 실환경 리허설에서
+	// ESO 가 그렇게 멈췄다:
+	//
+	//   externalsecrets.external-secrets.io is forbidden: User
+	//   "system:serviceaccount:nullus-app:external-secrets" cannot list
+	//   resource "externalsecrets" ... at the cluster scope
+	//
+	// ExternalSecret/SecretStore 는 멀쩡히 복원됐는데 status 가 끝내 비어
+	// 있었고, 증상은 결함 ③ 과 구별되지 않았다 — 복구는 succeeded 인데
+	// Gitea·Harbor·Jenkins 가 CreateContainerConfigError 로 멈춘 채 남는다.
+	//
+	// 네임스페이스의 role/rolebinding 만으로는 대체할 수 없다. 컨트롤러가
+	// 클러스터 범위로 list/watch 하기 때문이다.
+	"clusterroles.rbac.authorization.k8s.io",
+	"clusterrolebindings.rbac.authorization.k8s.io",
+}
+
+// dumpClusterScoped 는 대상 네임스페이스의 Helm 릴리스가 소유한 클러스터 범위
+// 리소스를 뜬다.
+func (d *ResourceDumper) dumpClusterScoped(ctx context.Context, namespace string) ([]byte, error) {
+	var avail strings.Builder
+	if err := d.run(ctx, nil, &avail, "api-resources", "--verbs=list", "--namespaced=false", "-o", "name"); err != nil {
+		return nil, fmt.Errorf("클러스터 범위 리소스 종류 조회: %w", err)
+	}
+	kinds := filterAvailable(clusterScopedKinds, avail.String())
+	if len(kinds) == 0 {
+		return nil, nil
+	}
+
+	var raw bytes.Buffer
+	if err := d.run(ctx, nil, &raw,
+		"get", strings.Join(kinds, ","), "-o", "json", "--ignore-not-found"); err != nil {
+		return nil, err
+	}
+	if raw.Len() == 0 {
+		return nil, nil
+	}
+	return sanitizeOwnedBy(raw.Bytes(), namespace)
+}
+
+// sanitizeOwnedBy 는 지정한 네임스페이스의 Helm 릴리스가 소유한 것만 남긴다.
+func sanitizeOwnedBy(raw []byte, namespace string) ([]byte, error) {
+	var list struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return nil, fmt.Errorf("클러스터 범위 리소스 해석: %w", err)
+	}
+	kept := make([]map[string]any, 0, len(list.Items))
+	for _, item := range list.Items {
+		meta, _ := item["metadata"].(map[string]any)
+		ann, _ := meta["annotations"].(map[string]any)
+		if ns, _ := ann["meta.helm.sh/release-namespace"].(string); ns != namespace {
+			continue
+		}
+		kept = append(kept, item)
+	}
+	if len(kept) == 0 {
+		return nil, nil
+	}
+	cleanedRaw, _ := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "List", "items": kept})
+	return sanitize(cleanedRaw)
+}
+
 func (d *ResourceDumper) Dump(ctx context.Context, namespace string, out io.Writer) (int64, error) {
 	kinds, err := d.availableKinds(ctx)
 	if err != nil {
@@ -152,10 +297,119 @@ func (d *ResourceDumper) Dump(ctx context.Context, namespace string, out io.Writ
 	if err != nil {
 		return 0, err
 	}
+
+	// 클러스터 범위가 **먼저** 온다. CRD 가 없으면 그 CR 을 apply 할 수 없다.
+	clusterScoped, err := d.dumpClusterScoped(ctx, namespace)
+	if err != nil {
+		return 0, err
+	}
+
+	// 앱 네임스페이스 — Argo CD Application 의 destination 이 가리키는 곳. 네임스페이스와 pull Secret 만.
+	appNamespaces, err := d.dumpAppNamespaces(ctx, appNamespacesOf(cleaned, namespace))
+	if err != nil {
+		return 0, err
+	}
+
+	doc := map[string]any{}
+	if len(clusterScoped) > 0 {
+		doc["cluster_scoped"] = json.RawMessage(clusterScoped)
+	}
+	if len(appNamespaces) > 0 {
+		doc["app_namespaces"] = json.RawMessage(appNamespaces)
+	}
+	doc["namespaced"] = json.RawMessage(cleaned)
+
+	payload, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return 0, err
+	}
 	counter := &countingWriter{w: out}
-	n, err := counter.Write(cleaned)
-	_ = n
+	_, err = counter.Write(payload)
 	return counter.n, err
+}
+
+// appNamespacesOf 는 네임스페이스 덤프에서 Argo CD Application 의 destination 네임스페이스를 뽑는다.
+//
+// 앱 네임스페이스는 스택 네임스페이스 밖이라 네임스페이스 덤프에 없다. 어느 네임스페이스가 이 스택의
+// 앱인지는 Application 이 말한다 — 라벨(nullus-cicd)로 클러스터 전체를 훑으면 다른 스택의 앱까지
+// 섞인다. 스택 네임스페이스 자신과 빈 값은 뺀다.
+func appNamespacesOf(namespaced []byte, stackNamespace string) []string {
+	var list struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(namespaced, &list); err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, item := range list.Items {
+		if item["kind"] != "Application" {
+			continue
+		}
+		spec, _ := item["spec"].(map[string]any)
+		dest, _ := spec["destination"].(map[string]any)
+		ns, _ := dest["namespace"].(string)
+		ns = strings.TrimSpace(ns)
+		if ns == "" || ns == stackNamespace || seen[ns] {
+			continue
+		}
+		seen[ns] = true
+		out = append(out, ns)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// dumpAppNamespaces 는 앱 네임스페이스 자체(라벨 포함)와 그 안의 이미지 pull Secret 을 뜬다.
+//
+// 앱의 나머지(Deployment·Service·HTTPRoute)는 Argo CD 가 Git 에서 되살리므로 담지 않는다. 이 둘은
+// Nullus 가 파이프라인을 만들 때 직접 만든 것이라 Git 에 없다 — 앱 네임스페이스를 잃으면 Deployment 는
+// 돌아와도 FailedToRetrieveImagePullSecret 로 pull 이 실패한다(2026-10-12 리허설 실측). 네임스페이스나
+// Secret 이 없으면(사용자가 지웠거나 다른 레지스트리) 그냥 뺀다.
+func (d *ResourceDumper) dumpAppNamespaces(ctx context.Context, names []string) ([]byte, error) {
+	var items []map[string]any
+	for _, ns := range names {
+		for _, args := range [][]string{
+			{"get", "namespace", ns, "-o", "json", "--ignore-not-found"},
+			{"get", "secret", shareddomain.AppImagePullSecretName, "-n", ns, "-o", "json", "--ignore-not-found"},
+		} {
+			var buf bytes.Buffer
+			if err := d.run(ctx, nil, &buf, args...); err != nil {
+				return nil, fmt.Errorf("앱 네임스페이스 %s 조회: %w", ns, err)
+			}
+			if bytes.TrimSpace(buf.Bytes()) == nil || len(bytes.TrimSpace(buf.Bytes())) == 0 {
+				continue
+			}
+			got, err := objectsOf(buf.Bytes())
+			if err != nil {
+				return nil, fmt.Errorf("앱 네임스페이스 %s 해석: %w", ns, err)
+			}
+			items = append(items, got...)
+		}
+	}
+	if len(items) == 0 {
+		return nil, nil
+	}
+	cleaned, err := sanitizeItems(items)
+	if err != nil {
+		return nil, err
+	}
+	if len(cleaned) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(listOf(cleaned))
+}
+
+// objectsOf 는 kubectl get 의 출력(객체 하나 또는 List)을 항목 목록으로 푼다.
+func objectsOf(raw []byte) ([]map[string]any, error) {
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, err
+	}
+	if obj["kind"] == "List" {
+		return itemsOf(raw)
+	}
+	return []map[string]any{obj}, nil
 }
 
 // sanitize 는 서버가 관리하는 필드를 걷어낸다.
@@ -189,14 +443,11 @@ func sanitize(raw []byte) ([]byte, error) {
 			delete(meta, f)
 		}
 
-		// Service 의 clusterIP 는 클러스터가 배정한다. 그대로 되돌리면
-		// 이미 쓰이는 주소와 충돌하거나, 다른 클러스터에서는 범위 밖이다.
-		if kind, _ := item["kind"].(string); kind == "Service" {
-			if spec, ok := item["spec"].(map[string]any); ok {
-				delete(spec, "clusterIP")
-				delete(spec, "clusterIPs")
-			}
-		}
+		// Service 의 clusterIP 는 남긴다. 설치가 스택 게이트웨이의 ClusterIP 를 러너·Argo CD 의
+		// hostAliases 에 박는다 — 복구가 IP 를 버리면 게이트웨이는 새 주소를 받는데 hostAliases 는
+		// 옛 주소를 가리켜 파이프라인이 "Could not resolve host" 로 멈춘다. headless(None)는 IP 가
+		// 아니라 정체라 더욱 지우면 안 된다(StatefulSet 의 파드별 DNS). 그 IP 를 쓸 수 없으면
+		// (이미 쓰임·범위 밖) Apply 가 새 주소로 되돌린다.
 		kept = append(kept, item)
 	}
 
@@ -240,9 +491,161 @@ func skipResource(item map[string]any) bool {
 //
 // --server-side 를 쓰는 이유: 덤프에는 resourceVersion·uid 같은 서버 관리
 // 필드가 섞여 있다. 클라이언트 사이드 apply 는 그것들 때문에 충돌한다.
+// Apply 는 클러스터 범위를 먼저, 그 다음 네임스페이스 리소스를 되돌린다.
+//
+// 순서가 핵심이다. CRD 가 등록되기 전에 그 CR 을 apply 하면
+// "no matches for kind" 로 죽는다 — 실환경 리허설에서 ESO 의
+// SecretStore/ExternalSecret 이 그렇게 실패했다.
 func (d *ResourceDumper) Apply(ctx context.Context, namespace string, in io.Reader) error {
-	return d.run(ctx, in, io.Discard,
-		"apply", "-n", namespace, "-f", "-", "--server-side", "--force-conflicts")
+	raw, err := io.ReadAll(in)
+	if err != nil {
+		return err
+	}
+
+	var doc struct {
+		ClusterScoped json.RawMessage `json:"cluster_scoped"`
+		AppNamespaces json.RawMessage `json:"app_namespaces"`
+		Namespaced    json.RawMessage `json:"namespaced"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil || len(doc.Namespaced) == 0 {
+		// 옛 형식(단일 목록)도 받아 준다 — 이전 백업본을 복원할 수 있어야 한다.
+		return d.applyNamespaced(ctx, namespace, raw)
+	}
+
+	// 앱 네임스페이스와 pull Secret 은 **없을 때만** 만든다. 앱 네임스페이스가 살아 있으면(스택
+	// 네임스페이스만 잃은 경우) 그 안의 Secret 이 지금 쓰는 자격증명이다 — 백업 때의 것으로 덮지
+	// 않는다. 스택 리소스보다 먼저다: Argo CD 가 동기화할 때 Secret 이 있어야 첫 파드부터 pull 이 된다.
+	if len(doc.AppNamespaces) > 0 {
+		if err := d.applyAppNamespaces(ctx, doc.AppNamespaces); err != nil {
+			return fmt.Errorf("앱 네임스페이스 복원: %w", err)
+		}
+	}
+
+	if len(doc.ClusterScoped) > 0 {
+		if err := d.applyDoc(ctx, namespace, doc.ClusterScoped, true); err != nil {
+			return fmt.Errorf("클러스터 범위 리소스 복원: %w", err)
+		}
+		// CRD 등록이 API 서버에 반영될 때까지 기다린다. 바로 CR 을 밀면
+		// 아직 discovery 에 없어 같은 오류가 난다.
+		if err := d.run(ctx, nil, io.Discard, "wait", "--for=condition=established",
+			"--timeout=120s", "crd", "--all"); err != nil {
+			// established 를 못 봐도 계속 간다 — 이미 있던 CRD 일 수 있다.
+			_ = err
+		}
+	}
+	return d.applyNamespaced(ctx, namespace, doc.Namespaced)
 }
 
-var _ port.ResourceDumper = (*ResourceDumper)(nil)
+// applyAppNamespaces 는 앱 네임스페이스(라벨 포함)와 그 안의 pull Secret 을 없을 때만 만든다.
+func (d *ResourceDumper) applyAppNamespaces(ctx context.Context, payload []byte) error {
+	items, err := itemsOf(payload)
+	if err != nil {
+		return err
+	}
+	// 네임스페이스가 먼저 — 그 안의 Secret 이 뒤.
+	for _, pass := range []bool{true, false} {
+		for _, item := range items {
+			isNS := item["kind"] == "Namespace"
+			if isNS != pass {
+				continue
+			}
+			ns := ""
+			if !isNS {
+				ns = itemNamespace(item)
+				if ns == "" {
+					return fmt.Errorf("앱 네임스페이스 %s/%s 의 네임스페이스를 알 수 없습니다", item["kind"], itemName(item))
+				}
+			}
+			if err := d.createIfMissing(ctx, ns, item); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// applyNamespaced 는 네임스페이스 리소스를 되돌린다. Service 는 백업 때의 ClusterIP 로 먼저 세운다.
+//
+// 그 IP 를 쓸 수 없으면(다른 Service 가 이미 씀·다른 클러스터라 범위 밖·이미 있는 Service 의 IP 와
+// 다름) API 서버가 spec.clusterIP 로 거절한다. 복구를 멈추지 않고 IP 를 빼고 다시 적용한다 — 새
+// 주소를 받은 Service 는 경고로 남긴다. 설치가 그 주소를 hostAliases 에 박은 게이트웨이라면 러너·
+// Argo CD 의 이름 해석을 다시 맞춰야 한다. headless(None)는 빼지 않는다.
+func (d *ResourceDumper) applyNamespaced(ctx context.Context, namespace string, payload []byte) error {
+	err := d.applyDoc(ctx, namespace, payload, false)
+	if err == nil || !strings.Contains(err.Error(), "spec.clusterIP") {
+		return err
+	}
+	// 거절된 Service 만 IP 를 뺀다. 나머지는 첫 적용에서 이미 백업 때의 IP 로 섰다 — 그것까지
+	// "새 주소" 라고 알리면 운영자가 멀쩡한 게이트웨이의 hostAliases 를 고치러 간다. 오류에서
+	// 이름을 못 읽으면 headless 가 아닌 모든 Service 에서 뺀다.
+	stripped, renumbered, serr := stripServiceClusterIPs(payload, rejectedServices(err.Error()))
+	if serr != nil || len(renumbered) == 0 {
+		return err
+	}
+	slog.Warn("백업 때의 ClusterIP 로 Service 를 되살리지 못해 새 주소로 복원합니다 — "+
+		"게이트웨이 주소가 바뀌었다면 러너·Argo CD 의 hostAliases 를 새 주소로 맞춰야 합니다",
+		"namespace", namespace, "services", renumbered, "cause", err)
+	return d.applyDoc(ctx, namespace, stripped, false)
+}
+
+// rejectedClusterIP 는 API 서버가 ClusterIP 를 거절한 Service 이름을 뽑는다(실측 문구:
+// `The Service "gw" is invalid: spec.clusterIPs: ... provided IP is already allocated`).
+var rejectedClusterIP = regexp.MustCompile(`The Service "([^"]+)" is invalid: spec\.clusterIP`)
+
+func rejectedServices(msg string) map[string]bool {
+	out := map[string]bool{}
+	for _, m := range rejectedClusterIP.FindAllStringSubmatch(msg, -1) {
+		out[m[1]] = true
+	}
+	return out
+}
+
+// stripServiceClusterIPs 는 headless 가 아닌 Service 의 clusterIP·clusterIPs 를 뺀다. only 가 비어 있지
+// 않으면 그 이름만 뺀다. 뺀 Service 이름을 돌려준다.
+func stripServiceClusterIPs(payload []byte, only map[string]bool) ([]byte, []string, error) {
+	var list map[string]any
+	if err := json.Unmarshal(payload, &list); err != nil {
+		return nil, nil, err
+	}
+	items, _ := list["items"].([]any)
+	var names []string
+	for _, it := range items {
+		item, _ := it.(map[string]any)
+		if kind, _ := item["kind"].(string); kind != "Service" {
+			continue
+		}
+		spec, _ := item["spec"].(map[string]any)
+		ip, has := spec["clusterIP"].(string)
+		if !has || ip == "" || ip == "None" {
+			continue
+		}
+		meta, _ := item["metadata"].(map[string]any)
+		name, _ := meta["name"].(string)
+		if len(only) > 0 && !only[name] {
+			continue
+		}
+		delete(spec, "clusterIP")
+		delete(spec, "clusterIPs")
+		names = append(names, name)
+	}
+	out, err := json.Marshal(list)
+	return out, names, err
+}
+
+// applyDoc 은 한 덩어리를 적용한다.
+//
+// 클러스터 범위에는 -n 을 붙이지 않는다. 붙이면 kubectl 이 네임스페이스를
+// 무시하긴 하지만, 의도가 흐려지고 다음 사람이 헷갈린다.
+func (d *ResourceDumper) applyDoc(ctx context.Context, namespace string, payload []byte, clusterScoped bool) error {
+	args := []string{"apply"}
+	if !clusterScoped {
+		args = append(args, "-n", namespace)
+	}
+	args = append(args, "-f", "-", "--server-side", "--force-conflicts")
+	return d.run(ctx, bytes.NewReader(payload), io.Discard, args...)
+}
+
+var (
+	_ port.ResourceDumper       = (*ResourceDumper)(nil)
+	_ port.SharedResourceDumper = (*ResourceDumper)(nil)
+)

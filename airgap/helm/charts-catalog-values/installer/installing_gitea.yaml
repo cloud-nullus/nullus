@@ -1,0 +1,41 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_gitea
+# chart: gitea 12.7.0
+gitea:
+    additionalConfigFromEnvs:
+        - name: GITEA__database__PASSWD
+          valueFrom:
+            secretKeyRef:
+                key: password
+                name: nullus-postgresql-credentials
+    admin:
+        existingSecret: nullus-gitea-credentials
+        passwordMode: keepUpdated
+    config:
+        cache:
+            ADAPTER: memory
+        database:
+            DB_TYPE: postgres
+            HOST: nullus-postgresql.nullus.svc.cluster.local:5432
+            NAME: gitlabhq_production
+            USER: gitlab
+        queue:
+            TYPE: level
+        server:
+            DOMAIN: gitea.nullus.internal
+            ROOT_URL: http://gitea.nullus.internal/
+        session:
+            PROVIDER: file
+postgresql:
+    enabled: false
+postgresql-ha:
+    enabled: false
+service:
+    http:
+        port: 3000
+strategy:
+    type: Recreate
+valkey:
+    enabled: false
+valkey-cluster:
+    enabled: false

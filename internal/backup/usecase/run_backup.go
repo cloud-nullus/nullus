@@ -1,11 +1,13 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
 	"github.com/cloud-nullus/draft/internal/backup/port"
@@ -39,11 +41,17 @@ type BackupDeps struct {
 	Scaler    port.WorkloadScaler
 	Archiver  port.VolumeArchiver
 	Resources port.ResourceDumper
-	Sealer    port.Sealer
-	Store     port.ArtifactStore
-	Notifier  port.Notifier
-	Pauser    RotationPauser
-	Targets   DBTargets
+	// Shared 는 클러스터 공용 자원(Gateway CRD·GatewayClass·내부 CA)을 뜬다. Resources 와 같이
+	// 스택 클러스터 어댑터다.
+	Shared   port.SharedResourceDumper
+	Sealer   port.Sealer
+	Store    port.ArtifactStore
+	Notifier port.Notifier
+	Pauser   RotationPauser
+	Targets  DBTargets
+	// Releases 는 없어도 백업은 성립한다 — 버전을 모른 채 복구하게 될 뿐이다.
+	// 그래서 nil 이면 건너뛰되, 조회에 실패하면 그 사실을 남긴다.
+	Releases port.HelmReleaseLister
 
 	PlatformVersion string
 	Logger          *slog.Logger
@@ -66,6 +74,15 @@ type RunBackupRequest struct {
 	Namespace string
 	Mode      domain.Mode
 	Trigger   domain.Trigger
+
+	// Scope 는 사용자가 고른 백업 대상이다. 비어 있으면 모드에서 파생한다 —
+	// 스케줄 백업과 옛 호출부는 모드만 넘기기 때문이다.
+	//
+	// 골랐다면 그것이 모드보다 우선한다. 모드는 "보통 이만큼" 이라는 preset 이고,
+	// 실제로 무엇을 뜰지는 Scope 가 정한다 (RequiresQuiesce 도 Scope 를 본다).
+	Scope []domain.Component
+	// SetID 가 있으면 이 실행은 백업 세트의 멤버다(domain.PlanBackupSet).
+	SetID string
 }
 
 func (uc *BackupUseCase) Run(ctx context.Context, req RunBackupRequest) (*domain.BackupRun, error) {
@@ -79,13 +96,21 @@ func (uc *BackupUseCase) Run(ctx context.Context, req RunBackupRequest) (*domain
 		trigger = domain.TriggerManual
 	}
 
-	scope := domain.ModeComponents(req.Mode)
+	scope := req.Scope
+	if len(scope) == 0 {
+		scope = domain.ModeComponents(req.Mode)
+	}
 	run := domain.NewBackupRun(req.OrgID, req.Mode, trigger, scope)
+	run.SetID = req.SetID
 	run.StackID = req.StackID
 
 	needsStack := req.Mode != domain.ModePlatformOnly
 	if needsStack && req.Namespace == "" {
 		return nil, fmt.Errorf("스택 대상 백업에는 네임스페이스가 필요합니다")
+	}
+	// 실행 기록을 만들기 전에 거절한다 — 만든 뒤 실패하면 그 기록이 남는다.
+	if missing := uc.missingStackAdapters(run.Scope); len(missing) > 0 {
+		return nil, domain.ErrStackRequired(strings.Join(missing, ", "))
 	}
 
 	if err := uc.d.Repo.CreateRun(ctx, run); err != nil {
@@ -97,33 +122,73 @@ func (uc *BackupUseCase) Run(ctx context.Context, req RunBackupRequest) (*domain
 	_ = uc.d.Repo.UpdateRun(ctx, run)
 
 	res, err := uc.execute(ctx, req, run)
+	// 마무리(기록 갱신·알림)는 요청이 끊겼어도 해야 한다 — 취소된 컨텍스트로는 저장소에 쓰지
+	// 못해 실행 기록이 running 으로 영영 남는다.
+	finishCtx, cancel := detached(ctx, finishTimeout)
+	defer cancel()
 	if err != nil {
 		run.Fail(err.Error())
-		uc.finish(ctx, run, nil)
+		uc.finish(finishCtx, run, nil)
 		return run, err
 	}
 
 	run.Complete(res.results)
-	uc.finish(ctx, run, res)
+	uc.finish(finishCtx, run, res)
 	return run, nil
 }
 
+const (
+	// resumeTimeout 은 정지 창을 닫는(워크로드 재개) 데 허용하는 시간이다. 요청이 끊긴 뒤에도
+	// 이만큼은 끝까지 간다.
+	resumeTimeout = 5 * time.Minute
+	// finishTimeout 은 실행 기록 갱신과 알림에 허용하는 시간이다.
+	finishTimeout = 30 * time.Second
+)
+
+// detached 는 요청 취소와 무관한 컨텍스트다. 값(트레이스 등)은 이어받고 취소만 끊는다.
+//
+// 백업은 HTTP 요청 안에서 동기로 돈다. 클라이언트가 떠나면 요청 컨텍스트가 취소되는데, 그
+// 컨텍스트로 재개를 부르면 첫 호출부터 실패해 워크로드가 0 으로 남는다. 무한히 두지는 않는다 —
+// 시간 제한은 둔다.
+func detached(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), timeout)
+}
+
 type executeResult struct {
+	// namespace 는 매니페스트에 남긴다 — 세트 복구가 스택을 어디로 되돌릴지 여기서 읽는다.
+	namespace string
 	results   map[domain.Component]error
 	artifacts []domain.Artifact
 	plan      domain.QuiescePlan
 	volumes   []domain.VolumeSpec
+	releases  []domain.HelmReleaseSpec
 	kvPaths   int
 	pgServer  string
 	pgClient  string
 }
 
 func (uc *BackupUseCase) execute(ctx context.Context, req RunBackupRequest, run *domain.BackupRun) (*executeResult, error) {
-	out := &executeResult{results: map[domain.Component]error{}}
+	out := &executeResult{results: map[domain.Component]error{}, namespace: req.Namespace}
 
 	// 스키마 버전은 복구 시 정합성 판단의 기준이다 (§6.2).
 	if st, err := uc.d.Dumper.SchemaState(ctx, uc.d.Targets.Platform); err == nil {
 		run.SchemaVersion = st.Version
+	}
+
+	// 차트 버전은 **정지 전에** 읽는다. 정지 창을 쓰는 작업이 아니고, 뒤로
+	// 미루면 워크로드를 내린 뒤라 릴리스 Secret 이 그대로여도 순서가 헷갈린다.
+	//
+	// 실패해도 백업은 계속한다 — 버전을 모른 채 복구하게 될 뿐, 데이터는
+	// 온전하다. 다만 조용히 넘기지는 않는다: 복구가 임의 버전을 고르는 것이
+	// 이 정보가 없을 때의 결과다.
+	if uc.d.Releases != nil && strings.TrimSpace(req.Namespace) != "" {
+		releases, err := uc.d.Releases.ListHelmReleases(ctx, req.Namespace)
+		if err != nil {
+			uc.d.Logger.Warn("차트 버전을 읽지 못했습니다. 복구가 같은 버전을 고를 수 없습니다",
+				"namespace", req.Namespace, "error", err)
+		} else {
+			out.releases = releases
+		}
 	}
 
 	// ── 목적지 검사. 반드시 정지보다 먼저 (§9 F7b·F8) ──
@@ -153,6 +218,18 @@ func (uc *BackupUseCase) execute(ctx context.Context, req RunBackupRequest, run 
 		out.results[domain.ComponentNamespaceResources] = err
 		if err == nil {
 			out.artifacts = append(out.artifacts, art)
+		}
+	}
+
+	// ── 1b. 공용 자원 — 클러스터의 마지막 스택을 지우면 회수되는 것 ──
+	//
+	// 네임스페이스 덤프 밖에 있어 따로 뜬다. 담을 것이 없으면(사용자가 깐 Gateway API 를
+	// 재사용한 스택) 산출물을 만들지 않는다 — 빈 산출물은 "담았다" 로 읽힌다.
+	if uc.inScope(run, domain.ComponentSharedResources) {
+		art, err := uc.dumpShared(ctx, run)
+		out.results[domain.ComponentSharedResources] = err
+		if err == nil && art != nil {
+			out.artifacts = append(out.artifacts, *art)
 		}
 	}
 
@@ -257,15 +334,20 @@ func (uc *BackupUseCase) withQuiesce(ctx context.Context, req RunBackupRequest, 
 
 	run.BeginQuiesce()
 	defer func() {
+		// 재개는 요청 취소와 무관하게 끝까지 간다. 요청이 끊겨(클라이언트 이탈) 컨텍스트가
+		// 취소된 채로 재개를 부르면 첫 호출부터 실패해 워크로드가 0 으로 남는다 — 그 상태로
+		// 백업 요청이 "실패" 로 끝나면 사용자는 서비스가 내려간 줄 모른다.
+		resumeCtx, cancel := detached(ctx, resumeTimeout)
+		defer cancel()
 		// 역순 재개. 실패해도 남은 대상은 계속 시도한다.
 		for _, t := range plan.ResumeOrder() {
-			if err := uc.d.Scaler.Scale(ctx, t, t.OriginalReplicas); err != nil {
+			if err := uc.d.Scaler.Scale(resumeCtx, t, t.OriginalReplicas); err != nil {
 				uc.d.Logger.Error("워크로드 재개 실패 — 수동 조치가 필요합니다",
 					"kind", t.Kind, "name", t.Name, "replicas", t.OriginalReplicas, "error", err)
 			}
 		}
 		if uc.d.Pauser != nil {
-			if err := uc.d.Pauser.Resume(ctx); err != nil {
+			if err := uc.d.Pauser.Resume(resumeCtx); err != nil {
 				uc.d.Logger.Error("회전 스케줄러 재개 실패", "error", err)
 			}
 		}
@@ -348,6 +430,45 @@ func (uc *BackupUseCase) putStream(
 	return art, nil
 }
 
+// missingStackAdapters 는 고른 대상 중 스택 클러스터 어댑터가 없어 뜰 수 없는 것이다.
+//
+// 어댑터는 스택 ID 로 그 스택의 클러스터에 붙어 만든다(wiring). 스택을 고르지 않은 요청에는
+// 없다 — 그대로 부르면 nil 어댑터를 호출한다.
+func (uc *BackupUseCase) missingStackAdapters(scope []domain.Component) []string {
+	var missing []string
+	for _, c := range scope {
+		switch {
+		case c == domain.ComponentNamespaceResources && uc.d.Resources == nil,
+			c == domain.ComponentSharedResources && uc.d.Shared == nil,
+			c == domain.ComponentVolume && (uc.d.Archiver == nil || uc.d.Scaler == nil):
+			missing = append(missing, string(c))
+		}
+	}
+	return missing
+}
+
+// dumpShared 는 공용 자원을 뜬다. 작은 객체들이라 먼저 모아 보고 있을 때만 산출물로 올린다.
+func (uc *BackupUseCase) dumpShared(ctx context.Context, run *domain.BackupRun) (*domain.Artifact, error) {
+	var buf bytes.Buffer
+	n, err := uc.d.Shared.DumpShared(ctx, &buf)
+	if err != nil {
+		return nil, fmt.Errorf("공용 자원 덤프: %w", err)
+	}
+	if n == 0 {
+		if uc.d.Logger != nil {
+			uc.d.Logger.Info("Nullus 가 설치한 클러스터 공용 자원이 없어 담지 않습니다", "backup_run_id", run.ID)
+		}
+		return nil, nil
+	}
+	art, err := uc.putStream(ctx, run, domain.ComponentSharedResources, "",
+		key(run.ID, "shared-resources.json"),
+		func(w io.Writer) (int64, error) { return io.Copy(w, &buf) })
+	if err != nil {
+		return nil, err
+	}
+	return &art, nil
+}
+
 func (uc *BackupUseCase) inScope(run *domain.BackupRun, c domain.Component) bool {
 	for _, s := range run.Scope {
 		if s == c {
@@ -360,6 +481,7 @@ func (uc *BackupUseCase) inScope(run *domain.BackupRun, c domain.Component) bool
 func (uc *BackupUseCase) finish(ctx context.Context, run *domain.BackupRun, res *executeResult) {
 	if res != nil {
 		m := domain.BuildManifest(run, domain.ManifestInput{
+			Namespace:          res.namespace,
 			PlatformVersion:    uc.d.PlatformVersion,
 			PGServerVersion:    res.pgServer,
 			PGDumpVersion:      res.pgClient,
@@ -367,6 +489,7 @@ func (uc *BackupUseCase) finish(ctx context.Context, run *domain.BackupRun, res 
 			Plan:               res.plan,
 			Volumes:            res.volumes,
 			Artifacts:          res.artifacts,
+			HelmReleases:       res.releases,
 			OpenBaoKVPathCount: res.kvPaths,
 		})
 		run.Manifest = manifestToMap(m)

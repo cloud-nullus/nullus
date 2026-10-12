@@ -32,11 +32,12 @@ func TestPipeline_DelegatesBuildToRunner(t *testing.T) {
 			want:     false,
 		},
 		{
-			// 빌드가 없는 파이프라인은 위임할 것이 없다. 기존 매니페스트 적용
-			// 경로를 그대로 둔다.
-			name:     "Dockerfile 이 없으면 위임할 빌드가 없다",
+			// 스택에 묶였으면 Dockerfile 경로가 비어 있어도 러너가 실행한다. 플랫폼이
+			// 매니페스트를 직접 적용하면 CD 도구와 서로 덮어쓴다 — API 로 Dockerfile
+			// 경로 없이 만든 파이프라인이 그 경로로 새고 있었다.
+			name:     "Dockerfile 경로가 비어 있어도 스택에 묶였으면 러너가 맡는다",
 			pipeline: &Pipeline{StackID: "stk-1"},
-			want:     false,
+			want:     true,
 		},
 		{
 			name:     "nil 은 위임하지 않는다",

@@ -20,6 +20,8 @@ type BackupRepository interface {
 	UpdateRun(ctx context.Context, run *domain.BackupRun) error
 	GetRun(ctx context.Context, id string) (*domain.BackupRun, error)
 	ListRuns(ctx context.Context, orgID string, limit int) ([]*domain.BackupRun, error)
+	// ListRunsBySet 은 한 백업 세트의 실행들이다(domain.PlanBackupSet). 순서는 생성순.
+	ListRunsBySet(ctx context.Context, setID string) ([]*domain.BackupRun, error)
 	ListSummaries(ctx context.Context, orgID string) ([]domain.RunSummary, error)
 
 	AddArtifact(ctx context.Context, a *domain.Artifact) error
@@ -29,6 +31,24 @@ type BackupRepository interface {
 	CreateRestore(ctx context.Context, run *domain.RestoreRun) error
 	UpdateRestore(ctx context.Context, run *domain.RestoreRun) error
 	GetRestore(ctx context.Context, id string) (*domain.RestoreRun, error)
+}
+
+// StackLister 는 조직의 설치 완료된 스택을 알려 준다(스택 모듈이 구현해 cmd/api 가 잇는다).
+//
+// 백업 세트가 "플랫폼 + 모든 스택" 을 뜰 때 어느 스택이 있는지 물을 곳이다. 스택 테이블은 스택
+// 모듈의 것이므로 여기서 직접 읽지 않는다.
+type StackLister interface {
+	ListCompletedStacks(ctx context.Context, orgID string) ([]domain.StackRef, error)
+}
+
+// OrganizationChecker 는 조직이 실제로 있는지 본다.
+//
+// 백업은 조직 단위로 보인다 — 목록은 로그인 사용자의 조직으로만 거른다. 호출자가
+// 헤더에 적은 조직을 확인 없이 받으면, 없는 조직의 백업이 만들어지되 어떤 화면에도
+// 보이지 않는다. 조직 테이블은 admin 모듈의 것이므로 그 공개 인터페이스를 감싼
+// 어댑터(adapter/bridge)로 구현한다.
+type OrganizationChecker interface {
+	OrganizationExists(ctx context.Context, orgID string) (bool, error)
 }
 
 // DBDumper 는 PostgreSQL 논리 백업/복원을 수행한다.
@@ -51,6 +71,9 @@ type DBTarget struct {
 	Database  string
 	User      string
 	Password  string
+	// PreserveTables 는 복원이 건드리지 않는 테이블이다(public 스키마). 덤프에는 담긴다 —
+	// 플랫폼 DB 를 잃었을 때 손으로 되살릴 사본이다. 플랫폼 DB 의 백업 이력이 그렇다(domain.HistoryTables).
+	PreserveTables []string
 }
 
 type DumpResult struct {
@@ -92,13 +115,80 @@ type VolumeArchiver interface {
 	ListPVCs(ctx context.Context, namespace string) ([]domain.VolumeSpec, error)
 	Archive(ctx context.Context, namespace, pvc string, out io.Writer) (int64, error)
 	Restore(ctx context.Context, namespace, pvc string, in io.Reader) error
-	EnsurePVC(ctx context.Context, namespace string, spec domain.VolumeSpec) error
+	EnsurePVC(ctx context.Context, namespace string, spec domain.VolumeSpec, restoredFromBackupID string) error
+}
+
+// NamespaceEnsurer 는 복구할 네임스페이스를 보장한다.
+//
+// 새 클러스터나 지운 네임스페이스로 되돌리면 네임스페이스부터 없다. 리소스 덤프는
+// 네임스페이스 안의 것만 담으므로 Namespace 자체는 복구가 만들어야 한다 — 그러지 않으면 첫
+// PVC 생성이 "namespaces not found" 로 실패한다. 이미 있으면 그대로 둔다.
+type NamespaceEnsurer interface {
+	EnsureNamespace(ctx context.Context, namespace, restoredFromBackupID string) error
+}
+
+// GatewayAliasRepinner 는 복구 뒤 스택 게이트웨이의 지금 주소로 러너·Argo CD 의 hostAliases 를 맞춘다.
+//
+// 설치가 게이트웨이 ClusterIP 를 두 릴리스의 values 에 박는다. 복구는 Service 를 백업 때의 IP 로
+// 되살리지만, 그 IP 를 쓸 수 없거나(다른 클러스터) 백업에 IP 가 없으면(옛 백업) 주소가 바뀐다.
+// 스택 모듈이 구현한다 — 백업 모듈은 스택 내부를 모르므로 기본 타입만 주고받는다.
+// kubeconfig 는 복구가 실제로 되돌린 클러스터다(full 복구는 DB 의 클러스터 정보까지 백업 시점으로
+// 돌린다). 게이트웨이 주소와 다시 적용한 릴리스를 돌려준다.
+type GatewayAliasRepinner interface {
+	RepinGatewayAliases(ctx context.Context, stackID, namespace string, kubeconfig []byte) (gatewayIP string, updated []string, err error)
+}
+
+// HelmReleaseLister 는 네임스페이스에 설치된 차트의 버전을 읽는다.
+//
+// 복구가 다른 버전으로 재설치하면 도구들이 기동하며 스키마 마이그레이션을
+// 돌린다 — 그러면 데이터는 백업 시점의 모습이 아니게 되고 되돌릴 수 없다.
+// 그래서 "무엇이 이 데이터를 만들었는가" 를 매니페스트에 남긴다.
+type HelmReleaseLister interface {
+	ListHelmReleases(ctx context.Context, namespace string) ([]domain.HelmReleaseSpec, error)
 }
 
 // ResourceDumper 는 네임스페이스 리소스와 Helm 릴리스를 뜬다 (D1).
 type ResourceDumper interface {
 	Dump(ctx context.Context, namespace string, out io.Writer) (int64, error)
 	Apply(ctx context.Context, namespace string, in io.Reader) error
+}
+
+// SharedResourceDumper 는 클러스터의 마지막 스택을 지우면 회수되는, Nullus 가 설치한 공용 자원을
+// 뜨고 되살린다 — 설치 표시가 붙은 Gateway CRD·GatewayClass·내부 CA.
+//
+// 네임스페이스 덤프(ResourceDumper)는 네임스페이스 안의 것과 스택 릴리스가 소유한 클러스터 범위
+// 리소스만 담는다. Gateway API CRD 는 kubectl 로, GatewayClass 는 create 로 만들어져 Helm 소유
+// 어노테이션이 없고, 내부 CA 는 cert-manager 네임스페이스에 있다 — 둘 다 그 덤프 밖이다.
+type SharedResourceDumper interface {
+	// DumpShared 는 담을 것이 없으면 0 을 돌려주고 아무것도 쓰지 않는다.
+	DumpShared(ctx context.Context, out io.Writer) (int64, error)
+	// ApplyShared 는 공용 자원을 **없을 때만** 만든다. 다른 스택이 쓰는 지금의 CA 나 CRD 를
+	// 백업 때의 것으로 덮으면 그 스택이 깨진다. 종류의 CRD 가 없으면(cert-manager 없음)
+	// 무엇을 먼저 설치해야 하는지 말하고 오류를 돌려준다.
+	ApplyShared(ctx context.Context, in io.Reader) error
+	// ApplySharedSecrets 는 덤프 가운데 CRD 가 필요 없는 것 — 내부 CA Secret 과 그 네임스페이스 — 만
+	// 없을 때 먼저 만든다. cert-manager 를 다시 세우기 **전에** 불러야 한다: 부트스트랩이 Secret 이
+	// 있으면 옛 키를 채택하고, 없으면 새 키를 발급해 백업의 CA 는 영영 돌아오지 못한다.
+	ApplySharedSecrets(ctx context.Context, in io.Reader) error
+}
+
+// ConnectionResetter 는 플랫폼 DB 연결 풀을 비운다(pgxpool.Pool.Reset).
+//
+// pg_restore --clean 은 테이블을 지우고 다시 만든다. 풀의 연결이 들고 있던 준비된 문장은 옛 테이블을
+// 가리켜, 복원 직후 첫 질의가 "cached plan must not change result type (SQLSTATE 0A000)" 으로 죽는다 —
+// 어느 연결이 잡히느냐에 따라 간헐적이다(2026-10-12 리허설 4차의 게이트웨이 주소 재설정). 플랫폼 DB 를
+// 되돌린 직후 부른다.
+type ConnectionResetter interface {
+	Reset()
+}
+
+// SharedComponentsEnsurer 는 클러스터 공용 컨트롤러(cert-manager·metrics-server)를 없으면 세운다 —
+// 스택 모듈의 설치기가 구현한다. 클러스터의 마지막 스택을 지우면 컨트롤러까지 회수되는데, 컨트롤러는
+// 설치물이라 백업이 담지 않는다. 복구가 공용 자원(ClusterIssuer·Certificate)을 되살리기 전에 부른다.
+type SharedComponentsEnsurer interface {
+	// EnsureSharedComponents 는 돌린 단계 이름과, 멈추지 않고 넘긴 실패(metrics-server)를 돌려준다.
+	// cert-manager 를 세우지 못하면 오류다 — 그것 없이는 내부 CA 를 되살릴 수 없다.
+	EnsureSharedComponents(ctx context.Context, kubeconfig []byte, namespace string) (steps []string, warnings []string, err error)
 }
 
 // Sealer 는 산출물을 잠그고 연다.

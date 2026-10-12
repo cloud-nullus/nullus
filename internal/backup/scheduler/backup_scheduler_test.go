@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
+	"github.com/cloud-nullus/draft/internal/backup/usecase"
 )
 
 func TestNew_기본값(t *testing.T) {
@@ -40,4 +41,34 @@ func TestTick_중복_실행을_막는다(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("inFlight 가드가 동작하지 않았다")
 	}
+}
+
+type fakeSetRunner struct {
+	got usecase.RunBackupSetRequest
+	n   int
+}
+
+func (f *fakeSetRunner) Run(_ context.Context, req usecase.RunBackupSetRequest) (*usecase.BackupSetResult, error) {
+	f.n++
+	f.got = req
+	return &usecase.BackupSetResult{SetID: "set-1", Status: domain.StatusSucceeded}, nil
+}
+
+// all_stacks 가 켜지면 주기마다 단독 백업 대신 세트를 뜬다 — 플랫폼 + 조직의 모든 스택.
+func TestTick_세트가_배선되면_세트를_돈다(t *testing.T) {
+	set := &fakeSetRunner{}
+	s := New(nil, nil, Config{OrgID: "org-1"}).WithBackupSet(set)
+
+	s.tick(context.Background())
+
+	assert.Equal(t, 1, set.n)
+	assert.Equal(t, "org-1", set.got.OrgID)
+	assert.Equal(t, domain.TriggerSchedule, set.got.Trigger, "스케줄이 뜬 것으로 남아야 한다")
+}
+
+func TestStart_세트만_있어도_시작한다(t *testing.T) {
+	// 단독 유스케이스가 없다는 이유로 세트 스케줄을 조용히 건너뛰면 "주기 백업이 돈다" 는 착각만 남는다.
+	s := New(nil, nil, Config{}).WithBackupSet(&fakeSetRunner{})
+	assert.True(t, s.configured())
+	assert.False(t, New(nil, nil, Config{}).configured())
 }

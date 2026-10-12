@@ -16,6 +16,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 const (
@@ -87,12 +88,66 @@ type Input struct {
 	// TemplateID 는 어느 CI/CD 템플릿에서 나온 앱인지 알아보게 한다.
 	// 템플릿별 자원 사용 비교나 템플릿 단위 조회에 쓴다. 비면 라벨을 붙이지 않는다.
 	TemplateID string
+	// ImageScannerEndpoint 는 스택 Trivy 서버의 클러스터 내 주소다.
+	//
+	// 비면 이미지 스캔 단계를 만들지 않는다. 돌지도 않을 단계를 선언하면
+	// 화면이 그것을 성공으로 보여준다(마이그레이션 000070).
+	ImageScannerEndpoint string
+	// ImageScannerJavaDBRepository 는 에어갭 설치에서 CI 잡의 trivy client 가 Java DB 를
+	// 받을 내부 미러다. client 는 Maven 메타데이터가 없는 JAR 을 만나면 Java DB 를 스스로
+	// 받는데 기본 주소(mirror.gcr.io)는 에어갭에서 닿지 않는다. 비면 업스트림 기본값을 쓴다.
+	ImageScannerJavaDBRepository string
+	// SASTServerEndpoint 는 스택 SonarQube 의 클러스터 내 주소다.
+	//
+	// 비면 소스 정적 분석 단계를 만들지 않는다 — 이미지 스캔과 같은 이유다.
+	SASTServerEndpoint string
+}
+
+// 이미지 스캔 단계의 이름. CI 마다 표기가 달라 둘로 나눈다 —
+// GitLab/GitHub 은 소문자 식별자를, Jenkins 와 화면은 표시용 이름을 쓴다.
+const (
+	imageScanStageID   = "image-scan"
+	imageScanStageName = "ImageScan"
+
+	// 스캔 변수 이름은 정책 푸시와 같은 곳(port)에서 온다. 차단 기준은 파일에
+	// 박지 않는다 — 박힌 값은 플랫폼이 푸시한 값보다 앞서 정책 변경이 반영되지 않는다.
+	scanSeverityVar     = port.ScanSeverityVariable
+	scanServerVar       = port.ScanServerVariable
+	scanImageVar        = port.ScanImageVariable
+	scanPolicyConfigMap = port.ScanPolicyConfigMapName
+)
+
+// StageOptions 는 선택적 단계의 on/off 다.
+//
+// 파이프라인 단위 선택이라 템플릿이 아니라 파이프라인이 들고 있어야 한다.
+// #64(SAST) · #79(SCA) · #80(Secret Detection) 도 여기에 자리를 더한다.
+type StageOptions struct {
+	ImageScan bool
+	// SAST 는 스택 SonarQube 로 소스를 분석하는 단계다(#64).
+	SAST bool
 }
 
 // Render 는 앱 프로젝트에 커밋할 파일들을 만든다.
 //
 // 같은 입력이면 같은 결과다 — 재스캐폴딩이 의미 없는 diff 를 만들지 않도록
 // 파일 경로를 정렬해 돌려준다.
+// IsPipelineDefinitionPath 는 그 파일이 CI 파이프라인 정의인지 본다 — .gitlab-ci.yml ·
+// GitHub 워크플로 · Jenkinsfile. 기존 파이프라인의 정의 갱신은 이것만 다시 쓴다. 앱 코드·
+// Dockerfile·배포 매니페스트는 사용자 것이고, CI 가 갱신한 이미지 태그가 거기 있다.
+func IsPipelineDefinitionPath(path string) bool {
+	switch path {
+	case GitLabPipelinePath, GitHubWorkflowPath, JenkinsfilePath:
+		return true
+	}
+	return false
+}
+
+// githubImageExpression 은 리포 Actions 변수를 먼저 보고 없으면 기본값을 쓰는 컨테이너 이미지
+// 표현식이다. jobs.<id>.container.image 는 vars 컨텍스트를 받는다.
+func githubImageExpression(variable, fallback string) string {
+	return fmt.Sprintf("${{ vars.%s || '%s' }}", variable, fallback)
+}
+
 func Render(in Input) ([]port.CommitFile, error) {
 	app := strings.TrimSpace(in.AppName)
 	if app == "" {
@@ -115,7 +170,7 @@ func Render(in Input) ([]port.CommitFile, error) {
 		replicas = defaultReplicas
 	}
 
-	pipelinePath, pipelineContent := renderPipelineFor(in.Platform, in.CIPlatform, app, in.ImageTarget)
+	pipelinePath, pipelineContent := renderPipelineFor(in)
 
 	files := []port.CommitFile{
 		{Path: pipelinePath, Content: pipelineContent},
@@ -146,23 +201,40 @@ func Render(in Input) ([]port.CommitFile, error) {
 // 분기 기준은 SCM 이 아니라 CI 다. GitLab·GitHub 은 SCM 이 CI 를 겸해 둘이
 // 같아 보이지만, Gitea 는 소스만 담당하고 빌드는 Jenkins 가 한다 — SCM 으로
 // 분기하면 Gitea 스택에 .gitlab-ci.yml 이 깔리고 Jenkins 는 읽을 파일이 없다.
-func renderPipelineFor(
-	platform port.SCMPlatform,
-	ci port.CIPlatform,
-	app string,
-	target *port.ImageTarget,
-) (path, content string) {
+func renderPipelineFor(in Input) (path, content string) {
+	ci := in.CIPlatform
 	if strings.TrimSpace(string(ci)) == "" {
-		ci = port.DefaultCIPlatformFor(platform)
+		ci = port.DefaultCIPlatformFor(in.Platform)
 	}
 	switch ci {
 	case port.CIPlatformJenkins:
-		return JenkinsfilePath, renderJenkinsfile(app, target)
+		return JenkinsfilePath, renderJenkinsfile(in)
 	case port.CIPlatformGitHubActions:
-		return GitHubWorkflowPath, renderGitHubWorkflow(app, target)
+		return GitHubWorkflowPath, renderGitHubWorkflow(in)
 	default:
-		return GitLabPipelinePath, renderPipeline(app, target)
+		return GitLabPipelinePath, renderPipeline(in)
 	}
+}
+
+// stageOptionsFor 는 이 입력이 실제로 만들 선택 단계를 정한다.
+func stageOptionsFor(in Input) StageOptions {
+	return StageOptions{
+		ImageScan: strings.TrimSpace(in.ImageScannerEndpoint) != "",
+		SAST:      strings.TrimSpace(in.SASTServerEndpoint) != "",
+	}
+}
+
+// deployNeeds 는 deploy 잡이 기다릴 잡이다. 게이트 단계를 건너뛰고 배포되지 않도록
+// 켜진 게이트에 모두 매단다 — 이미지 스캔은 빌드를 기다리므로 빌드는 그쪽으로 따라온다.
+func deployNeeds(opts StageOptions) []string {
+	needs := []string{"build"}
+	if opts.ImageScan {
+		needs = []string{imageScanStageID}
+	}
+	if opts.SAST {
+		needs = append(needs, sastStageID)
+	}
+	return needs
 }
 
 // renderGitHubWorkflow 는 build → deploy 2단계 GitHub Actions 워크플로를 만든다.
@@ -176,7 +248,9 @@ func renderPipelineFor(
 //
 // 셋, [skip ci] 가 필요 없다. GITHUB_TOKEN 으로 만든 push 는 워크플로를 다시
 // 트리거하지 않는다 — GitHub 이 무한 루프를 막기 위해 그렇게 정의했다.
-func renderGitHubWorkflow(app string, target *port.ImageTarget) string {
+func renderGitHubWorkflow(in Input) string {
+	app, target := in.AppName, in.ImageTarget
+	opts := stageOptionsFor(in)
 	var b strings.Builder
 
 	b.WriteString("# Nullus 가 생성한 파이프라인입니다.\n")
@@ -185,7 +259,9 @@ func renderGitHubWorkflow(app string, target *port.ImageTarget) string {
 
 	fmt.Fprintf(&b, "name: nullus-ci-%s\n\n", app)
 
-	b.WriteString("on:\n  push:\n    branches:\n      - main\n      - master\n\n")
+	// workflow_dispatch 는 화면의 "실행" 이 커밋 없이 워크플로를 시작시키는 길이다.
+	// 없으면 GitHub 이 dispatch 를 422 로 거절해 실행이 push 로만 돈다.
+	b.WriteString("on:\n  push:\n    branches:\n      - main\n      - master\n  workflow_dispatch:\n\n")
 
 	// 최소 권한만 준다. contents 는 매니페스트 되쓰기, packages 는 GHCR push 용이다.
 	b.WriteString("permissions:\n  contents: write\n  packages: write\n\n")
@@ -218,8 +294,87 @@ func renderGitHubWorkflow(app string, target *port.ImageTarget) string {
 	b.WriteString("          docker build -t \"$IMAGE_REPOSITORY:$IMAGE_TAG\" .\n")
 	b.WriteString("          docker push \"$IMAGE_REPOSITORY:$IMAGE_TAG\"\n\n")
 
+	if opts.SAST {
+		fmt.Fprintf(&b, "  %s:\n", sastStageID)
+		b.WriteString("    runs-on: ubuntu-latest\n")
+		b.WriteString("    env:\n")
+		fmt.Fprintf(&b, "      %s: %q\n", port.SASTServerVariable, in.SASTServerEndpoint)
+		// 토큰은 플랫폼이 리포 시크릿으로 등록한다. 정책은 리포 Actions 변수다 — env 에
+		// 값을 박으면 푸시한 변수보다 앞선다.
+		fmt.Fprintf(&b, "      %s: ${{ secrets.%s }}\n", port.SASTTokenVariable, port.SASTTokenVariable)
+		for _, v := range sastPolicyVariableNames {
+			fmt.Fprintf(&b, "      %s: ${{ vars.%s }}\n", v, v)
+		}
+		b.WriteString("    container:\n")
+		// 이미지는 플랫폼이 리포 변수로 미는 값을 먼저 본다(정책과 함께 밀린다). 리터럴로 박으면
+		// 플랫폼이 이미지를 올려도(멀티아치 스캐너) 정의를 다시 쓰기 전까지 옛 이미지를 쓴다.
+		// 변수가 없으면(한 번도 밀리지 않은 리포) 파일의 기본값이다.
+		fmt.Fprintf(&b, "      image: %s\n", githubImageExpression(port.SASTImageVariable, defaultSASTScannerImage))
+		// 스캐너 이미지는 비루트로 돈다. 그대로면 actions/checkout 이 러너 소유의 작업
+		// 디렉터리에 쓰다 권한 오류로 죽고, 배포가 이 단계를 기다리므로 모든 배포가 막힌다.
+		b.WriteString("      options: --user root\n")
+		b.WriteString("    steps:\n")
+		b.WriteString("      - uses: actions/checkout@v4\n")
+		// SonarQube 는 blame 으로 새 코드를 가린다. 얕은 클론이면 그 판단이 흐려진다.
+		b.WriteString("        with:\n          fetch-depth: 0\n")
+		b.WriteString("      - name: Analyze source\n")
+		b.WriteString("        run: |\n")
+		for _, line := range sastScriptLines(in.AppName) {
+			fmt.Fprintf(&b, "          %s\n", line)
+		}
+		// 리포트는 게이트에 걸려도 남긴다 — 무엇에 걸렸는지는 실패한 실행에서 봐야 한다.
+		b.WriteString("      - name: Upload report\n")
+		b.WriteString("        if: always()\n")
+		b.WriteString("        uses: actions/upload-artifact@v4\n")
+		b.WriteString("        with:\n")
+		// 이름은 실행 기록 동기화가 리포트를 찾는 열쇠다(port.SASTReportArtifact).
+		fmt.Fprintf(&b, "          name: %s\n", port.SASTReportArtifact)
+		fmt.Fprintf(&b, "          path: %s\n", port.SASTReportFile)
+		b.WriteString("\n")
+	}
+
+	if opts.ImageScan {
+		fmt.Fprintf(&b, "  %s:\n", imageScanStageID)
+		b.WriteString("    needs: build\n")
+		b.WriteString("    runs-on: ubuntu-latest\n")
+		b.WriteString("    env:\n")
+		fmt.Fprintf(&b, "      %s: %q\n", scanServerVar, in.ImageScannerEndpoint)
+		// 정책은 플랫폼이 리포 Actions 변수로 푸시한다. 없으면 빈 값이고 스크립트가
+		// 기본값을 쓴다. env 에 값을 박으면 푸시한 변수보다 앞선다.
+		for _, v := range scanPolicyVariableNames {
+			fmt.Fprintf(&b, "      %s: ${{ vars.%s }}\n", v, v)
+		}
+		// 스캐너는 빌드가 올린 이미지를 레지스트리에서 다시 받는다 — 빌드와 같은
+		// 자격증명이다. 빌드가 insecure 로 push 하지 않으므로 인증서는 검증한다.
+		fmt.Fprintf(&b, "      TRIVY_USERNAME: %s\n", githubExpressionFor(target.UsernameVar))
+		fmt.Fprintf(&b, "      TRIVY_PASSWORD: %s\n", githubExpressionFor(target.PasswordVar))
+		b.WriteString("    container:\n")
+		fmt.Fprintf(&b, "      image: %s\n", githubImageExpression(scanImageVar, defaultScannerImage))
+		b.WriteString("    steps:\n")
+		b.WriteString("      - name: Scan image\n")
+		b.WriteString("        run: |\n")
+		for _, line := range scanScriptLines() {
+			fmt.Fprintf(&b, "          %s\n", line)
+		}
+		// 리포트는 실패해도 남긴다. 차단당한 사람이 무엇에 걸렸는지 보려면
+		// 실패한 실행의 산출물이 필요하다.
+		b.WriteString("      - name: Upload report\n")
+		b.WriteString("        if: always()\n")
+		b.WriteString("        uses: actions/upload-artifact@v4\n")
+		b.WriteString("        with:\n")
+		// 이름은 실행 기록 동기화가 리포트를 찾는 열쇠다(port.ImageScanReportArtifact).
+		fmt.Fprintf(&b, "          name: %s\n", port.ImageScanReportArtifact)
+		fmt.Fprintf(&b, "          path: %s\n", scanReportFile)
+		b.WriteString("\n")
+	}
+
 	b.WriteString("  deploy:\n")
-	b.WriteString("    needs: build\n")
+	// 게이트를 건너뛰고 배포되지 않도록 게이트 잡에 매단다. 하나면 예전 모양 그대로 둔다.
+	if needs := deployNeeds(opts); len(needs) == 1 {
+		fmt.Fprintf(&b, "    needs: %s\n", needs[0])
+	} else {
+		fmt.Fprintf(&b, "    needs: [%s]\n", strings.Join(needs, ", "))
+	}
 	b.WriteString("    runs-on: ubuntu-latest\n")
 	b.WriteString("    steps:\n")
 	b.WriteString("      - uses: actions/checkout@v4\n")
@@ -257,14 +412,23 @@ func githubExpressionFor(varName string) string {
 //
 // deploy 단계는 배포하지 않는다. 매니페스트의 이미지 태그만 갱신해 커밋하고,
 // 실제 배포는 Argo CD 가 그 커밋을 보고 수행한다(GitOps).
-func renderPipeline(app string, target *port.ImageTarget) string {
+func renderPipeline(in Input) string {
+	target := in.ImageTarget
+	opts := stageOptionsFor(in)
 	var b strings.Builder
 
 	b.WriteString("# Nullus 가 생성한 파이프라인입니다.\n")
 	b.WriteString("# build: 이미지를 만들어 레지스트리에 올립니다.\n")
 	b.WriteString("# deploy: deploy/ 의 이미지 태그를 갱신해 커밋합니다. 배포는 Argo CD 가 합니다.\n\n")
 
-	b.WriteString("stages:\n  - build\n  - deploy\n\n")
+	b.WriteString("stages:\n  - build\n")
+	if opts.SAST {
+		fmt.Fprintf(&b, "  - %s\n", sastStageID)
+	}
+	if opts.ImageScan {
+		fmt.Fprintf(&b, "  - %s\n", imageScanStageID)
+	}
+	b.WriteString("  - deploy\n\n")
 
 	b.WriteString("variables:\n")
 	fmt.Fprintf(&b, "  IMAGE_REPOSITORY: %q\n", target.Repository)
@@ -274,15 +438,27 @@ func renderPipeline(app string, target *port.ImageTarget) string {
 	// Kubernetes executor 는 서비스와 네트워크를 공유하므로 dind 를 TCP 로 가리킨다.
 	// DOCKER_TLS_CERTDIR 를 비우지 않으면 dind 가 TLS(2376)로만 열려 2375 연결이 거부된다.
 	b.WriteString("  DOCKER_HOST: tcp://docker:2375\n")
-	b.WriteString("  DOCKER_TLS_CERTDIR: \"\"\n\n")
+	b.WriteString("  DOCKER_TLS_CERTDIR: \"\"\n")
+	if opts.ImageScan {
+		// 주소는 스택이 정한 값이라 렌더 시점에 박는다. 차단 기준은 적지 않는다 —
+		// 플랫폼이 프로젝트 CI/CD 변수로 푸시하고, 없으면 스크립트가 기본값을 쓴다.
+		fmt.Fprintf(&b, "  %s: %q\n", scanServerVar, in.ImageScannerEndpoint)
+		fmt.Fprintf(&b, "  %s: %q\n", scanImageVar, defaultScannerImage)
+	}
+	if opts.SAST {
+		// 주소는 스택이 정한 값이다. 토큰과 정책은 플랫폼이 프로젝트 CI/CD 변수로 싣는다.
+		fmt.Fprintf(&b, "  %s: %q\n", port.SASTServerVariable, in.SASTServerEndpoint)
+		fmt.Fprintf(&b, "  %s: %q\n", port.SASTImageVariable, defaultSASTScannerImage)
+	}
+	b.WriteString("\n")
 
 	b.WriteString("build:\n")
 	b.WriteString("  stage: build\n")
-	b.WriteString("  image: docker:27\n")
+	fmt.Fprintf(&b, "  image: %s\n", shareddomain.GitLabCIBuildImage)
 	// 클러스터 내부 레지스트리는 보통 HTTP 로 노출된다. docker 는 기본적으로
 	// HTTPS 를 요구하므로 대상 호스트를 명시하지 않으면 push 가 TLS 오류로 죽는다.
 	b.WriteString("  services:\n")
-	b.WriteString("    - name: docker:27-dind\n")
+	fmt.Fprintf(&b, "    - name: %s\n", shareddomain.DindImage)
 	fmt.Fprintf(&b, "      command: [\"--insecure-registry=%s\"]\n", target.Host)
 	b.WriteString("  script:\n")
 	writeScriptLines(&b, []string{
@@ -297,10 +473,68 @@ func renderPipeline(app string, target *port.ImageTarget) string {
 	})
 	b.WriteString("\n")
 
+	if opts.SAST {
+		fmt.Fprintf(&b, "%s:\n", sastStageID)
+		fmt.Fprintf(&b, "  stage: %s\n", sastStageID)
+		// 스캐너 이미지의 entrypoint 가 잡 스크립트를 가로채지 않게 비운다(SonarQube 의
+		// GitLab 예시와 같다). Kubernetes executor 는 기본으로 무시하지만 다른 executor 는
+		// 그대로 따른다.
+		b.WriteString("  image:\n")
+		fmt.Fprintf(&b, "    name: $%s\n", port.SASTImageVariable)
+		b.WriteString("    entrypoint: [\"\"]\n")
+		// 소스만 본다. 빌드를 기다리지 않고 바로 돈다.
+		b.WriteString("  needs: []\n")
+		b.WriteString("  variables:\n")
+		// SonarQube 는 blame 으로 새 코드를 가린다. 얕은 클론이면 그 판단이 흐려진다.
+		b.WriteString("    GIT_DEPTH: \"0\"\n")
+		b.WriteString("  script:\n")
+		writeScriptLines(&b, sastScriptLines(in.AppName))
+		// 리포트는 게이트에 걸려도 남긴다 — 무엇에 걸렸는지는 실패한 실행에서 봐야 한다.
+		b.WriteString("  artifacts:\n")
+		b.WriteString("    when: always\n")
+		fmt.Fprintf(&b, "    paths:\n      - %s\n", port.SASTReportFile)
+		// Community Edition 은 브랜치 분석이 없다. 기능 브랜치를 분석하면 결과가 같은 프로젝트에
+		// 덮여 기본 브랜치의 판정과 새 코드 기준이 흐트러진다 — 배포와 같은 브랜치에서만 돈다.
+		b.WriteString("  rules:\n")
+		b.WriteString("    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n")
+		b.WriteString("\n")
+	}
+
+	if opts.ImageScan {
+		fmt.Fprintf(&b, "%s:\n", imageScanStageID)
+		fmt.Fprintf(&b, "  stage: %s\n", imageScanStageID)
+		fmt.Fprintf(&b, "  image: $%s\n", scanImageVar)
+		b.WriteString("  needs:\n    - build\n")
+		// 스캐너는 빌드가 올린 이미지를 레지스트리에서 다시 받는다. 빌드와 같은
+		// 자격증명을 쓰고, 빌드가 --insecure-registry 로 push 한 레지스트리이므로
+		// 인증서 검증도 같은 수준으로 맞춘다. 둘 중 하나라도 빠지면 스캔이
+		// "이미지를 찾을 수 없음" 으로 끝나 모든 배포가 막힌다(kind 스택에서 실측).
+		b.WriteString("  variables:\n")
+		fmt.Fprintf(&b, "    TRIVY_USERNAME: $%s\n", target.UsernameVar)
+		fmt.Fprintf(&b, "    TRIVY_PASSWORD: $%s\n", target.PasswordVar)
+		b.WriteString("    TRIVY_INSECURE: \"true\"\n")
+		if repo := strings.TrimSpace(in.ImageScannerJavaDBRepository); repo != "" {
+			// 내부 레지스트리는 plain HTTP 다 — 위의 TRIVY_INSECURE 가 Java DB 수신에도 쓰인다.
+			fmt.Fprintf(&b, "    TRIVY_JAVA_DB_REPOSITORY: %q\n", repo)
+		}
+		b.WriteString("  script:\n")
+		writeScriptLines(&b, scanScriptLines())
+		// 리포트는 실패해도 남긴다. 차단당한 사람이 무엇에 걸렸는지 보려면
+		// 실패한 실행의 산출물이 필요하다.
+		b.WriteString("  artifacts:\n")
+		b.WriteString("    when: always\n")
+		fmt.Fprintf(&b, "    paths:\n      - %s\n", scanReportFile)
+		b.WriteString("\n")
+	}
+
 	b.WriteString("deploy:\n")
 	b.WriteString("  stage: deploy\n")
-	b.WriteString("  image: alpine:3.20\n")
-	b.WriteString("  needs:\n    - build\n")
+	fmt.Fprintf(&b, "  image: %s\n", shareddomain.GitLabCIDeployImage)
+	// 게이트를 건너뛰고 배포되지 않도록 게이트 잡에 매단다.
+	b.WriteString("  needs:\n")
+	for _, need := range deployNeeds(opts) {
+		fmt.Fprintf(&b, "    - %s\n", need)
+	}
 	b.WriteString("  script:\n")
 	writeScriptLines(&b, []string{
 		`apk add --no-cache git`,
@@ -553,6 +787,21 @@ spec:
 //
 // GitLab 판과 Jenkins 판이 같은 단계를 만든다. 이름 표기만 다르므로(소문자 대
 // 대문자) 여기서는 표시용 표기를 쓴다.
-func PipelineStageNames() []string {
-	return []string{"Build", "Deploy"}
+func PipelineStageNames(opts StageOptions) []string {
+	names := []string{"Build"}
+	if opts.SAST {
+		names = append(names, sastStageName)
+	}
+	if opts.ImageScan {
+		names = append(names, imageScanStageName)
+	}
+	return append(names, "Deploy")
+}
+
+// PipelineStageNamesFor 는 렌더 입력이 실제로 만들 단계 이름이다.
+//
+// 렌더러와 같은 판단(stageOptionsFor)을 쓴다 — 두 곳이 각자 판단하면
+// 선언과 실제가 어긋나고, 어긋나면 화면이 돌지도 않은 단계를 보여준다.
+func PipelineStageNamesFor(in Input) []string {
+	return PipelineStageNames(stageOptionsFor(in))
 }

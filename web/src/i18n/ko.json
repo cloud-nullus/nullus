@@ -23,7 +23,8 @@
     "knownIssues": "알려진 이슈",
     "logout": "로그아웃",
     "cicdGoldenPath": "골든패스",
-    "tokenManagement": "토큰 관리"
+    "tokenManagement": "토큰 관리",
+    "backup": "백업"
   },
   "common": {
     "save": "저장",
@@ -36,7 +37,58 @@
     "notFound": "페이지를 찾을 수 없습니다",
     "notFoundDesc": "요청하신 페이지가 존재하지 않거나 이동되었습니다.",
     "close": "닫기",
-    "dismiss": "닫기"
+    "dismiss": "닫기",
+    "vulnerability": {
+      "critical": "치명",
+      "high": "높음",
+      "medium": "중간",
+      "low": "낮음",
+      "unknown": "심각도 미상",
+      "countsUnknown": "건수 모름"
+    },
+    "vulnerabilityList": {
+      "show": "취약점 목록 보기",
+      "hide": "취약점 목록 접기",
+      "loading": "취약점 목록을 불러오는 중...",
+      "error": "취약점 목록을 불러오지 못했습니다.",
+      "empty": "이 이미지에서 발견된 취약점이 없습니다.",
+      "emptyFiltered": "현재 필터에 맞는 취약점이 없습니다.",
+      "resetFilters": "필터 해제",
+      "classFilterLabel": "패키지 분류",
+      "severityFilterLabel": "심각도",
+      "allClasses": "전체",
+      "fixableOnly": "수정 가능한 것만",
+      "searchLabel": "취약점 검색",
+      "searchPlaceholder": "CVE 또는 패키지 검색",
+      "targetsLabel": "스캔 대상",
+      "targetTotal": "{{count}}건",
+      "class": {
+        "os": "베이스 이미지 OS 패키지",
+        "library": "앱 의존성",
+        "other": "기타"
+      },
+      "columns": {
+        "severity": "심각도",
+        "id": "취약점",
+        "package": "패키지",
+        "installed": "설치 버전",
+        "fixed": "수정 버전",
+        "target": "대상"
+      },
+      "noFix": "수정 버전 없음",
+      "range": "{{from}}–{{to}} / {{total}}",
+      "rangeUnknownTotal": "{{from}}–{{to}}",
+      "pagination": "취약점 목록 페이지",
+      "previous": "이전",
+      "next": "다음",
+      "unavailable": {
+        "reportExpired": "CI 리포트 보관 기간이 지나 목록을 보여줄 수 없습니다. 심각도별 건수는 기록되어 있습니다.",
+        "reportMissing": "이 스캔에는 CI 리포트가 기록되지 않았습니다. 리포트를 쓰기 전에 스캔이 실패했을 수 있습니다.",
+        "ciUnreachable": "CI 서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.",
+        "notRecorded": "목록 기능이 생기기 전에 스캔한 이미지입니다. 다음 스캔 후에 목록이 보입니다.",
+        "unknown": "취약점 목록을 볼 수 없습니다."
+      }
+    }
   },
   "header": {
     "roles": {
@@ -126,7 +178,11 @@
       "metrics": "메트릭",
       "logs": "로그",
       "traces": "트레이스",
-      "traceExporter": "Exporter / Agent"
+      "traceExporter": "Exporter / Agent",
+      "imageScanner": "이미지 스캐너",
+      "imageScannerHint": "고르지 않으면 설치되지 않습니다. 컨테이너 레지스트리가 Harbor 면 내장 스캐너로 대신할 수 있습니다.",
+      "sast": "정적 분석 (SAST)",
+      "sastHint": "고르지 않으면 설치되지 않습니다. 스택의 PostgreSQL 을 함께 쓰고, SSO 를 켜면 Keycloak 으로 로그인합니다."
     },
     "resourceTotal": {
       "description": "선택한 OSS {{count}}개의 적용값(request/limit) 총합"
@@ -306,6 +362,12 @@
       "name": "이름",
       "namePlaceholder": "예: Standard Web Backend",
       "description": "설명",
+      "appType": "애플리케이션 유형",
+      "appTypeOptions": {
+        "web": "웹",
+        "backend": "백엔드",
+        "batch": "배치"
+      },
       "stages": "기능"
     },
     "errors": {
@@ -547,6 +609,14 @@
         "label": "VictoriaMetrics",
         "description": "고성능 시계열 데이터베이스"
       },
+      "trivy": {
+        "label": "Trivy",
+        "description": "컨테이너 이미지 취약점 스캔 (server 모드)"
+      },
+      "sonarqube": {
+        "label": "SonarQube",
+        "description": "소스 코드 정적 분석 (Community)"
+      },
       "grafana": {
         "label": "Grafana",
         "description": "오픈소스 메트릭 시각화"
@@ -766,6 +836,14 @@
       "irreversible": "되돌릴 수 없습니다",
       "typeToConfirm": "확인을 위해 저장소 이름을 입력하세요: {{path}}",
       "typeToConfirmLabel": "저장소 이름 확인"
+    },
+    "refreshDefinitionDialog": {
+      "title": "CI 정의 갱신",
+      "intro": "파이프라인 \"{{name}}\" 의 CI 정의 파일을 플랫폼 기본으로 다시 씁니다.",
+      "overwrites": "덮어쓰는 것: 이 스택의 파이프라인 정의 파일(.gitlab-ci.yml · .github/workflows/nullus-ci.yml · Jenkinsfile 중 하나)과 SONAR_TOKEN 같은 CI 변수. 직접 고친 내용은 사라집니다.",
+      "keeps": "건드리지 않는 것: 앱 코드 · Dockerfile · deploy/ 매니페스트 · Argo CD Application.",
+      "why": "SAST 리포트처럼 단계가 생기기 전에 만든 파이프라인은 이렇게 해야 실행 기록에 결과가 붙습니다.",
+      "confirm": "정의 갱신"
     }
   },
   "cicdListPage": {
@@ -797,7 +875,71 @@
     "deleteWarnings": {
       "title": "삭제했지만 남은 자원이 있습니다"
     },
-    "accessUrl": "접속 주소"
+    "accessUrl": "접속 주소",
+    "imageScan": {
+      "title": "이미지 스캔",
+      "gate": {
+        "pass": "통과",
+        "warn": "경고와 함께 통과",
+        "block": "정책 차단",
+        "error": "스캔 오류"
+      },
+      "dbStale": "DB 오래됨",
+      "dbStaleHint": "취약점 DB 가 30일보다 오래됐거나 날짜를 알 수 없습니다. 최근 취약점이 이 결과에서 빠졌을 수 있습니다.",
+      "errorHint": "스캔을 수행하거나 평가하지 못했습니다. 취약점이 발견됐다는 뜻이 아닙니다.",
+      "viewReport": "리포트 보기",
+      "image": "이미지",
+      "digest": "다이제스트",
+      "scanner": "스캐너",
+      "dbUpdatedAt": "취약점 DB",
+      "scannedAt": "스캔 시각",
+      "unknown": "알 수 없음"
+    },
+    "sast": {
+      "label": "SAST",
+      "title": "정적 분석 (SonarQube)",
+      "gate": {
+        "pass": "Quality Gate 통과",
+        "warn": "Quality Gate 실패 (경고)",
+        "block": "Quality Gate 차단",
+        "error": "분석 실패"
+      },
+      "warnHint": "Quality Gate 를 통과하지 못했지만 스택 정책이 경고라 배포가 진행됐습니다.",
+      "errorHint": "분석을 수행하지 못했습니다(SonarQube 연결 실패 또는 인증 실패). 코드 판정이 아닙니다.",
+      "failedConditions": "통과하지 못한 조건",
+      "failsWhen": "실패 기준",
+      "metrics": {
+        "vulnerabilities": "취약점",
+        "bugs": "버그",
+        "securityHotspots": "보안 핫스팟",
+        "codeSmells": "코드 스멜",
+        "coverage": "커버리지",
+        "duplications": "중복",
+        "ncloc": "코드 줄 수"
+      },
+      "metricNames": {
+        "new_violations": "새 이슈",
+        "new_coverage": "새 코드 커버리지",
+        "new_duplicated_lines_density": "새 코드 중복",
+        "new_security_hotspots_reviewed": "보안 핫스팟 검토율",
+        "new_reliability_rating": "새 코드 신뢰성 등급",
+        "new_security_rating": "새 코드 보안 등급",
+        "new_maintainability_rating": "새 코드 유지보수성 등급"
+      },
+      "metricsUnknown": "지표 없음",
+      "openInSonarQube": "SonarQube 에서 보기",
+      "analyzedAt": "분석 시각"
+    },
+    "refreshDefinition": {
+      "button": "CI 정의 갱신",
+      "busy": "갱신 중…",
+      "doneTitle": "CI 정의를 다시 썼습니다",
+      "done": "단계: {{stages}}. 다음 실행부터 새 정의로 돕니다.",
+      "repositoryRecreated": "저장소가 없어 다시 만들고 전체 스캐폴딩을 썼습니다 — 앱 코드를 다시 밀어야 합니다.",
+      "missingVariables": "사람이 채워야 할 변수: {{variables}}",
+      "failedTitle": "CI 정의를 다시 쓰지 못했습니다",
+      "failed": "CI 정의를 다시 쓰지 못했습니다"
+    }
   },
   "cicdHistoryPage": {
     "title": "CI/CD 이력",
@@ -922,7 +1064,8 @@
       "history": "이력",
       "version-upgrade": "버전 업그레이드",
       "workloads": "워크로드",
-      "config": "설정"
+      "config": "설정",
+      "image-scans": "이미지 취약점"
     },
     "status": {
       "pending": "대기 중",
@@ -992,6 +1135,39 @@
       "summary": "{{total}}개 중 {{ready}}개 준비됨",
       "loading": "클러스터에서 파드를 읽는 중...",
       "empty": "이 스택의 파드를 클러스터에서 찾지 못했습니다."
+    },
+    "imageScans": {
+      "title": "설치 이미지 취약점",
+      "reportOnly": "설치를 막지 않는 보고용 결과입니다.",
+      "loading": "이미지 스캔 결과를 불러오는 중...",
+      "noData": "이 스택의 이미지 스캔 데이터가 없습니다.",
+      "pending": "첫 스캔을 기다리는 중입니다. 설치 이미지는 설치 직후와 이후 주기적으로 스캔합니다.",
+      "notScanned": {
+        "scannerNotInstalled": "이 스택에는 Trivy 가 선택되지 않아 설치 이미지를 스캔하지 않습니다. 취약점이 없다는 뜻이 아닙니다.",
+        "airgap": "폐쇄망(에어갭) 설치는 설치 이미지를 스캔하지 않습니다. 취약점이 없다는 뜻이 아닙니다.",
+        "unknown": "설치 이미지를 스캔하지 않았습니다."
+      },
+      "lastScannedAt": "마지막 스캔 {{time}}",
+      "summaryHint": "합계에는 아직 수정 버전이 없는 취약점도 포함됩니다.",
+      "empty": "이 스택에서 보고된 설치 이미지가 없습니다.",
+      "dbStale": "DB 오래됨",
+      "dbStaleHint": "30일 초과 또는 날짜 모름",
+      "item": {
+        "failed": "스캔 실패",
+        "failedNoReason": "스캐너가 실패 이유를 알려 주지 않았습니다.",
+        "fixable": "수정 가능: 치명 {{critical}} · 높음 {{high}} · 중간 {{medium}} · 낮음 {{low}}",
+        "unknown": "알 수 없음",
+        "scanned": "스캔됨",
+        "vulnerabilityList": "취약점 목록",
+        "vulnerabilityListFor": "취약점 목록 — {{image}}"
+      },
+      "columns": {
+        "image": "이미지",
+        "release": "릴리스",
+        "fixable": "수정 가능",
+        "status": "상태"
+      },
+      "summaryScanner": "스캐너 {{scanner}} · 취약점 DB {{db}}"
     }
   },
   "deploy": {
@@ -1369,6 +1545,7 @@
     "form": {
       "stackOptional": "스택",
       "stackRequired": "Stack 선택",
+      "clusterLockedToStack": "스택이 설치된 클러스터로 고정됩니다. 앱은 스택의 Argo CD 가 그 클러스터에 배포합니다.",
       "manualInput": "직접 입력",
       "appName": "앱 이름",
       "imageRegistry": "Image Registry",
@@ -1851,6 +2028,87 @@
         "title": "축하합니다! 이제 직접 해보세요",
         "body": "여기까지가 전체 흐름입니다. 바로 시작 버튼으로 첫 스택을 올려 보세요 — 8Gi 노드 하나에 들어가는 경량 구성으로 설치됩니다. 하다가 막히면 헤더의 튜토리얼 버튼으로 어디서든 이 투어를 다시 열 수 있습니다."
       }
+    }
+  },
+  "backupPage": {
+    "breadcrumb": {
+      "current": "백업"
+    },
+    "title": "백업",
+    "description": "백업을 실행하고 지난 실행을 확인합니다.",
+    "run": "백업 실행",
+    "empty": "아직 백업이 없습니다.",
+    "table": {
+      "startedAt": "시작",
+      "mode": "모드",
+      "size": "크기",
+      "quiesce": "정지 시간",
+      "status": "상태",
+      "target": "대상",
+      "platform": "플랫폼",
+      "set": "세트"
+    },
+    "dialog": {
+      "title": "백업 대상 선택",
+      "description": "이번 백업에 무엇을 담을지 고르세요.",
+      "start": "백업 시작",
+      "nothingSelected": "적어도 하나는 골라야 합니다.",
+      "quiesceWarning": "볼륨을 포함하면 백업이 도는 동안 워크로드가 멈춥니다.",
+      "confirmLabel": "확인을 위해 네임스페이스를 입력하세요",
+      "stackLabel": "백업 대상",
+      "platformOnly": "플랫폼만 (스택 없음)",
+      "platformOnlyHint": "금고·Kubernetes 리소스·볼륨은 스택에 속합니다. 담으려면 스택을 고르세요.",
+      "allStacks": "전체 — 플랫폼 + 모든 스택",
+      "allStacksCount": "스택 {{count}}개",
+      "allStacksHint": "플랫폼 하나, 스택마다 하나의 실행을 한 세트로 묶어 뜹니다 — 대상은 언제나 전부입니다. 세트 복구는 API 에서 세트 ID 로 합니다.",
+      "allStacksWarning": "스택마다 볼륨을 뜨는 동안 그 스택의 워크로드가 차례로 멈춥니다.",
+      "allConfirmLabel": "확인을 위해 아래 단어를 입력하세요"
+    },
+    "target": {
+      "platformDb": "플랫폼 DB",
+      "platformDbDesc": "Nullus 메타데이터 — 스택·파이프라인·클러스터 기록",
+      "keycloakDb": "Keycloak DB",
+      "keycloakDbDesc": "계정과 권한. 빠지면 복구 후 로그인할 수 없습니다",
+      "openbaoKv": "금고 (OpenBao)",
+      "openbaoKvDesc": "토큰과 자격증명. 빠지면 복구 후 도구들이 서로 인증하지 못합니다",
+      "nsResources": "K8s 리소스",
+      "nsResourcesDesc": "배선과 설정 — Deployment·Secret·CRD·Argo CD Application",
+      "sharedResources": "클러스터 공용 자원",
+      "sharedResourcesDesc": "마지막 스택을 지우면 회수되는 것 — Gateway CRD·GatewayClass·내부 CA. 복구 때 가장 먼저, 없을 때만 되살립니다",
+      "volume": "볼륨",
+      "volumeDesc": "OSS 내부 데이터 — Git 저장소·빌드 이력·컨테이너 이미지. 가장 크고, 이것만 서비스를 멈춥니다"
+    }
+  },
+  "jobNotifications": {
+    "trigger": "진행 중 작업",
+    "triggerBusy": "진행 중 작업 — {{running}}건 진행 중",
+    "title": "진행 중 작업",
+    "empty": "지금 도는 작업이 없습니다.",
+    "summaryRunning": "{{running}}건 진행 중",
+    "summaryIdle": "모두 끝났습니다",
+    "kind": {
+      "stack": "스택 설치",
+      "deployment": "파이프라인 배포"
+    },
+    "phase": {
+      "running": "진행 중",
+      "succeeded": "완료",
+      "failed": "실패"
+    },
+    "stage": {
+      "pending": "대기 중",
+      "validating": "검증 중",
+      "installing": "설치 중",
+      "configuring": "설정 중",
+      "health_check": "상태 확인 중",
+      "rolling_back": "되돌리는 중",
+      "running": "실행 중",
+      "terminating": "삭제 중",
+      "completed": "완료",
+      "success": "완료",
+      "failed": "실패",
+      "cancelled": "취소됨",
+      "rolled_back": "되돌림"
     }
   }
 }

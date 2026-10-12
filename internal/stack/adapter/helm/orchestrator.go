@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	defaultSelfSignedBootstrapIssuer = "nullus-selfsigned-bootstrap"
-	defaultInternalCAIssuer          = "nullus-internal-ca-issuer"
-	defaultInternalCASecretName      = "nullus-internal-ca"
-	defaultInternalCACertName        = "nullus-internal-ca-cert"
+	// 내부 CA 이름은 스택 삭제가 회수할 때도 봐야 하므로 domain 에서 온다.
+	defaultSelfSignedBootstrapIssuer = domain.InternalCABootstrapIssuerName
+	defaultInternalCAIssuer          = domain.InternalCAIssuerName
+	defaultInternalCASecretName      = domain.InternalCASecretName
+	defaultInternalCACertName        = domain.InternalCACertName
 	defaultEnvoyDataPlaneTLSSecret   = "envoy"
 	defaultEnvoyControlPlaneSecret   = "envoy-gateway"
 	gatewayAPIStandardInstallURL     = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml"
@@ -113,6 +114,24 @@ type Orchestrator struct {
 	// CI/CD 모듈의 그룹 경로와 같아야 이미지 주소가 맞는다. 모듈 간 직접
 	// import 가 금지되므로 조립 지점에서 주입받는다.
 	imageProjectName string
+	// nodeArchs 는 대상 클러스터 노드의 아키텍처다(정렬). 공식 이미지가 그 아키텍처를
+	// 내지 않는 도구는 대체 출처의 이미지로 설치한다 — arch-images.go.
+	nodeArchs       []string
+	nodeArchsLoaded bool
+	// nodeReader 는 노드 목록(JSON)을 읽는다. nil 이면 kubectl 로 읽는다 — 테스트용 이음새.
+	nodeReader func(ctx context.Context) ([]byte, error)
+	// gatewayIP 는 스택 게이트웨이 데이터 플레인의 ClusterIP 다. CI 잡 파드가
+	// 스택 도구를 접속 도메인 이름으로 부를 수 있게 하는 데 쓴다 —
+	// gitlab-runner-host-aliases.go.
+	gatewayIP       string
+	gatewayIPLoaded bool
+	// internalCAEncoded 는 스택 내부 CA 인증서다(base64). 설치가 만든 신뢰를
+	// CI 잡과 Argo CD 에 넣는 데 쓴다 — internal-ca-trust.go.
+	internalCAEncoded string
+	internalCALoaded  bool
+	// samlSigningCert 는 Keycloak 이 SAML 응답에 서명하는 인증서다. SAML 로 로그인하는
+	// SonarQube 가 values 로 받는다 — sonarqube-sso.go.
+	samlSigningCert string
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -408,6 +427,9 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"provisioning_harbor":        "config.artifacts.container_registry",
 			"installing_nexus":           "config.artifacts.container_registry",
 			"provisioning_nexus":         "config.artifacts.container_registry",
+			"installing_trivy":           "config.security.image_scanner",
+			"installing_sonarqube":       "config.security.sast",
+			"provisioning_sonarqube":     "config.security.sast",
 			"installing_argocd":          "config.pipeline.cd_tool",
 			stepInstallingRunner:         "config.pipeline.ci_platform",
 			"installing_jenkins":         "config.pipeline.ci_platform",
@@ -471,6 +493,21 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				return isNexusSelection(cfg.Artifacts.ContainerRegistry) ||
 					isNexusSelection(cfg.Artifacts.PackageRegistry)
 			},
+			// 이미지 스캐너는 선택이다. 고르지 않은 스택에 서면 아무도 고르지
+			// 않은 워크로드가 뜬다 — 레지스트리가 Harbor 면 내장 스캐너로
+			// 대신할 수 있어 고르지 않는 편이 정상인 구성도 있다.
+			"installing_trivy": func(cfg domain.StackConfig) bool {
+				return isImageScannerSelection(cfg.Security.ImageScanner)
+			},
+			// SonarQube 도 선택이다. 무거운 도구라(JVM 셋) 고르지 않은 스택에 서면
+			// 자원만 먹는다. 외부 SonarQube 는 스택 안에 세우지 않는다.
+			"installing_sonarqube": func(cfg domain.StackConfig) bool {
+				return domain.HasSAST(cfg.Security.SAST)
+			},
+			// 설치만 한 SonarQube 의 관리자는 admin/admin 이다.
+			"provisioning_sonarqube": func(cfg domain.StackConfig) bool {
+				return domain.HasSAST(cfg.Security.SAST)
+			},
 			// 시크릿 평면(installing_openbao / installing_external_secrets /
 			// provisioning_secrets)은 stepConfigEnabled 에 넣지 않는다 — 항상 켜진다.
 			//
@@ -509,8 +546,12 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				if !cfg.Logging.Search.Enabled {
 					return false
 				}
-				search := strings.TrimSpace(cfg.Logging.Search.Name)
-				collection := strings.TrimSpace(cfg.Logging.Collection.Name)
+				// 카탈로그·템플릿은 도구 이름을 사람이 읽는 대로 준다("Loki").
+				// 표기만 다른 같은 도구를 다른 것으로 보면 두 단계가 같은 릴리스를
+				// 설치해 뒤엣것이 앞엣것을 덮는다 — 차트를 고르는 쪽과 같은
+				// 헬퍼로 맞춘다.
+				search := normalizeToolName(cfg.Logging.Search.Name)
+				collection := normalizeToolName(cfg.Logging.Collection.Name)
 				if search != "" && collection != "" && search == collection {
 					return false
 				}
@@ -586,6 +627,14 @@ func isHarborRegistrySelection(sel domain.ToolSelection) bool {
 		return false
 	}
 	return normalizeToolName(sel.Name) == "harbor"
+}
+
+// isImageScannerSelection 은 스택에 이미지 스캐너를 세울지 본다.
+//
+// 이름을 보지 않는다 — 스캐너 슬롯의 선택지는 현재 Trivy 하나뿐이고, 고른
+// 사실 자체가 곧 설치 여부다. 선택지가 늘면 여기서 갈라야 한다.
+func isImageScannerSelection(sel domain.ToolSelection) bool {
+	return domain.HasImageScanner(sel)
 }
 
 // isGitLabContainerRegistrySelection 은 GitLab 내장 레지스트리를 골랐는지 본다.
@@ -835,6 +884,18 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		return nil
 	}
 
+	if step == "provisioning_sonarqube" {
+		if !looksLikeKubeconfig(o.kubeconfig) {
+			o.markCompleted(stackID, order)
+			return nil
+		}
+		if err := o.ensureSonarQubeProvisioned(ctx, o.namespace); err != nil {
+			return fmt.Errorf("sonarqube 프로비저닝 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
 	if step == "provisioning_sso" {
 		// OIDC 클라이언트를 미리 만들어 둔다. 이를 소비하는 GitLab/Argo CD/
 		// Grafana 설치보다 앞서야 한다.
@@ -925,11 +986,40 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	}
 
 	if step == "installing_gateway" && looksLikeKubeconfig(o.kubeconfig) {
+		// 이 단계가 새로 까는 Gateway CRD 에만 설치 표시를 단다. 단계를 어떻게 끝내든 깔린 CRD 는
+		// 남으므로 실패해도 표시한다.
+		defer o.markGatewayCRDsCreatedSince(ctx, o.gatewayCRDSnapshot(ctx))
 		if err := o.ensureGatewayAPICRDs(ctx); err != nil {
 			return fmt.Errorf("ensure gateway api crds: %w", err)
 		}
 	}
 	releaseName := o.releaseNameForSpec(spec)
+	// 이미지가 노드 아키텍처에 달린 단계는 노드를 먼저 읽어 둔다. 사전검사가 읽었으면
+	// 그 값을 쓴다 — 사전검사를 거치지 않은 경로에서도 amd64 이미지가 깔리면 안 된다.
+	// 못 읽으면 설치하지 않는다. 공식 이미지로 가면 arm64 에서 파드가 뜨지 않는다.
+	if profile, ok := domain.ToolImageProfileForStep(step); ok && len(profile.Sources) > 0 && o.canReadNodes() {
+		if _, archErr := o.loadNodeArchitectures(ctx); archErr != nil {
+			return fmt.Errorf("노드 아키텍처를 읽지 못해 %s 이미지를 고를 수 없습니다: %w", step, archErr)
+		}
+	}
+	// 설치가 만든 신뢰를 설치가 필요한 곳에 넣는다. values 를 만들기 전에 읽어야
+	// 한다 — Argo CD 는 CA 를 values 로 받고, CI 잡은 스택 네임스페이스의 사본을
+	// 볼륨으로 받는다.
+	if (step == "installing_argocd" || step == stepInstallingRunner) && looksLikeKubeconfig(o.kubeconfig) {
+		o.loadInternalCACert(ctx)
+		if step == stepInstallingRunner {
+			if err := o.ensureInternalCABundleSecret(ctx, namespace); err != nil {
+				return err
+			}
+		}
+	}
+	// SAML 로 로그인하는 SonarQube 는 IdP 서명 인증서를 values 로 받는다. Argo CD 의
+	// CA 와 같은 이유로 values 를 만들기 전에 읽는다(sonarqube-sso.go).
+	if step == "installing_sonarqube" && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.loadSAMLSigningCertificate(ctx); err != nil {
+			return err
+		}
+	}
 	values := o.valuesForStep(step, spec)
 	if step == stepInstallingRunner {
 		if looksLikeKubeconfig(o.kubeconfig) {
@@ -939,9 +1029,9 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 				// 돌지 않는 스택이 성공으로 보고된다.
 				return wrapRunnerTokenDiscoveryError(tokenErr)
 			}
-			values = mergeMaps(values, map[string]any{
-				"runnerToken": runnerToken,
-			})
+			// 토큰 종류에 따라 차트에서 쓰는 자리가 다르다. 자리를 잘못
+			// 잡으면 러너가 등록 대신 검증을 시도하다 영구 실패한다.
+			values = mergeMaps(values, runnerTokenValues(runnerToken))
 		} else {
 			slog.Warn("kubeconfig unavailable; skipping gitlab runner token discovery", "namespace", namespace)
 		}
@@ -951,6 +1041,15 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	// 인수한다. 옛 네임스페이스가 주석에 박혀 있으면 Helm 이 ownership 충돌로
 	// 설치를 거부한다. 살아 있는 다른 릴리스 소유는 건드리지 않는다.
 	o.adoptClusterScopedResources(ctx, releaseName, namespace)
+	// 공용 릴리스의 설치 표시는 Nullus 가 새로 까는 릴리스에만 남긴다(install_marker.go).
+	values = o.withInstallMarkerIfOwned(ctx, releaseName, namespace, values)
+
+	// SonarQube 가 붙을 전용 DB 를 차트보다 먼저 만든다(sonarqube-provisioning.go).
+	if step == "installing_sonarqube" && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.ensureSonarQubeDatabase(ctx, namespace); err != nil {
+			return err
+		}
+	}
 
 	result, err := o.installer.Install(ctx, port.HelmInstallRequest{
 		ReleaseName: releaseName,
@@ -1009,7 +1108,7 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			if err := o.reconcileGatewayDataPlaneTLSSecret(ctx, namespace); err != nil {
 				return fmt.Errorf("reconcile gateway data-plane tls secret: %w", err)
 			}
-			if err := o.applyManifest(ctx, namespace, defaultEnvoyGatewayClassManifest()); err != nil {
+			if err := o.ensureEnvoyGatewayClass(ctx); err != nil {
 				return fmt.Errorf("apply default gatewayclass manifest: %w", err)
 			}
 		}
@@ -1054,6 +1153,14 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			if err := o.ensureGatewayBridgeIngress(ctx, manifestNamespace, accessDomain, stackLabel); err != nil {
 				slog.Warn("gateway bridge ingress not created", "namespace", manifestNamespace, "error", err)
 			}
+		}
+	}
+	// 데이터 플레인 Service 는 Gateway 를 적용해야 생긴다. 컨트롤러 차트만 깔린
+	// 시점에는 아직 없으므로, 매니페스트를 적용한 뒤에 그 주소를 읽어야 한다 —
+	// 앞에서 부르면 언제나 빈 값을 받고 CI 잡은 이름 해석 없이 남는다.
+	if step == "installing_gateway" && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.reconcileGatewayHostAliases(ctx, stackID, namespace, phase); err != nil {
+			return err
 		}
 	}
 	o.markCompleted(stackID, order)
@@ -1130,6 +1237,13 @@ func isOptInStep(step string) bool {
 	switch step {
 	case "provisioning_sso", "installing_harbor", "provisioning_harbor", "provisioning_gitea", "installing_nexus", "provisioning_nexus":
 		return true
+	// 이미지 스캐너는 선택 항목이다. 설정을 모를 때 켜 두면 아무도 고르지 않은
+	// 스캐너가 서고, 배포 검증이 없는 릴리스의 상태를 물어 실패한다.
+	case "installing_trivy":
+		return true
+	// SonarQube 도 선택 항목이다.
+	case "installing_sonarqube", "provisioning_sonarqube":
+		return true
 	// Gitea 는 명시적으로 골라야 선다. 소스 저장소 슬롯의 기본값은 GitLab 이므로
 	// (isGitLabSourceRepositorySelection 이 빈 이름에 true 를 돌려준다) 여기 없으면
 	// 설정을 모를 때 GitLab 과 Gitea 가 함께 서 버린다.
@@ -1193,4 +1307,17 @@ func (o *Orchestrator) markCompleted(stackID string, order int) {
 	o.mu.Lock()
 	o.progress[stackID] = order
 	o.mu.Unlock()
+}
+
+// reapplyStep 은 이미 지나간 단계를 순서 장부를 건드리지 않고 다시 적용한다.
+//
+// ExecuteStep 은 stackID 로 진행도를 검사한다(ensureOrder). 지나간 단계를 그
+// stackID 와 함께 다시 부르면 "out of order step" 으로 거부되고, 그 오류가 지금
+// 도는 단계를 실패로 뒤집는다 — 뒤늦게 알게 된 값을 앞 단계에 넣으려던 것이
+// 설치 전체를 멈추게 한다.
+//
+// stackID 를 비우면 ensureOrder 도 markCompleted 도 그냥 지나간다. 진행도는 지금
+// 도는 단계의 것이 그대로 남고, 헬름 설치는 upgrade --install 이라 멱등하다.
+func (o *Orchestrator) reapplyStep(ctx context.Context, step, phase string) error {
+	return o.ExecuteStep(ctx, "", step, phase)
 }

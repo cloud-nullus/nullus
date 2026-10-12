@@ -140,6 +140,7 @@ export const GATEWAY_BACKENDS: Record<string, { serviceName: string; port: numbe
   prometheus: { serviceName: 'kube-prometheus-stack-prometheus', port: 9090 },
   opensearch: { serviceName: 'opensearch-cluster-master', port: 9200 },
   openbao: { serviceName: 'openbao', port: 8200 },
+  sonarqube: { serviceName: 'sonarqube', port: 9000 },
 }
 
 export function gatewayBackendForTool(toolId: string): { serviceName: string; port: number } {
@@ -161,6 +162,8 @@ export function workloadContainerPortForTool(toolId: string): number {
       return 9090
     case 'loki':
       return 3100
+    case 'sonarqube':
+      return 9000
     default:
       return 8080
   }
@@ -477,6 +480,11 @@ export function buildHelmStepResourceOverride(toolId: string, resources: Resourc
       return { key: 'installing_cert_manager', values: { resources: k8sResources } }
     case 'minio':
       return { key: 'installing_minio', values: { resources: k8sResources } }
+    // 둘 다 파드 하나다(서버의 resource-defaults.go 와 같은 자리).
+    case 'trivy':
+      return { key: 'installing_trivy', values: { resources: k8sResources } }
+    case 'sonarqube':
+      return { key: 'installing_sonarqube', values: { resources: k8sResources } }
     case 'gitlab':
       const gitlabWebVector = scaleResourceVector(resources, 0.22)
       gitlabWebVector.cpuRequest = Math.max(gitlabWebVector.cpuRequest, 0.4)
@@ -613,6 +621,10 @@ export function buildHelmStepResourceOverride(toolId: string, resources: Resourc
 // 값이 갈라지면 짧은 쪽에서 끊기는데, 어느 쪽이 끊었는지는 로그에 드러나지 않는다.
 const GATEWAY_ROUTE_TIMEOUT_SECONDS = 600
 
+// 화면이 없는 도구는 게이트웨이로 열지 않는다. Trivy 서버는 CI 잡이 클러스터 안에서 부르고,
+// 서버의 기본 게이트웨이(manifest-builders.go)도 라우트를 만들지 않는다.
+const TOOLS_WITHOUT_GATEWAY_ROUTE = new Set(['trivy'])
+
 export function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestToolEntry[]): string {
   const namespace = draft.namespace.trim() || 'nullus'
   const stackName = draft.stackName || 'nullus-stack'
@@ -625,7 +637,7 @@ export function buildGatewayManifest(draft: StackConfigDraft, manifestTools: Man
   const requiresReferenceGrant = tlsEnabled && tlsSecretName.length > 0 && tlsSecretNamespace.length > 0 && tlsSecretNamespace !== namespace
 
   const rules = manifestTools
-    .filter((tool) => tool.toolId !== GATEWAY_MANIFEST_ID)
+    .filter((tool) => tool.toolId !== GATEWAY_MANIFEST_ID && !TOOLS_WITHOUT_GATEWAY_ROUTE.has(tool.toolId))
     .map((tool) => {
       const backend = gatewayBackendForTool(tool.toolId)
       return {

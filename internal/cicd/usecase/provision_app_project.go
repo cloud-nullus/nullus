@@ -41,6 +41,17 @@ type ProvisionAppProjectInput struct {
 	// SharedAccessToken 은 리포 범위 토큰을 발급할 수 없는 플랫폼에서
 	// Argo CD 인증에 재사용할 토큰이다 (GitHub 의 조직 PAT).
 	SharedAccessToken string
+	// ImageScannerEndpoint 는 스택 Trivy 서버 주소다. 비면 스캔 단계를
+	// 만들지 않는다 — 돌지도 않을 단계를 선언하면 화면이 그것을 성공으로
+	// 보여준다(마이그레이션 000070).
+	ImageScannerEndpoint string
+	// ImageScannerJavaDBRepository 는 에어갭 CI 잡이 Java DB 를 받을 내부 미러다. 비면 업스트림.
+	ImageScannerJavaDBRepository string
+	// SASTServerEndpoint 는 스택 SonarQube 주소다. 비면 소스 정적 분석 단계를 만들지 않는다.
+	SASTServerEndpoint string
+	// SASTToken 은 CI 가 분석에 쓸 토큰이다. 스택 설치가 발급해 OpenBao 에 둔 값이다.
+	// 비어 있으면 단계는 만들되 사람이 채울 변수로 알린다.
+	SASTToken string
 	// AppType 은 어떤 앱을 스캐폴딩할지다. web 이면 바로 도는 React 앱을 만든다.
 	AppType domain.AppType
 	// AccessDomain / GatewayName / GatewayNamespace 가 있으면
@@ -54,6 +65,11 @@ type ProvisionAppProjectInput struct {
 	// TemplateID 는 배포 매니페스트에 템플릿 라벨로 실린다.
 	// 템플릿별 자원 사용 비교나 템플릿 단위 조회에 쓴다.
 	TemplateID string
+	// RefreshDefinitionOnly 는 이미 있는 저장소에 파이프라인 정의 파일(.gitlab-ci.yml ·
+	// 워크플로 · Jenkinsfile)만 다시 쓴다. 앱 코드·Dockerfile·배포 매니페스트는 건드리지
+	// 않는다. SAST 리포트 같은 새 단계가 옛 파이프라인에 붙게 하는 길이다 — 전에는
+	// 파이프라인을 다시 만드는 것 말고 방법이 없었다.
+	RefreshDefinitionOnly bool
 }
 
 // argoReadTokenName 은 Argo CD 가 저장소를 읽을 때 쓰는 토큰 이름이다.
@@ -104,9 +120,19 @@ type ProvisionAppProjectOutput struct {
 	Warnings []string
 	// ScaffoldSkipped 는 이미 있던 저장소라 스캐폴딩을 쓰지 않았음을 알린다.
 	ScaffoldSkipped bool
+	// DefinitionRefreshed 는 파이프라인 정의 파일을 플랫폼 기본으로 다시 썼음을 알린다.
+	DefinitionRefreshed bool
+	// RepositoryRecreated 는 정의를 갱신하려던 저장소가 없어 새로 만들고 전체 스캐폴딩을
+	// 썼음을 알린다 — 앱 코드는 사용자가 다시 밀어야 한다.
+	RepositoryRecreated bool
 	// CIJobURL 은 만들어진 CI job 의 주소다. CI 가 SCM 과 분리된 플랫폼
 	// (Jenkins)에서만 채워진다.
 	CIJobURL string
+	// Stages 는 스캐폴딩이 실제로 만든 파이프라인 단계다.
+	//
+	// 이미 있던 저장소라 스캐폴딩을 건너뛰었으면 비어 있다 — 그 안의 파이프라인
+	// 파일은 우리가 만든 것이 아니므로 단계를 안다고 말하면 안 된다.
+	Stages []string
 	// CredentialManifests 는 파이프라인 자격증명 ExternalSecret 이다.
 	//
 	// 여기서 적용하지 않는다 — 클러스터 접근은 상위 유스케이스가 한곳에서
@@ -207,7 +233,7 @@ func (uc *ProvisionAppProject) Execute(
 		return nil, fmt.Errorf("resolve image target for %q: %w", app, err)
 	}
 
-	files, err := scaffold.Render(scaffold.Input{
+	scaffoldInput := scaffold.Input{
 		AppName:          app,
 		AppType:          input.AppType,
 		Namespace:        input.Namespace,
@@ -220,7 +246,12 @@ func (uc *ProvisionAppProject) Execute(
 		GatewayNamespace: input.GatewayNamespace,
 		StackID:          input.StackID,
 		TemplateID:       input.TemplateID,
-	})
+
+		ImageScannerEndpoint:         input.ImageScannerEndpoint,
+		ImageScannerJavaDBRepository: input.ImageScannerJavaDBRepository,
+		SASTServerEndpoint:           input.SASTServerEndpoint,
+	}
+	files, err := scaffold.Render(scaffoldInput)
 	if err != nil {
 		return nil, fmt.Errorf("render scaffold for %q: %w", app, err)
 	}
@@ -231,8 +262,14 @@ func (uc *ProvisionAppProject) Execute(
 	// (:bootstrap)으로 되돌아간다 — 그 태그는 레지스트리에 없으므로 돌던 배포가
 	// ImagePullBackOff 로 떨어졌다가 CI 가 다시 돌아야 복구된다. 사용자가 고친
 	// Dockerfile·워크플로·매니페스트도 같이 사라진다.
-	scaffoldSkipped := !project.Created
-	if !scaffoldSkipped {
+	//
+	// 정의 갱신(RefreshDefinitionOnly)은 예외다 — 그때는 파이프라인 정의 파일 하나만 다시
+	// 쓴다. 그 파일은 플랫폼이 소유하고, 이미지 태그는 거기 없다.
+	scaffoldSkipped := !project.Created && !input.RefreshDefinitionOnly
+	definitionRefreshed := false
+	repositoryRecreated := false
+	switch {
+	case project.Created:
 		if err := uc.scm.CommitFiles(ctx, project.ID, port.CommitSpec{
 			Branch:  project.DefaultBranch,
 			Message: "chore(nullus): scaffold pipeline and deployment manifests",
@@ -240,16 +277,48 @@ func (uc *ProvisionAppProject) Execute(
 		}); err != nil {
 			return nil, fmt.Errorf("commit scaffold to %q: %w", project.FullPath, err)
 		}
+		if input.RefreshDefinitionOnly {
+			definitionRefreshed, repositoryRecreated = true, true
+		}
+	case input.RefreshDefinitionOnly:
+		definition := make([]port.CommitFile, 0, 1)
+		for _, f := range files {
+			if scaffold.IsPipelineDefinitionPath(f.Path) {
+				definition = append(definition, f)
+			}
+		}
+		if len(definition) == 0 {
+			return nil, fmt.Errorf("%s 플랫폼의 파이프라인 정의 파일을 렌더하지 못했습니다", input.Platform)
+		}
+		if err := uc.scm.CommitFiles(ctx, project.ID, port.CommitSpec{
+			Branch:  project.DefaultBranch,
+			Message: "chore(nullus): refresh pipeline definition",
+			Files:   definition,
+		}); err != nil {
+			return nil, fmt.Errorf("commit pipeline definition to %q: %w", project.FullPath, err)
+		}
+		definitionRefreshed = true
 	}
 
 	out := &ProvisionAppProjectOutput{
-		Project:         project,
-		ImageTarget:     target,
-		ScaffoldSkipped: scaffoldSkipped,
+		Project:             project,
+		ImageTarget:         target,
+		ScaffoldSkipped:     scaffoldSkipped,
+		DefinitionRefreshed: definitionRefreshed,
+		RepositoryRecreated: repositoryRecreated,
+	}
+	if !scaffoldSkipped {
+		// 렌더에 쓴 입력 그대로 단계를 낸다. 따로 판단하면 선언과 실제가 갈린다.
+		out.Stages = scaffold.PipelineStageNamesFor(scaffoldInput)
 	}
 	if scaffoldSkipped {
 		out.Warnings = append(out.Warnings, fmt.Sprintf(
 			"%s 저장소가 이미 있어 스캐폴딩을 건너뛰었습니다 — 기존 파일을 덮어쓰지 않습니다",
+			project.FullPath))
+	}
+	if repositoryRecreated {
+		out.Warnings = append(out.Warnings, fmt.Sprintf(
+			"%s 저장소가 없어 다시 만들었습니다 — 전체 스캐폴딩을 썼으므로 앱 코드를 다시 밀어야 합니다",
 			project.FullPath))
 	}
 	uc.configurePipeline(ctx, project, target, input, out)
@@ -309,6 +378,15 @@ func (uc *ProvisionAppProject) configureGiteaPipeline(
 			continue
 		}
 		vars = append(vars, port.PipelineVariable{Key: key, Value: value})
+	}
+
+	// 분석 토큰도 같은 Secret 에 싣는다. Jenkinsfile 의 분석 컨테이너가 envFrom 으로 읽는다.
+	if strings.TrimSpace(input.SASTServerEndpoint) != "" {
+		if token := strings.TrimSpace(input.SASTToken); token != "" {
+			vars = append(vars, port.PipelineVariable{Key: port.SASTTokenVariable, Value: token})
+		} else {
+			reportMissingSASTToken(out)
+		}
 	}
 
 	if len(vars) == 0 {
@@ -409,6 +487,7 @@ func (uc *ProvisionAppProject) configurePipeline(
 ) {
 	if input.Platform == port.SCMPlatformGitHub {
 		uc.configureGitHubPipeline(ctx, project, target, input, out)
+		uc.setSASTVariables(ctx, project, input, out)
 		return
 	}
 	if input.Platform == port.SCMPlatformGitea {
@@ -416,6 +495,57 @@ func (uc *ProvisionAppProject) configurePipeline(
 		return
 	}
 	uc.configureGitLabPipeline(ctx, project, target, input, out)
+	uc.setSASTVariables(ctx, project, input, out)
+}
+
+// setSASTVariables 는 분석 토큰을 파이프라인 시크릿 변수로 건다(GitLab 프로젝트 변수,
+// GitHub 리포 시크릿). SonarQube 가 없는 스택이면 아무 일도 하지 않는다.
+//
+// 빈 토큰은 등록하지 않는다. 분석이 엉뚱한 인증 오류로 죽어 원인이 한 겹 멀어진다 —
+// 대신 사람이 채울 변수로 알린다.
+func (uc *ProvisionAppProject) setSASTVariables(
+	ctx context.Context,
+	project *port.SCMProject,
+	input ProvisionAppProjectInput,
+	out *ProvisionAppProjectOutput,
+) {
+	if strings.TrimSpace(input.SASTServerEndpoint) == "" {
+		return
+	}
+	token := strings.TrimSpace(input.SASTToken)
+	if token == "" {
+		reportMissingSASTToken(out)
+		return
+	}
+	if uc.pipeline == nil {
+		out.Warnings = append(out.Warnings, "파이프라인 설정 어댑터가 없어 분석 토큰 변수를 등록하지 못했습니다")
+		out.MissingVariables = append(out.MissingVariables, port.SASTTokenVariable)
+		return
+	}
+
+	// GitHub 은 시크릿이라 늘 가려진다. GitLab 은 마스킹 요건을 따져야 한다 — SonarQube
+	// 토큰(sqa_ + 40자 16진수)은 요건을 만족하지만, 못 채우는 값을 masked 로 밀면 등록이
+	// 통째로 거부된다.
+	masked := input.Platform == port.SCMPlatformGitHub || canMaskVariableValue(token)
+	if !masked {
+		out.Warnings = append(out.Warnings, fmt.Sprintf(
+			"변수 %s 는 GitLab 마스킹 요건을 만족하지 않아 마스킹 없이 등록합니다 — job 로그에 노출될 수 있습니다",
+			port.SASTTokenVariable))
+	}
+	if err := uc.pipeline.SetProjectVariable(ctx, project.ID, port.ProjectVariable{
+		Key: port.SASTTokenVariable, Value: token, Masked: masked,
+	}); err != nil {
+		out.Warnings = append(out.Warnings, fmt.Sprintf("변수 %s 등록 실패: %v", port.SASTTokenVariable, err))
+		out.MissingVariables = append(out.MissingVariables, port.SASTTokenVariable)
+	}
+}
+
+// reportMissingSASTToken 은 분석 토큰을 구하지 못했음을 알린다.
+func reportMissingSASTToken(out *ProvisionAppProjectOutput) {
+	out.Warnings = append(out.Warnings, fmt.Sprintf(
+		"SonarQube 분석 토큰을 찾지 못했습니다 — %s 를 등록하기 전까지 소스 정적 분석 단계가 실패합니다",
+		port.SASTTokenVariable))
+	out.MissingVariables = append(out.MissingVariables, port.SASTTokenVariable)
 }
 
 // configureGitHubPipeline 은 GitHub 리포의 파이프라인 설정을 맞춘다.

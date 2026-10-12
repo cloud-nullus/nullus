@@ -74,6 +74,8 @@ func (m *mockDeployDeploymentRepo) GetByID(_ context.Context, id string) (*domai
 func (m *mockDeployDeploymentRepo) ListByPipelineID(_ context.Context, _ string) ([]*domain.Deployment, error) {
 	return nil, nil
 }
+
+func (m *mockDeployDeploymentRepo) Delete(context.Context, string) error { return nil }
 func (m *mockDeployDeploymentRepo) Update(_ context.Context, d *domain.Deployment) error {
 	for i, existing := range m.created {
 		if existing.ID == d.ID {

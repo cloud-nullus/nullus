@@ -8,6 +8,7 @@ import {
   normalizeCompatibilityValidationResult,
   matrixInputToPayload,
   toCreateStackBody,
+  normalizeStackImageScanReport,
 } from "./stack-normalizers";
 import type {
   RawTemplate,
@@ -35,7 +36,15 @@ import type {
   StackResourceDefault,
   StackWorkloads,
   StackWorkloadLogs,
+  VulnerabilityListFilter,
+  VulnerabilityListResult,
 } from "../../../types";
+import {
+  normalizeVulnerabilityList,
+  placeholderFromSameSource,
+  retryVulnerabilityList,
+  vulnerabilityListParams,
+} from "../../../lib/vulnerability-list";
 import {
   parseContentDispositionFilename,
   type StackExportFormat,
@@ -92,6 +101,15 @@ const queryKeys = {
   releases: (stackId: string) => ["stacks", "releases", stackId] as const,
   releaseValues: (stackId: string, releaseName: string, mode: string) =>
     ["stacks", "release-values", stackId, releaseName, mode] as const,
+  imageScans: (stackId: string) => ["stacks", "image-scans", stackId] as const,
+  // 필터 앞까지가 출처(어느 스택의 어느 이미지인가)다. 페이지를 넘길 때 같은 출처의 결과만 잠시 둔다.
+  imageVulnerabilitiesSource: (stackId: string, digest: string) =>
+    ["stacks", "image-scan-vulnerabilities", stackId, digest] as const,
+  imageVulnerabilities: (
+    stackId: string,
+    digest: string,
+    filter: VulnerabilityListFilter,
+  ) => ["stacks", "image-scan-vulnerabilities", stackId, digest, filter] as const,
 };
 
 const ACTIVE_DEPLOYMENT_STATES = new Set([
@@ -337,6 +355,24 @@ const stackApiCalls = {
 
   getWorkloads: (stackId: string) =>
     api.get<StackWorkloads>(`/stacks/${stackId}/workloads`).then((r) => r.data),
+
+  getImageScans: (stackId: string) =>
+    api
+      .get<unknown>(`/stacks/${stackId}/image-scans`)
+      .then((r) => normalizeStackImageScanReport(r.data)),
+
+  // 이미지는 다이제스트로 가리킨다. 같은 이미지 이름이라도 태그가 가리키는 내용이 바뀌면
+  // 다른 이미지다. 볼 수 없는 목록(리포트 없음 등)은 오류가 아니라 unavailable 로 온다.
+  getImageVulnerabilities: (
+    stackId: string,
+    digest: string,
+    filter: VulnerabilityListFilter,
+  ): Promise<VulnerabilityListResult> =>
+    api
+      .get<unknown>(`/stacks/${encodeURIComponent(stackId)}/image-scans/vulnerabilities`, {
+        params: { digest, ...vulnerabilityListParams(filter) },
+      })
+      .then((r) => normalizeVulnerabilityList(r.data)),
 
   getWorkloadLogs: (stackId: string, tailLines: number) =>
     api
@@ -718,6 +754,51 @@ export function useStackWorkloadLogs(
     queryFn: () => stackApiCalls.getWorkloadLogs(stackId, tailLines),
     enabled: !!stackId,
     refetchInterval: pollMs,
+  });
+}
+
+/**
+ * 스택에 설치된 OSS 이미지의 취약점 보고. 설치를 막지 않는 보고용 결과다.
+ *
+ * 스캔은 설치 직후와 이후 주기적으로 서버가 돌린다. 아직 결과가 없으면(pending) 1분마다
+ * 다시 읽어, 탭을 열어 둔 사람이 첫 결과를 새로고침 없이 보게 한다.
+ *
+ * 404(모르는 스택)·503(스캐너 미배선)은 재시도해도 바뀌지 않는다. 재시도 없이 오류로
+ * 끝내고 화면은 "데이터 없음" 으로 그린다.
+ */
+export function useStackImageScans(stackId: string) {
+  return useQuery({
+    queryKey: queryKeys.imageScans(stackId),
+    queryFn: () => stackApiCalls.getImageScans(stackId),
+    enabled: !!stackId,
+    retry: false,
+    staleTime: 30_000,
+    refetchInterval: (query) =>
+      query.state.data?.status === "pending" ? 60_000 : false,
+  });
+}
+
+/**
+ * 설치 이미지 하나의 취약점 목록.
+ *
+ * 그리드에서 행을 펼쳤을 때(enabled)만 읽는다 — 스택 하나가 이미지를 수십 개 돌린다.
+ * 필터는 키에 들어가므로 필터·페이지마다 따로 캐시된다.
+ */
+export function useStackImageVulnerabilities(
+  stackId: string,
+  digest: string,
+  filter: VulnerabilityListFilter,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: queryKeys.imageVulnerabilities(stackId, digest, filter),
+    queryFn: () => stackApiCalls.getImageVulnerabilities(stackId, digest, filter),
+    enabled: enabled && !!stackId && !!digest,
+    retry: retryVulnerabilityList,
+    staleTime: 60_000,
+    placeholderData: placeholderFromSameSource<VulnerabilityListResult>(
+      queryKeys.imageVulnerabilitiesSource(stackId, digest),
+    ),
   });
 }
 

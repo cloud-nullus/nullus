@@ -54,11 +54,37 @@ func ErrDestinationUnavailable(detail string) error {
 	}
 }
 
+// ErrInvalidComponent 는 모르는 백업 대상을 거부한다.
+//
+// 이름을 Detail 에 그대로 담는다 — 어느 값이 문제인지 말해 주지 않으면
+// 사용자는 다섯 개 중 무엇을 고쳐야 할지 알 수 없다.
+func ErrInvalidComponent(component string) error {
+	return &shareddomain.AppError{
+		Code:       "BACKUP_INVALID_COMPONENT",
+		HTTPStatus: http.StatusBadRequest,
+		Message:    "지원하지 않는 백업 대상입니다",
+		Detail:     component,
+	}
+}
+
 func ErrInvalidMode(mode string) error {
 	return &shareddomain.AppError{
 		Code:       "BACKUP_INVALID_MODE",
 		HTTPStatus: http.StatusBadRequest,
 		Message:    "지원하지 않는 백업 모드입니다",
 		Detail:     mode,
+	}
+}
+
+// ErrStackRequired 는 스택 클러스터가 있어야 뜰 수 있는 대상을 스택 없이 고른 요청을 거부한다.
+//
+// 리소스·볼륨은 스택 클러스터에서 뜬다. 서버는 스택 ID 로 그 클러스터를 찾으므로, 스택을
+// 고르지 않은 요청은 닿을 곳이 없다. Detail 에 빠진 대상을 담는다.
+func ErrStackRequired(components string) error {
+	return &shareddomain.AppError{
+		Code:       "BACKUP_STACK_REQUIRED",
+		HTTPStatus: http.StatusBadRequest,
+		Message:    "이 백업 대상은 스택을 골라야 뜰 수 있습니다",
+		Detail:     components,
 	}
 }

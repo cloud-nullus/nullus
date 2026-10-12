@@ -112,6 +112,42 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 		assert.Nil(t, notFound)
 	})
 
+	// 스택 삭제가 클러스터의 마지막 스택인지 볼 때 쓴다. 조직과 무관하게 같은 클러스터의 지우지 않은
+	// 스택만 돌려준다.
+	t.Run("stack repository lists live stacks of a cluster across orgs", func(t *testing.T) {
+		repo := NewPostgresStackRepository(pool)
+		orgID, clusterID := createTestOrgAndCluster(t, ctx, pool)
+		otherOrgID, otherClusterID := createTestOrgAndCluster(t, ctx, pool)
+
+		newStack := func(org, cluster string) *domain.Stack {
+			now := time.Now().UTC().Truncate(time.Microsecond)
+			s := &domain.Stack{
+				ID: "stack-" + uuid.NewString(), Name: "cluster-list", TemplateID: "gitlab-allinone-v1",
+				OrgID: org, ClusterID: cluster, Namespace: "nullus-cluster-list", State: domain.StateCompleted,
+				Config: sampleStackConfig("GitLab CE"), CreatedAt: now, UpdatedAt: now,
+			}
+			require.NoError(t, repo.Create(ctx, s))
+			return s
+		}
+		sameOrg := newStack(orgID, clusterID)
+		otherOrg := newStack(otherOrgID, clusterID)
+		otherCluster := newStack(orgID, otherClusterID)
+		deleted := newStack(orgID, clusterID)
+		require.NoError(t, repo.Delete(ctx, deleted.ID))
+
+		stacks, err := repo.ListByCluster(ctx, clusterID)
+		require.NoError(t, err)
+		assert.True(t, containsStackID(stacks, sameOrg.ID))
+		assert.True(t, containsStackID(stacks, otherOrg.ID), "다른 조직의 스택도 같은 클러스터를 쓴다")
+		assert.False(t, containsStackID(stacks, otherCluster.ID))
+		assert.False(t, containsStackID(stacks, deleted.ID))
+
+		// 형식이 틀린 ID 는 쿼리 오류가 아니라 "없음" 이다.
+		none, err := repo.ListByCluster(ctx, "cluster-1")
+		require.NoError(t, err)
+		assert.Empty(t, none)
+	})
+
 	t.Run("template repository seeded templates and tools decoding", func(t *testing.T) {
 		repo := NewPostgresTemplateRepository(pool)
 
@@ -134,6 +170,71 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 		assert.NotEmpty(t, tool.Name)
 		assert.NotEmpty(t, tool.HelmVersion)
 		assert.NotEmpty(t, tool.AppVersion)
+	})
+
+	// 설치 시간 컬럼은 분 단위다 — 시드가 110 같은 분 값을 넣는다. 저장소가
+	// time.Duration 을 나노초 그대로 쓰고 읽어서, 화면에서 템플릿을 만들면 int4 를
+	// 넘쳐 "greater than maximum value for int4" 로 거절됐고 시드 템플릿은 110ns 로
+	// 읽혔다.
+	t.Run("template repository stores estimated install time in minutes", func(t *testing.T) {
+		repo := NewPostgresTemplateRepository(pool)
+
+		seeded, err := repo.GetByID(ctx, "gitlab-harbor-v1")
+		require.NoError(t, err)
+		assert.Equal(t, 110*time.Minute, seeded.EstimatedInstallTime)
+
+		id := "tpl-" + uuid.NewString()
+		require.NoError(t, repo.Create(ctx, &domain.Template{
+			ID:          id,
+			Name:        "GitLab + Harbor + Trivy",
+			Description: "integration",
+			Tools: []domain.ToolConfig{
+				{Category: "image_scanner", Name: "Trivy", HelmVersion: "0.26.0", AppVersion: "0.74.0"},
+			},
+			EstimatedInstallTime: 110 * time.Minute,
+			RecommendedUseCase:   "integration",
+			MinResources:         "integration",
+		}))
+		t.Cleanup(func() { _ = repo.Delete(context.Background(), id) })
+
+		got, err := repo.GetByID(ctx, id)
+		require.NoError(t, err)
+		assert.Equal(t, 110*time.Minute, got.EstimatedInstallTime)
+
+		var stored int
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT estimated_install_time FROM golden_path_templates WHERE id = $1`, id).Scan(&stored))
+		assert.Equal(t, 110, stored, "시드와 같은 분 단위로 저장해야 한다")
+
+		got.EstimatedInstallTime = 45 * time.Minute
+		require.NoError(t, repo.Update(ctx, got))
+		updated, err := repo.GetByID(ctx, id)
+		require.NoError(t, err)
+		assert.Equal(t, 45*time.Minute, updated.EstimatedInstallTime)
+	})
+
+	// 이미지 스캐너를 기본으로 고른 템플릿이 새 설치에도 있어야 한다. 화면에서 만든
+	// 템플릿은 DB 를 초기화하면 사라져, 스캔 단계가 들어간 스택을 다시 세울 수 없었다.
+	t.Run("seeded gitlab harbor trivy template carries image scanner", func(t *testing.T) {
+		tmpl, err := NewPostgresTemplateRepository(pool).GetByID(ctx, "gitlab-harbor-trivy-v1")
+		require.NoError(t, err)
+		require.NotNil(t, tmpl)
+		assert.Equal(t, 110*time.Minute, tmpl.EstimatedInstallTime)
+
+		var scanner *domain.ToolConfig
+		for i := range tmpl.Tools {
+			if tmpl.Tools[i].Category == "image_scanner" {
+				scanner = &tmpl.Tools[i]
+			}
+		}
+		require.NotNil(t, scanner, "템플릿이 이미지 스캐너를 고르지 않았다")
+		assert.Equal(t, "Trivy", scanner.Name)
+		assert.Equal(t, domain.TrivyChartVersion, scanner.HelmVersion)
+
+		matrix, err := NewPostgresCompatibilityRepository(pool).GetByID(ctx, "gitlab-harbor-trivy-v1")
+		require.NoError(t, err)
+		require.NotNil(t, matrix)
+		assert.Equal(t, domain.TrivyChartVersion, matrix.Tools["image_scanner"].HelmVersion)
 	})
 
 	t.Run("history repository save list and get versions", func(t *testing.T) {
@@ -185,13 +286,18 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 
 		require.NoError(t, stackRepo.Delete(ctx, stackID))
 
+		// 스택 삭제는 soft delete 다(deleted_at). 이력 화면은 지운 스택도 띄우고 그 버전 이력을
+		// 불러오므로(include_deleted) 버전은 남아야 한다 — 지우면 그 화면이 빈 이력으로 보인다.
+		// 한때 hard delete(버전 cascade 삭제)였다가 이력 보존으로 되돌아왔는데 이 기대만 남아 있었다.
 		versionsAfterDelete, err := repo.ListVersions(ctx, stackID)
 		require.NoError(t, err)
-		require.Len(t, versionsAfterDelete, 0)
+		require.Len(t, versionsAfterDelete, 2)
+		assert.Equal(t, newer.ID, versionsAfterDelete[0].ID)
 
 		got, err := repo.GetVersion(ctx, stackID, older.ID)
 		require.NoError(t, err)
-		require.Nil(t, got)
+		require.NotNil(t, got)
+		assert.Equal(t, older.ID, got.ID)
 	})
 
 	t.Run("compatibility repository seeded data", func(t *testing.T) {
@@ -376,27 +482,6 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
 			return fmt.Errorf("apply migration %s: %w", filename, err)
 		}
-	}
-
-	return nil
-}
-
-func ensurePreMigrationTables(ctx context.Context, pool *pgxpool.Pool) error {
-	const q = `
-		CREATE TABLE IF NOT EXISTS golden_path_templates (
-			id VARCHAR(100) PRIMARY KEY,
-			name VARCHAR(255) NOT NULL,
-			description TEXT,
-			tools JSONB NOT NULL DEFAULT '[]',
-			estimated_install_time BIGINT NOT NULL DEFAULT 0,
-			recommended_use_case TEXT,
-			min_resources TEXT,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		)`
-
-	if _, err := pool.Exec(ctx, q); err != nil {
-		return fmt.Errorf("ensure golden_path_templates table: %w", err)
 	}
 
 	return nil

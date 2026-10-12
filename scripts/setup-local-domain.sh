@@ -48,7 +48,7 @@ fi
 [[ -n "$CONTEXT" ]] || { echo "[nullus] kubectl context 를 찾지 못했습니다 (--context= 로 지정)" >&2; exit 1; }
 
 KC_HOST="keycloak.${DOMAIN}"
-TOOL_HOSTS=(argocd grafana harbor gitea jenkins minio gitlab nexus opensearch registry)
+TOOL_HOSTS=(argocd grafana harbor gitea jenkins minio gitlab nexus opensearch registry sonarqube)
 
 echo "[nullus] domain=$DOMAIN context=$CONTEXT"
 
@@ -58,10 +58,20 @@ echo "[nullus] domain=$DOMAIN context=$CONTEXT"
 NODE="$(kubectl get nodes --context "$CONTEXT" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
 [[ -n "$NODE" ]] || { echo "[nullus] 클러스터에 노드가 없습니다" >&2; exit 1; }
 
-HOST_IP="$(docker exec "$NODE" getent hosts host.docker.internal 2>/dev/null | awk '{print $1}' | head -1 || true)"
+# 넘겨받은 값이 있으면 그것이 이긴다. 예전에는 조회 결과로 무조건 덮어써서,
+# 아래 안내대로 HOST_IP= 를 넣어도 아무 일도 일어나지 않았다.
+if [[ -z "${HOST_IP:-}" ]]; then
+  HOST_IP="$(docker exec "$NODE" getent hosts host.docker.internal 2>/dev/null | awk '{print $1}' | head -1 || true)"
+fi
 if [[ -z "$HOST_IP" ]]; then
-  echo "[nullus] 노드에서 host.docker.internal 을 해석하지 못했습니다." >&2
-  echo "[nullus] Docker Desktop 이 아니면 호스트 IP 를 직접 넣어야 합니다:" >&2
+  # 리눅스 Docker Engine 에는 host.docker.internal 이 없다(Docker Desktop 이 넣어
+  # 주는 이름이다). kind 노드가 붙은 브리지의 기본 게이트웨이가 곧 호스트다.
+  HOST_IP="$(docker exec "$NODE" sh -c "ip -4 route show default | awk '{print \$3; exit}'" 2>/dev/null || true)"
+  [[ -n "$HOST_IP" ]] && echo "[nullus] host.docker.internal 이 없어 노드의 기본 게이트웨이를 씁니다"
+fi
+if [[ -z "$HOST_IP" ]]; then
+  echo "[nullus] 노드에서 호스트 IP 를 찾지 못했습니다." >&2
+  echo "[nullus] 직접 넣으세요:" >&2
   echo "           HOST_IP=<호스트IP> $0 $*" >&2
   exit 1
 fi
@@ -158,33 +168,34 @@ if [[ -n "$CA_NS" ]]; then
   echo "[nullus] 내부 CA 를 꺼냈습니다: $CA_FILE (namespace=$CA_NS)"
   echo "[nullus] 브라우저가 도구 인증서를 신뢰하게 하려면 (sudo 필요):"
   echo ""
-  echo "  sudo security add-trusted-cert -d -r trustRoot \\"
-  echo "    -k /Library/Keychains/System.keychain '$CA_FILE'"
+  # 신뢰 저장소를 다루는 명령은 OS 마다 다르다. 남의 OS 명령을 찍어 주면
+  # 그대로 붙여 넣었다가 실패한다.
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "  sudo security add-trusted-cert -d -r trustRoot \\"
+    echo "    -k /Library/Keychains/System.keychain '$CA_FILE'"
+  else
+    echo "  sudo cp '$CA_FILE' /usr/local/share/ca-certificates/nullus-internal-ca.crt \\"
+    echo "    && sudo update-ca-certificates"
+  fi
 else
   echo ""
   echo "[nullus] 내부 CA($CA_SECRET)를 찾지 못했습니다 — 스택 설치 후 다시 실행하세요."
 fi
 
-# ── 5. 게이트웨이 포워딩 명령 ────────────────────────────────────────────────
-# 명령을 손으로 조립하면 두 군데서 넘어진다.
-#   - sudo 는 root 의 HOME 을 쓰므로 kubeconfig 를 못 찾고 낡은 설정에 붙는다
-#     ("connection refused" 가 엉뚱한 포트로 뜬다)
-#   - 서비스 이름에 게이트웨이 해시가 붙어 예측할 수 없다
-# 그래서 여기서 실제 이름을 찾아 전체 명령을 만들어 준다.
-KUBECONFIG_PATH="${KUBECONFIG:-$HOME/.kube/config}"
-GW_NS="$(kubectl get svc --all-namespaces --context "$CONTEXT" \
-  -l gateway.envoyproxy.io/owning-gateway-name \
-  -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || true)"
+# ── 5. 게이트웨이 노출 ───────────────────────────────────────────────────────
+# port-forward-gateway.sh 가 게이트웨이를 찾아 443 을 대신 세운다. 예전에는 여기서
+# sudo kubectl port-forward 명령을 조립해 줬는데, 그 방식은 sudo 가 필요하고 한 번에
+# 스택 하나만 열 수 있었다 — 스택이 둘이면 두 번째는 443 을 잡을 수 없다.
 GW_SVC="$(kubectl get svc --all-namespaces --context "$CONTEXT" \
   -l gateway.envoyproxy.io/owning-gateway-name \
   -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
 
 if [[ -n "$GW_SVC" ]]; then
   FORWARD_HINT="
-       sudo kubectl --kubeconfig '${KUBECONFIG_PATH}' --context '${CONTEXT}' \\
-         port-forward -n ${GW_NS} svc/${GW_SVC} 443:443
+       ./scripts/port-forward-gateway.sh
 
-     (sudo 는 root 의 HOME 을 쓰므로 --kubeconfig 를 반드시 넘겨야 한다)"
+     (kind 면 도커가 443 을 잡으므로 sudo 가 필요 없고, 스택이 여러 개면 전부 열린다.
+      그 스크립트가 /etc/hosts 에 넣을 줄도 함께 출력한다)"
 else
   FORWARD_HINT="
        (게이트웨이 서비스를 찾지 못했습니다 — 스택 설치 후 다시 실행하세요)"
@@ -206,7 +217,7 @@ cat <<EOF
      포털·API·설치되는 도구가 모두
      http://${KC_HOST}:${KEYCLOAK_PORT}/realms/nullus 를 쓰게 된다.
 
-  3) 도구는 443 으로 접근하므로 게이트웨이를 포워딩한다 (sudo, 특권 포트):
+  3) 도구는 443 으로 접근하므로 게이트웨이를 연다:
 ${FORWARD_HINT}
 
   확인:  https://argocd.$DOMAIN  → Keycloak 재인증 없이 진입

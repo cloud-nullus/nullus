@@ -4,6 +4,7 @@ import {
   LOGGING_OPTIONS,
   MONITORING_OPTIONS,
   PIPELINE_OPTIONS,
+  SECURITY_OPTIONS,
   type ToolOption,
 } from './install-constants'
 
@@ -31,6 +32,7 @@ export const TOOL_OPTIONS_BY_SLOT: Record<string, ToolOption[]> = {
   ...PIPELINE_OPTIONS,
   ...MONITORING_OPTIONS,
   ...LOGGING_OPTIONS,
+  ...SECURITY_OPTIONS,
   authentication: AUTHENTICATION_OPTIONS,
 }
 

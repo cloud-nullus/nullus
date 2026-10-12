@@ -90,7 +90,11 @@ func (m *mockPipelineRepository) ListByStackID(_ context.Context, stackID string
 	return result, nil
 }
 
-func (m *mockPipelineRepository) Update(_ context.Context, _ *domain.Pipeline) error { return nil }
+func (m *mockPipelineRepository) Update(_ context.Context, pipeline *domain.Pipeline) error {
+	copied := *pipeline
+	m.pipelines[pipeline.ID] = &copied
+	return nil
+}
 
 func (m *mockPipelineRepository) Delete(_ context.Context, id string) error {
 	if m.deleteErr != nil {
@@ -188,6 +192,8 @@ func (m *mockDeploymentRepository) ListByPipelineID(_ context.Context, pipelineI
 	}
 	return result, nil
 }
+
+func (m *mockDeploymentRepository) Delete(context.Context, string) error { return nil }
 
 func (m *mockDeploymentRepository) Update(_ context.Context, _ *domain.Deployment) error { return nil }
 
@@ -607,4 +613,175 @@ func TestPipelineHandler_RegisterStackRoutes_ServesStackPipelines(t *testing.T) 
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Len(t, resp.Items, 1)
 	assert.Equal(t, "pip-1", resp.Items[0].ID)
+}
+
+type stubStackReader struct {
+	summary *port.StackSummary
+	err     error
+}
+
+func (s *stubStackReader) GetStackSummary(context.Context, string) (*port.StackSummary, error) {
+	return s.summary, s.err
+}
+
+// recordingKubeconfigProvider 는 어느 클러스터를 물었는지 남긴다. 등록되지 않은
+// 것으로 답해 네트워크에 나가지 않게 한다.
+type recordingKubeconfigProvider struct{ asked []string }
+
+func (r *recordingKubeconfigProvider) GetKubeconfig(_ context.Context, clusterID string) ([]byte, error) {
+	r.asked = append(r.asked, clusterID)
+	return nil, nil
+}
+
+// 모니터링 탭이 읽는 리소스는 앱이 실제로 서 있는 클러스터에서 찾아야 한다.
+// 스택 파이프라인의 앱은 스택의 Argo CD 가 스택 클러스터에 올린다 — 파이프라인에
+// 다른 클러스터가 적혀 있어도 그렇다. 그 클러스터를 읽으면 탭이 비어 보인다.
+func TestPipelineHandler_GetPipelineResources_ReadsStackCluster(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(&domain.Pipeline{
+		ID: "pip_1", Name: "orders", StackID: "stk_1", ClusterID: "c-chosen",
+		ExecutionMode: domain.ExecutionModeStackIntegrated, Namespace: "apps",
+	})
+	kubeconfigs := &recordingKubeconfigProvider{}
+	deployments := &mockDeploymentRepository{}
+	h := cicdhandler.NewPipelineHandler(
+		usecase.NewCreatePipeline(pipelineRepo, newMockPipelineTemplateRepository()),
+		usecase.NewListPipelines(pipelineRepo),
+		usecase.NewDeployPipeline(pipelineRepo, deployments, kubeconfigs, &noopManifestApplier{}),
+		pipelineRepo, deployments, kubeconfigs, kube.NewStepTracker(), nil,
+	).WithStackReader(&stubStackReader{summary: &port.StackSummary{ID: "stk_1", ClusterID: "c-stack"}})
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/api/v1"))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/pipelines/pip_1/resources", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, []string{"c-stack"}, kubeconfigs.asked)
+	// 대역이 kubeconfig 를 주지 않았으니 여기서 멈춘다 — 어느 클러스터를 물었는지가 요점이다.
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "KUBECONFIG_NOT_REGISTERED")
+}
+
+// 스택과 다른 클러스터로 만들려는 요청은 400 으로 거절한다. 받아 두면 앱은
+// 스택 클러스터에 뜨는데 화면은 고른 클러스터를 보여 준다.
+func TestPipelineHandler_Create_StackClusterMismatch(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository()
+	reader := &stubStackReader{summary: &port.StackSummary{
+		ID: "stk_1", OrgID: "11111111-1111-1111-1111-111111111111", ClusterID: "c-stack", State: "completed",
+	}}
+	deployments := &mockDeploymentRepository{}
+	h := cicdhandler.NewPipelineHandler(
+		usecase.NewCreatePipeline(pipelineRepo, newMockPipelineTemplateRepository(), reader),
+		usecase.NewListPipelines(pipelineRepo),
+		usecase.NewDeployPipeline(pipelineRepo, deployments, &noopKubeconfigProvider{}, &noopManifestApplier{}),
+		pipelineRepo, deployments, &noopKubeconfigProvider{}, kube.NewStepTracker(), nil,
+	)
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/api/v1"))
+
+	// X-Org-ID 를 보내지 않는다 — 조직 검증은 DB 를 쓰고, 없으면 기본 조직으로 떨어진다.
+	body := `{"name":"orders","cluster_id":"c-other","stack_id":"stk_1","namespace":"apps","app_type":"backend","execution_mode":"emergency_direct"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/pipelines", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "STACK_CLUSTER_MISMATCH")
+	assert.Equal(t, 0, pipelineRepo.created)
+}
+
+// ── 파이프라인 정의 갱신 ──────────────────────────────────────────────────
+
+type stubRepoProvisioner struct {
+	out   *usecase.ProvisionPipelineRepositoryOutput
+	err   error
+	calls []usecase.ProvisionPipelineRepositoryInput
+}
+
+func (s *stubRepoProvisioner) Execute(_ context.Context, in usecase.ProvisionPipelineRepositoryInput) (*usecase.ProvisionPipelineRepositoryOutput, error) {
+	s.calls = append(s.calls, in)
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.out, nil
+}
+
+func refreshEcho(t *testing.T, pipelineRepo *mockPipelineRepository, prov *stubRepoProvisioner) *echo.Echo {
+	t.Helper()
+	deployments := &mockDeploymentRepository{}
+	h := cicdhandler.NewPipelineHandler(
+		usecase.NewCreatePipeline(pipelineRepo, newMockPipelineTemplateRepository()),
+		usecase.NewListPipelines(pipelineRepo),
+		usecase.NewDeployPipeline(pipelineRepo, deployments, &noopKubeconfigProvider{}, &noopManifestApplier{}),
+		pipelineRepo, deployments, &noopKubeconfigProvider{}, kube.NewStepTracker(), nil,
+	)
+	if prov != nil {
+		h.WithDefinitionRefresh(usecase.NewRefreshPipelineDefinition(pipelineRepo, prov))
+	}
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/api/v1"))
+	return e
+}
+
+// SAST 리포트 전에 만든 파이프라인은 정의를 다시 써야 결과가 붙는다. 그 경로가 API 로 열려 있어야
+// 화면 버튼이 설 수 있다.
+func TestPipelineHandler_RefreshDefinition_정의를_다시_쓴다(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(&domain.Pipeline{
+		ID: "pip_1", Name: "orders", StackID: "stk_1", Namespace: "apps",
+		AppType: domain.AppTypeBackend, Stages: []string{"Build", "Deploy"},
+	})
+	prov := &stubRepoProvisioner{out: &usecase.ProvisionPipelineRepositoryOutput{
+		Stages: []string{"Build", "SAST", "Deploy"}, MissingVariables: []string{"SONAR_TOKEN"},
+		DefinitionRefreshed: true,
+	}}
+	e := refreshEcho(t, pipelineRepo, prov)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/pipelines/pip_1/refresh-definition", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, []any{"Build", "SAST", "Deploy"}, body["stages"])
+	assert.Equal(t, []any{"SONAR_TOKEN"}, body["missing_variables"])
+	require.Len(t, prov.calls, 1)
+	assert.True(t, prov.calls[0].RefreshDefinitionOnly)
+	updated, _ := pipelineRepo.GetByID(context.Background(), "pip_1")
+	assert.Equal(t, []string{"Build", "SAST", "Deploy"}, updated.Stages)
+}
+
+func TestPipelineHandler_RefreshDefinition_스택_없는_파이프라인은_400(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(&domain.Pipeline{ID: "pip_1", Name: "orders"})
+	e := refreshEcho(t, pipelineRepo, &stubRepoProvisioner{})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/pipelines/pip_1/refresh-definition", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "PIPELINE_NOT_STACK_BOUND")
+}
+
+func TestPipelineHandler_RefreshDefinition_배선되지_않으면_503(t *testing.T) {
+	pipelineRepo := newMockPipelineRepository(&domain.Pipeline{ID: "pip_1", Name: "orders", StackID: "stk_1"})
+	e := refreshEcho(t, pipelineRepo, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/pipelines/pip_1/refresh-definition", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Contains(t, rec.Body.String(), "DEFINITION_REFRESH_NOT_CONFIGURED")
+}
+
+func TestPipelineHandler_RefreshDefinition_없는_파이프라인은_404(t *testing.T) {
+	e := refreshEcho(t, newMockPipelineRepository(), &stubRepoProvisioner{})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/pipelines/nope/refresh-definition", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
 }

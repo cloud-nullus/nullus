@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
@@ -44,6 +45,20 @@ func (r *MemoryPipelineRepository) GetByID(_ context.Context, id string) (*domai
 }
 
 // List returns all pipelines for an organization.
+// ListWithStack 은 스택에 묶인 파이프라인을 조직과 무관하게 돌려준다(주기 동기화용).
+func (r *MemoryPipelineRepository) ListWithStack(_ context.Context) ([]*domain.Pipeline, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []*domain.Pipeline
+	for _, p := range r.pipelines {
+		if strings.TrimSpace(p.StackID) == "" {
+			continue
+		}
+		result = append(result, clonePipeline(p))
+	}
+	return result, nil
+}
+
 func (r *MemoryPipelineRepository) List(_ context.Context, orgID string) ([]*domain.Pipeline, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -149,11 +164,24 @@ func (r *MemoryDeploymentRepository) Update(_ context.Context, d *domain.Deploym
 	return nil
 }
 
+// Delete 는 기록 하나를 지운다. 없으면 오류가 아니다.
+func (r *MemoryDeploymentRepository) Delete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.deployments, id)
+	return nil
+}
+
 func clonePipeline(p *domain.Pipeline) *domain.Pipeline {
 	if p == nil {
 		return nil
 	}
 	cp := *p
+	// 슬라이스를 공유하면 호출부가 고친 값이 저장된 기록까지 바꾼다.
+	// DB 저장소에서는 일어나지 않는 일이라 테스트가 거짓 초록이 된다.
+	if p.Stages != nil {
+		cp.Stages = append([]string(nil), p.Stages...)
+	}
 	return &cp
 }
 

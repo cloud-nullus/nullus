@@ -142,6 +142,7 @@ for s in 03-load-bundle.sh 10-setup-registry.sh 11-create-cluster.sh \
          12-push-to-registry.sh 13-set-config.sh 21-install-nullus.sh \
          22-install-platform-stack.sh 23-setup-gateway.sh 24-register-hosts.sh \
          25-port-forward.sh 26-migrate-db.sh 27-install-stacks.sh \
+         14-push-oci-artifacts.sh 28-push-charts-oci.sh 29-install-stacks-via-api.sh \
          99-verify.sh bootstrap.sh; do
   if [[ -f "${ROOT_DIR}/scripts/${s}" ]]; then
     stage_copy "${ROOT_DIR}/scripts/${s}" "${AIRGAP_DST}/scripts/${s}"

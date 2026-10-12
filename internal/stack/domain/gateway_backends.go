@@ -31,6 +31,7 @@ var gatewayBackends = map[string]GatewayBackend{
 	"prometheus": {Service: "kube-prometheus-stack-prometheus", Port: 9090},
 	"opensearch": {Service: "opensearch-cluster-master", Port: 9200},
 	"openbao":    {Service: "openbao", Port: 8200},
+	"sonarqube":  {Service: SonarQubeServiceName, Port: SonarQubeServicePort},
 }
 
 // GatewayBackendForTool 은 도구 이름으로 백엔드를 찾는다.

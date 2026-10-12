@@ -30,7 +30,7 @@ func NewMemoryCICDTemplateRepository() *MemoryCICDTemplateRepository {
 func (r *MemoryCICDTemplateRepository) GetByID(_ context.Context, id string) (*domain.PipelineTemplate, error) {
 	t, ok := r.templates[id]
 	if !ok {
-		return nil, fmt.Errorf("pipeline template %q not found", id)
+		return nil, fmt.Errorf("pipeline template %q: %w", id, domain.ErrTemplateNotFound)
 	}
 	return t, nil
 }
@@ -44,8 +44,11 @@ func (r *MemoryCICDTemplateRepository) List(_ context.Context) ([]*domain.Pipeli
 	return result, nil
 }
 
-// Create stores a new pipeline template.
+// Create stores a new pipeline template. Postgres 저장소와 같이 같은 ID 는 거부한다.
 func (r *MemoryCICDTemplateRepository) Create(_ context.Context, tmpl *domain.PipelineTemplate) error {
+	if _, ok := r.templates[tmpl.ID]; ok {
+		return fmt.Errorf("pipeline template %q: %w", tmpl.ID, domain.ErrTemplateAlreadyExists)
+	}
 	r.templates[tmpl.ID] = tmpl
 	return nil
 }
@@ -53,7 +56,7 @@ func (r *MemoryCICDTemplateRepository) Create(_ context.Context, tmpl *domain.Pi
 // Update replaces an existing pipeline template.
 func (r *MemoryCICDTemplateRepository) Update(_ context.Context, tmpl *domain.PipelineTemplate) error {
 	if _, ok := r.templates[tmpl.ID]; !ok {
-		return fmt.Errorf("pipeline template %q not found", tmpl.ID)
+		return fmt.Errorf("pipeline template %q: %w", tmpl.ID, domain.ErrTemplateNotFound)
 	}
 	r.templates[tmpl.ID] = tmpl
 	return nil
@@ -62,7 +65,7 @@ func (r *MemoryCICDTemplateRepository) Update(_ context.Context, tmpl *domain.Pi
 // Delete removes a pipeline template by ID.
 func (r *MemoryCICDTemplateRepository) Delete(_ context.Context, id string) error {
 	if _, ok := r.templates[id]; !ok {
-		return fmt.Errorf("pipeline template %q not found", id)
+		return fmt.Errorf("pipeline template %q: %w", id, domain.ErrTemplateNotFound)
 	}
 	delete(r.templates, id)
 	return nil
@@ -76,14 +79,14 @@ func cicdTemplates() []*domain.PipelineTemplate {
 			Name:        "User Custom Pipeline",
 			Description: "백엔드 서비스를 위한 CI/CD 파이프라인. 빌드, 테스트, 이미지 빌드, 배포 단계를 포함합니다.",
 			AppType:     domain.AppTypeBackend,
-			Stages:      scaffold.PipelineStageNames(),
+			Stages:      scaffold.PipelineStageNames(scaffold.StageOptions{}),
 		},
 		{
 			ID:          "batch-job-v1",
 			Name:        "Batch Job Pipeline",
 			Description: "배치 작업을 위한 CI/CD 파이프라인. 빌드, 이미지 빌드, CronJob 배포 단계를 포함합니다.",
 			AppType:     domain.AppTypeBatch,
-			Stages:      scaffold.PipelineStageNames(),
+			Stages:      scaffold.PipelineStageNames(scaffold.StageOptions{}),
 		},
 	}
 }

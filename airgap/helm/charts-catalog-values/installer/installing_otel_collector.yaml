@@ -1,0 +1,34 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_otel_collector
+# chart: opentelemetry-collector 0.75.0
+config:
+    exporters:
+        prometheus:
+            endpoint: 0.0.0.0:8889
+    processors: {}
+    service:
+        pipelines:
+            logs:
+                exporters:
+                    - debug
+                processors:
+                    - memory_limiter
+                    - batch
+            metrics:
+                exporters:
+                    - prometheus
+            traces:
+                exporters:
+                    - debug
+image:
+    repository: otel/opentelemetry-collector-contrib
+mode: deployment
+ports:
+    metrics:
+        enabled: true
+    prom-exporter:
+        containerPort: 8889
+        enabled: true
+        protocol: TCP
+        servicePort: 8889
+replicaCount: 1

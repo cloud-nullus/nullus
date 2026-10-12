@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/gitea"
@@ -19,6 +20,8 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/nexus"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registry"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registrycreds"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/sastcreds"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/scaffold"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
@@ -45,6 +48,10 @@ type Options struct {
 	ExternalRegistryPrefix string
 	// GitLabBaseURLOverride 는 클러스터 내부 서비스 DNS 대신 쓸 주소다.
 	//
+	// 주소 하나면 모든 GitLab 스택에 적용된다. "네임스페이스=주소" 를 쉼표로 이어 주면
+	// 스택마다 제 주소를 쓴다(로컬에서 스택이 여럿일 때 포트포워드도 여럿이다). 둘을
+	// 섞으면 항목이 있는 스택은 그 주소, 나머지는 bare 주소다. gitLabBaseURLOverrideFor 참조.
+	//
 	// 기본 경로는 gitlab-webservice-default.{ns}.svc 인데, 이는 API 서버가
 	// 클러스터 안에서 돌 때만 해석된다. 로컬 실행이나 외부 GitLab 을 붙일 때
 	// 이 값으로 대체한다.
@@ -59,6 +66,10 @@ type Options struct {
 	// 주소다. Gitea 와 같은 이유로 필요하다 — 기본 경로는 API 서버가 클러스터
 	// 안에서 돌 때만 해석된다.
 	JenkinsBaseURLOverride string
+
+	// TrivyJavaDBRepository 는 에어갭 설치에서 CI 잡이 Java DB 를 받을 내부 미러다.
+	// 비면(온라인 설치) 스캔 잡은 업스트림 기본값을 쓴다.
+	TrivyJavaDBRepository string
 }
 
 // BundleFactory 는 port.SCMBundleFactory 구현체다.
@@ -83,6 +94,10 @@ type BundleFactory struct {
 	// registrySecrets 는 스택이 설치한 레지스트리의 관리자 자격증명을 읽는다.
 	// 배선되지 않으면 CI 레지스트리 변수는 사용자가 준 값만 쓴다(종전 동작).
 	registrySecrets registrycreds.SecretStore
+	// applier / kubeconfigs 는 CI 변수 저장소가 없는 스택(Gitea + Jenkins)에 스캔 정책
+	// ConfigMap 을 적용한다(scan_policy_publisher.go).
+	applier     port.ManifestApplier
+	kubeconfigs port.KubeconfigProvider
 }
 
 // WithRegistrySecrets 는 스택이 설치한 레지스트리의 자격증명 저장소를 배선한다.
@@ -146,18 +161,26 @@ func (f *BundleFactory) For(ctx context.Context, stackID string) (*port.SCMBundl
 			port.ErrStackToolsUnavailable, stackID, summary.State)
 	}
 
+	var bundle *port.SCMBundle
 	switch platformFor(summary.SourceRepository) {
 	case port.SCMPlatformGitLab:
-		return f.gitLabBundle(ctx, summary)
+		bundle, err = f.gitLabBundle(ctx, summary)
 	case port.SCMPlatformGitHub:
-		return f.gitHubBundle(ctx, summary)
+		bundle, err = f.gitHubBundle(ctx, summary)
 	case port.SCMPlatformGitea:
-		return f.giteaBundle(ctx, summary)
+		bundle, err = f.giteaBundle(ctx, summary)
 	default:
 		return nil, fmt.Errorf(
 			"소스 저장소 %q 는 아직 지원하지 않습니다 (GitLab·GitHub·Gitea 스택에서만 프로젝트를 만들 수 있습니다)",
 			summary.SourceRepository)
 	}
+	if err != nil {
+		return nil, err
+	}
+	// 정책을 실을 자리는 번들이 다 만들어진 뒤에 고른다 — CI 가 어느 쪽인지(변수
+	// 저장소가 있는지, Jenkins 인지)가 번들 조립 결과에 달려 있다.
+	bundle.ScanPolicy = f.scanPolicyPublisherFor(bundle)
+	return bundle, nil
 }
 
 // gitLabBundle 은 스택 안에 설치된 GitLab 을 향하는 묶음을 만든다.
@@ -170,7 +193,7 @@ func (f *BundleFactory) gitLabBundle(
 		return nil, fmt.Errorf("stack %s 의 네임스페이스를 알 수 없습니다", summary.ID)
 	}
 
-	baseURL := strings.TrimSpace(f.opts.GitLabBaseURLOverride)
+	baseURL := gitLabBaseURLOverrideFor(f.opts.GitLabBaseURLOverride, namespace)
 	if baseURL == "" {
 		baseURL = gitLabBaseURL(namespace)
 	}
@@ -192,18 +215,85 @@ func (f *BundleFactory) gitLabBundle(
 		return nil, fmt.Errorf("resolve image registry for stack %s: %w", summary.ID, err)
 	}
 
-	return &port.SCMBundle{
-		Provisioner:    client,
-		Pipeline:       client,
-		Registry:       resolver,
-		Platform:       port.SCMPlatformGitLab,
-		GroupPath:      f.opts.GroupPath,
-		CDNamespace:    namespace,
-		CDApplications: kube.NewArgoApplicationDeleter(),
-		ClusterID:      summary.ClusterID,
-		AccessDomain:   summary.AccessDomain,
-		GatewayName:    gatewayNameForStack(summary.Name),
-	}, nil
+	// GitLab CI 는 SCM 과 한 몸이다. 같은 토큰으로 그룹 아래 앱 프로젝트의
+	// 파이프라인 이력과 잡 산출물을 읽는다 — 없으면 스캔 게이트가 돌아도 판정이
+	// 기록되지 않는다.
+	runs := gitlab.NewBuildReader(client, f.opts.GroupPath).
+		WithWebBaseURL(toolWebBaseURL("gitlab", summary.AccessDomain))
+	// 같은 토큰으로 실행도 시작시킨다 — 스택에 묶인 파이프라인의 "배포 실행" 은
+	// 플랫폼이 빌드하지 않고 GitLab CI 에 넘긴다. 이 자리가 비어 있으면 Trigger CI
+	// 단계가 "CI 플랫폼이 없다" 로 끝난다.
+	trigger := gitlab.NewPipelineTrigger(client, f.opts.GroupPath).
+		WithWebBaseURL(toolWebBaseURL("gitlab", summary.AccessDomain))
+
+	bundle := &port.SCMBundle{
+		Provisioner:                  client,
+		Pipeline:                     client,
+		CIBuilds:                     runs,
+		CIArtifacts:                  runs,
+		CITrigger:                    trigger,
+		Registry:                     resolver,
+		Platform:                     port.SCMPlatformGitLab,
+		GroupPath:                    f.opts.GroupPath,
+		CDNamespace:                  namespace,
+		CDApplications:               kube.NewArgoApplicationDeleter(),
+		ClusterID:                    summary.ClusterID,
+		AccessDomain:                 summary.AccessDomain,
+		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
+		ImageScannerJavaDBRepository: f.opts.TrivyJavaDBRepository,
+		SASTServerEndpoint:           summary.SASTServerEndpoint,
+		SASTWebURL:                   sastWebURL(summary),
+		GatewayName:                  gatewayNameForStack(summary.Name),
+	}
+	f.attachSASTToken(bundle, summary)
+	// GitLab 스택도 Harbor·Nexus 를 레지스트리로 고를 수 있다. 빠뜨리면 CI 변수가
+	// 등록되지 않아 build 가 docker login 에서 죽는다.
+	f.attachRegistryCredentials(ctx, bundle, resolver, summary)
+	return bundle, nil
+}
+
+// attachRegistryCredentials 는 스택이 설치한 레지스트리의 자격증명과, 같은
+// 자격증명을 쓰는 이미지 저장소 삭제기를 번들에 붙인다.
+//
+// 자격증명은 플랫폼이 이미 갖고 있다. 사용자에게 다시 받아 적게 하지 않는다 —
+// 화면은 묻지도 않으므로, 받지 못하면 CI 의 docker login 이 빈 변수로 죽는다.
+//
+// 삭제기는 플랫폼이 Harbor 프로젝트를 만들고 이미지를 밀어 넣으면서 정리는 못
+// 하던 것을 메운다. 자격증명을 못 풀면 Images 를 비워 두고, 호출부가 "지우지
+// 못했다" 를 경고로 남긴다 — 조용히 넘기면 사용자는 이미지가 사라진 줄 안다.
+func (f *BundleFactory) attachRegistryCredentials(
+	ctx context.Context,
+	bundle *port.SCMBundle,
+	resolver port.ImageRegistryResolver,
+	summary *port.StackSummary,
+) {
+	if f.registrySecrets == nil {
+		return
+	}
+	creds := registrycreds.New(f.registrySecrets, f.opts.Env, summary.OrgID, summary.ID)
+	bundle.RegistryCredentials = creds
+	if deleter := f.imageDeleterFor(ctx, resolver, creds, summary); deleter != nil {
+		bundle.Images = deleter
+	}
+}
+
+// sastWebURL 은 스택 SonarQube 의 공개 주소다. SonarQube 가 없으면 비어 있다.
+func sastWebURL(summary *port.StackSummary) string {
+	if strings.TrimSpace(summary.SASTServerEndpoint) == "" {
+		return ""
+	}
+	return toolWebBaseURL("sonarqube", summary.AccessDomain)
+}
+
+// attachSASTToken 은 스택 SonarQube 의 분석 토큰을 푸는 수단을 번들에 붙인다.
+//
+// 토큰은 스택 설치가 OpenBao 에 둔다. 레지스트리 자격증명과 같은 시크릿 저장소에서
+// 읽는다 — 그 저장소가 배선되지 않았거나 SonarQube 가 없으면 붙이지 않는다.
+func (f *BundleFactory) attachSASTToken(bundle *port.SCMBundle, summary *port.StackSummary) {
+	if f.registrySecrets == nil || strings.TrimSpace(summary.SASTServerEndpoint) == "" {
+		return
+	}
+	bundle.SASTToken = sastcreds.New(f.registrySecrets, f.opts.Env, summary.OrgID, summary.ID)
 }
 
 // gitHubBundle 은 외부 GitHub 을 향하는 묶음을 만든다.
@@ -260,9 +350,19 @@ func (f *BundleFactory) gitHubBundle(
 		return nil, fmt.Errorf("resolve image registry for stack %s: %w", summary.ID, err)
 	}
 
-	return &port.SCMBundle{
+	runs := github.NewBuildReader(client, conn.Owner)
+	// 같은 PAT 로 실행도 시작시킨다(workflow_dispatch). 스택에 묶인 파이프라인의
+	// "배포 실행" 은 플랫폼이 빌드하지 않고 GitHub Actions 에 넘긴다.
+	trigger := github.NewWorkflowTrigger(client, conn.Owner, path.Base(scaffold.GitHubWorkflowPath)).
+		WithWebBaseURL(github.WebBaseURLFor(conn.APIBaseURL))
+
+	bundle := &port.SCMBundle{
 		Provisioner: client,
 		Pipeline:    client,
+		// GitHub Actions 실행 이력과 산출물도 같은 PAT 로 organization 아래 리포에서 읽는다.
+		CIBuilds:    runs,
+		CIArtifacts: runs,
+		CITrigger:   trigger,
 		Registry:    resolver,
 		// GHCR 패키지는 같은 PAT 로 지운다(delete:packages 스코프 필요).
 		Images:   client,
@@ -272,12 +372,17 @@ func (f *BundleFactory) gitHubBundle(
 		GroupPath:       conn.Owner,
 		RepoAccessToken: token,
 		// Argo CD 는 여전히 클러스터 안에 있다.
-		CDNamespace:    strings.TrimSpace(summary.Namespace),
-		CDApplications: kube.NewArgoApplicationDeleter(),
-		ClusterID:      summary.ClusterID,
-		AccessDomain:   summary.AccessDomain,
-		GatewayName:    gatewayNameForStack(summary.Name),
-	}, nil
+		CDNamespace:          strings.TrimSpace(summary.Namespace),
+		CDApplications:       kube.NewArgoApplicationDeleter(),
+		ClusterID:            summary.ClusterID,
+		AccessDomain:         summary.AccessDomain,
+		ImageScannerEndpoint: summary.ImageScannerEndpoint,
+		SASTServerEndpoint:   summary.SASTServerEndpoint,
+		SASTWebURL:           sastWebURL(summary),
+		GatewayName:          gatewayNameForStack(summary.Name),
+	}
+	f.attachSASTToken(bundle, summary)
+	return bundle, nil
 }
 
 // giteaBundle 은 스택 안에 설치된 Gitea 를 향하는 묶음을 만든다.
@@ -342,30 +447,18 @@ func (f *BundleFactory) giteaBundle(
 		CDNamespace:     namespace,
 		// 지금은 모든 스택이 Argo CD 를 쓴다. 다른 CD 도구를 들이면 그 도구의
 		// CDApplicationDeleter 구현체를 여기서 갈아 끼운다.
-		CDApplications: kube.NewArgoApplicationDeleter(),
-		ClusterID:      summary.ClusterID,
-		AccessDomain:   summary.AccessDomain,
-		GatewayName:    gatewayNameForStack(summary.Name),
+		CDApplications:               kube.NewArgoApplicationDeleter(),
+		ClusterID:                    summary.ClusterID,
+		AccessDomain:                 summary.AccessDomain,
+		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
+		ImageScannerJavaDBRepository: f.opts.TrivyJavaDBRepository,
+		SASTServerEndpoint:           summary.SASTServerEndpoint,
+		SASTWebURL:                   sastWebURL(summary),
+		GatewayName:                  gatewayNameForStack(summary.Name),
 	}
+	f.attachSASTToken(bundle, summary)
 
-	// 스택이 설치한 레지스트리의 자격증명은 플랫폼이 이미 갖고 있다. 사용자에게
-	// 다시 받아 적게 하지 않는다 — 화면은 묻지도 않으므로, 받지 못하면 CI 의
-	// docker login 이 빈 변수로 죽는다.
-	if f.registrySecrets != nil {
-		creds := registrycreds.New(f.registrySecrets, f.opts.Env, summary.OrgID, summary.ID)
-		bundle.RegistryCredentials = creds
-
-		// 같은 자격증명으로 이미지 저장소도 지운다.
-		//
-		// 플랫폼이 Harbor 프로젝트를 만들고 이미지를 밀어 넣으면서 정리는 못
-		// 했다. 파이프라인을 지워도 이미지가 남아 디스크는 아무도 안 보는
-		// 사이에 찬다. 자격증명을 못 풀면 Images 를 비워 두고, 호출부가
-		// "지우지 못했다" 를 경고로 남긴다 — 조용히 넘기면 사용자는 이미지가
-		// 사라진 줄 안다.
-		if deleter := f.imageDeleterFor(ctx, resolver, creds, summary); deleter != nil {
-			bundle.Images = deleter
-		}
-	}
+	f.attachRegistryCredentials(ctx, bundle, resolver, summary)
 
 	// Jenkins 가 배선돼 있어야 job 을 만들 수 있다. 없으면 CIJobs 를 비워 두고
 	// 리포·스캐폴딩까지만 진행한다 — 조용히 성공한 것처럼 보이지 않도록
@@ -383,11 +476,14 @@ func (f *BundleFactory) giteaBundle(
 			if ciBaseURL == "" {
 				ciBaseURL = jenkinsBaseURL(namespace)
 			}
-			client := jenkins.NewClient(ciBaseURL, user, password)
+			client := jenkins.NewClient(ciBaseURL, user, password).
+				WithWebBaseURL(toolWebBaseURL("jenkins", summary.AccessDomain))
 			bundle.CIJobs = client
 			// 같은 클라이언트가 빌드 이력도 읽는다 — GitOps 경로의 실행 기록은
 			// CI 서버에만 있어서, 들이지 않으면 화면 통계가 0 으로 남는다.
 			bundle.CIBuilds = client
+			// 스캔 단계가 archiveArtifacts 로 남긴 리포트도 같은 클라이언트로 읽는다.
+			bundle.CIArtifacts = client
 			// 같은 클라이언트가 실행 트리거도 맡는다 — 스택에 묶인 파이프라인의
 			// "배포 실행" 은 플랫폼이 빌드하지 않고 이 job 을 실행시킨다.
 			bundle.CITrigger = client
@@ -395,6 +491,38 @@ func (f *BundleFactory) giteaBundle(
 		}
 	}
 	return bundle, nil
+}
+
+// gitLabBaseURLOverrideFor 는 override 설정에서 namespace 의 GitLab 주소를 고른다.
+//
+// override 는 주소 하나이거나 "네임스페이스=주소" 항목을 쉼표로 이은 목록이다. 항목은
+// 등호 앞에 경로·스킴 문자가 없을 때만 네임스페이스 키로 본다 — 쿼리에 = 가 든
+// 주소를 항목으로 오해하지 않기 위해서다. 그 네임스페이스의 항목이 없으면 bare
+// 주소를, 그것도 없으면 빈 값(클러스터 내부 DNS)을 돌려준다.
+func gitLabBaseURLOverrideFor(override, namespace string) string {
+	override = strings.TrimSpace(override)
+	if override == "" {
+		return ""
+	}
+	namespace = strings.TrimSpace(namespace)
+	bare := ""
+	for _, entry := range strings.Split(override, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		key, value, keyed := strings.Cut(entry, "=")
+		if keyed && !strings.ContainsAny(key, "/:?") {
+			if strings.TrimSpace(key) == namespace {
+				return strings.TrimSpace(value)
+			}
+			continue
+		}
+		if bare == "" {
+			bare = entry
+		}
+	}
+	return bare
 }
 
 // jenkinsBaseURL 은 클러스터 내부 Jenkins 주소다.
@@ -521,6 +649,19 @@ func registryHostFor(accessDomain string) string {
 		return ""
 	}
 	return "registry." + domain
+}
+
+// toolWebBaseURL 은 스택 도구를 브라우저로 여는 주소다(리포트 링크용).
+//
+// 스택 모듈의 domain.ToolAccessURL 과 같은 규칙이다 — 접속 도메인은 게이트웨이 TLS
+// 리스너 뒤에 서므로 스킴은 https 다. 모듈끼리 import 할 수 없어 여기 다시 적는다.
+// 접속 도메인이 없으면 링크를 만들지 않는다.
+func toolWebBaseURL(host, accessDomain string) string {
+	domain := strings.Trim(strings.TrimSpace(accessDomain), "/")
+	if domain == "" {
+		return ""
+	}
+	return "https://" + host + "." + domain
 }
 
 // harborHostFor 는 접근 도메인에서 Harbor 호스트를 유도한다.

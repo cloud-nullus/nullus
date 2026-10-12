@@ -18,8 +18,11 @@ type CIStageStatus string
 const (
 	CIStageSuccess CIStageStatus = "success"
 	CIStageFailed  CIStageStatus = "failed"
-	CIStageRunning CIStageStatus = "running"
-	CIStageQueued  CIStageStatus = "queued"
+	// CIStageCanceled 는 취소된 단계다. 실패와 구분한다 — 새 커밋이 앞선 실행을
+	// 밀어내면 CI 가 취소하는데, 그것을 실패로 세면 스캔 판정이 error 로 남는다.
+	CIStageCanceled CIStageStatus = "canceled"
+	CIStageRunning  CIStageStatus = "running"
+	CIStageQueued   CIStageStatus = "queued"
 	// CIStageSkipped 는 조건 때문에 실행되지 않은 단계다.
 	// 실패와 구분해야 한다 — 건너뛴 것은 잘못된 것이 아니다.
 	CIStageSkipped CIStageStatus = "skipped"
@@ -30,10 +33,27 @@ const (
 
 // CIStage 는 실행 하나 안의 단계다.
 type CIStage struct {
+	// ID 는 CI 가 단계(잡)에 붙인 식별자다. 산출물을 잡 단위로 주는 CI(GitLab)에서
+	// 리포트를 받을 때 쓴다. 단계에 따로 식별자가 없는 CI 는 비워 둔다.
+	ID        string
 	Name      string
 	Status    CIStageStatus
 	StartedAt time.Time
 	Duration  time.Duration
+}
+
+// StageKey 는 CI 마다 다르게 적는 단계 이름을 비교용 키로 만든다.
+//
+// Jenkins 는 stage('ImageScan'), GitLab·GitHub 은 잡 키 image-scan 으로 적는다.
+// 대소문자만 맞추면 같은 단계가 서로 다르게 보여, 스캔 판정이 기록되지 않는다.
+func StageKey(name string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '-', '_', ' ', '\t':
+			return -1
+		}
+		return r
+	}, strings.ToLower(strings.TrimSpace(name)))
 }
 
 // NormalizeStageStatus 는 CI 가 쓰는 표현을 정규화된 어휘로 옮긴다.
@@ -44,8 +64,10 @@ func NormalizeStageStatus(raw string) CIStageStatus {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "success", "successful", "completed", "passed":
 		return CIStageSuccess
-	case "failed", "failure", "error", "unstable", "aborted", "canceled", "cancelled":
+	case "failed", "failure", "error", "unstable":
 		return CIStageFailed
+	case "aborted", "canceled", "cancelled":
+		return CIStageCanceled
 	case "running", "in_progress", "in progress", "started":
 		return CIStageRunning
 	case "queued", "pending", "waiting", "created", "not_built":

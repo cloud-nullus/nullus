@@ -116,14 +116,20 @@ func (e *KVExporter) Import(ctx context.Context, stackID string, in io.Reader) e
 	sort.Strings(keys)
 
 	var failed []string
+	var first error
 	for _, p := range keys {
 		if err := st.PutSecret(ctx, p, doc.Paths[p]); err != nil {
 			failed = append(failed, p)
+			if first == nil {
+				first = err
+			}
 		}
 	}
 	if len(failed) > 0 {
-		return fmt.Errorf("금고 경로 %d 건을 복원하지 못했습니다: %s",
-			len(failed), strings.Join(failed[:min(len(failed), 5)], ", "))
+		// 원인을 함께 남긴다 — 경로 목록만으로는 "금고가 아직 안 떴다" 와 "권한이 없다" 와 "주소가 다른
+		// 금고를 가리킨다" 를 가를 수 없다(2026-10-12 두 스택 리허설).
+		return fmt.Errorf("금고 경로 %d 건을 복원하지 못했습니다: %s (원인: %w)",
+			len(failed), strings.Join(failed[:min(len(failed), 5)], ", "), first)
 	}
 	return nil
 }

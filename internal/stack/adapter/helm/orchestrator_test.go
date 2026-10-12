@@ -29,6 +29,8 @@ type mockInstaller struct {
 	failDelete      map[string]error
 	statusByRelease map[string]string
 	strictStatus    bool
+	// failStatus 는 Status 가 돌려줄 오류다(릴리스 없음과 다른 실패).
+	failStatus error
 }
 
 type mockResourceDefaultRepo struct {
@@ -76,6 +78,9 @@ func (m *mockInstaller) Uninstall(_ context.Context, releaseName, _ string) erro
 }
 
 func (m *mockInstaller) Status(_ context.Context, releaseName, namespace string) (*port.HelmInstallResult, error) {
+	if m.failStatus != nil {
+		return nil, m.failStatus
+	}
 	if m.strictStatus {
 		found := false
 		for _, installed := range m.installed {
@@ -1385,16 +1390,6 @@ metadata:
 	require.NoError(t, err)
 	assert.False(t, changed)
 	assert.Contains(t, normalized, "kind: ConfigMap")
-}
-
-func TestParseGitLabRunnerRegistrationTokenOutput(t *testing.T) {
-	output := "Defaulted container \"toolbox\" out of: toolbox, certificates (init), configure (init)\n2QEqK1k4dNXwreEMDL9JhXTTNeyG6VK6M2g1U10jRAhMBHwI5HqaCFTeEzby0r0C\n"
-	token := parseGitLabRunnerRegistrationTokenOutput(output)
-	assert.Equal(t, "2QEqK1k4dNXwreEMDL9JhXTTNeyG6VK6M2g1U10jRAhMBHwI5HqaCFTeEzby0r0C", token)
-}
-
-func TestParseGitLabRunnerRegistrationTokenOutput_Empty(t *testing.T) {
-	assert.Equal(t, "", parseGitLabRunnerRegistrationTokenOutput("\nDefaulted container \"toolbox\"\n"))
 }
 
 func TestIsRetryableRunnerTokenDiscoveryError_TrueCases(t *testing.T) {

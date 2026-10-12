@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -112,6 +113,70 @@ func (r *PostgresStackRepository) ListInFlight(ctx context.Context) ([]*domain.S
 	return stacks, rows.Err()
 }
 
+// ListCompleted 는 설치가 끝난 스택을 조직과 무관하게 돌려준다.
+//
+// 설치 이미지 주기 재스캔이 쓴다. 오래 스캔하지 않은 순서가 아니라 갱신 순서로
+// 도는 것은, 재스캔이 스택 레코드를 건드리지 않아 둘이 같은 순서를 뜻하지 않기
+// 때문이다 — 한 번에 전부 돈다.
+func (r *PostgresStackRepository) ListCompleted(ctx context.Context) ([]*domain.Stack, error) {
+	q := `
+		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config,
+			current_step, last_completed_step, last_failed_step, last_failure_reason,
+			created_at, updated_at, deleted_at
+		FROM stacks
+		WHERE deleted_at IS NULL AND state = $1
+		ORDER BY updated_at ASC LIMIT 500`
+
+	rows, err := r.pool.Query(ctx, q, string(domain.StateCompleted))
+	if err != nil {
+		return nil, fmt.Errorf("query completed stacks: %w", err)
+	}
+	defer rows.Close()
+
+	var stacks []*domain.Stack
+	for rows.Next() {
+		s, err := r.scanStack(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan stack: %w", err)
+		}
+		stacks = append(stacks, s)
+	}
+	return stacks, rows.Err()
+}
+
+// ListByCluster 는 한 클러스터의 지우지 않은 스택을 조직과 무관하게 돌려준다.
+//
+// cluster_id 는 UUID 라 형식이 틀린 값이 오면 쿼리가 실패한다. 그때는 오류가 아니라 "없음" 이어야 하므로
+// 먼저 걸러 낸다. text 로 바꿔 비교하면 같은 결과지만 idx_stacks_cluster_id 를 쓰지 못한다.
+func (r *PostgresStackRepository) ListByCluster(ctx context.Context, clusterID string) ([]*domain.Stack, error) {
+	if _, err := uuid.Parse(clusterID); err != nil {
+		return nil, nil
+	}
+	q := `
+		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config,
+			current_step, last_completed_step, last_failed_step, last_failure_reason,
+			created_at, updated_at, deleted_at
+		FROM stacks
+		WHERE cluster_id = $1::uuid AND deleted_at IS NULL
+		ORDER BY created_at ASC LIMIT 500`
+
+	rows, err := r.pool.Query(ctx, q, clusterID)
+	if err != nil {
+		return nil, fmt.Errorf("query cluster stacks: %w", err)
+	}
+	defer rows.Close()
+
+	var stacks []*domain.Stack
+	for rows.Next() {
+		s, err := r.scanStack(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan stack: %w", err)
+		}
+		stacks = append(stacks, s)
+	}
+	return stacks, rows.Err()
+}
+
 func (r *PostgresStackRepository) List(ctx context.Context, orgID string, includeDeleted bool) ([]*domain.Stack, error) {
 	q := `
 		SELECT id, name, template_id, org_id, cluster_id, namespace, state, config,
@@ -190,6 +255,30 @@ func (r *PostgresStackRepository) Update(ctx context.Context, stack *domain.Stac
 	}
 	if ct.RowsAffected() == 0 {
 		return fmt.Errorf("stack %q not found", stack.ID)
+	}
+	return nil
+}
+
+// SetYAMLOverride 는 스택 설정의 yaml_overrides 에서 키 하나만 바꾼다.
+//
+// Update 는 행 전체(이름·상태·단계·config)를 덮어쓴다. 오래 걸리는 작업 뒤에 그 결과를 저장하면 그 사이
+// 들어온 상태 전이나 다른 키의 편집을 되돌린다 — 그리고 StackConfig 에 없는 config.tools 도 지운다.
+// 여기서는 그 키만 바꾼다.
+func (r *PostgresStackRepository) SetYAMLOverride(ctx context.Context, stackID, key, yamlText string) error {
+	const q = `
+		UPDATE stacks
+		SET config = jsonb_set(
+				COALESCE(config, '{}'::jsonb)
+					|| jsonb_build_object('yaml_overrides', COALESCE(config->'yaml_overrides', '{}'::jsonb)),
+				ARRAY['yaml_overrides', $2::text], to_jsonb($3::text), true),
+			updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`
+	ct, err := r.pool.Exec(ctx, q, stackID, key, yamlText)
+	if err != nil {
+		return fmt.Errorf("set yaml override: %w", err)
+	}
+	if ct.RowsAffected() == 0 {
+		return fmt.Errorf("stack %q not found", stackID)
 	}
 	return nil
 }

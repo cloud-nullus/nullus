@@ -5,14 +5,15 @@ import (
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // jenkinsAgentImage 는 빌드가 도는 컨테이너다. dind 사이드카에 붙어
 // docker build/push 를 한다 — Jenkins 는 GitLab CI 와 달리 실행기를 별도
 // 차트로 세우지 않고 kubernetes 플러그인이 이 파드를 빌드마다 띄운다.
 const (
-	jenkinsAgentImage = "docker:27-cli"
-	jenkinsDindImage  = "docker:27-dind"
+	jenkinsAgentImage = shareddomain.JenkinsAgentImage
+	jenkinsDindImage  = shareddomain.DindImage
 )
 
 // renderJenkinsfile 은 build → deploy 2단계 선언적 파이프라인을 만든다.
@@ -33,7 +34,9 @@ const (
 //
 // 배포는 하지 않는다. 이미지 태그를 매니페스트에 되쓰고 Argo CD 가 그 커밋을
 // 동기화한다 (cicd-golden-path.md 가 고른 Git + Argo CD 방식).
-func renderJenkinsfile(app string, target *port.ImageTarget) string {
+func renderJenkinsfile(in Input) string {
+	app, target := in.AppName, in.ImageTarget
+	opts := stageOptionsFor(in)
 	var b strings.Builder
 
 	b.WriteString("// Nullus 가 생성한 파이프라인입니다.\n")
@@ -58,6 +61,33 @@ func renderJenkinsfile(app string, target *port.ImageTarget) string {
 	b.WriteString("      envFrom:\n")
 	b.WriteString("        # ESO 가 OpenBao 에서 동기화한 파이프라인 자격증명이다.\n")
 	fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
+	if opts.ImageScan {
+		// 스캐너는 별도 컨테이너다. builder 에 trivy 를 설치하면 빌드마다
+		// 내려받게 되고, 이미지에 굽자니 빌더가 스캐너 버전에 묶인다.
+		b.WriteString("    - name: scanner\n")
+		fmt.Fprintf(&b, "      image: %s\n", defaultScannerImage)
+		b.WriteString("      command: [\"cat\"]\n")
+		b.WriteString("      tty: true\n")
+		// Jenkins 에는 CI 변수 저장소가 없다. 플랫폼이 스택 네임스페이스의 ConfigMap
+		// 으로 정책을 푸시한다. 한 번도 푸시하지 않았으면 없으므로 optional — 스크립트가
+		// 기본값을 쓴다.
+		b.WriteString("      envFrom:\n")
+		fmt.Fprintf(&b, "        - configMapRef: {name: %s, optional: true}\n", scanPolicyConfigMap)
+		// 스캐너는 빌드가 올린 이미지를 레지스트리에서 다시 받는다. 자격증명은
+		// 빌더와 같은 파이프라인 Secret 에서 온다.
+		fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
+	}
+	if opts.SAST {
+		// 분석기도 별도 컨테이너다. 정책은 스택 네임스페이스의 ConfigMap, 토큰은
+		// 파이프라인 Secret(SONAR_TOKEN)에서 온다 — sonar-scanner 가 그 이름을 그대로 읽는다.
+		b.WriteString("    - name: sonar-scanner\n")
+		fmt.Fprintf(&b, "      image: %s\n", defaultSASTScannerImage)
+		b.WriteString("      command: [\"cat\"]\n")
+		b.WriteString("      tty: true\n")
+		b.WriteString("      envFrom:\n")
+		fmt.Fprintf(&b, "        - configMapRef: {name: %s, optional: true}\n", scanPolicyConfigMap)
+		fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
+	}
 	b.WriteString("    - name: dind\n")
 	fmt.Fprintf(&b, "      image: %s\n", jenkinsDindImage)
 	b.WriteString("      securityContext: {privileged: true}\n")
@@ -126,6 +156,84 @@ func renderJenkinsfile(app string, target *port.ImageTarget) string {
 	b.WriteString("        }\n")
 	b.WriteString("      }\n")
 	b.WriteString("    }\n\n")
+
+	if opts.SAST {
+		// SAST — 소스를 스택 SonarQube 로 분석하고 Quality Gate 로 판정한다.
+		fmt.Fprintf(&b, "    stage('%s') {\n", sastStageName)
+		b.WriteString("      when {\n")
+		b.WriteString("        beforeAgent true\n")
+		b.WriteString("        allOf {\n")
+		b.WriteString("          branch 'main'\n")
+		b.WriteString("          not { changeset pattern: 'deploy/**' , comparator: 'ANT' }\n")
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("      environment {\n")
+		fmt.Fprintf(&b, "        %s = %q\n", port.SASTServerVariable, in.SASTServerEndpoint)
+		b.WriteString("      }\n")
+		b.WriteString("      steps {\n")
+		fmt.Fprintf(&b, "        container('sonar-scanner') {\n")
+		b.WriteString("          sh '''\n")
+		b.WriteString("            set -eu\n")
+		for _, line := range sastScriptLines(app) {
+			fmt.Fprintf(&b, "            %s\n", line)
+		}
+		b.WriteString("          '''\n")
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		// 리포트는 게이트에 걸려도 남긴다 — 무엇에 걸렸는지는 실패한 실행에서 봐야 한다.
+		b.WriteString("      post {\n")
+		b.WriteString("        always {\n")
+		fmt.Fprintf(&b, "          archiveArtifacts artifacts: %q, allowEmptyArchive: true\n", port.SASTReportFile)
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("    }\n\n")
+	}
+
+	if opts.ImageScan {
+		// image-scan — 빌드한 이미지를 스택 Trivy 서버로 검사한다.
+		//
+		// 차단 기준은 환경변수로 읽는다. 값을 스크립트에 박으면 정책을 바꿀
+		// 때마다 모든 파이프라인을 다시 스캐폴딩해야 한다.
+		fmt.Fprintf(&b, "    stage('%s') {\n", imageScanStageName)
+		b.WriteString("      environment {\n")
+		// 정책은 여기 두지 않는다. environment 의 값은 스캐너 컨테이너가 읽는
+		// ConfigMap(envFrom)보다 앞서 푸시한 정책을 가린다.
+		fmt.Fprintf(&b, "        %s = %q\n", scanServerVar, in.ImageScannerEndpoint)
+		b.WriteString("      }\n")
+		b.WriteString("      steps {\n")
+		b.WriteString("        container('scanner') {\n")
+		b.WriteString("          sh '''\n")
+		b.WriteString("            set -eu\n")
+		// 스캐너가 레지스트리에서 이미지를 다시 받을 자격증명이다. 넘기기 전에
+		// 트레이스를 끈다 — Jenkins 는 sh -xe 라 그대로면 비밀번호가 로그에 남는다.
+		b.WriteString("            set +x\n")
+		fmt.Fprintf(&b, "            export TRIVY_USERNAME=\"$%s\" TRIVY_PASSWORD=\"$%s\"\n",
+			target.UsernameVar, target.PasswordVar)
+		if strings.TrimSpace(target.Host) != "" {
+			// 빌드가 --insecure-registry 로 push 하는 레지스트리다. 스캔만 인증서를
+			// 검증하면 같은 레지스트리를 못 읽는다.
+			b.WriteString("            export TRIVY_INSECURE=true\n")
+		}
+		if repo := strings.TrimSpace(in.ImageScannerJavaDBRepository); repo != "" {
+			// 에어갭 Java DB 미러. 에이전트는 클러스터 안이라 내부 레지스트리에 닿는다.
+			fmt.Fprintf(&b, "            export TRIVY_JAVA_DB_REPOSITORY=%q\n", repo)
+		}
+		b.WriteString("            set -x\n")
+		for _, line := range scanScriptLines() {
+			fmt.Fprintf(&b, "            %s\n", line)
+		}
+		b.WriteString("          '''\n")
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		// 리포트는 실패해도 남긴다. 차단당한 사람이 무엇에 걸렸는지 보려면
+		// 실패한 실행의 산출물이 필요하다.
+		b.WriteString("      post {\n")
+		b.WriteString("        always {\n")
+		fmt.Fprintf(&b, "          archiveArtifacts artifacts: %q, allowEmptyArchive: true\n", scanReportFile)
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("    }\n\n")
+	}
 
 	// deploy — 매니페스트 태그 갱신 후 되커밋
 	b.WriteString("    stage('Deploy') {\n")

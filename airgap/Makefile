@@ -95,6 +95,16 @@ push: ## [Agent 2] 이미지를 로컬 레지스트리로 리태그 후 푸시
 	@echo "==> 이미지 푸시 → localhost:$(REGISTRY_PORT)"
 	@bash $(SCRIPTS)/12-push-to-registry.sh
 
+.PHONY: oci-artifacts
+oci-artifacts: ## [온라인] OCI 아티팩트 반입 (Trivy 취약점 DB → bundle/oci-artifacts.tar.gz)
+	@echo "==> OCI 아티팩트 pull (oras 필요)"
+	@bash $(SCRIPTS)/pre/pull-oci-artifacts.sh
+
+.PHONY: push-oci
+push-oci: ## [오프라인] OCI 아티팩트를 로컬 레지스트리로 푸시
+	@echo "==> OCI 아티팩트 푸시 → localhost:$(REGISTRY_PORT)"
+	@bash $(SCRIPTS)/14-push-oci-artifacts.sh
+
 .PHONY: charts
 charts: ## 차트 번들 생성 (20-bundle-charts.sh, 온라인 전용)
 	@echo "==> helm 의존성 번들"

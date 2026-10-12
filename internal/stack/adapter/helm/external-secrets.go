@@ -89,6 +89,49 @@ var esoCRDNames = []string{
 	"secretstores.external-secrets.io",
 }
 
+// esoClusterScopedKinds 는 ESO 차트가 만드는 클러스터 범위 리소스 종류다.
+//
+// CRD 만으로는 부족하다. 실측(2026-09-10, 차트 2.7.0)에서 남아 있던 것은
+// CRD 24개 · ClusterRole 5개 · ClusterRoleBinding 2개 ·
+// ValidatingWebhookConfiguration 2개였다.
+//
+// 이름으로 찾지 않는다 — 웹훅 설정은 externalsecret-validate /
+// secretstore-validate 라 이름에 external-secrets 가 없다. 대신 Helm 이
+// 소유권을 판정하는 바로 그 애노테이션(meta.helm.sh/release-name)으로 찾으므로
+// 차트가 리소스를 늘려도 따라간다.
+var esoClusterScopedKinds = []string{
+	"crd",
+	"clusterrole",
+	"clusterrolebinding",
+	"validatingwebhookconfiguration",
+	"mutatingwebhookconfiguration",
+}
+
+// esoOwnedClusterScoped 는 ESO 릴리스가 소유한 클러스터 범위 리소스를 찾는다.
+//
+// 소유 네임스페이스는 묻지 않는다 — 다른 네임스페이스가 소유한 것이야말로
+// 이번 설치를 막는 대상이기 때문이다.
+func (o *Orchestrator) esoOwnedClusterScoped(ctx context.Context, kind, releaseName string) []string {
+	out, err := o.runKubectl(ctx, "get", kind,
+		"-o", `jsonpath={range .items[*]}{.metadata.name}{"\t"}{.metadata.annotations.meta\.helm\.sh/release-name}{"\n"}{end}`)
+	if err != nil {
+		slog.Warn("ESO 클러스터 범위 리소스 조회 실패", "kind", kind, "error", err)
+		return nil
+	}
+
+	var names []string
+	for _, line := range strings.Split(string(out), "\n") {
+		parts := strings.SplitN(strings.TrimSpace(line), "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		if strings.TrimSpace(parts[1]) == releaseName {
+			names = append(names, strings.TrimSpace(parts[0]))
+		}
+	}
+	return names
+}
+
 // adoptExistingESOCRDs 는 이미 존재하는 ESO CRD 의 Helm 소유권을 현재 릴리스로 넘긴다.
 //
 // ESO CRD 는 클러스터 범위이고 Helm 은 릴리스 삭제 시 CRD 를 지우지 않는다.
@@ -104,30 +147,39 @@ func (o *Orchestrator) adoptExistingESOCRDs(ctx context.Context, namespace, rele
 	if !looksLikeKubeconfig(o.kubeconfig) {
 		return
 	}
-	for _, crd := range esoCRDNames {
-		if _, err := o.runKubectl(ctx, "get", "crd", crd); err != nil {
-			continue // 없으면 Helm 이 새로 만든다
-		}
 
-		// 이미 다른 스택이 살아 있는 채로 소유 중이면 탈취하지 않는다.
-		// (CRD 는 클러스터 전역이라 소유권을 뺏으면 그 스택 삭제 시 함께 사라진다)
-		//
-		// 소유권 조회 자체가 실패하면 예전대로 인수한다 — 조회 실패를 이유로
-		// 인수를 건너뛰면 다중 네임스페이스 재설치가 다시 막힌다.
-		if owner, err := o.clusterScopedOwnerOf(ctx, "crd", crd); err == nil {
-			if strings.TrimSpace(owner.ReleaseName) != "" && owner.ReleaseNamespace != namespace &&
-				releaseAliveInNamespace(ctx, o, owner.ReleaseName, owner.ReleaseNamespace) {
-				slog.Warn("ESO CRD 를 인수하지 않습니다 — 다른 네임스페이스의 릴리스가 아직 살아 있습니다",
-					"crd", crd, "owner_namespace", owner.ReleaseNamespace, "target_namespace", namespace)
+	adopted, skipped := 0, 0
+	for _, kind := range esoClusterScopedKinds {
+		for _, name := range o.esoOwnedClusterScoped(ctx, kind, releaseName) {
+			// 이미 다른 스택이 살아 있는 채로 소유 중이면 탈취하지 않는다.
+			// (클러스터 전역이라 소유권을 뺏으면 그 스택 삭제 시 함께 사라진다)
+			//
+			// 소유권 조회 자체가 실패하면 예전대로 인수한다 — 조회 실패를 이유로
+			// 인수를 건너뛰면 다중 네임스페이스 재설치가 다시 막힌다.
+			if owner, err := o.clusterScopedOwnerOf(ctx, kind, name); err == nil {
+				if strings.TrimSpace(owner.ReleaseName) != "" && owner.ReleaseNamespace != namespace &&
+					releaseAliveInNamespace(ctx, o, owner.ReleaseName, owner.ReleaseNamespace) {
+					slog.Warn("ESO 리소스를 인수하지 않습니다 — 다른 네임스페이스의 릴리스가 아직 살아 있습니다",
+						"kind", kind, "name", name,
+						"owner_namespace", owner.ReleaseNamespace, "target_namespace", namespace)
+					skipped++
+					continue
+				}
+			}
+
+			if err := o.patchClusterScopedOwnership(ctx, kind, name, releaseName, namespace); err != nil {
+				slog.Warn("ESO 리소스 소유권 인수 실패", "kind", kind, "name", name, "error", err)
 				continue
 			}
+			adopted++
 		}
+	}
 
-		if err := o.patchClusterScopedOwnership(ctx, "crd", crd, releaseName, namespace); err != nil {
-			slog.Warn("ESO CRD 소유권 인수 실패", "crd", crd, "error", err)
-			continue
-		}
-		slog.Info("ESO CRD 소유권을 현재 릴리스로 인수했습니다", "crd", crd, "namespace", namespace)
+	// 건별로 찍으면 30건 넘는 로그가 설치 흐름을 덮는다. 한 줄로 요약하되
+	// 0건이면 남기지 않는다 — 첫 설치에는 인수할 것이 없는 게 정상이다.
+	if adopted > 0 || skipped > 0 {
+		slog.Info("ESO 클러스터 범위 리소스 소유권을 정리했습니다",
+			"adopted", adopted, "skipped", skipped, "namespace", namespace)
 	}
 }
 

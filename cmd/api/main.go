@@ -27,6 +27,7 @@ import (
 	authtoken "github.com/cloud-nullus/draft/internal/auth/adapter/token"
 	authusecase "github.com/cloud-nullus/draft/internal/auth/usecase"
 	"github.com/cloud-nullus/draft/internal/backup"
+	backupbridge "github.com/cloud-nullus/draft/internal/backup/adapter/bridge"
 	backuphandler "github.com/cloud-nullus/draft/internal/backup/adapter/handler"
 	backupdomain "github.com/cloud-nullus/draft/internal/backup/domain"
 	backupscheduler "github.com/cloud-nullus/draft/internal/backup/scheduler"
@@ -51,10 +52,12 @@ import (
 	obsuc "github.com/cloud-nullus/draft/internal/observability/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/shared/config"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/cloud-nullus/draft/internal/shared/middleware"
 	"github.com/cloud-nullus/draft/internal/shared/secrets"
 	stackhandler "github.com/cloud-nullus/draft/internal/stack/adapter/handler"
 	stackhelm "github.com/cloud-nullus/draft/internal/stack/adapter/helm"
+	stackimagescan "github.com/cloud-nullus/draft/internal/stack/adapter/imagescan"
 	logadapter "github.com/cloud-nullus/draft/internal/stack/adapter/log"
 	stackrepo "github.com/cloud-nullus/draft/internal/stack/adapter/repository"
 	stackport "github.com/cloud-nullus/draft/internal/stack/port"
@@ -185,39 +188,61 @@ func main() {
 	// 오케스트레이터보다 먼저 만들어야 아래 WithResourceDefaultRepository 로 넘길 수 있다.
 	pgResourceDefaultRepo := stackrepo.NewPostgresResourceDefaultRepository(pool)
 
+	// 설치 이미지 취약점 스캔(보고용, 설치를 막지 않는다).
+	//
+	// 스택이 돌리는 OSS 이미지를 스택의 Trivy 서버로 스캔한다 — 설치 직후 한 번,
+	// 이후 주기적으로. 에어갭 설치는 외부 레지스트리에 닿지 못해 스캔하지 않는다.
+	stackImageScanUC := stackuc.NewScanStackImages(
+		pgStackRepo,
+		pgStackRepo,
+		kubeconfigProvider,
+		stackimagescan.NewScanner(),
+		stackrepo.NewPostgresStackImageScanRepository(pool),
+		stackhelm.AirgapMode(),
+	)
+
+	stackImageScanHandler := stackhandler.NewImageScanHandler(stackImageScanUC)
+
+	// 스택 설치기 팩토리. 설치와, 복구가 공용 컨트롤러(cert-manager·metrics-server)를 다시 세울 때
+	// 같은 것을 쓴다 — 두 길이 같은 차트 메타데이터·자원 기본값·이미지 프로젝트로 같은 결과를 낸다.
+	stackExecutorFactory := func(kubeconfig []byte) stackport.StepExecutor {
+		installer := stackhelm.NewHelmInstaller(kubeconfig)
+		orch := stackhelm.NewOrchestrator(
+			installer,
+			kubeconfig,
+			"",
+			stackhelm.WithHelmStepMetadataRepository(pgHelmStepMetadataRepo),
+			// 이게 빠지면 loadResourceDefault 가 repo nil 을 보고 바로 빠져나가
+			// 모든 차트가 resources 없이 설치된다 — 파드의 requests/limits 가
+			// 통째로 비고, 스케줄러가 자원을 예약하지 못한다.
+			stackhelm.WithResourceDefaultRepository(pgResourceDefaultRepo),
+			// 레지스트리 프로젝트 이름은 CI/CD 모듈의 그룹 경로와 같아야 한다.
+			// 두 모듈은 서로 import 할 수 없으므로 조립 지점인 여기서 같은
+			// 값을 넘겨 계약을 맞춘다 — 다르면 프로젝트는 만들어지는데 CI 가
+			// push 하는 주소는 다른 프로젝트를 가리켜 "project not found" 로 막힌다.
+			stackhelm.WithImageProjectName(cicdGroupPath()),
+			// 설치되는 OSS 가 브라우저를 보낼 Keycloak 주소. 포털이 로그인한
+			// 곳과 같아야 SSO 세션이 이어진다.
+			stackhelm.WithToolOIDCIssuer(cfg.ToolOIDCIssuerURL()),
+		)
+		// SSO 프로비저너 주입 — stack 모듈은 포트만 알고 구현은 auth 모듈이 제공한다.
+		if ssoFactory != nil {
+			orch.SetSSOProvisionerFactory(ssoFactory)
+		}
+		return orch
+	}
+
 	installStackUC := stackuc.NewInstallStack(
 		pgStackRepo,
 		memStreamer,
 		stackuc.WithKubeconfigProvider(kubeconfigProvider),
 		stackuc.WithTokenSourceRegistry(stackrepo.NewPostgresTokenSourceRegistry(pool, secretRouter), tokenSourceEnvironment(cfg.Server.Mode)),
 		stackuc.WithSecretRouter(secretRouter),
-		stackuc.WithExecutorFactory(func(kubeconfig []byte) stackport.StepExecutor {
-			installer := stackhelm.NewHelmInstaller(kubeconfig)
-			orch := stackhelm.NewOrchestrator(
-				installer,
-				kubeconfig,
-				"",
-				stackhelm.WithHelmStepMetadataRepository(pgHelmStepMetadataRepo),
-				// 이게 빠지면 loadResourceDefault 가 repo nil 을 보고 바로 빠져나가
-				// 모든 차트가 resources 없이 설치된다 — 파드의 requests/limits 가
-				// 통째로 비고, 스케줄러가 자원을 예약하지 못한다.
-				stackhelm.WithResourceDefaultRepository(pgResourceDefaultRepo),
-				// 레지스트리 프로젝트 이름은 CI/CD 모듈의 그룹 경로와 같아야 한다.
-				// 두 모듈은 서로 import 할 수 없으므로 조립 지점인 여기서 같은
-				// 값을 넘겨 계약을 맞춘다 — 다르면 프로젝트는 만들어지는데 CI 가
-				// push 하는 주소는 다른 프로젝트를 가리켜 "project not found" 로 막힌다.
-				stackhelm.WithImageProjectName(cicdGroupPath()),
-				// 설치되는 OSS 가 브라우저를 보낼 Keycloak 주소. 포털이 로그인한
-				// 곳과 같아야 SSO 세션이 이어진다.
-				stackhelm.WithToolOIDCIssuer(cfg.ToolOIDCIssuerURL()),
-			)
-			// SSO 프로비저너 주입 — stack 모듈은 포트만 알고 구현은 auth 모듈이 제공한다.
-			if ssoFactory != nil {
-				orch.SetSSOProvisionerFactory(ssoFactory)
-			}
-			return orch
-		}),
+		stackuc.WithInstalledImageScan(stackImageScanUC),
+		stackuc.WithExecutorFactory(stackExecutorFactory),
 	)
+	// 복구가 마지막 스택을 지운 클러스터로 되돌릴 때 회수된 컨트롤러를 설치기로 다시 세운다.
+	ensureSharedComponentsUC := stackuc.NewEnsureSharedComponents(stackExecutorFactory)
 	createStackUC := stackuc.NewCreateStack(
 		pgStackRepo,
 		pgTemplateRepo,
@@ -239,6 +264,11 @@ func main() {
 	)
 	// 삭제가 플랫폼 네임스페이스를 훑지 않게 자기 자리를 알려준다.
 	deleteStackUC.SetPlatformNamespace(cfg.Platform.Namespace)
+	// 클러스터의 마지막 스택을 지울 때 공용 릴리스(cert-manager·metrics-server)의 values 를 읽어
+	// Nullus 가 설치한 것만 회수한다.
+	deleteStackUC.SetReleaseManagerFactory(func(kubeconfig []byte) stackport.HelmReleaseManager {
+		return stackhelm.NewHelmInstaller(kubeconfig)
+	})
 	// 설치가 IdP 에 등록한 OIDC 클라이언트를 삭제 때 함께 지운다. 설치와 같은
 	// 팩토리를 줘야 같은 client ID 를 계산한다.
 	if ssoFactory != nil {
@@ -287,6 +317,9 @@ func main() {
 	pgCICDTemplateRepo := cicdrepo.NewPostgresCICDTemplateRepository(pool)
 	pgPipelineRepo := cicdrepo.NewPostgresPipelineRepository(pool)
 	pgDeploymentRepo := cicdrepo.NewPostgresDeploymentRepository(pool)
+	// 이미지 스캔 게이트 판정. 대시보드(#65)가 cicd 의 공개 경로로 읽는다.
+	pgImageScanRepo := cicdrepo.NewPostgresImageScanResultRepository(pool)
+	pgSASTResultRepo := cicdrepo.NewPostgresSASTResultRepository(pool)
 	memGoldenPathRepo := cicdrepo.NewMemoryCICDGoldenPathRepository()
 	manifestApplier := cicdkube.NewManifestApplier()
 
@@ -324,10 +357,15 @@ func main() {
 			Env:       tokenSourceEnvironment(cfg.Server.Mode),
 			GroupPath: cicdGroupPath(),
 			// 기본은 클러스터 내부 서비스 DNS 다. API 서버를 클러스터 밖에서
-			// 돌리거나 외부 GitLab 을 붙일 때만 지정한다.
+			// 돌리거나 외부 GitLab 을 붙일 때만 지정한다. 주소 하나 또는
+			// "네임스페이스=주소,..." 목록(스택마다 포트포워드가 다를 때 —
+			// 로컬 런북이 이렇게 넣는다).
 			GitLabBaseURLOverride:  strings.TrimSpace(os.Getenv("NULLUS_GITLAB_URL")),
 			GiteaBaseURLOverride:   strings.TrimSpace(os.Getenv("NULLUS_GITEA_URL")),
 			JenkinsBaseURLOverride: strings.TrimSpace(os.Getenv("NULLUS_JENKINS_URL")),
+			// 에어갭 설치면 CI 잡의 trivy client 가 반입한 Java DB 미러를 쓴다. 스택
+			// Trivy 서버의 DB 미러와 같은 레지스트리다(shareddomain 이 경로 규칙을 소유).
+			TrivyJavaDBRepository: shareddomain.TrivyJavaDBRepository(os.Getenv("NULLUS_HELM_OCI_REGISTRY")),
 		},
 	).WithGitHub(cicdGitHubTokens, cicdGitHubConnections).
 		WithGitea(cicdGiteaTokens, secretRouter).
@@ -335,14 +373,38 @@ func main() {
 		// 스택이 설치한 Harbor·Nexus 의 관리자 자격증명은 설치 과정이 이미
 		// OpenBao 에 만들어 두었다. 배선하지 않으면 CI 레지스트리 변수가 비어
 		// 스캐폴딩된 파이프라인의 docker login 이 죽는다.
-		WithRegistrySecrets(secretRouter)
+		WithRegistrySecrets(secretRouter).
+		// Gitea + Jenkins 스택은 CI 변수 저장소가 없어 스캔 정책을 스택 네임스페이스의
+		// ConfigMap 으로 싣는다. 배선하지 않으면 그 스택은 정책을 실을 경로가 없다.
+		WithManifestApplier(manifestApplier, kubeconfigProvider)
+	// 스택별 이미지 스캔 정책. 판정은 CI 가 푸시받은 값으로 스스로 한다(설계 §5.4) —
+	// CI 가 플랫폼에 되묻는 인바운드 경로와 기계 인증을 두지 않는다.
+	pgScanPolicyRepo := cicdrepo.NewPostgresScanPolicyRepository(pool)
+	scanPolicyUC := cicduc.NewScanPolicyService(pgScanPolicyRepo, pgPipelineRepo, cicdBundleFactory)
+	scanPolicyHandler := cicdhandler.NewScanPolicyHandler(scanPolicyUC)
 	runSyncUC := cicduc.NewSyncPipelineRuns(nil, pgDeploymentRepo).
-		WithBundleFactory(cicdBundleFactory, pgPipelineRepo)
+		WithBundleFactory(cicdBundleFactory, pgPipelineRepo).
+		// 실행 기록을 들이면서 스캔 단계의 게이트 판정도 남긴다. 배선하지 않으면
+		// 차단된 배포가 어디에도 기록되지 않는다.
+		WithImageScans(pgImageScanRepo).
+		// 분석 단계가 남긴 리포트로 Quality Gate 판정·지표를 남긴다.
+		WithSASTResults(pgSASTResultRepo).
+		// CI 는 스택 정책으로 막는다. 동기화도 같은 정책으로 읽어야 차단과 스캔 오류를 가른다.
+		WithScanPolicies(pgScanPolicyRepo).
+		// 주기 동기화가 돌 파이프라인 목록. 화면을 열 때만 들이면 아무도 보지 않는
+		// 파이프라인의 스캔 결과가 쌓이지 않는다.
+		WithSyncablePipelines(pgPipelineRepo)
 	provisionRepoUC := cicduc.NewProvisionPipelineRepository(
 		cicdBundleFactory, manifestApplier, kubeconfigProvider)
 
 	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo, cicdStackReader).
-		WithRepositoryProvisioner(provisionRepoUC)
+		WithRepositoryProvisioner(provisionRepoUC).
+		// 새 스캔 파이프라인에 스택 정책을 싣는다. 빠지면 새 파이프라인만 기본 정책으로 판정한다.
+		WithScanPolicyPublisher(scanPolicyUC)
+	// 기존 파이프라인의 CI 정의 파일을 플랫폼 기본으로 다시 쓰는 경로. SAST 리포트 같은 새 단계가
+	// 옛 파이프라인에 붙게 한다 — 전에는 파이프라인을 다시 만드는 것 말고 방법이 없었다.
+	refreshDefinitionUC := cicduc.NewRefreshPipelineDefinition(pgPipelineRepo, provisionRepoUC).
+		WithScanPolicyPublisher(scanPolicyUC)
 	listPipelinesUC := cicduc.NewListPipelines(pgPipelineRepo)
 	// 이미지 준비기와 클러스터 타깃 제공자를 배선한다.
 	//
@@ -381,12 +443,18 @@ func main() {
 		// GitOps 경로의 실행 기록은 CI 서버에만 있다. 들이지 않으면 빌드가
 		// 성공해도 화면의 실행 통계가 0 으로 남는다.
 		WithRunSync(runSyncUC).
+		// 스캔 결과의 취약점 목록. 저장하지 않고 볼 때 CI 리포트를 다시 읽는다.
+		WithScanVulnerabilities(cicduc.NewScanVulnerabilities(pgPipelineRepo, pgImageScanRepo, cicdBundleFactory)).
 		// 직접 배포가 실제로 클러스터에 적용하도록 한다. 없으면 배포가
 		// 실패한다 — 적용 없이 성공으로 기록하는 것보다 낫다.
 		WithManifestApplier(manifestApplier).
+		WithDefinitionRefresh(refreshDefinitionUC).
 		// 직접 배포(POST /deploy-app)도 파이프라인 배포와 같은 수집기 주소를
 		// 넣어야 한다 — 한쪽만 배선하면 경로에 따라 추적이 갈린다.
-		WithStackReader(cicdStackReader)
+		WithStackReader(cicdStackReader).
+		// 스캔 결과 조회. 빠지면 503 으로 알린다 — 빈 목록은 "스캔한 적 없음" 으로 읽힌다.
+		WithImageScans(pgImageScanRepo).
+		WithSASTResults(pgSASTResultRepo)
 
 	// Observability: Prometheus with in-memory fallback
 	var dashboardRepo obsport.DashboardRepository
@@ -528,12 +596,16 @@ func main() {
 	releaseValuesHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
 	retryHistoryHandler.RegisterRoutes(stacks)
+	stackImageScanHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
 	cicdGoldenPathHandler.RegisterRoutes(cicd)
 	pipelineHandler.RegisterRoutes(cicd)
 	// 스택별 파이프라인 조회는 /stacks 그룹 아래에 붙는다. 핸들러는 처음부터 있었는데
 	// 이 호출이 빠져 있어 GET /api/v1/stacks/:stackId/pipelines 가 404 였다.
 	pipelineHandler.RegisterStackRoutes(stacks)
+	// 스캔 정책은 스택의 모든 스캔 파이프라인의 차단 여부를 바꾼다 — 개발자 권한인
+	// /cicd 가 아니라 /stacks(admin·devops) 아래에 붙인다.
+	scanPolicyHandler.RegisterStackRoutes(stacks)
 	dashboardHandler.RegisterRoutes(observability)
 	alertHandler.RegisterRoutes(observability)
 
@@ -598,14 +670,30 @@ func main() {
 	//
 	// 조립이 실패하면 기동을 멈춘다. 설정이 잘못된 채로 뜨면 "백업이 돌고
 	// 있다" 는 착각만 남고, 그 착각은 복구를 시도할 때에야 깨진다 (§9 F10).
+	// 복구 뒤 러너·Argo CD hostAliases 를 스택 게이트웨이의 지금 주소로 맞춘다. 복구는 Service 를 백업
+	// 때의 ClusterIP 로 되살리지만, 다른 클러스터이거나 옛 백업이면 주소가 바뀐다.
+	gatewayAliasRepinUC := stackuc.NewGatewayAliasRepin(
+		pgStackRepo,
+		kubeconfigProvider,
+		func(kubeconfig []byte) stackport.HelmReleaseManager {
+			return stackhelm.NewHelmInstaller(kubeconfig)
+		},
+		func(kubeconfig []byte) (stackport.GatewayAddressReader, error) {
+			return stackhelm.NewGatewayAddressReader(kubeconfig)
+		},
+	)
 	backupModule, err := backup.New(backup.Deps{
-		Pool:            pool,
-		Config:          cfg.Backup,
-		PlatformDB:      cfg.Database,
-		SecretRouter:    secretRouter,
-		Kubeconfig:      kubeconfigProvider,
-		TokenSources:    tokenSourceRepo,
-		RotationPausing: rotationScheduler,
+		Pool:             pool,
+		Config:           cfg.Backup,
+		PlatformDB:       cfg.Database,
+		SecretRouter:     secretRouter,
+		Kubeconfig:       kubeconfigProvider,
+		TokenSources:     tokenSourceRepo,
+		RotationPausing:  rotationScheduler,
+		GatewayAliases:   gatewayAliasRepinUC,
+		SharedComponents: ensureSharedComponentsUC,
+		// 백업 세트가 "조직의 모든 스택" 을 스택 모듈의 저장소로 읽는다(bridge).
+		Stacks:          backupbridge.NewStackLister(pgStackRepo),
 		EncryptionKey:   []byte(os.Getenv("ENCRYPTION_KEY")),
 		PlatformVersion: platformVersion,
 		Logger:          slog.Default(),
@@ -617,22 +705,34 @@ func main() {
 	if backupModule != nil {
 		backupHandler := backuphandler.NewBackupHandler(
 			backupModule, backupModule.Verify, backupModule.Repo, cfg.Platform.Namespace,
-		)
+		).
+			// X-Org-ID 의 조직이 실제로 있는지 admin 의 공개 인터페이스로 본다. 없는
+			// 조직으로 만든 백업은 어떤 화면에도 보이지 않는다.
+			WithOrganizationChecker(backupbridge.NewOrganizationChecker(orgRepo))
 		backupHandler.RegisterRoutes(admin)
 
 		if sc := cfg.Backup.Schedule; sc.Enabled {
-			go backupscheduler.New(
-				mustBackupUseCase(rotationCtx, backupModule, sc.StackID),
-				backupModule.Retention,
-				backupscheduler.Config{
-					Interval:  sc.Interval,
-					OrgID:     sc.OrgID,
-					StackID:   sc.StackID,
-					Namespace: sc.Namespace,
-					Mode:      backupdomain.Mode(sc.Mode),
-					Logger:    slog.Default(),
-				},
-			).Start(rotationCtx)
+			// all_stacks 면 단독 유스케이스 대신 세트를 돈다 — 플랫폼 + 조직의 모든 스택.
+			var single *backupusecase.BackupUseCase
+			if !sc.AllStacks {
+				single = mustBackupUseCase(rotationCtx, backupModule, sc.StackID)
+			}
+			sched := backupscheduler.New(single, backupModule.Retention, backupscheduler.Config{
+				Interval:  sc.Interval,
+				OrgID:     sc.OrgID,
+				StackID:   sc.StackID,
+				Namespace: sc.Namespace,
+				Mode:      backupdomain.Mode(sc.Mode),
+				Logger:    slog.Default(),
+			})
+			if sc.AllStacks {
+				if set, err := backupModule.BackupSet(rotationCtx); err != nil {
+					slog.Error("스케줄 세트 백업 유스케이스를 만들 수 없습니다 — 주기 백업이 돌지 않습니다", "error", err)
+				} else {
+					sched.WithBackupSet(set)
+				}
+			}
+			go sched.Start(rotationCtx)
 		}
 	}
 
@@ -661,6 +761,27 @@ func main() {
 			}
 		}
 	}()
+
+	// 파이프라인 실행 기록과 스캔 결과를 주기적으로 들인다.
+	//
+	// 레플리카가 여럿이면 각자 돈다. 기록은 upsert 라 겹쳐도 결과는 같고 CI 조회만 는다.
+	go runEvery(rotationCtx, durationFromEnv("CICD_RUN_SYNC_INTERVAL", 10*time.Minute), func(ctx context.Context) {
+		if synced, err := runSyncUC.SyncAll(ctx); err != nil {
+			slog.Warn("pipeline run sync failed", "error", err)
+		} else if synced > 0 {
+			slog.Debug("pipeline runs synced", "pipelines", synced)
+		}
+	})
+
+	// 스택이 설치한 OSS 이미지를 주기적으로 다시 스캔한다. 설치 뒤에 공개된 CVE 는
+	// 다시 스캔해야 보인다. 에어갭 설치는 스캔하지 않는다.
+	if !stackhelm.AirgapMode() {
+		go runEvery(rotationCtx, durationFromEnv("STACK_IMAGE_RESCAN_INTERVAL", 24*time.Hour), func(ctx context.Context) {
+			if scanned := stackImageScanUC.RescanAll(ctx); scanned > 0 {
+				slog.Info("installed images rescanned", "stacks", scanned)
+			}
+		})
+	}
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	go func() {
@@ -730,6 +851,31 @@ func cicdKubectlRunner(ctx context.Context, kubeconfig []byte, args ...string) (
 			strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return out, nil
+}
+
+// runEvery 는 interval 마다 fn 을 돌린다. fn 이 끝나기 전에 온 틱은 버려지므로 실행이 겹치지 않는다.
+func runEvery(ctx context.Context, interval time.Duration, fn func(context.Context)) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			fn(ctx)
+		}
+	}
+}
+
+// durationFromEnv 는 환경 변수의 기간 값이다. 비었거나 잘못됐으면 기본값이다.
+func durationFromEnv(name string, fallback time.Duration) time.Duration {
+	if raw := strings.TrimSpace(os.Getenv(name)); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			return d
+		}
+		slog.Warn("invalid duration env; using default", "name", name, "value", raw, "default", fallback)
+	}
+	return fallback
 }
 
 func tokenRotationInterval() time.Duration {

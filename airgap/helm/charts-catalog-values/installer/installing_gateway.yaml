@@ -1,0 +1,4 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_gateway
+# chart: gateway-helm 1.4.3
+{}

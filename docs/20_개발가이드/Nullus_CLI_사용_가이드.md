@@ -1,8 +1,20 @@
 # Nullus CLI 사용 가이드
 
-- **작성일**: 2026-08-23
-- **상태**: v1 설계 확정 기준 선행 작성 — **구현 진행 중** ([EPIC nullus-plan#59](https://github.com/cloud-nullus/nullus-plan/issues/59)). 릴리스 시점에 실제 동작과 대조해 현행화한다
+- **작성일**: 2026-08-23 · **최종 갱신**: 2026-10-12
+- **상태**: v1 설계 확정 기준 선행 작성 — **구현 진행 중** ([EPIC nullus-plan#59](https://github.com/cloud-nullus/nullus-plan/issues/59)). 아래 "구현 현황" 에 없는 명령은 **설계이고 아직 동작하지 않는다.**
 - **구현 범위 (2026-09-03 결정)**: **1급 명령만 구현한다.** 2급·`api` passthrough 는 보류 — 명령별 구현 현황은 §9
+
+### 구현 현황 (2026-10-12, `internal/cli/`)
+
+| 명령 | 상태 | 비고 |
+|------|------|------|
+| `nullus version` | ✅ 동작 | |
+| `nullus stack ls [-o json]` | ✅ 동작 | `GET /api/v1/stacks`. 표 또는 CLI 가 소유한 JSON 스키마(id · name · state · cluster_name · namespace · created_at) |
+| 전역 플래그 `--server` · `-o json` | ✅ 동작 | `--server` 가 없으면 `NULLUS_SERVER` env → `~/.nullus/config` |
+| `login` · `auth bootstrap` · `cluster *` · `stack deploy/status/logs/rm/rollback/retry` · `stack template/config` · `compat` · `token-source` · `alert` · `api` · `mcp serve` | ⏳ 설계 | 아래 §3~§8 은 그 설계다 |
+| `pipeline deploy <id>` · `app deploy -f` | ⏳ 설계 — **의미 재정의 필요** | §9 참조. 스택 통합 파이프라인은 CI 가 커밋에 반응해 돌므로 "배포" 명령이 없고, `POST /pipelines/:id/deploy` 는 스택 없는 `emergency_direct` 파이프라인에만 있다 |
+
+지금 쓸 수 있는 것은 `nullus version` 과 `nullus stack ls` 다. 그 밖의 조작은 웹 UI 나 `curl` 로 REST(`/api/v1/*`)를 직접 부른다 — 요청 본문은 각 모듈의 핸들러(`internal/*/adapter/handler`)가 정의한다.
 - **설계 근거**: [CLI 컨셉](../11_기능설계/Nullus_CLI_컨셉.md) · [Automation 계약](../11_기능설계/Nullus_CLI_Automation_계약.md) · [stack.yaml 스키마](../11_기능설계/Nullus_Stack_YAML_스키마.md) · [MCP 설계](../11_기능설계/Nullus_MCP_설계.md)
 
 `nullus`는 Nullus 플랫폼의 통합 CLI다. 웹 UI가 "탐색·설정 마법사(노코드)"라면 CLI는 **반복·자동화·헤드리스**를 맡는다 — 두 표면은 같은 `/api/v1/*` REST를 쓰므로 웹에서 만든 것을 CLI로 조작할 수 있고 그 반대도 된다.
@@ -201,7 +213,7 @@ exit code 규약(§5)은 동일하게 적용된다. WebSocket 엔드포인트는
 | `stack status [--wait]` | `GET /stacks/:id/status` | 미구현 — A-6 (exit 6·7 도 여기서) |
 | `stack rm` / `rollback` / `retry` | `DELETE /stacks/:id` · `POST /stacks/:id/rollback` · `POST /stacks/:id/retry` | 미구현 — A-6 |
 | `stack logs -f` | `GET /ws/deployments/:id/logs` (WebSocket 래핑) | 미구현 — A-7 |
-| `pipeline deploy <id>` | `POST /cicd/pipelines/:id/deploy` | 미구현 — A-8 |
+| `pipeline run <id>` (옛 `pipeline deploy <id>` — **의미 재정의 필요**) | 현재 코드의 파이프라인은 둘로 나뉜다. 스택 통합(`stack_integrated`, 기본)은 저장소에 커밋이 올라가면 스택의 CI 가 돌고 Argo CD 가 배포하므로 **CLI 가 부를 "deploy" 가 없다**(다시 돌리기 = 커밋 또는 CI 의 Run pipeline). 스택 없는 `emergency_direct` 만 `POST /cicd/pipelines/:id/deploy`(`version` · `deployed_by` · `manifest_types`)로 플랫폼이 직접 배포한다 | 미구현 — A-8 (명령 의미부터 다시 정한다) |
 | `app deploy -f` | `POST /cicd/deploy-app` | 미구현 — A-8 |
 
 (API 경로는 `/api/v1` 프리픽스 생략. RBAC 은 서버 그룹 그대로 — `admin/*`=admin, `stacks/*`=admin·devops, `cicd/*`=+developer)

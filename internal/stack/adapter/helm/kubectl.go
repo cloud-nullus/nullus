@@ -1,12 +1,15 @@
 package helm
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
+
+	sharedkubeconfig "github.com/cloud-nullus/draft/internal/shared/kubeconfig"
 )
 
 func isKubectlNotFoundError(err error) bool {
@@ -74,9 +77,13 @@ func (o *Orchestrator) applyManifest(ctx context.Context, namespace, manifest st
 	return nil
 }
 
+// writeKubeconfigTempFile 은 kubectl 실행용 kubeconfig 파일을 만든다.
+//
+// 모든 kubectl 실행이 이 함수를 지나므로 여기서 서버 주소를 확인한다.
+// 서버가 없으면 kubectl 은 localhost:8080 으로 폴백해 엉뚱한 곳에 apply 한다.
 func (o *Orchestrator) writeKubeconfigTempFile() (string, error) {
-	if len(o.kubeconfig) == 0 {
-		return "", fmt.Errorf("kubeconfig is empty")
+	if err := sharedkubeconfig.RequireServer(o.kubeconfig); err != nil {
+		return "", err
 	}
 	tmpFile, err := os.CreateTemp("", "nullus-kubeconfig-*.yaml")
 	if err != nil {
@@ -105,6 +112,29 @@ func (o *Orchestrator) runKubectl(ctx context.Context, args ...string) ([]byte, 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return output, fmt.Errorf("kubectl %s failed: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+	}
+	return output, nil
+}
+
+// runKubectlStdout 은 표준출력만 돌려준다. 출력을 파싱하는 호출에 쓴다 — kubectl 이
+// 표준에러에 찍는 경고(죽은 aggregated APIService 의 discovery 오류 등)가 섞이면
+// JSON 이 깨진다. 표준에러는 실패했을 때 오류 메시지에만 싣는다.
+func (o *Orchestrator) runKubectlStdout(ctx context.Context, args ...string) ([]byte, error) {
+	kubeconfigPath, err := o.writeKubeconfigTempFile()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = os.Remove(kubeconfigPath)
+	}()
+
+	cmdArgs := append([]string{"--kubeconfig", kubeconfigPath}, args...)
+	cmd := exec.CommandContext(ctx, "kubectl", cmdArgs...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	if err != nil {
+		return output, fmt.Errorf("kubectl %s failed: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return output, nil
 }

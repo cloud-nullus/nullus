@@ -15,6 +15,10 @@ type StackRepository interface {
 	// ListInFlight 는 설치가 진행 중인 상태로 남아 있는 스택을 조직과 무관하게
 	// 돌려준다. 끊긴 설치를 찾아내는 데 쓴다 — 그것은 조직 경계와 무관한 일이다.
 	ListInFlight(ctx context.Context) ([]*domain.Stack, error)
+	// ListByCluster 는 한 클러스터의 지우지 않은 스택을 조직과 무관하게 돌려준다.
+	// 스택 삭제가 그 클러스터의 마지막 스택인지 볼 때 쓴다 — 클러스터 공용 자원은
+	// 마지막 스택을 지울 때만 회수한다.
+	ListByCluster(ctx context.Context, clusterID string) ([]*domain.Stack, error)
 	Update(ctx context.Context, stack *domain.Stack) error
 	// TouchUpdatedAt 은 갱신 시각만 찍는다.
 	//

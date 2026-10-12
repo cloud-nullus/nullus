@@ -15,6 +15,21 @@ beforeEach(() => {
 })
 
 describe('Header', () => {
+  // 작업 알림 종은 로그인한 사용자에게만 건다 — 목록 API 두 개를 폴링하기 때문이다.
+  it('로그인 전에는 작업 알림 종이 없다', () => {
+    useAuthStore.setState({ role: 'developer', user: null, isAuthenticated: false })
+    renderWithProviders(<Header />)
+
+    expect(screen.queryByTestId('job-notification-bell')).not.toBeInTheDocument()
+  })
+
+  it('로그인하면 작업 알림 종이 상단에 뜬다', () => {
+    useAuthStore.setState({ role: 'devops', user: null, isAuthenticated: true })
+    renderWithProviders(<Header />)
+
+    expect(screen.getByTestId('job-notification-bell')).toBeInTheDocument()
+  })
+
   it('튜토리얼 버튼이 언어 버튼 바로 옆에 있다', () => {
     renderWithProviders(<Header />)
 

@@ -66,8 +66,14 @@ type CICredentialResolver interface {
 
 // CIBuild 는 CI 서버가 실행한 빌드 하나다.
 type CIBuild struct {
+	// Number 는 화면에 보이는 실행 번호다(Jenkins 빌드 번호, GitLab iid, GitHub run_number).
 	Number int
-	// Result 는 CI 가 보고한 결과다(SUCCESS/FAILURE/ABORTED). 실행 중이면 빈 값이다.
+	// ID 는 CI API 가 실행을 가리키는 식별자다(GitLab pipeline id, GitHub run id).
+	// 번호와 다를 수 있고, 산출물 조회는 이것으로 한다.
+	ID string
+	// Result 는 CI 가 보고한 결과다(SUCCESS/FAILURE/ABORTED/SKIPPED). 실행 중이면 빈 값이다.
+	// SKIPPED(Jenkins 는 NOT_BUILT)는 실행이 아니다 — 아무 잡도 돌지 않은 빈 파이프라인이라
+	// 동기화가 실행 기록으로 남기지 않는다.
 	Result   string
 	Building bool
 	// StartedAt 은 빌드 시작 시각, Duration 은 실행 시간이다.
@@ -83,8 +89,11 @@ type CIBuild struct {
 //
 // webhook 은 커밋이 있을 때만 돈다. 사용자가 화면에서 "배포 실행" 을 누르는
 // 것은 커밋 없이 지금 실행하겠다는 뜻이라, 트리거가 따로 필요하다.
+//
+// 돌려주는 주소는 사람이 열어 볼 실행 주소다. 플랫폼마다 모양이 다르므로(Jenkins 는
+// /job/…, GitLab 은 /-/pipelines/…) 호출부가 지어내지 않고 트리거가 준다. 모르면 빈 값이다.
 type CIBuildTrigger interface {
-	TriggerBuild(ctx context.Context, jobName, branch string) error
+	TriggerBuild(ctx context.Context, jobName, branch string) (runURL string, err error)
 }
 
 // CIBuildReader 는 CI 서버에서 빌드 이력을 읽는다.
@@ -94,4 +103,57 @@ type CIBuildTrigger interface {
 // 영원히 0 으로 남는다.
 type CIBuildReader interface {
 	ListBuilds(ctx context.Context, jobName, branch string, limit int) ([]CIBuild, error)
+}
+
+// 이미지 스캔 리포트 산출물의 이름이다. 스캐폴딩이 파이프라인에 이 이름으로 남기고
+// 실행 기록 동기화가 같은 이름으로 읽는다 — 한쪽만 바꾸면 건수가 조용히 빈다.
+const (
+	// ImageScanReportArtifact 는 산출물을 이름으로 묶는 CI(GitHub upload-artifact)의 묶음 이름이다.
+	ImageScanReportArtifact = "trivy-report"
+	// ImageScanReportFile 은 리포트 파일 경로다.
+	ImageScanReportFile = "trivy-report.json"
+)
+
+// 소스 정적 분석 리포트 산출물의 이름이다. 이미지 스캔 리포트와 같은 규칙이다 —
+// 스캐폴딩이 남기고 실행 기록 동기화가 같은 이름으로 읽는다.
+const (
+	// SASTReportArtifact 는 GitHub upload-artifact 의 묶음 이름이다.
+	SASTReportArtifact = "sast-report"
+	// SASTReportFile 은 리포트 파일 경로다.
+	SASTReportFile = "sast-report.json"
+)
+
+// MaxCIArtifactBytes 는 산출물 파일 하나를 읽을 때의 상한이다.
+//
+// 산출물은 사용자 파이프라인이 만든다. 크기를 믿고 통째로 메모리에 올리지 않는다.
+// Trivy JSON 리포트는 큰 이미지도 수 MB 수준이다.
+const MaxCIArtifactBytes int64 = 32 << 20
+
+// CIArtifactRef 는 읽을 산출물의 위치다.
+//
+// CI 마다 산출물을 묶는 단위가 다르다 — Jenkins 는 빌드, GitLab 은 잡, GitHub 은
+// 실행 안의 이름 붙은 묶음. 어댑터가 필요한 것을 골라 쓰도록 실행과 단계를 통째로 넘긴다.
+type CIArtifactRef struct {
+	JobName string
+	Branch  string
+	Build   CIBuild
+	Stage   CIStage
+	// Name 은 산출물 묶음 이름, Path 는 그 안의 파일 경로다.
+	Name string
+	Path string
+}
+
+// CIArtifactReader 는 실행이 남긴 산출물 파일을 읽는다.
+// CIArtifactLinker 는 산출물을 브라우저로 여는 주소를 만든다.
+//
+// 선택 기능이다. API 클라이언트는 클러스터 내부 주소로 붙으므로, 사람이 열 수 있는
+// 외부 주소를 모르는 조회기는 빈 문자열을 돌려준다 — 죽은 링크보다 없는 편이 낫다.
+type CIArtifactLinker interface {
+	ArtifactWebURL(ref CIArtifactRef) string
+}
+
+type CIArtifactReader interface {
+	// ReadArtifact 는 파일 내용을 돌려준다. 없으면 found=false 이고 오류가 아니다 —
+	// 리포트가 없는 실행(스캐너에 닿지 못함, 보존 기간 만료)은 정상 경로다.
+	ReadArtifact(ctx context.Context, ref CIArtifactRef) (data []byte, found bool, err error)
 }

@@ -248,3 +248,86 @@ func TestRegistryHostFor_DerivesFromAccessDomain(t *testing.T) {
 	// 도메인을 모르면 빈 값 — 클라이언트가 API 응답의 경로를 그대로 쓴다.
 	assert.Equal(t, "", registryHostFor(""))
 }
+
+type fakeSecretStore struct{ values map[string]string }
+
+func (f *fakeSecretStore) GetTokenForStack(_ context.Context, _, _, path string) (string, error) {
+	return f.values[path], nil
+}
+
+// SonarQube 를 고른 스택이면 주소와 분석 토큰을 번들에 싣는다. 끊기면 SonarQube 가 있어도
+// 파이프라인에 분석 단계가 생기지 않는다.
+func TestFor_CarriesSASTServerAndToken(t *testing.T) {
+	stack := gitlabStack()
+	stack.SASTServerEndpoint = "http://sonarqube.devsecops.svc.cluster.local:9000"
+	f := newFactory(t, stack, &fakeTokenIssuer{token: "glpat-x"}).WithRegistrySecrets(&fakeSecretStore{
+		values: map[string]string{"kv/nullus/dev/org-1/security/sonarqube/analysis-token": "sqa_token"},
+	})
+
+	bundle, err := f.For(context.Background(), "stk_1")
+	require.NoError(t, err)
+	assert.Equal(t, stack.SASTServerEndpoint, bundle.SASTServerEndpoint)
+	// 결과 화면의 SonarQube 링크는 사람이 여는 주소다. 클러스터 내 주소는 브라우저에서 열리지 않는다.
+	assert.Equal(t, "https://sonarqube."+stack.AccessDomain, bundle.SASTWebURL)
+	require.NotNil(t, bundle.SASTToken)
+	token, err := bundle.SASTToken.AnalysisToken(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "sqa_token", token)
+}
+
+func TestFor_NoSASTWithoutSonarQube(t *testing.T) {
+	f := newFactory(t, gitlabStack(), &fakeTokenIssuer{token: "glpat-x"}).WithRegistrySecrets(&fakeSecretStore{})
+	bundle, err := f.For(context.Background(), "stk_1")
+	require.NoError(t, err)
+	assert.Empty(t, bundle.SASTServerEndpoint)
+	assert.Empty(t, bundle.SASTWebURL)
+	assert.Nil(t, bundle.SASTToken)
+}
+
+// GitLab 스택의 "실행" 도 CI 에 넘어가야 한다. 트리거가 Jenkins 번들에만 있어 GitLab
+// 스택에서는 Trigger CI 단계가 늘 "CI 플랫폼이 없다" 로 실패했다.
+func TestFor_GitLabBundleCanTriggerCI(t *testing.T) {
+	bundle, err := newFactory(t, gitlabStack(), &fakeTokenIssuer{token: "t"}).For(context.Background(), "stk_1")
+	require.NoError(t, err)
+
+	assert.NotNil(t, bundle.CITrigger)
+}
+
+// 로컬에서 GitLab 스택이 여럿이면 포트포워드도 여럿이다. 주소 하나로는 한 스택밖에
+// 못 가리키고, 다른 스택의 번들은 엉뚱한 GitLab 에 인증을 시도해 토큰을 돌린다.
+// "네임스페이스=주소" 목록이면 스택마다 제 주소를 쓴다.
+func TestGitLabBaseURLOverrideFor_NamespaceKeyedList(t *testing.T) {
+	override := "devsecops=http://127.0.0.1:8181, cicd-stack=http://127.0.0.1:8182"
+
+	assert.Equal(t, "http://127.0.0.1:8181", gitLabBaseURLOverrideFor(override, "devsecops"))
+	assert.Equal(t, "http://127.0.0.1:8182", gitLabBaseURLOverrideFor(override, "cicd-stack"))
+	// 목록에 없는 스택은 클러스터 내부 주소를 그대로 쓴다.
+	assert.Equal(t, "", gitLabBaseURLOverrideFor(override, "other"))
+}
+
+// 주소 하나만 주면 예전처럼 모든 스택에 적용된다. 네임스페이스 항목과 섞이면
+// 항목이 있는 스택은 그 주소, 나머지는 bare 주소다.
+func TestGitLabBaseURLOverrideFor_BareURLAppliesToAll(t *testing.T) {
+	assert.Equal(t, "http://127.0.0.1:8181", gitLabBaseURLOverrideFor("http://127.0.0.1:8181", "any"))
+	assert.Equal(t, "https://gitlab.example.com/?x=1", gitLabBaseURLOverrideFor("https://gitlab.example.com/?x=1", "any"),
+		"쿼리의 = 는 네임스페이스 구분자가 아니다")
+
+	mixed := "http://127.0.0.1:8181,special=http://127.0.0.1:9191"
+	assert.Equal(t, "http://127.0.0.1:9191", gitLabBaseURLOverrideFor(mixed, "special"))
+	assert.Equal(t, "http://127.0.0.1:8181", gitLabBaseURLOverrideFor(mixed, "other"))
+	assert.Equal(t, "", gitLabBaseURLOverrideFor("  ", "any"))
+}
+
+func TestFor_HonorsNamespaceKeyedGitLabOverride(t *testing.T) {
+	matching := stubGitLab(t)
+	issuer := &fakeTokenIssuer{token: "glpat-x"}
+	f := NewBundleFactory(&fakeStackReader{summary: gitlabStack()}, issuer, Options{
+		Env: "dev", GroupPath: "acme",
+		// gitlabStack() 의 네임스페이스는 devsecops 다. 다른 항목은 닿지 않는 주소다.
+		GitLabBaseURLOverride: "other=http://127.0.0.1:1,devsecops=" + matching,
+	})
+
+	bundle, err := f.For(context.Background(), "stk_1")
+	require.NoError(t, err)
+	assert.Equal(t, matching, bundle.Provisioner.(interface{ BaseURL() string }).BaseURL())
+}

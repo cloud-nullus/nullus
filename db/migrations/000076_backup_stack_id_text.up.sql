@@ -1,0 +1,12 @@
+-- 000076_backup_stack_id_text.up.sql
+-- backup_runs.stack_id 를 UUID 에서 TEXT 로 바꾼다.
+--
+-- 000075 가 org_id·cluster_id 를 따라 stack_id 도 UUID 로 선언했는데,
+-- **스택 ID 는 UUID 가 아니다** — stacks.id 는 character varying 이고 값은
+-- `stk_352e9f68db06` 처럼 접두사가 붙은 짧은 식별자다.
+--
+-- 그 결과 스택을 대상으로 하는 백업(mode=full / stack_only)이 행을 만드는
+-- 순간 "invalid input syntax for type uuid" 로 죽었다. platform_only 는
+-- stack_id 가 비어 있어 통과했고, 테스트는 stack_id 에 uuid 를 넣고 있어
+-- 아무도 못 잡았다 — 실제 스택으로 백업을 돌려 보고서야 드러났다.
+ALTER TABLE backup_runs ALTER COLUMN stack_id TYPE TEXT USING stack_id::text;

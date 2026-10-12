@@ -9,6 +9,151 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **플랫폼 전체 — 플랫폼 + 조직의 모든 스택 — 를 한 세트로 백업하고 되돌린다** (`internal/backup/{domain/backup_set.go,usecase/run_backup_set.go,usecase/run_restore_set.go,adapter/bridge/stack_lister.go,adapter/handler,scheduler,wiring.go}`, `db/migrations/000093`, `cmd/api`, `web/src/features/admin`, 백업복구 설계 §6.7): 한 실행은 플랫폼 하나 또는 스택 하나만 담는다 — 스택의 리소스·볼륨은 그 스택의 클러스터에서 뜨고 금고는 스택마다 있어서다. 그래서 스택이 둘 이상인 조직은 "플랫폼 전체" 를 뜰 수단이 없었다(`full` 은 플랫폼 + 스택 **하나**). 이제 `POST /admin/backups/sets`(`confirm: "all"`)가 플랫폼 `platform_only` 실행 하나 + 설치 완료 스택마다 `stack_only`(+ 금고) 실행 하나를 같은 `set_id`(`backup_runs.set_id`, FK 없음 — 이력 테이블 원칙)로 묶어 뜬다. 멤버 하나가 실패해도 나머지는 계속 뜨고 세트 상태는 파생이다(모두 성공 `succeeded` · 섞이면 `partial` · 모두 실패 `failed`). `GET /admin/backups/sets/:id` 가 멤버와 상태를 준다. 화면(관리 → 백업)의 대상에 **전체 — 플랫폼 + 모든 스택**이 생겼고(확인 문구 `all`), 세트의 실행은 목록에서 같은 `세트` 꼬리표를 단다.
+
+  **세트 복구**(`POST /admin/restores/sets`, `confirm` = 세트 ID)는 플랫폼 멤버를 `platform_only` 로 먼저, 그 다음 스택 멤버를 ID 순으로 `stack_only` 로 되돌린다 — 네임스페이스는 백업 매니페스트의 `namespace`(이번에 담기 시작)에서 읽는다. 스택 복구는 플랫폼 DB 의 스택 기록으로 클러스터에 붙으므로 **플랫폼 복구가 실패하면 거기서 멈추고**(스택은 건드리지 않는다), 스택 하나의 실패는 다른 스택을 막지 않는다(`409` + `failed[]`). 백업이 실패해 산출물이 없는 멤버는 `skipped[]` 에 남기고 건너뛴다. 이를 위해 **`stack_only` 복구도 스택 금고에 KV 를 import 한다** — 금고는 스택 데이터인데 전에는 `full`·`platform_only` 만 되돌려, 세트의 스택 멤버가 금고 없이 돌아올 뻔했다. 스케줄은 `backup.schedule.all_stacks: true` 로 주기마다 세트를 뜬다 — 스택이 늘어도 설정을 고칠 필요가 없다. 세트는 "같은 시각" 이 아니라 "같은 묶음" 이다 — 멤버는 차례로 뜬다(설계 §6.7 한계).
+
+  **실환경 리허설(kind 두 클러스터 — GitLab 스택 39 파드 + lite 스택 24 파드)에서 전 과정을 확인했다**(설계 §10.2.5): 세트 백업 137초(실행 3, 1.4 GB) → 두 스택 제품 삭제(72초 뒤 두 클러스터 완전 회수) → 세트 복구 323초(복구 3 모두 succeeded, 클러스터마다 cert-manager · metrics-server 재설치) → 내부 CA sha · CRD · 스택 기록 · 앱 네임스페이스 전부 백업 전과 일치. 리허설이 결함 하나를 드러냈다 — 한 멤버의 **금고 KV import 가 끝내 실패했는데 복구 응답은 `succeeded` 뿐**이었다(로컬 제약: 두 스택이 같은 접근 도메인을 써 호스트 API 가 두 금고를 하나로 본다). 이제 복구 기록의 `integrity_report.vault_import`(`imported` · `attempts` · `error`)에 결과가 남고, import 오류는 경로 목록 뿐 아니라 **원인**(`connection refused` 등)을 함께 말한다(`internal/backup/adapter/openbao`). 금고 import 실패는 복구를 실패로 만들지 않는다 — 데이터는 되돌아왔고 금고만 다시 채울 수 있다.
+
+- **마지막 스택을 지운 클러스터로의 복구가 cert-manager · metrics-server 를 스스로 다시 세운다** (`internal/stack/usecase/ensure_shared_components.go`, `internal/backup/{port,usecase/run_restore.go,adapter/kube/shared_resources.go,wiring.go}`, `cmd/api`, 백업복구 설계 §11.3 Q16): 제품에서 클러스터의 마지막 스택을 지우면 공용 컨트롤러까지 회수되는데(#284), 컨트롤러는 설치물이라 백업이 담지 않아 복구가 `cert-manager 가 설치돼 있지 않습니다` 로 멈추고 운영자가 차트를 손으로 먼저 깔아야 했다. 이제 복구가 스택 설치기의 같은 단계(`installing_cert_manager` · `installing_metrics_server`)를 스택 ID 없이 불러 컨트롤러를 세운 뒤 공용 자원(Gateway CRD · GatewayClass · ClusterIssuer · Certificate)을 되살린다 — 설치와 복구가 한 코드로 같은 결과를 내고, 설치기는 이미 있으면 다시 쓰므로 다른 스택이 쓰는 클러스터에서도 안전하다. cert-manager 실패는 볼륨을 건드리기 전에 복구를 멈추고, metrics-server 실패는 경고로 남긴다(`integrity_report.shared_components`).
+
+  **CA Secret 을 컨트롤러보다 먼저 둔다.** 설치기의 cert-manager 단계는 끝에 내부 CA 를 부트스트랩하는데, 그때 Secret 이 있으면 발급 정보가 맞는 옛 키를 채택하고 없으면 **새 키를 발급**한다 — 새 키가 생긴 뒤에는 없을-때만-만들기가 옛 키를 되살릴 수 없어 도구들이 신뢰하는 CA 가 백업 때와 달라진다. Secret 은 CRD 가 필요 없으니 `ApplySharedSecrets` 가 네임스페이스와 Secret 만 먼저 만들고, 나머지는 컨트롤러가 선 뒤 `ApplyShared` 가 만든다. 모듈 경계는 지켰다 — 백업은 포트(`SharedComponentsEnsurer`)만 알고 스택 모듈이 구현해 `cmd/api` 가 잇는다(게이트웨이 주소 재설정과 같은 길).
+
+  **실환경 리허설(kind, GitLab + Argo CD + SonarQube, 42 파드)에서 전 과정을 확인했다**(백업복구 설계 §10.2.3): 백업(정지 창 73.7초, 11 산출물 1.05 GB) → 제품 API 로 마지막 스택 삭제(73초 뒤 네임스페이스 · cert-manager · GatewayClass · CRD 25 · 내부 CA · metrics-server 모두 회수) → full 복구 94.8초(CA Secret +4초 → cert-manager Ready +14초 → ClusterIssuer · CRD · metrics-server +25초 → PVC · 볼륨 · 리소스) → 지문 16/16 일치(내부 CA 키 · 접근 도메인 인증서 · GitLab HEAD · Argo CD Application · 앱 이미지 태그). 같은 리허설이 아래 Fixed 의 결함 4건(이력 FK · ESO CRD 삭제 · 모니터링 CR · Certificate 덤프 누락)을 드러냈고, 로컬 E2E 가이드 부록 C 의 해당 제약을 지웠다.
+
+- **스캐너 이미지가 파이프라인 정의를 다시 쓰지 않아도 따라온다** (`internal/cicd/port/scan_policy_vars.go`, `internal/cicd/adapter/scaffold/{renderer,image_scan}.go`, `internal/shared/domain/runtime_images.go`): 플랫폼이 이미지를 올려도(#301 의 멀티아치 sonar-scanner) 정의 파일에 리터럴로 박힌 파이프라인은 "CI 정의 갱신" 전까지 옛 이미지를 썼다. 이제 Trivy CLI · sonar-scanner 이미지를 스캔 정책 변수(`NULLUS_TRIVY_IMAGE` · `NULLUS_SONAR_SCANNER_IMAGE`)와 함께 민다 — 스택 정책을 저장하거나 파이프라인을 만들·갱신할 때 전 파이프라인에 밀린다. **GitLab** 은 프로젝트 변수가 `.gitlab-ci.yml` 전역 `variables:` 보다 앞서므로 정의를 다시 쓰지 않아도 다음 실행부터 새 이미지다(스캐폴딩은 이미 `$NULLUS_*_IMAGE` 로 참조한다). **GitHub Actions** 워크플로는 컨테이너 이미지를 `${{ vars.NULLUS_*_IMAGE || '기본값' }}` 으로 쓴다 — 이 변경 뒤 만들거나 갱신한 워크플로는 리포 변수를 먼저 보고, 한 번도 밀리지 않은 리포는 파일의 기본값을 쓴다. **Jenkins** 파드 템플릿은 정적이라 정의 갱신이 답이다. Trivy CLI 이미지 상수는 공용 도메인(`TrivyCLIImage`)으로 옮겨 정책 푸시와 스캐폴딩이 같은 출처를 본다(에어갭 번들에는 Trivy 차트가 같은 태그를 이미 싣는다).
+
+- **파이프라인 실행마다 SAST 결과(Quality Gate 판정·걸린 조건·지표)를 남기고 실행 기록에 보여준다** (`internal/cicd/{domain,adapter/scaffold,adapter/repository,adapter/handler,adapter/provisioning,usecase,port}`, `cmd/api`, `db/migrations/000090`, `web/src/features/cicd`, nullus-plan#64): 실행 기록의 SAST 단계 상태만으로는 무엇에 걸렸는지, 경고 정책이 통과시킨 실패인지, 분석기가 죽어서 실패한 것인지 알 수 없었다. 이제 CI/CD 목록 → History 의 실행마다 SAST 판정(통과·경고·차단·분석 실패)이 붙고, 실행을 고르면 통과하지 못한 조건(예: 새 이슈 1 — 기준 > 0)·지표(취약점·버그·보안 핫스팟·코드 스멜·커버리지·중복·코드 줄 수)·SonarQube 링크가 보인다. `GET /pipelines/:id/sast-results` 가 같은 것을 내준다(Security Dashboard #65 의 입력).
+
+  **결과는 CI 잡이 남기고 플랫폼이 읽는다** — 이미지 스캔(Trivy 리포트)과 같은 길이다. `sast` 잡이 분석 뒤 스캐너가 남긴 작업(`ceTaskId`)으로 **이번 분석의** 판정(`api/qualitygates/project_status?analysisId=`)과 프로젝트 지표(`api/measures/component` — 분석을 고를 수 없어 최신 값이다. 분석이 겹치지 않으면 이번 것과 같다)를 읽어 `sast-report.json` 을 산출물로 남긴다(게이트에 걸려도 남긴다, CI 3종). 플랫폼 API 는 클러스터 밖에서 돌 수 있어 SonarQube 에 닿는다는 보장이 없고, 분석 토큰은 잡 안에만 있다 — 분석 토큰으로 이 둘은 읽히고 `project_analyses`·`ce/activity` 는 403 이다(실측). 분석하지 못했으면 지표를 읽지 않는다(지난 분석의 지표가 이번 것으로 보인다). JSON 이 아닌 응답(200 으로 온 로그인 화면 등)은 버린다 — 그대로 실으면 리포트가 깨져 종료 코드까지 잃는다. 이 줄은 덤이라 조회가 실패해도 단계의 판정을 바꾸지 않는다. 토큰은 curl 인자가 아니라 표준입력 설정(`-K -`)으로 넘기고 트레이스를 끈다 — Jenkins 는 `sh -xe` 로 돌고 토큰이 가려지지 않는다. 명령에 역슬래시를 쓰지 않는다(Jenkinsfile 의 `sh '''…'''` 는 Groovy 문자열이다).
+
+  **판정은 파이프라인 관점이다.** 단계 결과에는 정책이 섞여 있어(경고 정책이면 게이트 실패도 성공, 장애 허용이면 분석 실패도 성공) 리포트의 스캐너 종료 코드로 가른다 — 0 통과, 3 은 단계가 성공했으면 경고·실패했으면 차단, 그 밖은 분석 실패(`error`, 장애 허용 정책이 통과시켰어도 통과로 적지 않는다). **리포트를 읽은 실행만 남긴다** — 리포트를 남기기 전에 만든 파이프라인의 실패를 차단으로 적으면 분석기 장애가 "보안 문제로 막힌 배포" 로 보인다. 그 실행은 단계 상태만 보인다. 끝난 단계는 다시 내려받지 않되, 단계 시작 시각이 바뀌었으면(GitLab Retry · GitHub Re-run) 다시 읽는다 — 장애로 `error` 가 남은 실행을 고쳐 다시 돌리면 판정이 바뀐다. 읽지 못하면 다음 동기화 때 다시 읽는다. 저장은 요약·판정·위치만이다(`sast_results`, 이슈 원본은 SonarQube 가 갖는다). 지표는 NULL 을 허용한다 — 0 은 "문제 0건" 이다.
+
+  **SonarQube 링크는 스택의 공개 주소로 만든다** (`https://sonarqube.<접근 도메인>/dashboard?id=<프로젝트>`). 스캐너가 남기는 주소는 스캐너가 붙은 클러스터 내 주소라 브라우저에서 열리지 않는다 — 서버에 공개 주소 설정(`sonar.core.serverBaseURL`)이 있어도 그랬다(실측). 공개 주소를 모르는 스택이면 클러스터 내 주소를 링크로 남기지 않는다. GitLab·Jenkins 링크와 같이 https 로 만든다 — TLS 없이 연 스택에서는 링크가 열리지 않는다(같은 제약).
+
+  로컬 E2E(kind + GitLab + Argo CD + SonarQube, 실제 플랫폼)에서 새 파이프라인으로 확인했다 — 첫 실행은 `pass`(Quality Gate OK, 취약점 2·코드 줄 81), `eval` 을 넣은 커밋은 `block`(조건 `new_violations` 1, deploy skipped), 정책을 warn 으로 바꾼 커밋은 `warn`(배포됨). 화면에서 세 판정과 상세(걸린 조건·지표·링크)를 확인했다.
+
+- **파이프라인이 스택의 SonarQube 로 소스를 정적 분석하고 Quality Gate 로 배포를 막는다** (`internal/cicd/{adapter/scaffold,adapter/sastcreds,adapter/provisioning,adapter/repository,usecase,domain,port}`, `internal/stack/adapter/helm`, `internal/shared/domain`, `db/migrations/000088`, nullus-plan#64): 스택에 SonarQube 가 있으면 GitLab CI·GitHub Actions·Jenkins 파이프라인에 `sonar-scanner` 단계(`SAST`)를 만들고, 배포는 그 단계를 기다린다. `sonar.qualitygate.wait=true` 로 Quality Gate 판정까지 기다린다 — 없으면 스캐너는 결과만 올리고 성공으로 끝난다. 분석은 소스만 보므로 빌드를 기다리지 않고 바로 돈다.
+
+  **기본은 차단, 스택 정책으로 경고.** Trivy 이미지 스캔 정책(`/stacks/:id/image-scan-policy`)에 `sast_on_gate_failure`(`block`·`warn`)를 더했다. 플랫폼이 `NULLUS_SAST_ON_GATE_FAILURE` 로 싣고(Jenkins 는 `nullus-scan-policy` ConfigMap), 스크립트가 종료 코드로 가른다 — sonar-scanner 는 Quality Gate 실패에 3, 서버에 닿지 못하면 1 로 끝난다(실측). 3 은 정책(차단·경고)을 따르고, 그 밖의 실패(SonarQube 장애·인증 실패)는 이미지 스캔과 같은 `on_scanner_unreachable` 을 따른다 — 경고 정책이 분석 실패까지 덮지 않는다. 필드를 보내지 않는 옛 클라이언트는 저장된 값을 그대로 둔다.
+
+  **분석 토큰은 스택 설치가 발급한다.** `provisioning_sonarqube` 가 클러스터 안 Job 으로 분석 전용 토큰(`GLOBAL_ANALYSIS_TOKEN`, 이름 `nullus-ci`)을 발급해 스택 OpenBao(`security/sonarqube/analysis-token`)에 두고, 파이프라인을 만들 때 cicd 가 그 값을 읽어 시크릿 변수 `SONAR_TOKEN` 으로 건다(GitLab masked, GitHub 시크릿, Gitea·Jenkins 는 파이프라인 Secret). 플랫폼 API 가 SonarQube 에 닿지 않아도 된다. 토큰은 Job 의 표준 출력에 싣지 않는다 — 스택에 로그 수집(OTel agent → Loki)이 있으면 파드 로그가 보관되므로, 파드 안 파일에 두고 오케스트레이터가 `kubectl exec` 로 읽은 뒤 Job 을 지운다(읽기 전에 죽어도 `activeDeadlineSeconds`·`ttlSecondsAfterFinished` 로 정리된다). 다시 돌려도 토큰을 새로 만들지 않는다. OpenBao 에 값이 없을 때(경로 없음·빈 값)만 새 이름(`nullus-ci-<시각>`)으로 하나 더 발급하고 이전 토큰은 폐기하지 않는다 — 기존 파이프라인 변수의 사본이 계속 동작한다. OpenBao 를 읽지 못한 것(봉인·장애)은 값을 잃은 것과 구분해 단계를 멈춘다. 토큰을 못 구하면 파이프라인 단계는 두고 `SONAR_TOKEN` 을 사람이 채울 변수로 알린다.
+
+  GitLab 의 분석 잡은 배포와 같은 기본 브랜치에서만 돈다(Community Edition 은 브랜치 분석이 없어 기능 브랜치 결과가 같은 프로젝트를 덮는다). GitHub 컨테이너 잡은 `--user root` 로 돈다 — 스캐너 이미지가 비루트라 `actions/checkout` 이 작업 디렉터리에 쓰지 못한다. 컴파일 결과물 없이 소스만 분석해도 Java 분석은 통과한다(SonarQube 26.9 · scanner 12.2 실측).
+
+  로컬 E2E(kind + GitLab + Argo CD + SonarQube, 실제 플랫폼)에서 확인했다 — 설치가 `nullus-ci` 토큰을 발급하고 발급 Job 을 지운다. 파이프라인을 만들면 단계가 `Build·SAST·Deploy` 이고 `SONAR_TOKEN`(masked)과 정책 변수가 등록된다. 첫 실행은 build·sast·deploy 모두 성공(SonarQube 에 프로젝트 생성, Quality Gate PASSED). `eval` 을 넣은 커밋은 sast 가 "차단 정책" 으로 실패하고 deploy 가 skipped 다. 정책을 warn 으로 바꾸면(플랫폼이 파이프라인 변수로 즉시 반영) 같은 코드가 "경고 정책에 따라 통과" 로 deploy 까지 간다. 화면으로 만든 파이프라인도 같은 단계를 갖는다.
+
+  스택 정보(`StackSummary`)에 SonarQube 주소를 더했다(외부 SonarQube 는 제외). 주소 규칙과 토큰 경로는 `internal/shared/domain` 이 갖는다.
+
+- **설치 화면에서 SonarQube(SAST)를 고를 수 있다** (`web/src/features/stack`, `web/src/features/cicd`, nullus-plan#64): 백엔드는 `security.sast` 슬롯과 설치 단계를 갖고 있었지만 화면에 고를 칸이 없어 템플릿 밖에서는 도달할 수 없었다. Security 탭에 Static Analysis (SAST) = SonarQube 를 두고, 템플릿·Golden Path 의 보안 도구를 마법사에 채우고, 템플릿 편집기에서 SAST 칸을 고를 수 있게 했다.
+
+  보안 도구를 **설치 목록에 넣었다** — 빠져 있으면 화면이 만든 게이트웨이(서버 기본값을 대신한다)에 `sonarqube.<도메인>` 라우트가 없어 주소가 열리지 않고, 그 주소가 SAML ACS 라 Keycloak 로그인도 실패한다. 같은 목록이 자원 계획(분석 수/일·프로젝트 수, Go `PlanningOptionDefs` 와 같은 값)과 helm 자원 오버라이드(`installing_sonarqube`·`installing_trivy` 의 `resources`)에도 쓰인다. Trivy 는 화면이 없어 게이트웨이로 열지 않는다(서버와 같다). 호환성 게이트는 서버(`stackConfigToCategoryMap`)처럼 보안 도구를 매트릭스 대조에서 뺀다 — 넣으면 보안 칸이 있는 몇몇 템플릿 밖에서는 고르는 순간 "일치하는 매트릭스 없음"으로 막힌다. DB 를 외부 연결로 고른 스택에 SonarQube 를 고르면 저장·배포 전에 막는다(백엔드는 앞 단계를 다 깐 뒤 `installing_sonarqube` 에서야 거부했다).
+
+  버전 표에 Trivy·SonarQube 를 넣어 고른 버전이 `1.0.0` 으로 보이던 것을 고쳤고(`connection.go` 와 대조하는 테스트에 묶었다), en/ko 에 두 도구의 설명을 넣어 영어 화면에 한국어 설명이 뜨던 것을 고쳤다. OSS 자원 기본값 화면은 두 도구를 Artifacts 대신 Security 로 분류한다.
+
+- **SonarQube 가 Keycloak 으로 로그인한다 (SAML)** (`internal/auth/adapter/keycloak`, `internal/stack/{port,adapter/helm}`, nullus-plan#64): SonarQube Community 는 SSO 로 OIDC 를 받지 않고 SAML 만 받는다. `provisioning_sso` 가 다른 도구와 함께 SAML 클라이언트(`<스택>-sonarqube`, ACS `https://sonarqube.<도메인>/oauth2/callback/saml`)를 등록하고, SonarQube 는 렐름의 활성 RS256 서명 인증서를 values(`sonar.auth.saml.*`)로 받아 로그인 화면에 Keycloak 버튼이 생긴다. Keycloak 기본값 두 가지를 이 클라이언트에서만 바꾼다 — 요청 서명 요구를 끄고(SonarQube 는 요청에 서명하지 않아 켜 두면 "Invalid requester"), 기본 범위 `role_list` 를 뺀다(역할마다 `Role` 속성을 따로 실어 SonarQube 가 "duplicated Name" 으로 응답을 거부한다). 사용자 속성 `login`·`name`·`email` 의 이름은 포트 상수로 두 모듈이 함께 쓴다.
+
+  SAML 도구는 client secret 이 없다. 포트 `SSOProvisioner` 에 `UsesClientSecret`·`SAMLSigningCertificate` 를 두고, 시크릿 평면과 프로비저닝이 그 값을 만들지도 읽지도 않게 했다. 인증서는 설치 직전에 읽고, SSO 를 쓰는데 못 읽으면 단계를 멈춘다 — SAML 없이 깔고 넘어가면 다시 깔 때까지 로컬 계정으로만 뜬다. SSO 사용자는 일반 사용자(`sonar-users`)로 만들어지고 관리는 `admin` 계정으로 한다. 렐름 키를 회전하면 SonarQube 단계를 다시 돌려야 새 인증서를 받는다 — 배포된 values 를 편집해 저장된 스냅샷이 옛 인증서·주소를 얼려 그 재실행을 이기지 못하도록, 서버 주소와 SAML 설정은 플랫폼 소유 값으로 오버라이드 위에 다시 못박고 values 편집기의 보호 경로에도 넣었다(사용자가 더한 다른 `sonarProperties` 는 그대로 둔다). kind + Keycloak 26.0.8 에서 브라우저의 SAML 흐름(SonarQube 시작 → Keycloak 로그인 → 응답 → SonarQube 세션)을 스크립트로 따라 해 `externalProvider: saml` 로그인, 다시 로그인해도 같은 계정, admin 계정 유지, 단계 재실행(파드 유지·클라이언트와 매퍼 중복 없음), 스택 삭제 경로의 클라이언트 회수를 확인했다.
+
+- **스택에 SonarQube(SAST)를 설치할 수 있다** (`internal/stack/{domain,adapter/helm,adapter/repository,usecase}`, `db/migrations/000086`·`000087`, `scripts/runbook_local.sh`, `airgap/**`, nullus-plan#64): 템플릿 편집기에 "예: Trivy, SonarQube" 가 보였지만 설치기에 SonarQube 단계가 없어 아무것도 깔리지 않았다. 이미지 스캐너와 같은 선택 슬롯 `security.sast` 를 두고, 고르면 SonarQube Community(차트 2026.5.1002 · 빌드 26.9.0.129388, amd64·arm64)를 스택 안에 세운다. 템플릿 `GitLab + Argo CD + SonarQube`(`gitlab-argocd-sonarqube-v1`)를 시드해 `stack-up --template=gitlab-argocd-sonarqube-v1` 로 바로 깔 수 있다.
+
+  **DB 는 스택의 공유 PostgreSQL 을 쓴다.** SonarQube 테이블(users·projects·issues)이 GitLab 과 이름이 겹쳐 같은 DB 는 쓸 수 없으므로, 설치 전에 Job 이 전용 role·DB(`sonarqube`)를 만든다(다시 돌려도 같은 결과). 외부 DB 를 고른 스택에는 공유할 PostgreSQL 이 없어 이유와 함께 멈춘다. **관리자 비밀번호는 설치 뒤 `provisioning_sonarqube` 가 바꾼다** — 차트의 비밀번호 훅은 curl 에 `-f` 가 없어 변경이 거부돼도 성공으로 끝나 관리자가 조용히 `admin/admin` 으로 남는다. 생성기 값(영숫자)은 SonarQube 비밀번호 정책(특수문자 포함)을 못 맞추므로 정책을 맞춘 값으로 계산해 OpenBao 에 두고, 연결정보가 그 Secret 을 안내한다. 차트가 요구하는 에디션·모니터링 패스코드를 넣고 이름을 `sonarqube` 로 고정해 게이트웨이(`sonarqube.<도메인>`)가 찾게 했다. 자원 기본값은 요청 3Gi · 상한 4Gi다 — 분석 없이 떠 있기만 해도 2.69Gi 를 써서(kind cgroup 실측) 요청을 그 위에 두었고, 차트 기본 4096M/10240M 은 로컬에 둘 자리가 없다. 빈 kind 클러스터에서 OpenBao → ESO → 시크릿 → PostgreSQL → SonarQube → 관리자 비밀번호 변경까지 실제로 설치해, 전용 DB(테이블 164개)·새 비밀번호 통과·`admin/admin` 거부·재실행 시 파드 유지(같은 결과)를 확인했다.
+
+  `stack-up` 과 에어갭 설치 스크립트가 템플릿의 보안 슬롯을 설정으로 옮기지 않아 **Trivy 도 조용히 빠지던 것**을 함께 고쳤다. Keycloak SSO(SAML)·설치 마법사 선택·파이프라인 SAST 단계는 뒤따르는 변경에서 붙는다. 그때까지 분석을 손으로 돌리는 방법(토큰 발급 → `sonar-scanner` → Quality Gate)과 처음부터 백업·복구까지 한 바퀴는 로컬 E2E 가이드(`docs/50_운영/Nullus_로컬_E2E_가이드.html`)에 적었다 — 기본 Quality Gate 는 "새 코드" 조건만 봐서 첫 분석은 CRITICAL 이 있어도 통과하고, 그 뒤 새 문제가 생겨야 실패(스캐너 종료 코드 3)한다.
+
+- **이미지 스캐너를 기본으로 고른 템플릿 `GitLab + Harbor + Trivy` 를 시드한다** (`db/migrations/000084`, `internal/stack/adapter/repository`): 스캐너는 매트릭스에서 고를 수 있었지만 기본으로 고른 템플릿이 없어 화면에서 템플릿을 직접 만들어야 했고, 그렇게 만든 템플릿은 DB 를 초기화하면 사라져 스캔 단계가 들어간 스택을 새 설치에서 다시 세울 수 없었다. `gitlab-harbor-trivy-v1` 템플릿과 호환성 매트릭스를 시드와 인메모리 저장소에 함께 둔다. 버전은 설치 경로의 상수(GitLab 8.7.2 · Harbor 1.15.0 · MinIO 5.4.0 · Argo CD 7.7.16 · Trivy 0.26.0)를 따른다 — 000059 의 `gitlab-harbor-v1` 시드가 설치와 다른 버전(GitLab 9.5.1 · Argo CD 6.8.0)을 안내하는 어긋남은 물려받지 않는다. 시드 SQL 과 인메모리 정의가 갈라지면 `TestSeedMigration_GitLabHarborTrivy_MatchesMemory` 가 깨진다.
+
+- **파이프라인 실행과 스택 설치 이미지의 취약점 목록을 보인다 — 베이스 이미지와 앱 의존성을 가른다** (`internal/shared/domain`, `internal/cicd/**`, `internal/stack/**`, `db/migrations/000082`·`000083`, `web/src/components/shared`, nullus-plan#76·#78): 건수와 리포트 링크만으로는 무엇을 고쳐야 하는지 화면에서 알 수 없었다. CVE · 패키지 · 설치/수정 버전 · 심각도 · 링크를 목록으로 보이고, Trivy 결과의 Class 로 **베이스 이미지 OS 패키지**와 **앱 의존성**을 나눈다. 심각도 · 구분 · 수정 가능 · 검색 조건과 쪽 나눔을 받는다. 목록을 보일 수 없으면 빈 목록 대신 이유(`report_expired` · `report_missing` · `ci_unreachable` · `not_recorded`)를 돌려준다.
+
+  **파이프라인은 저장하지 않는다**(`GET /api/v1/cicd/pipelines/:id/image-scans/:scanId/vulnerabilities`). 원본 리포트를 DB 에 넣지 않는다는 결정을 지키고, 동기화가 리포트 위치(`report_ref` — GitLab 잡 id · GitHub 실행 id · Jenkins 빌드 번호)만 남긴 뒤 볼 때 CI 리포트를 다시 읽는다. CI 보관 기간이 지나면 목록은 사라지고 건수는 남는다. **스택 설치 이미지는 스캔할 때 저장한다**(`GET /api/v1/stacks/:stackId/image-scans/vulnerabilities?digest=`) — 다시 읽을 CI 리포트가 없다. 스캔 Job 이 이미지마다 취약점 줄을 gzip+base64 한 줄로 찍어 kubelet 로그 상한(10Mi)을 피하고(kind 실측 alpine 48건 7.2KB → 784B), `stack_image_vulnerabilities` 에 COPY 로 넣는다.
+
+  kind(arm64) `harbor-e2e` 스택에서 실측: 설치 이미지 33개 전부 목록 저장(취약점 40,284건), `gitlab-toolbox` 7,374건이 건수 합계와 일치했고 베이스 이미지 OS 패키지 6,607건 · 앱 의존성(Node.js 27 · Python 68 · Ruby 146)으로 갈렸다. 파이프라인 `harbor-app2` 실행은 주기 동기화가 리포트 위치(GitLab 잡 11)를 채운 뒤 GitLab 리포트를 다시 읽어 48건(alpine OS 패키지)을 보였다. 모르는 이미지·다른 파이프라인의 스캔은 404 다.
+
+- **스택이 설치한 OSS 이미지의 취약점을 스캔해 보고한다** (`internal/stack/**`, `internal/shared/domain`, `db/migrations/000081`, nullus-plan#76·#78): 파이프라인 게이트는 사용자 앱 이미지만 보고, 스택이 설치한 GitLab·Harbor·Argo CD 등의 이미지는 아무도 보지 않았다. 설치 완료 직후 한 번, 이후 `STACK_IMAGE_RESCAN_INTERVAL`(기본 24h)마다 스택 네임스페이스에서 실행 중인 이미지를 digest 단위로 스택 Trivy 서버에 스캔한다. **보고용이라 설치를 막지 않는다** — 업스트림 이미지의 CVE 는 사용자가 고칠 수 없는 경우가 많다. 결과는 `GET /api/v1/stacks/:stackId/image-scans` 와 스택 상세 화면으로 보인다.
+
+  **스캔하지 않는 경우를 숨기지 않는다.** Trivy 를 고르지 않은 스택은 `scanner_not_installed`, 에어갭 설치(`NULLUS_HELM_OCI_REGISTRY`)는 `airgap` 사유로 `not_scanned` 를 돌려준다 — "0건" 으로 보이면 안 된다. 스캔 자체가 실패하면 이전 결과를 지우지 않고, 이미지 하나를 못 스캔하면 `failed` 와 오류를 남기며 건수는 비운다.
+
+  **스택 네임스페이스의 Job 이 스캔한다.** 멀티아치 이미지는 파드가 도는 노드 아키텍처로 스캔한다(Trivy 기본값은 amd64). 결과는 JSON 이 아니라 취약점 하나당 `심각도[+]` 토큰으로 로그에 받는다 — JSON 리포트는 큰 이미지 몇 개만으로 kubelet 로그 상한(10Mi)에서 잘린다. DB 날짜는 서버의 `metadata.json` 에서 읽는다. 결과는 stack 모듈이 소유한 `stack_image_scans` 에 스택 단위로 통째로 교체 저장한다. Trivy 리포트 요약·심각도 건수·DB 신선도는 `internal/shared/domain` 으로 옮겨 cicd 와 같은 방식으로 센다.
+
+  kind(arm64) `harbor-e2e` 스택에서 실측: 이미지 33개 스캔·실패 0, DB 날짜·스캐너 버전 기록, GitLab CE 이미지(`gitlab-toolbox` CRITICAL 61 · HIGH 1569)가 가장 심각했다.
+
+- **파이프라인 스캔 결과에 CI 리포트 링크를 남기고, 실행 기록을 주기적으로 동기화한다** (`internal/cicd/**`, nullus-plan#76): `report_uri` 칼럼은 있었지만 채우는 곳이 없어 무엇에 걸렸는지 보려면 CI 를 직접 뒤져야 했다. 산출물 조회기가 스택 접속 도메인(https)으로 브라우저 링크를 만든다 — GitLab 잡 산출물 파일, GitHub Actions 실행 페이지, Jenkins 빌드 산출물. API 클라이언트의 클러스터 내부 주소로는 만들지 않는다. 리포트를 읽은 실행에만 걸고, 링크 전에 기록한 실행은 리포트를 다시 받지 않고 링크만 채운다.
+
+  실행 기록은 화면 조회 때만 들여, 아무도 보지 않는 파이프라인의 스캔 결과가 쌓이지 않았다. `CICD_RUN_SYNC_INTERVAL`(기본 10m)마다 스택에 묶인 모든 파이프라인을 들인다. CI 클라이언트 번들은 스택마다 한 번만 만들고, 설치 중인 스택은 건너뛴다. kind 실측에서 기존 `harbor-app2` 실행에 GitLab 리포트 링크가 채워졌다.
+
+  cicd 저장소 통합 테스트는 000006 이 만드는 테이블을 미리 만들어 두어 마이그레이션이 `already exists` 로 전부 실패하고 있었다. 낡은 사전 생성을 지웠다.
+
+- **파이프라인 실행 이력과 스택 상세에 이미지 스캔 결과를 보인다** (`web/src/features/{cicd,stack}/**`, `web/src/components/shared/severity-counts.tsx`, nullus-plan#76): 스캔 결과는 저장만 되고 어느 화면에도 뜨지 않았다. 파이프라인 실행 이력의 실행마다 게이트 판정과 심각도 건수를, 선택한 실행에는 이미지·digest·취약점 DB 날짜와 CI 리포트 링크를 보인다. 스택 상세에 **이미지 취약점** 탭을 두어 설치 이미지 보고서(보고용)를 보인다. 건수를 모르는 결과는 0 으로 그리지 않고, `error` 판정과 DB 가 오래된 결과는 초록불로 보이지 않으며, 스캔하지 않는 스택은 이유를 보인다. http(s) 가 아닌 리포트 주소는 링크로 만들지 않는다.
+
+- **이미지 스캔을 파이프라인의 실제 차단 게이트로 만들었다** (`internal/cicd/**`, `internal/shared/domain`, `db/migrations/000077`·`000078`, nullus-plan#76): 스캐너는 스택에서 고르면 설치되지만(#250), 스캐폴딩이 만드는 파이프라인에는 **스캔 단계가 없었다.** 차단 게이트가 실제로는 존재하지 않았다는 뜻이다.
+
+  **렌더러 3종이 같은 두 명령을 만든다.** GitLab CI · Jenkins · GitHub Actions 모두 `build → image-scan → deploy` 이고 deploy 를 스캔 잡에 매달아 스캔을 건너뛰고 배포되지 않게 한다. 한 번은 리포트를 남기고 한 번은 `--exit-code 1` 로 판정한다 — 한 번에 하면 차단된 실행에서 무엇에 걸렸는지 알 수 없다. **차단 기준은 스크립트에 박지 않았다.** 심각도와 unfixed 제외를 파이프라인 변수로 두어, 정책을 바꿀 때 재스캐폴딩이 아니라 변수만 갱신하면 된다. kind 에서 **렌더된 명령을 그대로** 돌려 `alpine:3.18` 통과 · `node:16` 차단, client 쪽 DB 다운로드 0건을 확인했다.
+
+  **스캐너 주소는 조립된 값만 받는다.** `OTLPEndpoint` 선례대로 `StackSummary.ImageScannerEndpoint` 로 받고, 주소 규칙은 shared 가 소유한다(`TrivyServerEndpoint`). 설계는 `ScanSourceFor(StackConfig, …)` 로 적었으나 cicd 는 stack 의 `StackConfig` 를 import 할 수 없어 `StackSummary` 를 받도록 고쳤다.
+
+  **단계는 파이프라인 단위로 기록한다** (`pipelines.stages`). 스캔은 파이프라인마다 켜고 끄므로 템플릿이 담을 수 없다 — 템플릿에 두면 끈 파이프라인이 돌지도 않은 단계를 보여준다(000070 이 되돌린 실패). 스캐폴딩이 렌더에 쓴 입력 그대로 단계를 내고, 기존 파이프라인은 지어내지 않고 비워 둬 화면이 템플릿으로 떨어진다.
+
+  **게이트 판정을 남긴다** (`image_scan_results`, `GET /cicd/pipelines/:id/image-scans`). 실행 기록을 동기화할 때 스캔 단계의 성공/실패로 pass/block 을 남긴다. **리포트는 아직 읽지 않아 건수는 NULL 이다** — 0 으로 채우면 "취약점 0건" 으로 읽힌다(설계 초안의 `NOT NULL DEFAULT 0` 에서 바꿨다). 리포트 파서는 kind 에서 실제 스캔한 리포트로 검증했고, client/server 모드 리포트에 **서버의 DB 시각이 실려** DB 나이를 따로 묻지 않아도 된다. 응답은 `db_stale` 을 서버가 판정해 내려준다(30일).
+
+- **이미지 스캔 정책을 스택 단위로 저장하고 CI 에 푸시한다** (`GET·PUT /stacks/:stackId/image-scan-policy`, `db/migrations/000080`, `internal/cicd/**`, nullus-plan#76): 차단 기준(CRITICAL 등)이 **파이프라인 파일에 박혀 있어** 바꿀 방법이 재스캐폴딩뿐이었다. 설계 §5.4 의 게이트 API(`nullus-ci scan-gate`)는 버렸다 — 플랫폼 인증이 사용자 JWT 뿐이라 CI 가 부를 기계 인증과 CI→플랫폼 인바운드 경로를 새로 만들어야 하고, 플랫폼이 죽으면 모든 스택의 배포가 멈춘다. 대신 **판정은 CI 가 푸시받은 정책으로 스스로 한다.**
+
+  **정책을 싣는 자리는 CI 마다 다르다.** GitLab 은 앱 프로젝트 CI/CD 변수(`.gitlab-ci.yml` 보다 앞서 이미 만든 파이프라인도 재커밋 없이 바뀐다), GitHub 은 리포 Actions **변수**(시크릿이면 `vars` 로 읽히지 않고 로그에서 가려진다), CI 변수 저장소가 없는 Jenkins 는 스택 네임스페이스의 ConfigMap 하나(`envFrom`, optional)다. 정책을 저장할 때 그 스택의 스캔 파이프라인 전체에, 스캔 파이프라인을 새로 만들 때 그 하나에 싣는다. 푸시가 일부 실패해도 저장은 되돌리지 않고 파이프라인별 결과를 돌려준다. 동기화도 같은 스택 정책으로 판정한다 — CI 가 HIGH 로 막았는데 기본 정책(CRITICAL)으로 읽으면 "차단 사유 없는 실패 = 스캔 오류" 로 잘못 센다.
+
+  **정책 항목**: 차단 심각도(CRITICAL·HIGH·MEDIUM·LOW, 바로 아래 등급은 경고), unfixed 제외, 스캔 불가 시 동작(block·allow). 모르는 값은 기본값으로 바꿔 받지 않고 거부한다 — `HIGHT` 오타가 조용히 CRITICAL 로 바뀌면 운영자는 HIGH 를 막는 줄 안다. 요청에서 필드를 빠뜨려도 거부한다(`ignore_unfixed` 누락을 false 로 받으면 수정본 없는 CVE 가 차단 사유가 된다).
+
+  **스캐너 장애 허용(allow)을 스크립트가 실제로 한다.** 리포트 명령이 실패하면(스캔 불가) 기본은 멈추고, allow 면 통과시킨다. 리포트 없이 끝난 실행은 성공이어도 `error` 로 기록한다 — 스캔하지 않은 이미지를 "통과" 로 적지 않는다.
+
+  kind 가 아니라 **실제 Trivy 서버에 렌더된 스크립트를 그대로** 돌려 확인했다: `alpine:3.18` 통과, `node:16` 차단(리포트에 HIGH 256건), HIGH 차단 정책으로도 차단, 서버 도달 불가 시 기본 차단 · allow 통과. 000080 은 Postgres 18 에서 up/down, CHECK 제약, 스택 삭제 CASCADE, 저장소 왕복을 확인했다. 정책 편집 화면은 후속이다.
+
+- **GitLab CI · GitHub Actions 파이프라인도 실행 기록과 스캔 판정을 남긴다** (`internal/cicd/adapter/{gitlab,github}/build_reader.go`, `bundle_factory.go`, nullus-plan#76): 실행 기록을 읽는 경로가 Jenkins 에만 있어, **같은 스캔 단계가 돌아도 GitLab·GitHub 쪽은 이력도 판정도 영원히 비어 있었다.** 두 CI 의 파이프라인/워크플로 실행과 잡을 읽어 공통 단계 어휘로 옮긴다. 화면의 실행 번호는 프로젝트 안의 번호(GitLab `iid`, GitHub `run_number`)이고, 잡·산출물 조회에 쓰는 전역 id 는 따로 싣는다.
+
+  **단계 이름을 CI 어휘와 무관한 키로 맞춘다** (`port.StageKey`, `web/.../stage-states.ts`). Jenkins 는 `ImageScan`, GitLab·GitHub 은 잡 키 `image-scan` 으로 보고한다. 대소문자만 맞추던 비교는 둘을 다른 단계로 봐서 스캔 판정이 기록되지 않았고, 이력 화면에서도 돌고 있는 스캔 단계가 "모름" 으로 그려졌다.
+
+- **스캔 리포트를 읽어 건수를 채우고, 스캐너 장애를 차단과 가른다** (`port.CIArtifactReader`, 어댑터 3종의 `ReadArtifact`, `domain.GateFromStageAndReport`, nullus-plan#76): CI 가 남긴 `trivy-report.json` 을 Jenkins(빌드 산출물) · GitLab(잡 산출물) · GitHub(실행의 zip 묶음)에서 받아 건수·다이제스트·스캐너 버전·DB 시각을 채운다. 건수는 판정이 본 것과 같게 `--ignore-unfixed` 기준으로 센다.
+
+  **단계 실패가 곧 차단은 아니다.** Trivy 는 서버에 닿지 못해도 게이트와 같은 exit 1 로 끝난다. 그래서 리포트에 차단 사유(CRITICAL)가 있을 때만 block 이고, 실패했는데 사유가 없거나 리포트 자체가 없으면 **error** 다 — 스캐너 장애가 "취약한 배포" 로 세지면 대시보드가 거짓말을 한다. 리포트를 일시적으로 못 읽으면 단계 결과로 남기고 다음 동기화 때 다시 읽으며, 이미 읽은 리포트는 다시 받지 않는다.
+
+  **산출물은 사용자 파이프라인이 만든 입력으로 다룬다.** 파일은 32MiB 까지만 읽고, GitHub zip 은 헤더 크기와 실제 해제 크기를 모두 거른다. 다운로드 주소는 API 응답 본문에서 오므로 **API 와 다른 호스트면 토큰을 붙여 보내지 않는다.**
+
+- **Trivy 서버 자원 기본값을 실측으로 넣었다** (`db/migrations/000079`, `resource-defaults.go`, nullus-plan#76): 스캐너 단계는 자원 기본값 키가 없어 **계획을 세워도 차트 기본값(메모리 상한 1Gi)으로 깔렸다.** kind 에서 4 동시 스캔 × 2회를 cgroup v2 로 직접 읽었다 — anon 317Mi, 취약점 DB 파일 캐시 1.3Gi, CPU 1초 최대 927m(스로틀 0), DB 디스크 1.3G. 첫 측정은 상한(1Gi/1core)에 눌린 값이라 버리고 상한을 풀어 다시 쟀다. 기본값은 0.25/1 core · 0.5/2 Gi · 5/10 Gi 이고, 2Gi 는 anon 과 DB 캐시가 함께 들어가는 크기다(1Gi 로도 OOM 은 없지만 캐시가 밀려난다). 관리자가 먼저 넣은 값은 덮지 않는다(`ON CONFLICT DO NOTHING`, 실제 Postgres 18 에서 up/down/보존 확인).
+
+- **Zadara PoC 를 OpenTofu + Kubespray 로 재구축했다** (`deploy/csp/zadara/opentofu/` 신규, `deploy/csp/zadara/{README,INSTALL,INSTALL_LOG_2026-09-13}.md`, `docs/50_운영/zadara_{opentofu_design,cloud_deployment_plan}.md`): 손으로 만든 node-10/11/20/21 두 클러스터를 2026-09-13 에 폐기하고 **m1(4vCPU/8GB, control-plane+worker+bastion) + w1(16vCPU/32GB, private+NAT)** 단일 클러스터로 바꿨다. VPC/서브넷/NAT/보안 그룹/EIP/VM 과 Kubespray 인벤토리까지가 IaC 소유이고 Kubernetes·Nullus 는 기존처럼 Kubespray·Helm 이 맡는다.
+
+  **실제 apply 로 드러난 zCompute 의 AWS 호환 API 차이를 코드에 못박았다.** 보안 그룹 생성 요청의 tags(D7)와 `AssociatePublicIpAddress`(D8) 는 400 으로 거부되고, root 볼륨의 `delete_on_termination=false` 는 무시된 뒤 ModifyInstance 가 끝나지 않는다(D9). 공인 IP 는 `aws_eip.public` 을 `prevent_destroy` 로 보호하고 association 만 VM 에 묶어 **VM 을 교체해도 121.78.39.241 이 유지**되게 했다(D10). SSH 는 운영자가 여럿이라 22 를 전체 개방하되 키 인증만 허용한다.
+
+  README 는 현재 아키텍처(Mermaid 다이어그램 포함), INSTALL 은 재실행 가능한 절차, INSTALL_LOG 는 실패 13건의 원인·수정 기록으로 나눴다. `tofu test` 15건은 mock provider 로 테넌트 없이 돈다.
+- **컨테이너 이미지 취약점 스캔 — 스택에서 고르는 선택 항목** (`internal/stack/**`, `internal/cicd/**`, `web/src/features/stack/**`, `airgap/**`, nullus-plan#76): 이미지 스캔 기능이 **전무했다.** 저장소 전수 확인 결과 Trivy 설정 0건이었고, PRD 는 이미 완료 기준으로 "Trivy 스캔 완료" 를 적고 있었다. 설계는 [`docs/11_기능설계/Nullus_컨테이너_이미지_스캔_설계.md`](docs/11_기능설계/Nullus_컨테이너_이미지_스캔_설계.md).
+
+  **차단 게이트를 레지스트리에 두지 않는다.** 지원 레지스트리 5종(`scm_project`·`harbor`·`nexus`·`ghcr`·`external`) 중 자체 스캔 기능이 있는 것은 **Harbor 하나뿐**이다 — GitLab Container Registry 의 Container Scanning 은 CI 잡이지 레지스트리 기능이 아니고, Nexus 는 OSS 에 스캐너가 없으며(Sonatype IQ 는 상용), GHCR 은 네이티브 스캔이 없다. 없는 쪽에 플러그인을 꽂을 확장점도 없다: 확장점이 있는 Harbor 는 이미 스캐너가 있고, 없는 셋은 확장점 자체가 없다. 게이트를 레지스트리에 두면 **5종 중 4종이 게이트 없이 초록불**이 된다.
+
+  **Trivy 를 server 모드로 세운다.** 취약점 DB 를 서버에만 두고 CI 잡은 client 로 붙어 패키지 목록만 보낸다. standalone 이면 파이프라인마다 DB(수백 MB)를 내려받아야 하고, 에어갭에서는 그 반입 지점이 "모든 CI 러너가 닿는 곳" 으로 늘어난다 — 이슈가 파이프라인 스캔의 단점으로 꼽은 바로 그 비용이다. kind 실측에서 client 로그의 DB 다운로드는 **0건**이었고, DB 실크기는 1.3G(PVC 5Gi)였다.
+
+  **기본값은 "고르지 않음" 이다.** 기본으로 켜면 안 쓰는 조직도 스캐너 파드를 떠안는다 — 레지스트리가 Harbor 면 내장 스캐너로 충분하다. 차단 기준은 CRITICAL 차단 · HIGH 경고 · `--ignore-unfixed` 다. 마지막 것이 결정적이다: `debian:11` 은 CRITICAL 5건인데 **전부 수정본이 없어**, 이 옵션이 없으면 평범한 베이스 이미지로 첫 배포가 막힌다(실측).
+
+  **에어갭 반입 경로를 새로 만들었다** (`airgap/images/oci-artifacts.txt`, `scripts/pre/pull-oci-artifacts.sh`, `scripts/14-push-oci-artifacts.sh`). trivy-db 는 컨테이너 이미지가 아니라 **OCI 아티팩트**라 `docker pull` 로 받아지지 않는다. oras 로 OCI layout 을 받아 tar 로 옮기고 내부 레지스트리에 올린다. oras 부재는 경고가 아니라 **실패**로 다룬다 — 조용히 건너뛰면 번들이 초록불인 채로 DB 만 빠진다(`generate-sbom.sh` 가 syft 부재를 `exit 0` 으로 넘겨 SBOM 이 통째로 빠졌던 것과 같은 실패다).
+
+- **상단 내비게이션의 진행 중 작업 알림** (`web/src/features/common/{utils,hooks,components}/` 신규, `components/layout/header.tsx`, nullus-plan#66): 스택 설치나 배포를 걸어 두고 다른 화면으로 옮기면 **진행 중이라는 표시가 어디에도 남지 않았다.** 데모(2026-08-22)에서 지적받은 그대로다 — 사용자는 방금 시킨 일이 아직 도는지, 끝났는지, 실패했는지 알 방법이 없어 목록 화면으로 되돌아가 새로고침을 반복했다. 헤더에 종을 두고 도는 동안 흔들리게 한다. 드롭다운은 이름·단계·경과를 보여 주고, 누르면 해당 상세 화면으로 간다.
+
+  **새 집계 API 를 만들지 않았다.** 후보는 셋이었다(신규 집계 API · 기존 목록 API 폴링 · WS 구독). WS 를 뺀 이유는 지금의 `/ws/deployments/:id/logs` 가 **배포 하나**의 로그 스트림이라는 데 있다 — 종이 그것을 쓰려면 "지금 뭐가 도는지" 를 먼저 알아야 하므로 **목록 조회가 어차피 선행되고**, 작업 수만큼 소켓을 여는 비용까지 붙는다. 서버 집계 API 는 stack·cicd 두 모듈의 상태를 한 핸들러가 읽어야 해 모듈 경계를 깨는데, 화면 하나를 위해 치를 값이 아직 아니다. 그래서 `GET /stacks` 와 `GET /cicd/deployments` 를 화면에서 합친다 — **서버 변경 0**. 두 엔드포인트 모두 이미 조직 스코프로 걸러 나오므로 화면에서 다시 거르지 않고, 상세 이동은 세 역할이 모두 볼 수 있는 라우트로만 보낸다(스택은 admin·devops 전용인 `/stack/deploy/:id` 대신 `/stack/logs/:id`).
+
+  **"완료" 는 응답만으로 알 수 없다.** 스택 목록에는 예전에 끝난 스택이 계속 들어 있어서, 완료 항목을 그대로 알림으로 세면 종은 늘 켜져 있고 드롭다운은 그냥 이력 화면이 된다. **진행 중인 것을 본 적 있는 작업만** 알림으로 싣고, 완료·실패로 바뀐 뒤 5분간 보여 준 다음 내린다. 끝난 작업의 경과 시간은 끝난 시각에서 멈춘다 — 계속 흐르면 아직 도는 것으로 읽힌다.
+
+  폴링은 도는 작업이 있을 때만 3초이고 다 끝나면 스스로 멈춘다. 시작 시점은 폴링이 아니라 배포 mutation 의 쿼리 무효화가 잡으므로 놀고 있을 때의 상시 폴링이 필요 없다. 이를 위해 `useDeployments` 에 옵트인 폴링 옵션을 더했다(기본값은 폴링 없음이라 기존 호출부 동작은 그대로다). 움직임을 줄이도록 설정한 사용자에게는 흔들림을 **아예 끈다** — 전역 규칙은 duration 만 줄여 오히려 더 빠르게 떨게 만들기 때문이다. 진행 중이라는 사실은 배지의 숫자가 대신 말한다.
+
+  F7 의 알림 이력(AlertRule 기반 운영 알림)과 **다른 개념이다.** 여기 뜨는 것은 사용자가 방금 시킨 작업의 진행 상황뿐이고 서버에 남지 않는다 — 세션을 새로 열면 이미 끝난 작업은 보이지 않는다. 집계 방식 결정 기록은 [`docs/plans/2026-08-23-중간점검-피드백-백로그.md`](docs/plans/2026-08-23-중간점검-피드백-백로그.md) N-1 에 있다.
+
+- **문서용 화면 캡처를 재생성할 수 있게 했다** (`web/e2e/shots/`, `playwright.shots.config.ts`, `npm run e2e:shots`): 백업 사용 가이드의 그림 3장을 손으로 찍으면 화면이 바뀔 때 조용히 낡는다. 스크립트로 만들어 다시 찍을 수 있게 한다.
+
+  **검증이 아니라 산출물 생성이므로 CI 게이트에서 뺐다**(chromium 프로젝트의 `testIgnore`). 전용 설정을 따로 둔 이유가 둘 있다: 기본 설정은 5173 을 `reuseExistingServer` 로 재사용하는데 **그 포트에 다른 프로젝트가 떠 있으면 엉뚱한 화면을 찍고**(실제로 그렇게 됐다), 로컬 개발 설정이 OIDC 모드면 Keycloak 으로 튕겨 찍을 화면이 없다. 세션 모드로 띄우고 API 응답을 고정해, 어떤 환경에서도 같은 그림이 나온다.
+
+- **백업 대상 선택 화면** (`web/src/features/admin/pages/backup-page.tsx`, `components/backup-target-dialog.tsx` 신규, `/admin/backup`): 백업은 API 로만 실행할 수 있었고, 무엇을 담을지는 `mode` 세 가지(full·platform_only·stack_only) 중에서만 고를 수 있었다.
+
+  **도메인은 이미 항목별 선택을 지원하고 있었다.** `BackupRun.Scope []Component` 가 있고 `RequiresQuiesce()` 도 모드가 아니라 Scope 를 본다 — API 만 그것을 열지 않아 모드에서 파생하고 있었다. `scope` 를 요청에 받아 다섯 항목(플랫폼 DB · Keycloak DB · 금고 · K8s 리소스 · 볼륨)을 개별로 고르게 한다. 모르는 이름은 **거부한다**(`BACKUP_INVALID_COMPONENT`): 조용히 버리면 고른 것과 백업된 것이 달라지고, 그 사실은 복구할 때에야 드러난다.
+
+  **확인 문구를 모드가 아니라 실제 선택으로 판단한다.** 정지 창을 만드는 것은 볼륨뿐이므로, full 모드라도 볼륨을 빼면 무중단이고 확인이 필요 없다. 멈추지도 않는데 확인을 강요하면 그 문구는 의미 없는 절차가 되고, **정작 진짜 멈추는 백업에서도 사용자가 습관적으로 넘긴다.** 화면도 같은 규칙으로 경고와 입력란을 켜고 끈다 — 서버가 거절한 뒤에야 알게 되면 늦다.
+
+  각 항목이 무엇인지 화면에서 말한다. 이름만으로는 무엇이 빠지는지 알 수 없어서다 — "금고" 를 빼면 복구 후 도구들이 서로 인증하지 못한다는 것을 말해 주지 않으면, 사용자는 용량을 줄이려다 복구를 못 하게 된다. 이력 표는 진행 중인 백업이 있을 때만 폴링하고, `partial` 은 초록이 아닌 경고색으로 칠한다: 성공처럼 보이면 빠진 산출물을 아무도 보지 않는다.
+
 - **백업/복구 — 플랫폼 메타데이터와 설치된 OSS 데이터까지 (`internal/backup/**` 신규, nullus-plan#75)**: 백업 기능이 **전무했다.** 저장소 전수 확인 결과 관련 코드 0 건이었고, PoC 환경 문서에는 *"노드 재생성 시 데이터 소실. 백업 없음"* 이 리스크로 이미 적혀 있었다(`deploy/csp/zadara/README.md:286`). 설계(`docs/11_기능설계/Nullus_백업복구_설계.md`)의 Phase 1~3 을 구현한다.
 
   **정지 백업을 고른 이유.** 여러 볼륨을 같은 순간의 모습으로 얼리려면 스토리지 스냅샷이 필요한데, PoC 가 쓰는 `local-path` 는 CSI 드라이버가 아니라 지원하지 않는다(저장소에 `snapshot.storage.k8s.io` 참조 0 건). Velero 도 검토했으나 File System Backup 이 **파드가 살아 있어야 볼륨을 읽어** "정지 후 백업" 과 구조적으로 상충하고, 보완하려면 도구 7 종의 정지 훅을 각각 만들어야 한다. 그 작업량이면 정지 백업을 만들고 리허설까지 끝낼 수 있다 — 게다가 정지 백업은 PVC 를 **열거해서** 처리하므로 카탈로그에 도구가 늘어도 자동으로 따라간다.
@@ -35,7 +180,271 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **아직 아닌 것**: **실환경 리허설이 남았다** — 실제 OSS 데이터(GitLab 커밋 · Harbor digest · Jenkins 빌드) · OpenBao 금고 · RTO/정지 창 실측 · 다중 노드. 축소 리허설은 *메커니즘*을 검증했지 *규모와 도구별 정합성*을 검증하지 않았고, **그것이 끝나야 B4-1 완료다.** 알림은 구조화 로그까지이고 채널 발송은 #63 에 달렸다. UI(B3-2)와 운영 런북(B3-4)도 남아 있다.
 
+### Changed
+
+- **낡은 가이드 세 편을 지금 코드와 대조해 맞췼다** (`docs/guides/cicd-pipeline-kind-deploy-guide.md`, `docs/20_개발가이드/Nullus_템플릿_추가_가이드.md`, `docs/20_개발가이드/Nullus_CLI_사용_가이드.md`): CI/CD kind 배포 가이드의 파이프라인 생성·배포 요청 본문(`git_repo` → `git_repo_url`, 응답 `.pipeline.id`, `deploy` 는 `version` · `deployed_by` · `manifest_types`)과 템플릿 목록을 현재 핸들러와 시드 기준으로 고치고, 스택 통합(`stack_integrated`)과 플랫폼 직접 배포(`emergency_direct`)의 차이를 적었다. 템플릿 추가 가이드에 `planning_profile` · CI/CD 템플릿의 선택 필드(`git_repo_url` 등)를 더하고, 호환성 매트릭스 API 가 등록돼 화면에서도 만들 수 있다는 사실로 고쳤다(404 라는 옛 안내 삭제). CLI 가이드에 **구현 현황 표**를 두어 지금 동작하는 것(`version` · `stack ls`)과 설계만 있는 것을 가르고, `pipeline deploy` 는 스택 통합 파이프라인에 "배포" 명령이 없다는 현재 모델로 다시 적었다. 로컬 E2E 가이드 부록 C 의 마지막 제약(낡은 문서)을 지웠다.
+
 ### Fixed
+
+- **GitLab 초기 root 비밀번호가 금고·연결 정보와 다른 것이던 것** (`internal/stack/adapter/helm/values.go`, `internal/stack/domain/connection.go`): 설치는 금고 값(`artifacts/gitlab/root-password`)을 ESO 로 `gitlab-initial-root-password` 에 프로비저닝했지만 GitLab 차트 values 가 그것을 참조하지 않아, 차트가 `gitlab-gitlab-initial-root-password` 에 임의 비밀번호를 만들었다 — 금고의 값·백업·연결 정보 안내가 가리키는 것과 실제 root 비밀번호가 달랐다(실측: 두 Secret 의 값이 다르고 로그인되는 것은 차트 것). 이제 차트의 `global.initialRootPassword` 가 프로비저닝된 Secret 을 읽고, 연결 정보 안내도 같은 이름을 쓴다(값의 단일 출처는 domain). **이 변경 전에 설치한 스택은 차트가 만든 `gitlab-gitlab-initial-root-password` 가 실제 비밀번호다.** 에어갭 설치 values 와 이미지 목록을 함께 갱신했다.
+
+- **배포 되커밋(`[skip ci]`)이 실행 기록에 실패로 남던 것** (`internal/cicd/{usecase/sync_pipeline_runs.go,adapter/gitlab,adapter/github,port}`): GitLab 은 CD 가 매니페스트를 되커밋한 `[skip ci]` 커밋에 `skipped` 파이프라인을 만드는데, 동기화가 이를 중단(ABORTED)으로 읽어 실패로 기록했다 — 배포마다 실패 하나가 화면에 남았다(2026-10-12 리허설 실측). 아무 잡도 돌지 않은 빈 파이프라인은 실행이 아니다. GitLab·GitHub 의 `skipped` 를 `SKIPPED` 로 옮기고 동기화가 `SKIPPED`·`NOT_BUILT`(Jenkins) 를 기록하지 않는다. 이 변경 전에 실패로 남긴 기록은 다음 동기화가 거둔다(`DeploymentRepository.Delete`).
+
+- **복구의 금고(OpenBao KV) 가져오기가 빈 스택 ID 로 전역 금고를 향하던 것** (`internal/backup/usecase/run_restore.go`, 백업복구 설계 §6.1 8단계): 백업은 스택 ID 로 **스택 금고**를 뜨는데(`KV.Export`) 복구는 빈 스택 ID 로 `KV.Import` 를 불러 전역 주소(`OPENBAO_ADDR`)로 갔다 — 인클러스터면 다른 금고에 쓰고, 호스트에서는 닿지 못해 네 번의 리허설 모두 "금고 경로 27건 복원 실패" 로 남았다. 이제 뜬 곳으로 되돌린다. 스택을 되돌리는 복구에서는 금고 파드가 워크로드 재개 뒤에 뜨므로 재개 뒤로 미루고 응답할 때까지 기다려 다시 시도한다(기본 2분·10초 간격). 스택을 건드리지 않는 복구(`platform_only`)는 금고가 이미 떠 있어 바로 한다. 참조 정합성 검사는 원래 스택 금고를 봤으므로 이제 import 와 같은 금고를 본다.
+
+- **로컬 런북의 kind 노드 배선이 `stack-up --wait` 에서만 되던 것** (`scripts/runbook_local.sh`): 노드 `/etc/hosts`(registry.<도메인> → 게이트웨이 ClusterIP)와 내부 CA 신뢰, GitLab 포트포워드 + `NULLUS_GITLAB_URL` 은 `stack-up --wait` 의 끝에서만 했다 — 화면에서 설치한 스택, `--wait` 없이 띄운 스택, 복구로 되살아난 스택은 배선이 안 돼 앱이 `ImagePullBackOff` 로 멈췄다. 배선을 스택 ID 기준 함수(`wire_stack_host`)로 빼 `stack-status <id> --wait` 가 완료 시 같이 하고, 새 명령 `wire [--stack=<id>]` 가 kind 의 completed 스택 전부(또는 하나)를 다시 잇는다. 몇 번 돌려도 안전하다.
+
+- **앱 네임스페이스를 잃은 뒤 복구하면 앱이 ImagePullBackOff 로 멈추던 것** (`internal/backup/adapter/kube/resource_dumper.go`, `internal/shared/domain/app_namespace.go`, 백업복구 설계 §10.2.3): 앱의 Deployment 는 Argo CD 가 Git 에서 되살리지만, Nullus 가 파이프라인을 만들 때 앱 네임스페이스에 둔 이미지 pull Secret(`nullus-registry`)과 네임스페이스 라벨은 Git 에도 백업에도 없었다 — 클러스터를 통째로 잃거나 앱 네임스페이스까지 지운 뒤 복구하면 Deployment 는 돌아오는데 `FailedToRetrieveImagePullSecret` 로 pull 이 실패했다(2026-10-12 리허설 2차 실측). 이제 네임스페이스 덤프가 Argo CD Application 의 destination 네임스페이스마다 네임스페이스(라벨 포함)와 pull Secret 을 `app_namespaces` 로 담고, 복구가 스택 리소스보다 먼저 **없을 때만** 만든다 — 앱 네임스페이스가 살아 있으면 지금 쓰는 자격증명을 덮지 않는다. 이름은 CI/CD 와 백업이 함께 보도록 공용 도메인으로 옮겼다. 옛 덤프(`app_namespaces` 없음)도 그대로 복원된다.
+
+- **full 복구 직후의 플랫폼 질의가 간헐적으로 `cached plan must not change result type (SQLSTATE 0A000)` 으로 죽던 것** (`internal/backup/{port,usecase/run_restore.go,wiring.go}`): `pg_restore --clean` 이 테이블을 지우고 다시 만드는데, API 의 pgx 연결 풀이 들고 있던 준비된 문장은 옛 테이블을 가리킨다. 복원 직후 그 연결을 잡은 첫 질의가 죽는다 — 2026-10-12 리허설 4차에서 게이트웨이 주소 재설정의 스택 조회가 그렇게 실패해 `hostAliases 를 손으로 맞춰야 합니다` 로 남았다(어느 연결이 잡히느냐에 따라 간헐적이라 앞선 세 번은 지나갔다). 플랫폼 DB 를 되돌린 직후 풀을 비운다(`pgxpool.Pool.Reset`) — 이후 질의는 새 연결로 간다.
+
+- **복구의 워크로드 재개가 거짓 "수동 조치가 필요합니다" 경보를 내던 것** (`internal/backup/{domain,adapter/kube/scaler.go,usecase/run_restore.go}`): 두 경우였다. (1) 오퍼레이터가 CR 에서 만드는 Prometheus·Alertmanager StatefulSet 은 덤프에 없고(ownerReferences) 복구 뒤 오퍼레이터가 다시 만드는데, 재개가 그것을 조정하려다 `statefulsets … not found` 를 ERROR 로 남겼다 — 백업이 워크로드의 소유자 유무를 매니페스트에 적고(`owner_managed`) 재개가 그것은 건너뛴다. (2) 리소스 단계가 replicas 를 세운 직후 재개가 같은 객체를 조정해 `the object has been modified` 가 났다 — 최신 것을 다시 읽어 세 번까지 재시도한다. 남는 ERROR 는 진짜 조치가 필요한 것만이다.
+
+- **full 복구의 플랫폼 DB 단계가 백업 이력 FK 에 막히던 것** (`db/migrations/000092`, `internal/backup/adapter/postgres/pg_dumper.go`): #298 의 000091 이 `backup_runs.org_id → organizations(id)` FK 를 걸었는데, 복구는 백업 이력(backup_runs·backup_artifacts·restore_runs)을 보존한 채 나머지를 `pg_restore --clean` 으로 되돌린다 — `organizations_pkey` 를 지우려는 순간 그 FK 가 막아 `cannot drop constraint organizations_pkey … backup_runs_org_id_fkey depends on` 으로 복구 전체가 실패했다(2026-10-12 실환경 리허설 실측. #298 머지 뒤의 모든 full 복구가 그랬다). FK 를 거두고 원칙을 세웠다 — **백업 이력 테이블은 플랫폼 테이블을 FK 로 참조하지 않는다**(통합 테스트가 스키마 전체에 대해 지킨다). 조직 검증은 요청 시점의 `OrganizationChecker` 가 그대로 한다. pg_restore 가 같은 모양으로 죽으면 어느 이력 테이블의 FK 인지와 조치를 오류에 덧붙인다.
+
+- **복구 뒤 Prometheus·Alertmanager 가 영영 돌아오지 않던 것** (`internal/backup/adapter/kube/resource_dumper.go`): kube-prometheus-stack 의 두 StatefulSet 은 오퍼레이터가 `Prometheus`·`Alertmanager` CR 을 읽어 만든다. StatefulSet 은 ownerReferences 때문에 덤프에서 빠지는데(소유자가 다시 만든다) 소유자인 CR 이 덤프 종류에 없어 다시 만들 주체가 사라졌다 — 복구는 `succeeded` 인데 워크로드 재개 단계가 `statefulsets … not found` 를 남기고 모니터링이 뜨지 않았다(2026-10-12 리허설 실측). `monitoring.coreos.com` 의 Prometheus·Alertmanager·ServiceMonitor·PodMonitor·PrometheusRule·Probe·ScrapeConfig·AlertmanagerConfig 를 네임스페이스 덤프에 넣었다(모니터링 CRD 가 없는 클러스터에서는 조회하지 않는다). 같은 대조에서 **접근 도메인 인증서의 `Certificate`** 도 복구 뒤 사라진 것이 드러났다 — Secret 은 되살아나지만 갱신할 주체가 없어 만기(기본 90일)에 게이트웨이 TLS 가 조용히 죽는다. cert-manager 의 `Certificate`·`Issuer` 도 덤프에 넣었다(복구가 cert-manager 를 먼저 세우므로 적용할 수 있고, 되살아난 Secret 의 발급 정보가 맞으면 다시 발급하지 않는다). Application(Argo CD)·ExternalSecret 과 같은 뿌리다 — 컨트롤러가 다시 만드는 것의 원본은 덤프에 있어야 한다.
+
+- **스택 삭제가 다른 네임스페이스가 쓰는 ESO CRD·검증 웹훅까지 지우던 것** (`internal/stack/usecase/delete_stack.go`): ESO CRD 와 웹훅은 클러스터에 하나뿐인데 스택 삭제가 무조건 걷어냈다. 다른 네임스페이스의 ExternalSecret 이 CRD 와 함께 사라지고 그것이 만든 Secret 은 가비지 컬렉터가 거둔다 — 그쪽 스택은 다음 파드 재시작에서 `secret "nullus-postgresql-credentials" not found` 로 죽는다. 2026-10-12 리허설에서 DB 에만 남은 유령 스택(설치 실패 뒤 남은 레코드)을 지우자 살아 있던 스택의 자격증명 Secret 이 전부 사라졌고, 그 뒤에 뜬 백업에는 그것들이 없었다. 이제 자기 네임스페이스 밖에 ExternalSecret·SecretStore·ClusterSecretStore 가 하나라도 있으면 CRD·웹훅을 남긴다(Argo CD CRD·공용 자원 회수와 같은 원칙 — 쓰는 곳이 있으면 남기고, 확인하지 못하면 남긴다). 다음 설치는 남은 CRD 를 인수한다.
+
+- **CD 의 sonar-scanner 이미지 빌드가 `entrypoint.sh: not found` 로 실패하던 것** (`deploy/images/sonar-scanner/{Dockerfile,entrypoint.sh}`, `.gitignore`): #301 이 공식 이미지 구조를 따라 엔트리포인트를 `bin/` 아래 두었는데, 저장소 루트의 `.gitignore` 가 Go 빌드 산출물용으로 `bin/` 을 무시해 그 파일은 커밋되지 않았다. 로컬 빌드는 파일이 있어 통과했고, main 의 첫 CD 가 `COPY` 에서 죽어 `nullus-sonar-scanner` 패키지가 만들어지지 않았다 — 그동안 코드 상수는 없는 이미지를 가리킨다(기존 파이프라인은 정의를 갱신하지 않는 한 옛 공식 이미지를 그대로 쓴다). 엔트리포인트를 빌드 컨텍스트 루트로 옮기고, `.gitignore` 에 `!deploy/images/*/bin/` 을 더해 이미지 디렉터리의 `bin/` 은 소스로 본다.
+
+- **SAST 리포트 전에 만든 파이프라인에 결과가 붙지 않던 것과, sonar-scanner 이미지가 amd64 에서만 돌던 것** (`internal/cicd/usecase/{refresh_pipeline_definition,provision_app_project,provision_pipeline_repository}.go`, `internal/cicd/adapter/handler/pipeline_handler.go`, `internal/cicd/adapter/scaffold/renderer.go`, `deploy/images/sonar-scanner` 신규, `.github/workflows/cd.yml`, `internal/shared/domain/runtime_images.go`, `web/src/features/cicd`, `api/openapi.yaml`): SAST 리포트(`sast-report.json`)는 파이프라인 정의 파일의 `sast` 잡이 남기는데, 스캐폴딩은 새 저장소에만 쓰인다 — 기존 저장소에 다시 쓰면 사용자가 고친 Dockerfile·매니페스트와 CI 가 갱신한 이미지 태그가 되돌아간다. 그래서 리포트 전에 만든 파이프라인은 실행 기록에 판정이 붙지 않았고(단계 상태만 보였다), 파이프라인을 다시 만드는 것 말고는 방법이 없었다.
+
+  **CI 정의만 다시 쓰는 길을 열었다** — `POST /pipelines/:id/refresh-definition` 과 목록 상세의 "CI 정의 갱신" 버튼. 이 스택의 파이프라인 정의 파일(`.gitlab-ci.yml` · `.github/workflows/nullus-ci.yml` · `Jenkinsfile` 중 하나)을 플랫폼 기본으로 다시 쓰고 CI 변수(`SONAR_TOKEN` 등)를 다시 등록하며, 레코드의 단계를 돌아온 단계로 맞추고 스캔 정책을 다시 싣는다. 앱 코드 · Dockerfile · `deploy/` 매니페스트 · Argo CD Application 은 건드리지 않는다. 사용자가 손본 정의 파일은 덮어쓰므로 화면이 무엇을 덮어쓰고 무엇은 두는지 말하고 확인을 받는다. 저장소가 사라졌으면 다시 만들고 전체 스캐폴딩을 쓴 뒤 그 사실을 알린다. 스택 없는 파이프라인은 `400 PIPELINE_NOT_STACK_BOUND`.
+
+  **스캐너 이미지를 우리가 멀티아치로 굽는다** — 공식 `sonarsource/sonar-scanner-cli` 는 전 태그가 amd64 뿐이라(Docker Hub 실측) arm64 노드는 에뮬레이션이 있어야 돌고 에어갭 arm64 번들은 그 이미지를 아예 건너뛰었다. 스캐너 zip 은 플랫폼 독립이라 `amazoncorretto:21`(amd64·arm64) 위에 `deploy/images/sonar-scanner` 로 굽고, CD 의 `build-and-push-sonar-scanner` 가 `nullus-jenkins` 와 같은 방식(태그 = Dockerfile 의 `SONAR_SCANNER_VERSION`, provenance 없음)으로 `ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner` 에 민다. 코드 상수와 Dockerfile 버전·CD 잡은 테스트로 묶었다. 공식 이미지의 node·python·poetry 는 싣지 않는다 — 스택 파이프라인이 쓰지 않는다. 에어갭 번들 목록을 갱신했다. 로컬은 `scripts/build-sonar-scanner-image.sh --kind-load`. **ghcr 패키지는 처음 만들어질 때 private 이라 public 으로 바꿔야 한다**(릴리즈 정책 §7.1).
+
+- **제품에서 마지막 스택을 지운 뒤 복구가 Gateway 에서 죽고 내부 CA 를 잃던 것** (`internal/backup/{domain,port,usecase,adapter/kube,wiring.go}`, `internal/shared/domain/shared_cluster_resources.go`, `internal/stack/domain`, `web/src/features/admin`, 가이드 둘, 설계 §11.3 Q16): 클러스터의 마지막 스택을 지우면 Nullus 가 설치한 공용 자원이 회수된다(#284) — cert-manager · 내부 CA · metrics-server · 설치 표시가 붙은 Gateway CRD · GatewayClass. 백업은 그것을 담지 않았다. 네임스페이스 덤프 밖이고, 클러스터 범위 덤프는 Helm 소유 어노테이션으로 거르는데 Gateway API CRD 는 kubectl 로 · GatewayClass 는 `create` 로 만들어져 어노테이션이 없으며, 내부 CA 는 cert-manager 네임스페이스에 있다. 그 상태에서 복구하면 볼륨까지 되돌린 뒤 Gateway CR 적용에서 `no matches for kind` 로 죽고, 다시 설치하면 내부 CA 가 새로 만들어져 되살린 인증서·신뢰 번들과 어긋난다.
+
+  **백업 대상 `shared_resources` 를 더했다** — 설치 표시(`nullus.io/installed-by=nullus`)가 붙은 Gateway CRD · GatewayClass `envoy` · 내부 CA 의 ClusterIssuer 둘 · CA Certificate · CA Secret(키). 스택 백업의 기본 범위에 든다(정지 창과 무관). Nullus 가 설치한 것이 없으면(사용자의 Gateway API 를 재사용한 스택) 산출물을 만들지 않는다. **복구는 이것을 네임스페이스 · 볼륨보다 먼저, 없을 때만 되살린다** — 다른 스택이 쓰는 지금의 CA 나 CRD 를 백업 때의 것으로 덮으면 그 스택이 깨진다. 내부 CA 는 cert-manager 가 지금 설치된 네임스페이스로 옮겨 만든다(ClusterIssuer 의 `secretName` 은 cluster-resource-namespace 에서만 읽힌다). 종류의 CRD 가 없으면(cert-manager 없음) 아무것도 건드리기 전에 어느 종류가 왜 안 되는지와 무엇을 먼저 설치해야 하는지 말하고 멈춘다. **cert-manager · metrics-server 릴리스는 담지 않는다** — 컨트롤러는 데이터가 아니라 설치이고, CRD 만 되살려 두면 재설치를 Helm 소유권 충돌로 막는다(설계 Q16).
+
+  공용 자원의 이름과 판별 규칙(설치 표시 라벨 · 내부 CA 이름 · Gateway CRD 접미사)은 `internal/shared/domain` 으로 옮겨 설치 · 삭제 · 백업이 같은 것을 본다 — 지우는 쪽은 알고 백업하는 쪽은 모르던 것이 이번에도 있었다. kube 어댑터에 kubectl 실행 seam 을 두어 덤프 선택 · create-if-missing · CRD 없음 안내 · 네임스페이스 재지정을 가짜 kubectl 로 검증한다. 화면의 백업 대상에 "클러스터 공용 자원" 이 들어간다.
+
+- **백업 요청이 끊기면 워크로드가 0 으로 남고 실행 기록이 running 으로 남던 것** (`internal/backup/usecase/run_backup.go`): 백업은 HTTP 요청 안에서 동기로 돈다. 클라이언트가 떠나면(탭 닫음·프록시 타임아웃) 요청 컨텍스트가 취소되는데, 정지 창을 닫는 재개(워크로드 scale-up·회전 스케줄러 재개)와 마무리(실행 기록 갱신·알림)가 그 컨텍스트에 묶여 있었다. 취소된 컨텍스트로는 API 서버에도 저장소에도 닿지 못해 첫 호출부터 실패한다 — 백업하려다 서비스를 내린 채 두고, 기록은 running 으로 영영 남아 사용자는 무엇이 일어났는지 모른다. 이제 재개와 마무리는 요청 취소와 분리된 컨텍스트(값은 이어받고 취소만 끊는다, 재개 5분·마무리 30초 제한)로 끝까지 간다. 백업 자체는 종전대로 요청과 함께 멈춘다 — 멈추되 서비스는 살려 두고 기록을 닫는다. 유스케이스 테스트가 아카이브 도중 요청을 끊고 재개·기록 종료를 확인한다.
+
+- **없는 조직으로 만든 백업이 화면에 보이지 않던 것과, 백업 가이드가 바로 그 조직 ID 를 적어 두던 것** (`internal/backup/adapter/{handler,bridge}`, `internal/backup/port`, `internal/shared/middleware/org_context.go`, `db/migrations/000091`, `docs/50_운영/Nullus_백업복구_{로컬_테스트,사용}_가이드.md`): 백업 핸들러는 `X-Org-ID` 헤더를 검증 없이 믿었고 `backup_runs.org_id` 에는 FK 가 없어 어떤 조직 ID 로든 백업이 만들어졌다. 목록은 로그인 사용자의 조직으로만 거르므로 그 백업은 어떤 화면에도 보이지 않았다. 로컬 테스트 가이드가 적어 둔 `00000000-…-0001` 은 어떤 마이그레이션도 만들지 않는 유령 조직이라, 가이드대로 하면 그대로 재현됐다. 헤더를 빼면 빈 조직으로 UUID 오류(500)가 났다.
+
+  **조직 해석을 다른 핸들러와 같게 맞췄다** — 인증된 principal → `X-Org-ID` → 시드 기본 조직. 헤더로 받은 조직은 admin 모듈의 공개 인터페이스(bridge)로 존재를 확인해 없으면 `400 ORG_NOT_FOUND` 로 거절한다(확인 자체가 실패하면 거절도 통과도 아닌 오류). principal 읽기는 `sharedmw.OrgIDFromEchoContext` 로 내보내 핸들러마다 리플렉션을 복사하지 않는다. **DB 도 거절한다** — `backup_runs.org_id → organizations(id)` FK(000091). 이미 들어간 고아 행은 시드 기본 조직(없으면 가장 오래된 조직)으로 옮겨 다시 보이게 한다. 스케줄 백업(`backup.schedule.org_id`)도 같은 FK 를 타므로 잘못된 조직이면 실행이 실패로 남는다 — 조용히 보이지 않는 백업보다 낫다. 가이드 두 곳은 `$ORG` 변수와 시드 조직 ID, "화면이 보는 조직이어야 한다" 는 설명으로 바꿨다. 백업 저장소 통합 테스트는 백업 마이그레이션만이 아니라 전체 마이그레이션을 적용한다(FK 가 `organizations` 를 참조한다).
+
+- **알림 규칙 수정이 늘 실패하던 것** (`internal/observability/adapter/repository/postgres_alert_rule.go`): 수정 쿼리가 `alert_rules` 에 없는 열(`updated_at`)을 써서 `PUT` 이 매번 `column "updated_at" does not exist` 로 500 이었다(2026-03 부터). 도메인과 화면 모두 수정 시각을 쓰지 않아 열을 더하지 않고 쿼리에서 뺐다. 이것을 잡을 통합 테스트가 있었지만 CI 가 통합 테스트를 돌리지 않아 드러나지 않았다.
+
+- **통합 테스트가 깨진 채 남아 있던 것** (`internal/{admin,observability,stack}/adapter/repository`, `e2e`, `.github/workflows/ci.yml`): CI 가 `-tags integration` 테스트를 돌리지 않아 몇 달 사이 스키마·동작이 바뀐 것을 따라가지 못했다. 마이그레이션 재정렬(000006 이 `golden_path_templates` 를 만든다) 전에 넣은 선행 테이블 생성 우회가 이제 000006 과 충돌해 admin·observability·e2e 설정이 처음부터 실패했고, 스택 이력 테스트는 스택 삭제가 hard delete 이던 때의 기대(삭제하면 버전 이력도 사라진다)를 그대로 갖고 있었다 — 지금은 soft delete 이고 이력 화면이 지운 스택의 버전을 불러온다. e2e 는 패키지가 갈려 설정 함수를 찾지 못해 빌드조차 되지 않았고, 바뀐 `List` 시그니처와 UUID 외래키를 따르지 않았다. 모두 지금 스키마·동작에 맞췄고, CI 백엔드 잡이 `go vet -tags integration` 과 `go test -tags integration ./...` 를 돌린다. 백업 S3 저장소 테스트는 공식 MinIO 이미지를 익명으로 받을 수 없어(quay.io·Docker Hub 401, 로컬은 캐시로 통과했다) 같은 서버를 다시 포장한 `bitnamilegacy/minio` 를 쓴다.
+
+- **다른 클러스터로 복구하거나 ClusterIP 를 담지 않은 백업으로 복구하면 러너·Argo CD 가 옛 게이트웨이 주소를 가리키던 것** (`internal/stack/{domain,port,usecase,adapter/helm}`, `internal/backup/{usecase,port,domain}`, `internal/backup/wiring.go`, `cmd/api`): 설치는 스택 게이트웨이의 ClusterIP 를 러너(`runners.config` 의 `host_aliases`)와 Argo CD(`global.hostAliases`)의 helm values 에 박는다. 복구는 Service 를 백업 때의 IP 로 되살리지만, 그 IP 를 쓸 수 없거나(다른 클러스터) 백업에 IP 가 없으면(이 변경 전 백업) 게이트웨이가 새 주소를 받아 CI 는 clone 에서, Argo CD 는 매니페스트 조회에서 멈췄다. 이제 복구 끝(워크로드 재개·정합성 검사 뒤)에 스택 모듈이 게이트웨이의 지금 주소를 읽어, 두 릴리스의 values 에서 스택 도구 항목(`gitlab.<도메인>`·`registry.<도메인>`)의 주소만 바꿔 다시 적용한다 — 다른 항목(helper 이미지·CA 볼륨·사용자가 더한 호스트)은 그대로다. 차트는 릴리스에 저장된 것을 쓰고, 서브차트를 잃은 차트(argo-cd)는 같은 버전을 저장소에서 다시 받는다 — 닿지 못하면 그 릴리스만 실패로 남기고 나머지(러너)는 맞춘다. 릴리스 Secret·러너 ConfigMap·Argo CD 파드가 함께 맞는다. 주소가 그대로면 아무것도 하지 않는다. 재설정은 복구가 실제로 붙은 클러스터(복구를 시작할 때 읽은 kubeconfig)를 본다 — full 복구가 DB 의 클러스터 정보를 백업 시점으로 돌려도 옛 클러스터로 가지 않는다. 결과는 복구 응답의 `integrity_report.gateway_aliases`(주소·다시 적용한 릴리스·오류)에 남고, 실패해도 복구는 성공이다. 백업 모듈은 기본 타입만 주고받는 포트로 부르고 스택 모듈을 직접 참조하지 않는다. 설치와 재설정이 같은 호스트 규칙(`domain.GatewayPinnedHostnames`)을 보고, 설치 코드가 만든 values 를 재설정하면 새 주소로 설치한 것과 같아짐을 테스트로 묶었다.
+
+  kind 로컬 스택에서 확인했다 — 게이트웨이 Service 를 새 IP 로 다시 만든 뒤 재설정이 `argo-cd`·`gitlab-runner` 를 다시 적용했고, Argo CD repo-server 파드의 hostAliases·러너 ConfigMap 이 새 IP 가 됐으며, Argo CD 가 저장소를 다시 읽고(Synced) CI 잡이 새 주소로 clone·이미지 push 했다. kind 노드 `/etc/hosts` 는 로컬 배선이라 대상이 아니다(가이드 13단계).
+
+  **스택 설정의 오버라이드에 굳은 주소도 바꾼다.** OSS 설정 편집(live)은 배포된 values 를 통째로 오버라이드(`yaml_overrides`)에 저장해 그 시점의 게이트웨이 주소가 굳고, 오버라이드는 재설치 때 맨 마지막에 병합되므로 릴리스만 고치면 다음 재설치에서 옛 주소가 돌아온다. 재설정이 러너·Argo CD 오버라이드(설치가 찾는 네 가지 키 — 단계·릴리스·차트 이름과 `installing_` 을 뗀 이름)에서도 스택 도구 항목의 주소를 바꾼다. 다시 직렬화하지 않고 `ip` 값만 텍스트에서 바꿔 주석·서식·다른 값을 지킨다. helm 작업이 끝난 뒤 스택을 새로 읽어 그 키 하나만 저장한다(`SetYAMLOverride`, Postgres 는 `jsonb_set`) — 행 전체를 덮어쓰면 그 사이의 상태 전이·다른 키 편집을 되돌리고 `config.tools` 도 지운다. 릴리스의 주소가 이미 맞아도 오버라이드는 본다. 결과의 `updated` 에 `overrides/<키>` 로 남는다.
+
+- **스택 파이프라인의 앱이 화면에서 고른 클러스터가 아니라 스택 클러스터에 뜨고, 모니터링 탭은 고른 클러스터를 읽어 비어 보이던 것** (`internal/cicd/usecase/{create_pipeline,delete_pipeline,deploy_cluster}.go`, `internal/cicd/adapter/handler/pipeline_handler.go`, `web/src/features/cicd/pages/developer-deploy-page.tsx`, `api/openapi.yaml`): 스택의 Argo CD Application 은 목적지가 자기 클러스터(`kubernetes.default.svc`)이고 Application 자체도 스택 클러스터에 적용되므로, 앱은 늘 스택이 설치된 클러스터에 선다. 그런데 파이프라인에는 화면의 "Deploy Cluster" 로 고른 클러스터가 저장됐다. 개발자 배포 화면은 스택과 클러스터를 따로 고르게 했고, 클러스터 목록은 `target` 타입만 보여 스택 클러스터가 그 타입이 아니면 맞출 수도 없었다. 모니터링 탭(`GET /pipelines/:id/resources`)은 저장된 클러스터를 읽어 빈 네임스페이스를 보고, "클러스터 리소스까지 삭제" 는 거기서 Application 을 찾다 "이미 없음" 을 성공으로 끝내 앱이 스택 클러스터에 남았다.
+
+  **규칙을 하나로 고정했다 — 스택에 묶인 파이프라인의 배포 클러스터는 스택 클러스터다.** 파이프라인 생성은 `stack_id` 가 있으면 `cluster_id` 가 스택 클러스터와 같은지 보고, 다르면 `400 STACK_CLUSTER_MISMATCH` 로 거절한다(조용히 바꾸면 화면이 보여 준 선택이 거짓이 된다). 비우면 스택 클러스터로 채운다. 개발자 배포 화면은 스택을 고르면 클러스터를 스택의 것으로 잠그고 이유를 적는다 — 스택 클러스터가 `target` 타입이 아니어도 그렇다. 모니터링과 삭제는 앱이 실제로 서 있는 클러스터를 읽는다: 러너에 위임하는 스택 파이프라인은 스택 클러스터, 플랫폼이 직접 적용한 경로(스택 없음·긴급 직접 배포)는 파이프라인의 클러스터. 이미 어긋나게 저장된 파이프라인도 이 보정으로 모니터링·삭제가 맞는 곳을 본다 — 정보 탭의 "Cluster" 값은 저장된 그대로다.
+
+  스택 클러스터 밖으로 배포하는 진짜 멀티 클러스터는 Argo CD 에 대상 클러스터를 등록하고 대상에서 레지스트리·게이트웨이에 닿아야 하는 별도 기능이라 여기서 다루지 않았다. 유스케이스·핸들러·화면 테스트로 확인했다. 실클러스터 검증은 하지 않았다.
+
+- **스택 클러스터 규칙이 놓친 세 곳 — 실행 확인 창의 클러스터 선택, 예전 파이프라인의 클러스터 표기, 직접 배포 API** (`internal/cicd/domain/deploy_cluster.go`, `internal/cicd/usecase/{create_pipeline,delete_pipeline,deploy_cluster}.go`, `internal/cicd/adapter/handler/pipeline_handler.go`, `web/src/features/cicd/{api/cicd-api.ts,pages/cicd-list-page.tsx}`, `api/openapi.yaml`): 위 수정 뒤에도 화면에서 고른 클러스터와 앱이 선 클러스터가 어긋나는 곳이 남아 있었다.
+
+  - **실행 확인 창(Execute)의 "Deploy Cluster" 는 고를 수 있었지만 고른 값을 서버에 보내지 않았다.** 실행은 늘 파이프라인에 정해진 클러스터로 갔다 — 스택 파이프라인이면 스택의 Argo CD 가 스택 클러스터에 올렸다. 클러스터 목록을 못 받으면 있지도 않은 `prod-k8s`·`dev-k8s` 를 보기로 내놓기까지 했다. 이제 배포될 클러스터를 읽기 전용으로 보여 준다.
+  - **규칙 전에 만든 스택 파이프라인은 정보 탭 "Cluster" 와 목록의 클러스터 필터가 앱이 없는 클러스터를 가리켰다.** 목록 응답(`GET /cicd/pipelines`, `GET /stacks/:id/pipelines`, 생성 응답)에 서버가 계산한 `deploy_cluster_id` 를 더하고 화면은 그 값을 쓴다 — 모니터링·삭제가 쓰는 규칙(`domain.Pipeline.DeployClusterID`)과 같다. 저장된 `cluster_id` 는 그대로 둔다(접속 주소처럼 지금 스택에서 계산한다).
+  - **`POST /cicd/deploy-app` 은 스택을 받으면서 고른 클러스터에 직접 적용했다.** 기록은 스택 파이프라인(러너·Argo CD 경로)으로 남아 모니터링·삭제가 스택 클러스터를 뒤지고, 앱은 고른 클러스터에 남았다 — 위 문제의 반대 방향이다. 생성과 같은 규칙을 따른다: 없는 스택은 `400 STACK_NOT_FOUND`, 다른 조직의 스택은 `403 STACK_ORG_MISMATCH`(클러스터 불일치보다 먼저 본다 — 그 오류는 스택의 클러스터를 알려 준다), 스택 클러스터와 다르면 `400 STACK_CLUSTER_MISMATCH`, 비우면 스택 클러스터로 채운다. 스택을 읽지 못하면 확인하지 않은 채 적용하지 않고 `500 STACK_LOOKUP_FAILED` 다. 어느 거절도 적용·기록하지 않는다. 지금 화면은 이 API 를 쓰지 않는다.
+
+  규칙(`MatchStackCluster`·`Pipeline.DeployClusterID`)은 도메인으로, 스택 대상 판정(조직 → 클러스터, `MatchStackTarget`)은 유스케이스로 옮겨 생성·직접 배포·목록·모니터링·삭제가 한 곳을 쓴다. 도메인·유스케이스·핸들러·화면 테스트로 확인했다.
+
+- **호스트에서 도는 API 에 런북이 GitLab 주소를 넣지 않던 것** (`scripts/runbook_local.sh`, `internal/cicd/adapter/provisioning/bundle_factory.go`, `cmd/api/main.go`): 로컬 API 는 클러스터 밖에서 도는데 GitLab 기본 주소는 클러스터 내부 DNS 라 저장소 프로비저닝·실행 기록 동기화·"실행" 이 모두 GitLab 에 닿지 못했다. 사람이 포트포워드 루프를 띄우고 `NULLUS_GITLAB_URL` 을 넣어 API 를 다시 띄워야 했고(로컬 E2E 가이드 6단계·부록 C), `refresh` 때 빠뜨리면 조용히 사라졌다. 런북이 kind 클러스터에서 GitLab 웹서비스가 있는 네임스페이스를 찾아 재접속 루프 포트포워드(`:8181` 부터 스택마다 하나)를 띄우고(`gitlab-forward`, pid·포트는 `.runbook-logs` 에 기록, `status` 에 표시, `down` 이 내린다) `NULLUS_GITLAB_URL` 을 API 에 넘긴다. `up`·`refresh`·`stack-up --wait` 끝의 재기동이 모두 같은 `start_api` 로 띄우므로 어느 길로 다시 떠도 빠지지 않는다. `stack-up --wait` 는 설치한 스택에 GitLab 이 있으면 포워드를 띄우고 API 를 다시 띄운다 — 환경 변수는 돌고 있는 프로세스에 넣을 수 없다. 이미 그 포트에서 GitLab 이 응답하면(런북 밖에서 띄운 루프) 그대로 쓴다. `~/.nullus-api.env`(또는 `NULLUS_API_ENV_FILE`)가 있으면 런북이 읽어 백업 설정 같은 값도 함께 넘긴다 — 가이드가 `set -a; source` 를 매번 하라고 하던 것을 걷어냈다.
+
+  **`NULLUS_GITLAB_URL` 이 "네임스페이스=주소,..." 목록을 받는다.** 주소 하나는 모든 GitLab 스택에 적용돼, 로컬에 GitLab 스택이 둘이면 한 스택의 번들이 다른 스택의 GitLab 에 인증을 시도해 토큰을 돌렸다. 네임스페이스 항목이 있으면 그 주소, 없으면 bare 주소, 그것도 없으면 클러스터 내부 DNS 다(기존 단일 주소는 그대로 동작). 런북은 스택마다 포트를 하나씩 배정해 이 형식으로 넘긴다. kind `nullus-platform` 에서 `gitlab-forward` 가 스택을 찾아 포워드를 띄우고(`/users/sign_in` 200), `status` 에 보이고, `--down` 이 남김 없이 내리는 것을 확인했다.
+
+- **백업 화면이 스택 백업을 하지 못하던 것** (`web/src/features/admin`, `internal/backup/{usecase,domain}`): 화면이 네임스페이스를 `nullus-app` 으로 고정하고 `stack_id` 를 보내지 않았다. 서버는 스택 ID 로 스택 클러스터에 붙으므로, 스택 없이 온 full 요청은 클러스터 어댑터가 비어 있는 채로 리소스·볼륨을 뜨려다 **nil 어댑터를 호출해 패닉**했다. 대화상자에서 백업 대상(스택·플랫폼만)을 고르고, 스택을 고르면 그 스택 ID 와 네임스페이스로 보내며 확인 문구도 그 네임스페이스로 맞춘다. 플랫폼만 고르면 스택 대상(금고·리소스·볼륨)을 고를 수 없다. 이력 표에 대상 열을 더했다. 서버는 스택 클러스터 어댑터 없이 리소스·볼륨을 고른 요청을 실행 기록을 만들기 전에 `BACKUP_STACK_REQUIRED`(400)로 거절한다 — 예약 백업 설정이 잘못돼도 같다.
+
+- **복구가 네임스페이스를 만들지 않던 것** (`internal/backup/{usecase,port,adapter/kube}`): 리소스 덤프는 네임스페이스 안의 것만 담는데 복구는 네임스페이스를 만들지 않아, 지운 네임스페이스나 새 클러스터로 되돌리면 첫 PVC 생성이 `namespaces not found` 로 실패했다(리허설 테스트는 네임스페이스를 직접 만들어 이를 가렸다). 복구가 PVC 보다 먼저 네임스페이스를 보장한다 — 없을 때만 만들고 출처 주석(`backup.nullus.io/restored-from`)을 남기며, 있으면 손대지 않는다. 플랫폼만 되돌리는 복구는 건드리지 않는다. 스택 백업을 스택까지 되돌리는데(`full`·`stack_only`) 네임스페이스를 적지 않으면 `RESTORE_NAMESPACE_REQUIRED`(400)로 묻는다 — 예전처럼 플랫폼 기본 네임스페이스로 떨어지면 이제는 그 이름으로 네임스페이스를 만들어 스택과 무관한 곳에 볼륨·리소스를 풀어 놓는다.
+
+- **복구가 Service 의 ClusterIP 를 버려 러너·Argo CD hostAliases 와 어긋나던 것** (`internal/backup/adapter/kube/resource_dumper.go`): 설치는 스택 게이트웨이의 ClusterIP 를 러너(CI 잡 `host_aliases`)와 Argo CD(`global.hostAliases`)에 박는데, 덤프가 모든 Service 의 IP 를 지워 복구된 게이트웨이는 새 주소를 받았다 — 파이프라인이 `Could not resolve host: gitlab.<도메인>` 으로 멈췄다. 이제 덤프가 ClusterIP 를 남기고 복구는 그 IP 로 되살린다(kind 에서 네임스페이스를 지운 뒤 같은 IP 로 되살아남을 확인). 그 IP 를 쓸 수 없으면(이미 쓰임·다른 클러스터라 범위 밖·이미 있는 Service 와 다름, API 서버의 `spec.clusterIPs` 거절 문구 실측) 복구를 멈추지 않고 **거절된 Service 만** 새 주소로 되살리며 그 이름을 경고로 남긴다. 함께, headless Service(`clusterIP: None` — `openbao-internal`·`gitlab-gitaly`·`*-hl`)가 일반 Service 로 돌아와 StatefulSet 의 파드별 DNS 가 끊기던 것도 고쳐졌다. 다른 클러스터로 복구할 때 hostAliases 를 자동으로 다시 맞추는 일은 남아 있다.
+
+- **full 복구가 백업 이력까지 백업 시점으로 되돌리던 것** (`internal/backup/{adapter/postgres,domain,port}`, `internal/backup/wiring.go`): 백업 이력(`backup_runs`·`backup_artifacts`·`restore_runs`)은 덤프하는 플랫폼 DB 안에 있어, `pg_restore --clean` 이 지금의 이력을 백업 시점 것으로 바꿨다 — 그 뒤의 백업이 목록에서 사라지고(객체는 버킷에 남아 찾을 길이 없다), 진행 중인 복구의 기록이 지워져 조회가 404 였으며, 되돌린 백업 자신은 `running` 으로 돌아와 다시 복구할 수 없었다. 플랫폼 DB 를 되돌릴 때 목차(`pg_restore -l`)에서 세 테이블의 항목(테이블·데이터·제약·인덱스)을 빼고 `-L` 로 복원한다. 덤프에는 남긴다 — 플랫폼 DB 를 통째로 잃었을 때 이전 백업들의 카탈로그(매니페스트·산출물 위치)를 되살릴 사본이 그것뿐이다(버킷에는 매니페스트가 없다). postgres 18 의 `pg_restore` 로 확인했다: 백업 뒤에 생긴 기록과 진행 중인 복구 기록이 남고 다른 테이블은 백업 시점으로 돌아가며, 고치기 전 방식(필터 없음)은 같은 상황에서 기록을 잃었다.
+
+- **GitHub 스택에서 "실행"이 Trigger CI 단계에서 실패하던 것과, Dockerfile 경로 없이 만든 스택 파이프라인이 플랫폼 직접 적용으로 새던 것** (`internal/cicd/adapter/github/workflow_trigger.go` 신규, `internal/cicd/adapter/scaffold/renderer.go`, `internal/cicd/adapter/provisioning/bundle_factory.go`, `internal/cicd/domain/pipeline.go`): GitLab 에 이어 GitHub 번들에도 트리거를 실었다 — 같은 PAT 로 `POST /repos/{owner}/{repo}/actions/workflows/nullus-ci.yml/dispatches` 를 불러 `main` 에서 워크플로를 시작시킨다. GitHub 은 dispatch 에 실행 id 를 돌려주지 않으므로 몇 초 안에 새로 생긴 `workflow_dispatch` 실행을 찾아 그 주소를 실행 기록에 남기고, 못 찾으면 워크플로 페이지 주소를 준다(지어낸 실행 주소는 열리지 않는 링크가 된다). 그 브랜치의 최신 실행이 아직 돌고 있으면 새로 시작하지 않고 붙는다(GitLab 과 같은 이유). 리포·워크플로가 없으면(404) "프로비저닝을 다시", `workflow_dispatch` 가 없어 422 로 거절되면 워크플로의 `on:` 에 트리거를 더하거나 다시 프로비저닝하라고 말한다.
+
+  **스캐폴딩 워크플로에 `workflow_dispatch` 를 둔다.** 없으면 GitHub 이 API 실행 요청을 거절해 실행이 push 로만 돈다. 이 변경 전에 만들어진 GitHub 파이프라인은 워크플로에 트리거가 없어 "실행"이 그 안내로 실패한다 — 파이프라인을 다시 프로비저닝하거나 `.github/workflows/nullus-ci.yml` 의 `on:` 에 `workflow_dispatch:` 를 더하면 된다.
+
+  **스택에 묶인 파이프라인은 Dockerfile 경로가 비어 있어도 러너가 실행한다.** 위임 판정이 Dockerfile 경로를 요구해, API 로 경로 없이 만든 파이프라인(로컬 E2E 가이드의 "화면 대신 API 로 만들기")은 "실행"이 플랫폼의 직접 적용 경로로 가서 Argo CD 가 동기화하는 같은 리소스를 서로 덮어썼다. 이제 스택에 묶였으면 긴급모드만 빼고 모두 CI 에 넘긴다 — 통합모드 설계("플랫폼은 직접 git clone·docker build·kubectl apply 를 하지 않는다")대로다. "CI 플랫폼이 없다" 안내는 GitLab CI·GitHub Actions·Jenkins 를 함께 말한다.
+
+- **GitLab 스택에서 "실행"이 Trigger CI 단계에서 실패하던 것** (`internal/cicd/adapter/gitlab/pipeline_trigger.go` 신규, `internal/cicd/adapter/provisioning/bundle_factory.go`, `internal/cicd/adapter/runner/delegate.go`, `internal/cicd/adapter/jenkins/client.go`, `internal/cicd/port/ci_server.go`): 스택에 묶인 파이프라인의 배포 실행은 플랫폼이 빌드하지 않고 CI 러너에 넘기는데, 그 넘김(`CITrigger`)이 Jenkins 번들에만 있어 GitLab 스택에서는 "실행을 넘길 CI 플랫폼이 없다"로 늘 실패했다(로컬 E2E 가이드 부록 C). GitLab 번들에 트리거를 실었다 — 같은 자동화 토큰으로 `POST /projects/:id/pipeline` 을 불러 `main` 파이프라인을 만들고 그 주소를 실행 기록에 남긴다. 프로젝트가 없으면(404) 상태 코드 대신 "프로비저닝이 끝나지 않았다"로 말하고, 그 밖의 거절(`.gitlab-ci.yml` 없음 등)은 GitLab 의 설명을 그대로 싣는다.
+
+  **그 브랜치의 최신 파이프라인이 아직 돌고 있으면 새로 만들지 않고 그 실행에 붙는다.** 화면은 파이프라인을 만든 직후 "실행"을 한 번 더 부르는데, 스캐폴딩 커밋이 이미 파이프라인을 시작한 뒤라 또 만들면 같은 커밋의 배포 잡 둘이 같은 브랜치에 되커밋을 밀어 둘째가 non-fast-forward 로 실패한다. 이력 조회가 실패하면 중복 여부를 보지 않고 실행한다 — 조회는 중복을 피하기 위한 것이지 실행의 전제가 아니다.
+
+  실행 주소는 플랫폼마다 모양이 달라(Jenkins `/job/…`, GitLab `/-/pipelines/…`) 위임기가 Jenkins 모양으로 지어내던 것을 트리거가 돌려주도록 포트를 바꿨다(`TriggerBuild` 가 주소를 함께 돌려준다). Jenkins 는 외부 주소(`jenkins.<도메인>`)를 알면 그것으로 링크를 만든다 — 클러스터 안 주소는 화면에서 열리지 않는다. "CI 플랫폼이 없다" 안내는 GitLab CI·Jenkins 를 함께 말한다. Gitea 스택의 CI 는 Jenkins 라 그 번들의 Jenkins 트리거가 이미 맡는다.
+
+- **CI/CD 템플릿 생성·수정·삭제가 저장되지 않던 것** (`internal/cicd/adapter/repository/postgres_cicd_template.go`, `internal/cicd/adapter/handler/cicd_template_handler.go`, `internal/cicd/domain`, `db/migrations/000089`, `web/src/features/cicd`, `api/openapi.yaml`): Postgres 저장소의 Create·Update·Delete 가 TODO 로 성공만 돌려줘, 템플릿 화면의 버튼은 성공으로 응답하는데 목록은 바뀌지 않았다(로컬 E2E 가이드 부록 C 의 첫 항목). 세 메서드를 구현했다 — 같은 ID 는 덮어쓰지 않고 409 로 거부하고, 없는 템플릿의 수정·삭제는 404 다. 인메모리 저장소도 같은 에러를 낸다. 만든 사람(`created_by`)은 API 와 도메인이 받고 돌려주면서도 열이 없어 버려졌으므로 열을 더했다(시드 템플릿은 NULL).
+
+  **수정은 요청에 있는 필드만 덧씌운다.** 화면은 이름·설명·유형·단계만 보내므로, 요청 그대로 전체를 바꾸면 시드 템플릿의 이름만 고쳐도 Dockerfile 경로와 환경 변수가 지워진다. 빌드 설정과 설명은 "안 보냄"과 "빈 값으로 지움"을 가려 받는다. 저장 전에 ID·이름·유형(`web`·`backend`·`batch`)·단계를 검사해 400 으로 알린다 — 유형이 틀린 템플릿으로 파이프라인을 만들면 `pipelines.app_type` ENUM 이 거부하므로 템플릿에서 먼저 막는다. 화면이 `appType: "web-backend"` 를 camelCase 키로 하드코딩해 보내 서버가 유형을 빈 값으로 받던 것도 함께 고쳤다 — 폼에 애플리케이션 유형 선택을 두고 서버 필드명(`app_type`)으로 보낸다. 실제 Postgres(testcontainers)에서 생성 → 조회 → 중복 거부 → 수정 → 삭제 왕복과 시드 템플릿의 빈 `created_by` 읽기를 확인했다. `api/openapi.yaml` 에 템플릿 생성·조회·수정·삭제 경로와 실제 응답 모양(snake_case, 빌드 설정·`created_by`)을 적고, `AppType` enum 을 옛 화면 값(`web-backend` 등)에서 서버 값(`web`·`backend`·`batch`)으로, `ErrorResponse` 를 실제 본문(`{"error": {code, http_status, message}}`)으로 맞췄다.
+
+- **폐쇄망에서 생성된 파이프라인의 잡 이미지가 번들에 없던 것** (`internal/shared/domain/runtime_images.go`, `internal/cicd/adapter/scaffold`, `airgap/images/images.txt`, `airgap/scripts/00-generate-images.sh`, `scripts/verify-airgap-runtime-images.sh`, nullus-plan#64): 파이프라인 잡 이미지는 이름을 바꾸지 않고 노드의 containerd 미러가 내부 레지스트리에서 내준다 — 그래서 번들 목록에 오른 것만 받힌다. GitLab 의 `build`(`docker:27`)·`deploy`(`alpine:3.20`) 잡과 SAST 스캐너(`sonarsource/sonar-scanner-cli:12.2`, GitLab·Jenkins)가 목록에 없어, 폐쇄망 GitLab 파이프라인은 첫 실행에서 `ImagePullBackOff` 로 멈췄다. Trivy 스캐너는 카탈로그 차트가 같은 이미지를 써서 우연히 들어가 있었다. 세 이미지를 `RuntimeImages()` 에 올리고 렌더러가 그 상수를 쓰게 했다(dind 는 두 CI 가 같이 쓰므로 `JenkinsDindImage` → `DindImage`).
+
+  **렌더 결과로 지킨다.** GitLab·Jenkins 파이프라인을 모든 단계를 켜고 렌더해 잡·서비스·에이전트 파드 이미지를 뽑고(GitLab 의 `$NULLUS_*_IMAGE` 는 기본값까지 따라간다), 전부 번들 목록에 있는지 본다 — 렌더러에 이미지를 새로 넣고 목록을 잊으면 CI 에서 걸린다. GitHub Actions 는 호스티드 러너라 대상이 아니다.
+
+  스캐너 이미지는 amd64 빌드만 게시된다(태그 전부 확인) — arm64 노드는 에뮬레이션(binfmt·rosetta)이 있어야 돈다. 런타임 이미지 검증 스크립트는 노드 아키텍처로 pull 하므로 이런 이미지에서 실패했다 — `01-pull-images.sh` 와 같은 판정으로 반입 검증을 건너뛰고 끝에 알린다. kind(arm64)에서 `docker:27`·`alpine:3.20` 을 번들 경로(pull → save → `ctr import`)로 넣고 `imagePullPolicy: Never` 로 실행해 확인했다(스크립트 전체는 MinIO 이미지가 레지스트리에서 401 이라 이번에 돌리지 못했다).
+
+- **설치 화면에서 고른 보안 도구가 설치 요청에서 빠지던 것** (`web/src/features/stack/pages/stack-install-page.tsx`): 요청을 만드는 `buildStackRequest` 가 `security` 를 싣지 않아, Security 탭에서 Trivy 를 골라도 요청 본문에는 `enabled: false` 로 나가 스캐너가 설치되지 않았다. 요청 변환(`toCreateStackBody`)은 그 값을 읽고 있어 단위 테스트로는 드러나지 않았다 — 화면에서 고르고 저장한 요청을 보는 테스트를 더했다(수정을 빼면 실패함을 확인).
+
+- **values 편집기가 키에 점이 든 보호 경로를 찾지 못하던 것** (`internal/stack/domain/release_values.go`): 경로를 점마다 쪼개 찾아서 `grafana.ini.auth.generic_oauth` 처럼 키 자체에 점이 든 경로는 한 번도 찾지 못했다. Grafana 의 OIDC 블록을 지우거나 바꿔도 경고가 뜨지 않았다. 각 단계에서 남은 조각을 이어 붙인 긴 키부터 맞춰 본다.
+
+- **SSO 를 다시 프로비저닝하면 Keycloak 매퍼 갱신이 500 으로 실패하던 것** (`internal/auth/adapter/keycloak/sso_client.go`): 이미 있는 프로토콜 매퍼를 갱신할 때 본문에 `id` 를 싣지 않았는데, Keycloak 은 갱신 대상을 경로가 아니라 본문의 `id` 로 찾아 `NullPointerException` 으로 500 을 낸다(26.0 실측). SonarQube SAML 매퍼를 다시 등록하다 드러났고, MinIO 의 `policy` 클레임 매퍼도 같은 경로라 SSO 를 켠 MinIO 스택은 `provisioning_sso` 를 다시 돌리면 이 단계에서 멈춘다. 테스트 스텁도 실제 Keycloak 처럼 id 없는 갱신을 거부하게 했다.
+
+- **인메모리 호환성 저장소가 매트릭스를 Postgres 와 같은 id 순서로 고른다** (`internal/stack/adapter/repository/memory_compatibility.go`): 같은 도구를 담은 매트릭스가 여럿이면 Postgres 저장소는 `ORDER BY id` 의 첫 것을 고르는데, 인메모리 저장소는 맵 순서로 골라 같은 요청의 판정이 실행마다 달랐다. #285 의 `gitlab-argocd-sonarqube-v1` 이 GitLab 의 arm64 를 허용하면서 겹치는 매트릭스끼리 아키텍처 정보가 갈렸고, 혼합 아키텍처 판정 테스트 둘(`TestDeployHandler_Gate_FailsOnArchMiss`, `TestValidateCompatibility_PersistedMode_ClusterIDFallbackTriggersArchCheck`)이 30번에 4번꼴로 통과해 CI 가 운에 따라 깨졌다(고친 뒤 각 100번 모두 통과). `GetAll` 도 같은 순서로 돌려준다. 운영(Postgres) 판정은 바뀌지 않는다.
+
+- **클러스터의 마지막 스택을 지워도 cert-manager·내부 CA·metrics-server·Gateway API CRD 가 남던 것** (`internal/stack/{domain,usecase,adapter/helm,adapter/repository}`, `cmd/api`, `airgap/helm/charts-catalog-values/installer`, `airgap/images/images.txt`): 스택들이 함께 쓰는 공용 자원을 회수하는 코드가 없었다. cert-manager 는 `cert-manager`, metrics-server 는 `kube-system` 에 깔리는데 삭제는 스택 네임스페이스와 `default` 만 봤고, cert-manager CRD 는 `keep` 정책이라 릴리스를 지워도 남는다. 내부 CA 는 10년짜리 개인키(`nullus-internal-ca`)째 남았다. Gateway CRD 정리는 있었지만 설치기가 만든 GatewayClass `envoy` 를 "쓰는 중" 으로 보아 한 번도 돌지 않았고, 이름 목록이라 Envoy 차트가 함께 까는 `*.gateway.envoyproxy.io`·`*.x-k8s.io` CRD 는 대상도 아니었다. 남은 것은 나중에 사용자가 같은 것을 설치할 때 Helm ownership 충돌로 막는다.
+
+  클러스터의 마지막 스택을 지울 때(`deleting_shared`) **Nullus 가 설치한 것은 남기지 않고, 설치하지 않은 것은 건드리지 않는다.** 설치는 클러스터에 있던 cert-manager·metrics-server 를 재사용하므로 둘을 가른다 — 새로 까는 릴리스는 values 에 설치 표시(`nullus.io/installed-by=nullus`, 차트의 `commonLabels`)를 싣고(이미 있는 고객 릴리스를 업그레이드할 때는 싣지 않는다), 표시 전의 설치는 values 의 구조 지문으로 알아본다(`domain.IsNullusInstalledRelease`). 게이트웨이 단계는 새로 생긴 Gateway CRD 에만 표시를 달고, GatewayClass `envoy` 는 `create` 로 없을 때만 만든다 — 예전에는 설치마다 `apply` 로 덮어써 같은 이름의 고객 GatewayClass 도 바꿨다. 표시 전의 GatewayClass 는 옛 설치기가 apply 한 내용(`last-applied-configuration`)과 그대로 같을 때만 Nullus 것으로 보고, 그 무렵 생긴 Gateway CRD 만 함께 회수한다.
+
+  **쓰는 곳이 있으면 남기고 무엇이 쓰는지 알린다**: 인증서·발급자·주인 없는 인증서 요청과 cainjector 주입(웹훅·APIService·CRD), cert-manager 에 기대는 다른 구성요소(trust-manager 등)는 cert-manager 를, 내부 CA 의 두 발급자로 받는 인증서는 내부 CA 를, HPA·VPA 는 metrics-server 를, 다른 GatewayClass(Istio 등)·Gateway·다른 곳의 Envoy Gateway 컨트롤러는 Gateway API 를 붙잡는다. 스택 네임스페이스도 예외로 두지 않는다 — 회수했으면 다 빠지기를 기다린 뒤 보고(finalizer 를 풀 컨트롤러를 먼저 지우지 않는다), `default`·사용자가 고른 이름처럼 회수하지 않는 자리면 거기 남은 것을 사용자 것으로 센다. 확인하지 못하면(조회 실패·values 를 못 읽음·같은 클러스터의 다른 스택 기록, `StackRepository.ListByCluster`) 남긴다. 같은 이유로 스택을 지울 때마다 `default` 의 cert-manager·metrics-server 를 무조건 지우던 것도 멈췄다. 삭제 출력에 섞이는 kubectl 표준 오류(죽은 APIService 의 discovery 오류 등)를 볼륨 이름으로 읽지 않도록 `parseResourceNames` 도 고쳤다.
+
+  빈 kind 클러스터(`kind-nullus-develop`)에서 실제 설치 경로로 cert-manager·metrics-server·Envoy Gateway 를 깔고(표시 CRD 25개) 실측했다. 다른 스택 기록이 있으면 전부 남았다. 사용자 HPA 와 cainjector 를 쓰는 웹훅이 있으면 metrics-server·cert-manager 를 그 이름과 함께 남긴 채 내부 CA 와 Gateway API 만 회수했다. 표시를 모두 걷어 옛 설치와 같게 만든 뒤 지우면 지문으로 알아보고 전부 회수해, CRD 0개 · Helm 릴리스 0개 · 네임스페이스·APIService·Lease 까지 설치 전과 같아졌다.
+
+- **스택을 다시 깔면 배포된 앱이 `ImagePullBackOff` 에서 벗어나지 못하던 것** (`scripts/runbook_local.sh`): kind 노드에 스택 레지스트리를 배선하는 곳이 `/etc/hosts` 에 이름이 **이미 있으면 건너뛰기만** 했다. 스택을 다시 깔면 게이트웨이 ClusterIP 가 새로 배정되는데 노드에는 옛 주소가 남아, kubelet 이 이미지를 받지 못한다 — 설치는 `completed` 이고 파이프라인도 성공하고 Argo CD 도 `Synced` 인데 앱만 뜨지 않으므로, 재설치 때마다 재현되면서도 원인이 드러나지 않는다. 건너뛰지 않고 갈아 끼운다. `/etc/hosts` 는 바인드 마운트라 `sed -i` 가 `Device or resource busy` 로 실패하므로 걸러 낸 내용을 같은 파일에 덮어쓴다.
+
+- **CI 잡과 Argo CD 가 스택 도구 이름을 여전히 풀지 못하던 것** (`internal/stack/adapter/helm`): 게이트웨이가 선 뒤 러너·Argo CD 를 다시 적용하는 호출이 Gateway 매니페스트를 적용하기 **전에** 놓여 있었다. 데이터 플레인 Service 는 Gateway 를 적용해야 생기므로 그 주소 조회가 언제나 빈 값을 받았고, 경고 한 줄만 남기고 재적용을 건너뛰었다 — 설치는 `completed` 로 끝나고 파드도 전부 Running 이라 파이프라인을 돌려 `Could not resolve host` 를 볼 때까지 드러나지 않는다. 호출을 매니페스트 적용 뒤로 옮기고 그 순서를 계약 테스트로 고정한다. kind(arm64 3노드) `gitlab-argocd-v1` 실측: 수정 전에는 `host_aliases` 가 한 줄도 실리지 않았고, 수정 후 러너 TOML 과 Argo CD `hostAliases` 가 모두 게이트웨이 ClusterIP 를 받는다.
+
+- **관측성 템플릿(`gitlab-argocd-otel-v1`)이 설치조차 되지 않고, 로그 도구는 고른 것과 다른 것이 깔리던 것** (`internal/stack/adapter/helm`): 템플릿과 카탈로그는 도구 이름을 사람이 읽는 표기로 담는데(`"Loki"`, `"Tempo"`), 차트를 고르는 쪽만 소문자 리터럴과 그대로 비교해 전부 `default` 로 떨어졌다. 자원 기본값 쪽은 이미 정규화해서 비교하므로 둘이 갈라졌고, **Tempo 의 values 가 OTel Collector 차트에 실려** 스키마 검증에서 설치가 통째로 실패했다 (`additional properties 'tempo', 'tempoQuery' not allowed`). 같은 이유로 **Loki 를 골라도 OpenSearch 가 깔렸다** — 이 증상은 한 번 고쳐진 적이 있지만(빠진 분기 추가) 대소문자 정규화가 빠져 그대로 재현됐다. 덧붙여 `installing_log_search` 의 자원 기본값에는 `loki` 분기 자체가 없어, Loki 를 골라도 `opensearch` 키를 보고 계획값이 한 줄도 닿지 않았다(값 모양도 OpenSearch 의 `master` 키였다). 세 곳 모두 `normalizeToolName` 하나를 쓰게 하고, 차트를 고르는 쪽과 자원 기본값을 고르는 쪽이 같은 도구를 가리키는지 계약 테스트로 고정한다 — 세 번째 어긋남을 찾아낸 것이 그 테스트다.
+
+- **Grafana 가 스택이 함께 깐 백엔드에 연결되지 않던 것** (`internal/stack/adapter/helm`): 설치는 Prometheus·Loki·Tempo 를 세우고 OTel Collector 가 셋으로 내보내도록 배선하는데, 정작 그것들을 보는 화면인 Grafana 에는 데이터소스가 한 줄도 들어가지 않았다. 스택은 `completed` 이고 파드도 전부 Running 인데 Grafana 를 열면 비어 있다. 스택 설정이 어느 도구를 깔았는지 알고 있으므로, 실제로 설치한 백엔드만 데이터소스로 건다 — 고르지 않은 도구를 걸면 Grafana 가 시작부터 연결 오류를 띄워 무엇이 진짜 문제인지 가릴 수 없게 된다.
+
+- **설치가 만든 내부 CA 를 정작 그 신뢰가 필요한 곳에 넣지 않던 것** (`internal/stack/adapter/helm`): 스택은 접속 도메인의 인증서를 자기 내부 CA 로 발급하는데, 그 CA 를 CI 잡에도 Argo CD 에도 넣지 않았다. 스택은 `completed` 이고 파드도 전부 Running 이지만 파이프라인을 돌리면 CI 잡이 clone 에서 `SSL certificate problem: unable to get local issuer certificate` 로, Argo CD 는 `x509: certificate signed by unknown authority` 로 멈춘다. 설치가 CA 사본을 스택 네임스페이스에 두고, CI 잡 파드가 볼륨으로 받아 컨테이너 신뢰 저장소에 더하며, Argo CD 는 차트의 `configs.tls.certificates` 로 받는다. **신뢰를 시스템 번들로 갈아치우지 않는다** — `GIT_SSL_CAINFO` 로 우리 CA 만 가리키면 공인 인증서를 쓰는 곳(모듈 프록시·서브모듈)에 닿지 못한다. 번들에 잇기만 해서도 안 된다: 잡이 `apk add` 같은 것을 하면 `ca-certificates` 트리거가 번들을 다시 만들어 이어 둔 CA 가 지워진다(실측에서 deploy 잡의 `git push` 가 그렇게 멈췄다). 배포판이 번들을 만들 때 읽는 소스 디렉터리에도 넣어 다시 만들어져도 살아남게 한다. CA 를 넣는 스크립트는 실패를 삼킨다 — 그것이 잡을 죽이면 원래 하려던 일까지 못 하게 된다. clone 은 helper 컨테이너가 build 보다 먼저 하므로 `pre_get_sources_script` 와 `pre_build_script` 두 자리에 모두 넣는다. Argo CD 도 러너와 같은 이유로 `gitlab.<도메인>` 을 풀지 못해 `dial tcp: lookup` 으로 멈추므로 게이트웨이가 선 뒤 러너와 함께 다시 적용한다.
+
+- **arm64 클러스터에서 GitLab CI 가 한 건도 돌지 않고, 도는 잡도 스택 자신의 도구 이름을 풀지 못하던 것** (`internal/stack/domain`, `internal/stack/adapter/helm`): 스택은 `completed` 로 끝나고 러너 파드도 Running 이며 Pre-Deploy Gate 도 통과하는데, 파이프라인을 돌리면 전부 실패했다. 두 가지가 겹쳐 있었다. **(1) helper 이미지** — Kubernetes executor 는 잡마다 helper 컨테이너를 띄우고 그 태그에는 아키텍처가 박혀 있는데(`gitlab-runner-helper:x86_64-v17.7.0`), 설정하지 않으면 러너가 arm64 로 돌고 있어도 x86_64 를 고른다. arm64 노드에서는 init 컨테이너가 실행되지 못해 모든 잡이 `runner_system_failure` 로 끝났다. Harbor(#270)와 같은 부류이지만 그 게이트는 차트가 받는 컴포넌트 이미지만 보므로 러너 설정 안의 이 이미지는 잡지 못한다 — 노드 아키텍처가 한 종류일 때 `helper_image` 를 못박고, 모르거나 섞여 있으면 지금까지의 동작을 그대로 둔다. **(2) 스택 도구 이름** — 잡은 스택 자신의 GitLab 에서 소스를 받고(clone 주소는 GitLab 의 외부 주소다) 만든 이미지를 스택 레지스트리에 올리는데, 그 접속 도메인 이름을 클러스터 안에서는 아무도 풀어 주지 않아 `Could not resolve host: gitlab.<도메인>` 으로 끝났다. 게이트웨이가 Host 헤더로 라우팅하므로 서비스 주소로 대신할 수도 없다(포트가 다르다). 러너 설정의 `host_aliases` 로 `gitlab.<도메인>`·`registry.<도메인>` 을 게이트웨이 ClusterIP 에 건다 — 네임스페이스 안에서 끝나므로 클러스터 DNS(CoreDNS)도 개발자 머신의 `/etc/hosts` 도 건드리지 않는다. 게이트웨이는 설치 순서의 마지막이라 러너를 깔 때는 그 주소가 없어서, 게이트웨이가 선 뒤 러너 설치를 다시 적용한다(`helm upgrade --install` 은 멱등하고 등록 토큰 조회도 읽기다). 러너 차트·앱 버전은 `domain.GitLabRunnerChartVersion`·`GitLabRunnerAppVersion` 으로 모아 두었다 — helper 이미지 태그가 앱 버전을 그대로 쓰므로 차트를 올릴 때 함께 올라가야 한다. kind(arm64, 3노드) `gitlab-argocd-v1` 스택에서 실측: 수정 전에는 CI 가 `runner_system_failure` 로 전부 실패했고, 두 값을 넣은 뒤 React + Vite 앱이 `npm install` → `vite build` → 레지스트리 push → Argo CD `Synced/Healthy` → 파드가 React 번들을 서빙하는 데까지 통과했다.
+
+- **kind 에 스택을 깔면 배포된 앱이 `ImagePullBackOff` 에서 벗어나지 못하던 것** (`scripts/runbook_local.sh`): 파이프라인이 이미지를 만들어 스택 레지스트리에 올리고 Argo CD 가 동기화까지 해도, 파드가 뜨지 않았다. 이미지를 받는 것은 파드가 아니라 노드의 containerd 인데, containerd 는 클러스터 DNS 를 쓰지 않아 `registry.<도메인>` 을 풀지 못하고 스택 내부 CA 도 모른다 — 파드 안에서 쓰는 이름 해석·신뢰 배선은 여기에 닿지 않는다. 실제 클러스터에서는 접속 도메인이 실 DNS 로 풀리고 인증서도 공인이라 필요 없는 일이라, 로컬 하네스인 런북이 대신 한다: `stack-up` 이 설치를 마친 뒤 kind 노드에 게이트웨이 주소와 스택 내부 CA 를 넣는다. 레지스트리별 `certs.d` 설정은 넣지 않는다 — 실측에서 CA 만으로 pull 이 성립한다.
+
+- **`setup-local-domain.sh` 가 리눅스에서 아예 실행되지 않던 것** (`scripts/setup-local-domain.sh`): 노드에서 `host.docker.internal` 을 해석해 호스트 IP 를 찾는데, 그 이름은 Docker Desktop 이 넣어 주는 것이라 리눅스 Docker Engine 에는 없다. 그래서 스크립트가 첫 단계에서 멈췄고, SSO 배선이 한 줄도 적용되지 않았다. 안내는 `HOST_IP=<호스트IP>` 로 직접 넣으라고 했지만 코드가 조회 결과로 그 값을 무조건 덮어써서 그 우회도 듣지 않았다. 넘겨받은 값을 먼저 쓰고, 없으면 `host.docker.internal` 을, 그것도 없으면 kind 노드가 붙은 브리지의 기본 게이트웨이를 쓴다. 내부 CA 신뢰 명령도 OS 를 보고 고른다 — 리눅스에서 macOS 의 `security add-trusted-cert` 를 찍어 주면 그대로 붙여 넣었다가 실패한다.
+
+- **런북이 리눅스 + rootful Docker 머신에서 처음부터 끝까지 돌지 못하던 것** (`scripts/runbook_local.sh`, `scripts/seed-token-sources.sh`, `docker-compose.dev.yaml`): `up --kind` 가 세 곳에서 차례로 멈췄다. (1) MinIO 가 Docker Hub 배포를 멈춰 `minio/minio:latest` 가 익명 pull 에서 거절돼 인프라 기동 자체가 실패했다 — 리포의 다른 모든 참조는 이미 `quay.io/minio/minio` 인데 dev compose 만 남아 있었다. (2) 포트 감지가 `lsof` 하나에 기대는데 `lsof` 는 다른 사용자의 프로세스를 보여주지 않는다. 리눅스 rootful Docker 는 root 소유 `docker-proxy` 가 포트를 잡으므로, postgres 가 healthy 이고 5433 이 LISTEN 인데도 "postgres did not start" 로 끝났다 — macOS Docker Desktop 에서는 드러나지 않는다. (3) 시드가 postgres 컨테이너 이름을 `draft-postgres-1` 로 박아 두었는데 compose 프로젝트 이름은 체크아웃 디렉터리 이름을 따라가므로, `nullus` 로 clone 한 체크아웃에서는 `No such container` 로 죽었다. 이미지를 quay 로 옮기고, 포트 감지는 `lsof` 가 비면 실제 TCP 연결로 다시 확인하며(`port_is_listening`), 컨테이너 이름은 `docker compose ps -q postgres` 에게 묻는다.
+- **게이트웨이 스크립트를 인자 없이 실행하면 실패하고, 스택 도구를 브라우저로 열 수 없던 것** (`scripts/port-forward-gateway.sh`, `scripts/setup-local-domain.sh`, `docs/20_개발가이드`): 기본값이 `nullus` / `nullus-gateway` / `nullus.internal` 로 박혀 있었는데 실제 스택은 `nullus-<템플릿>` 네임스페이스에 `<도메인>-gateway` 를 세우므로, 그냥 실행하면 "네임스페이스가 없습니다" 로 끝났다 — 네임스페이스와 게이트웨이 이름을 미리 알아야만 쓸 수 있었다. 게다가 kind 가 퍼블리시하는 hostPort 는 30080·30443 을 가리키는데 게이트웨이 Service 는 무작위 NodePort 를 받고 `externalTrafficPolicy` 가 `Local` 이라(kind 는 컨트롤플레인에서 퍼블리시, envoy 는 워커에 뜬다) `localhost:32443` 이 아무 데도 닿지 않았다. 스택을 지정하지 않으면 kind 클러스터 전체에서 게이트웨이를 찾아 도커 네트워크 안의 SNI 라우터로 한 번에 연다 — **sudo 가 필요 없고**(도커가 443 을 잡는다) **스택 여러 개를 동시에** 열 수 있으며, NodePort 를 고정하지 않고 돌고 있는 게이트웨이에서 찾아내므로 다시 깔아 포트가 바뀌어도 스크립트만 다시 돌리면 된다. `externalTrafficPolicy: Local` 때문에 envoy 파드가 도는 노드를 골라 보낸다 — 아무 노드나 고르면 조용히 버려진다. 스택을 콕 집으면(`STACK_NAMESPACE=`) 종전 `kubectl port-forward` 경로를 그대로 탄다: 원격 클러스터처럼 노드에 도커로 닿을 수 없는 환경에는 그 방법밖에 없다. `setup-local-domain.sh` 가 안내하던 `sudo kubectl port-forward` 명령과 접속 도메인 가이드도 함께 고쳤다.
+
+- **arm64(DGX Spark)에서 Harbor 가 뜨지 않고, Pre-Deploy Gate 가 그 설치를 막지 못하던 것** (`internal/stack/domain`, `internal/stack/adapter/helm`, `internal/stack/usecase`, `internal/admin/adapter/handler`, `db/migrations/000085`, `airgap/`, `docs/20_아키텍처`, nullus#270): 공식 goharbor 이미지는 어느 버전도 arm64 를 내지 않아(단일 아키 amd64 매니페스트) arm64 노드에서 `installing_harbor` 가 크래시했다. 게이트는 세 겹으로 놓쳤다 — `gitea-jenkins-argocd(-lite)` 매트릭스만 Harbor 를 amd64·arm64 로 잘못 선언했고, 셀프 등록 클러스터는 노드 탐색을 하지 않아 `node_architectures` 가 비어 `CLUSTER_ARCH_UNKNOWN` warn 에 그쳤으며(29 는 warn 에 동의하고 진행), 설치 파이프라인은 노드를 직접 보지 않았다. 도구별로 공식 이미지가 내는 아키텍처와 빈 아키텍처를 채우는 대체 출처를 도메인에 선언하고(`domain.ToolImageProfile` — 첫 항목: Harbor → [dasomel/harbor](https://github.com/dasomel/harbor) 멀티아키 재빌드 `ghcr.io/dasomel/goharbor/*:v2.15.0-build.32`, cosign 서명·SBOM·SLSA), 설치가 `validate` 단계에서 노드 아키텍처를 직접 읽어 뜰 이미지가 없는 도구가 있으면 헬름 설치 전에 멈추고, 대체 출처를 쓰면 그 사실을 설치 로그에 남긴 뒤 values 를 그 이미지로 채운다(사용자 `yaml_overrides` 가 여전히 이긴다, continue 에서도 돈다). 매트릭스의 ArchSupport 는 도메인 선언을 따르고 DB 는 마이그레이션으로 맞췄다(계약 테스트) — 같은 검사로 Nexus 도 드러났다: 설치하는 `sonatype/nexus3:3.64.0` 은 amd64 뿐(멀티아키는 3.80 부터)인데 amd64·arm64 로 선언돼 있어, 대체 출처 없이 amd64 로 바로잡아 arm64 에서는 설치 전에 막는다. 셀프 등록이 노드를 탐색하고, 아키텍처를 모르는 기존 셀프 클러스터는 재등록 호출에서 채운다. 에어갭 29 의 Harbor 전용 덮어쓰기(`helm/stack-overrides/linux-arm64`)는 걷어냈고, 번들 목록 계약 테스트는 설치 코드가 내는 이미지로 본다. 차트는 1.15.0 그대로이고 arm64 에서만 앱 2.15.0 이미지가 뜬다 — 에어갭 kind(Apple Silicon) 경로가 써 온 조합이다.
+
+- **에어갭 스택 설치가 초반에 멈추던 것 — 번들이 설치 코드의 차트·이미지·스크립트를 다 담지 않았다** (`airgap/`, `internal/stack/adapter/helm`, nullus-plan#82): 에어갭 API 설치는 차트를 내부 OCI 레지스트리에서만 받는데 카탈로그에 openbao · external-secrets · postgresql 등 7개가 없어 어떤 템플릿이든 시크릿 평면 첫 단계에서 멈췄다. 이미지 목록은 차트 기본값으로 렌더해 설치가 덮어쓰는 이미지(스택 PostgreSQL `bitnamilegacy/postgresql:17.6.0-debian-12-r4` 등)가 빠졌고, helm 기본 kubeVersion(v1.20)으로 렌더해 argo-cd · cert-manager 이미지를 놓쳤으며, ESO 이미지가 차트 저장소 주소(`oci.external-secrets.io`)로 잘못 적혀 있었다. 번들은 차트·Trivy DB push와 API 설치 스크립트(28 · 14 · 29)와 oras 를 싣지 않았고 `install.sh` 는 Trivy DB 를 올리지 않았다. 설치 차트를 카탈로그에 추가하고(계약 테스트), 설치 코드가 에어갭 모드에서 쓰는 단계별 values 를 `charts-catalog-values/installer/` 로 뽑아(`-update-airgap-values`) 생성기가 그 values 와 kind 노드 kubeVersion 으로 렌더하며, 목록 헤더의 values 해시로 재생성 누락을 막는다. 번들에 14 · 28 · 29 · oras 를 싣고 `install.sh` 가 Trivy DB 를 올린다. 에어갭 kind 에 `docker.gitea.com` 미러를 추가한다. 대상 플랫폼 이미지를 제공하지 않는 멀티아키 이미지는 `01-pull-images.sh` 가 실패 대신 건너뛰어 `bundle/images.skipped-platform.txt` 에 남기고, `02-save-bundle.sh` · `12-push-to-registry.sh` 가 같은 기록으로 뺀다(매니페스트를 읽지 못하는 실패는 그대로 실패). `29-install-stacks-via-api.sh` 는 기본 스택 네임스페이스가 플랫폼이 사는 `nullus` 라 API 가 거부했고, 토큰을 받는 `nullus-bootstrap` 이 번들에 없었으며, 공식 goharbor 이미지는 어느 버전도 arm64 가 없어 arm64 클러스터에서 Harbor 가 뜨지 않았다 — 기본 네임스페이스를 비워 API 가 `nullus-<스택 이름>` 으로 정하게 하고, `pull-binaries.sh` 가 플랫폼별 `nullus-bootstrap` 을 빌드해 싣고 29 가 번들 bin 에서 찾으며, 29 가 `YAML_OVERRIDES_DIR` 의 단계별 values 를 `config.yaml_overrides` 로 싣는다(arm64 Harbor 이미지는 설치 백엔드가 고른다 — nullus#270).
+
+- **에어갭 번들을 만들 수 없던 것 — 목록에 받을 수 없는 MinIO 이미지** (`airgap/`): 번들 이미지 목록에 GitLab 차트 내장 MinIO 서브차트의 `minio/minio:RELEASE.2017-12-28T01-21-00Z` · `minio/mc:RELEASE.2018-07-13T00-53-22Z` 가 있었다. MinIO 가 Docker Hub 배포를 멈춰 익명 pull 이 거절되고, `01-pull-images.sh` 는 하나라도 못 받으면 멈추므로 어느 머신에서도 번들 생성이 끝나지 않는다. 실제 설치는 `global.minio.enabled=false` 로 그 서브차트를 끄므로 목록을 만드는 카탈로그 values 도 같게 두고 두 이미지를 뺀다. 다시 들어오면 `TestAirgapImages_NoDockerHubMinIO` 가 막는다.
+
+- **에어갭 설치의 Trivy 서버가 취약점 DB 를 인터넷에서 받으려 해 스캔이 전부 실패하던 것** (`internal/stack/adapter/helm`, `airgap/`): 에어갭 스택은 API 가 설치하는데(`29-install-stacks-via-api.sh`), 내부 미러 경로는 그 경로가 읽지 않는 `stack-values/trivy.yaml` 에만 있어 서버의 `TRIVY_DB_REPOSITORY` 가 `ghcr.io/aquasecurity/trivy-db` 로 남았다. 파일의 값도 호스트 주소 `localhost:5001` 이라 파드 안에서는 닿지 않았고, 계약 테스트는 그 값이 반입 경로와 같은지만 봤다. 에어갭 모드(`NULLUS_HELM_OCI_REGISTRY`)면 API 가 같은 레지스트리의 루트(`kind-registry:5000/aquasecurity/trivy-db`)와 `TRIVY_INSECURE=true` 를 넣고, YAML 오버라이드가 있는 분기에서도 빠지지 않는다. `stack-values/trivy.yaml` · 반입 스크립트 안내 · 설계 문서 §7.2 를 맞추고, 계약 테스트가 클러스터 안 주소와 코드 값을 함께 본다. 같은 이유로 **CI 잡의 trivy client 가 Java DB 를 인터넷(mirror.gcr.io)에서 받으려 해**, Maven 메타데이터가 없는 JAR 이 든 이미지의 스캔이 에어갭에서 FATAL 로 끝났다 — 에어갭 모드면 GitLab 스캔 잡 · Jenkins 스캐너 단계에 `TRIVY_JAVA_DB_REPOSITORY`(같은 내부 레지스트리)를 싣는다. 두 미러 경로 규칙은 `internal/shared/domain` 이 소유한다. 에어갭 번들 이미지 목록(`airgap/images/images.txt`)에도 Trivy 서버 · CI 스캔 잡이 쓰는 `aquasec/trivy:0.74.0` 이 없었다 — Trivy 카탈로그를 넣은 뒤 목록을 재생성하지 않았다. 목록에 넣고, 빠지면 `TestAirgapImages_IncludeTrivy` 가 막는다.
+
+- **설치 이미지 스캔이 일시적으로 실패한 이미지를 다음 주기까지 실패로 남기던 것** (`internal/stack/adapter/imagescan`): kind 새 클러스터의 설치 직후 스캔에서 33개 중 2개가 레이어를 받다 끊겨 실패했다(argocd `failed to extract the archive: unexpected EOF`, gitlab-runner 파일 열기 실패). 같은 Trivy 서버로 다시 스캔하면 둘 다 통과했지만, 스캔 Job 이 이미지마다 한 번만 시도해 다음 주기 재스캔(기본 24h)까지 `failed` 로 남았다. 이미지마다 최대 3회(사이 10초) 시도하고, 끝내 실패하면 마지막 오류를 시도 횟수와 함께 남긴다. 스크립트를 가짜 trivy 로 실제 실행해 재시도·횟수·성공 이미지 무재시도를 확인하는 테스트를 둔다.
+
+- **새 클러스터에서 스택 설치가 버킷 부트스트랩의 이미지 pull 실패로 멈추던 것** (`internal/shared/domain/runtime_images.go`, `airgap/`): MinIO 가 Docker Hub 배포를 멈춰 `docker.io/minio/mc` 가 태그와 무관하게 `pull access denied` 로 거절된다. 노드에 이미지 캐시가 남은 클러스터에서는 드러나지 않다가, kind 클러스터를 새로 만든 뒤 `gitlab-harbor-trivy-v1` 스택이 `installing_object_storage_buckets` 에서 ImagePullBackOff 로 실패했다. 버킷 부트스트랩 Job 이미지를 같은 태그의 `quay.io/minio/mc:RELEASE.2025-05-21T01-59-54Z`(amd64·arm64)로 옮기고, 에어갭 생성기·이미지 목록·반입 검증 스크립트를 함께 맞춘다. 런타임 이미지가 Docker Hub 의 `minio/*` 를 참조하면 `TestRuntimeImages_MinIO_이미지는_quay_에서_받는다` 가 막는다.
+
+- **Harbor 레지스트리 인증 realm 이 http 로 나가던 결함, YAML override 가 있는 스택에서 GitLab realm 이 http 로 돌아가던 결함** (`internal/stack/adapter/helm/helm-values.go`, nullus-plan#76): Harbor 는 realm 을 따로 정하는 설정이 없어 `<externalURL>/service/token` 을 광고한다. SSO·TLS 를 켜지 않은 스택은 externalURL 이 http 라, 게이트웨이 HTTPS 리스너로 붙은 스캐너(Trivy 등 go-containerregistry)가 http realm 을 거부하는 구조였다. 접속 도메인이 있으면 externalURL 을 항상 `https://harbor.<도메인>` 으로 둔다 — 업로드 Location 은 `registry.relativeurls` 로 스킴이 나가지 않고, 도구 링크(`domain.ToolAccessURL`)·OIDC redirect 는 이미 https 다. Harbor UI 는 CSRF 쿠키가 Secure 가 되므로 https 로 연다. 또 YAML override 가 하나라도 있으면 `valuesForStep` 이 다른 분기를 타는데, 그 분기에 GitLab 공용 값(`registry.authEndpoint`, `global.hosts.https`)이 빠져 있어 다른 도구 하나만 손봐도 GitLab realm 이 http 로 돌아갔다. kind 실측에서 Harbor 가 https·http 요청 모두에 `realm="https://harbor.<도메인>/service/token"` 을 광고하고, 파이프라인이 우회 없이 Harbor push·Trivy 스캔·Argo CD pull 까지 성공했다.
+
+- **스택 템플릿 생성·수정이 400 으로 거절되던 결함** (`internal/stack/adapter/repository/postgres_template.go`): `golden_path_templates.estimated_install_time` 은 분 단위(int4)이고 시드도 분 값을 넣는데, 저장소가 `time.Duration` 을 나노초 그대로 쓰고 읽었다. 화면·API 로 템플릿을 만들면 `greater than maximum value for int4` 로 거절됐고, 시드 템플릿의 설치 시간은 110ns 로 읽혔다. 경계에서 분 ↔ Duration 으로 바꾼다. 통합 테스트로 시드 읽기·생성·수정 왕복과 저장된 컬럼 값을 고정했다.
+
+- **스택 템플릿에 이미지 스캐너(Trivy)를 담을 수 없던 결함** (`web/src/features/stack/utils/template-{config,overrides}.ts`, `template-tool-editor.tsx`, `tool-copy.ts`, nullus-plan#76): 템플릿 편집기에 Security 섹션이 없었고, API 로 `image_scanner` 를 넣어도 설치 마법사가 그 카테고리를 몰라 버렸다 — 템플릿으로 시작한 설치에서 스캐너가 조용히 빠졌다. 편집기에 Security › Image Scanner(Trivy)를 두고, 템플릿을 설치 초안으로 옮길 때 `security.imageScanner` 를 채운다(템플릿이 고르지 않으면 다른 섹션처럼 비운다). kind 실측에서 `GitLab + Harbor + Trivy` 템플릿을 만들고 그 템플릿으로 스택을 설치했다 — 템플릿 기반 자원 계획도 함께 채워졌다.
+
+- **GitLab + Harbor 스택의 파이프라인이 docker login 에서 죽던 결함** (`internal/cicd/adapter/provisioning/bundle_factory.go`): 스택이 설치한 Harbor·Nexus 관리자 자격증명을 CI 변수로 푸는 배선이 Gitea 번들에만 있었다. GitLab 스택 파이프라인에는 `HARBOR_USERNAME`/`HARBOR_PASSWORD` 가 등록되지 않아 build 가 `Must provide --username with --password-stdin` 로 실패하고 스캔·배포를 건너뛰었다(기본 `GitLab + Harbor` 템플릿도 해당). 파이프라인 삭제 시 Harbor 이미지 저장소 정리도 같은 이유로 빠져 있었다. 두 번들이 같은 헬퍼로 자격증명과 이미지 삭제기를 붙인다. kind 실측에서 변수 등록 → `Login Succeeded` → Harbor push → 스캔 `gate=warn`(HIGH 6 / MEDIUM 23 / LOW 19) → Argo CD 가 Harbor 에서 같은 digest 로 pull 해 앱 파드가 Running 이 됐다.
+
+- **GitLab 레지스트리 인증 realm 이 http 로 나가 이미지 스캔이 실패하던 결함** (`internal/stack/adapter/helm/helm-values.go`, nullus-plan#76): 게이트웨이는 설정과 무관하게 HTTPS 리스너를 여는데, 스택 GitLab 이 http 로 설정되면 레지스트리 인증 realm 이 `http://gitlab.<도메인>/jwt/auth` 로 나갔다. https 로 접속한 엄격한 클라이언트(Trivy·crane 등 go-containerregistry)는 `realm scheme "http" not allowed for a secure registry` 로 거부해 **스캔 잡이 매번 실패했다.** GitLab 차트의 `registry.authEndpoint` 를 `https://gitlab.<도메인>` 으로 둔다. GitLab 외부 주소 전체는 그대로다 — 바꾸면 러너 clone 과 deploy 잡의 push 가 내부 CA 신뢰 문제에 걸린다. kind 에 새로 설치한 스택에서 **우회 없이** 빌드 push · 스캔 · Argo CD 배포 pull 이 모두 성공했다.
+
+- **취소된 실행의 스캔 단계가 `error` 로 남던 결함** (`internal/cicd/**`, `web/src/features/cicd/utils/stage-states.ts`, nullus-plan#76): 새 커밋이 앞선 실행을 밀어내 취소되면 취소가 실패로 정규화되어 스캔 판정이 `error` 로 기록됐다 — 대시보드가 스캐너 장애로 센다. Jenkins `ABORTED`·GitLab `canceled`·GitHub `cancelled` 를 `canceled` 로 따로 정규화하고, 동기화는 취소된 스캔 단계의 판정을 남기지 않는다. 이 규칙 전에 `error` 로 남은 기록은 다시 동기화할 때 걷어낸다. 화면은 지금처럼 끝나지 못한 단계로 그린다. kind 실측에서 자동 취소된 실행의 기록이 사라지고 정상 실행의 기록만 남았다.
+
+- **스택 삭제 뒤 설치 잔여물이 남던 결함** (`internal/stack/usecase/delete_stack.go`, `delete_stack_leftovers.go`): 사용자가 고른 네임스페이스는 통째로 회수하지 않는데, 그 안과 클러스터 범위에 잔여물이 남았다. ① Envoy Gateway 차트 Helm 훅의 `ClusterRole`·`ClusterRoleBinding`(`eg-gateway-helm-certgen:<ns>`)과 `MutatingWebhookConfiguration`(`envoy-gateway-topology-injector.<ns>`) — 훅은 릴리스가 소유하지 않아 uninstall 이 지우지 않고 네임스페이스 삭제로도 사라지지 않는다. ② 이름 목록에 있던 Role/RoleBinding — 청소 목록 조회가 `role`·`rolebinding` 을 가져오지 않았다. ③ OpenBao 부트스트랩 잡·서비스 계정, Envoy Gateway certgen Secret, cicd 가 만든 Argo CD 저장소 Secret. 클러스터 범위는 네임스페이스가 붙은 정확한 이름으로(플랫폼 네임스페이스 제외), 네임스페이스 안은 종류·라벨까지 맞을 때만 지운다 — 같은 네임스페이스의 남의 `envoy` Secret 은 건드리지 않는다. kind 실측에서 삭제 뒤 클러스터 범위 잔여물 0건, 네임스페이스에는 기본 `kube-root-ca.crt`·`default` 서비스 계정만 남았다.
+
+- **새 GitLab 스택에서 러너가 등록되지 않아 CI 가 한 건도 돌지 않던 결함** (`internal/stack/adapter/helm/gitlab-runner.go`): 러너 등록 토큰을 **GitLab DB 마이그레이션이 끝나기 전에** 읽었다. 마이그레이션은 끝날 때 등록 토큰을 차트 Secret 값으로 다시 넣으므로, 러너가 받은 토큰은 곧 무효가 되어 `403 invalid token supplied` 로 등록에 실패했다. kind 실측에서 설치가 넘긴 토큰(20자)은 GitLab 의 현재 토큰(차트 Secret 과 같은 64자)과 달랐고, 마이그레이션 완료(10:26:41) 6초 뒤에 러너가 배포됐다. 토큰을 읽기 전에 마이그레이션 잡(`app=migrations,release=gitlab`) 완료를 기다린다. 잡이 없거나 확인에 실패하면 경고만 남기고 진행한다 — 없는 잡을 기다리다 설치가 멈추면 안 된다.
+
+- **이미지 스캔 잡이 레지스트리에서 이미지를 받지 못해 배포가 전부 막히던 결함** (`internal/cicd/adapter/scaffold/{renderer,jenkins_renderer}.go`, nullus-plan#76): 머지 후 kind 의 GitLab + Argo CD + Trivy 스택에서 파이프라인을 실제로 돌리자 **스캔 잡이 매번 실패했다.** 스캐너는 빌드가 올린 이미지를 레지스트리에서 다시 받는데, 스캔 잡에 레지스트리 자격증명도 인증서 설정도 없었다(`x509: certificate signed by unknown authority`). 스캔 불가는 기본 정책상 차단이라 **스캐너를 켠 스택의 배포가 전부 막히는** 상태였다. 스캔 잡에 빌드와 같은 자격증명(`TRIVY_USERNAME`·`TRIVY_PASSWORD`)을 넘기고, 빌드가 `--insecure-registry` 로 push 하는 GitLab CI·Jenkins 에서는 `TRIVY_INSECURE` 도 켠다. Jenkins 는 트레이스를 끈 채 넘긴다.
+
+  같은 실측에서 이미지 스캔 흐름을 끝까지 확인했다: 스캔 파이프라인을 만들면 기본 정책이 프로젝트 변수(마스킹·보호 없음)로 실리고 `.gitlab-ci.yml` 에는 정책 값이 없다 → `alpine:3.19.0` 이 경고(HIGH 6)로 통과·배포 → 스택 정책을 HIGH 차단으로 저장하자 변수가 `HIGH,CRITICAL` 로 바뀌고 **커밋 없이 돌린 다음 실행이 차단** → Trivy 를 내리고 allow 로 바꾸자 통과. 동기화는 각 실행을 `error`(리포트 없음)·`warn`·`block`·`error` 로, 리포트가 있는 실행은 건수·다이제스트·DB 시각·스캐너 버전과 함께 기록했다. GitHub 리더는 실제 GitHub API(공개 저장소의 실행·잡·26.5MB 산출물 zip)로 확인했다.
+
+  **아직 남은 것**: 스택 GitLab 이 http 로 설정되면 레지스트리 인증 realm 이 `http://` 인데 게이트웨이는 레지스트리를 https 로도 노출한다. https 로 접속한 Trivy(go-containerregistry)는 이 realm 을 거부한다(`realm scheme "http" not allowed for a secure registry`). 실측은 스캔 잡만 `:80` 으로 읽게 우회했고, 제품 해법은 결정이 필요하다.
+
+- **서버 주소 없는 kubeconfig 로 kubectl 을 실행하지 않는다** (`internal/shared/kubeconfig` 신규, `internal/stack/usecase/delete_stack.go`, `internal/stack/adapter/helm/kubectl.go`): kubectl 은 kubeconfig 에서 API 서버를 못 찾으면 **오류 없이 `http://localhost:8080` 으로 폴백한다.** 스택 삭제·설치 경로는 kubeconfig 가 비었는지만 봤으므로, 형식만 맞고 서버가 없는 값이면 apply·delete 가 그 머신의 8080 으로 갔다 — 응답이 없으면 타임아웃 × 재시도로 매달리고, 응답하는 무언가가 있으면 엉뚱한 곳을 건드린다.
+
+  테스트에서 무한 대기로 드러났다. 삭제 유스케이스의 기본 구현 셋(`listNamespaceResources`·`deleteResource`·`deleteManifest`)이 테스트 훅을 거치지 않고 실제 kubectl 을 불렀고, 테스트 kubeconfig 는 `clusters:` 이름만 있고 서버가 없었다. CI 는 8080 이 비어 즉시 실패해 가려졌고, 8080 을 다른 프로세스가 점유한 로컬에서는 `internal/stack/usecase` 가 끝나지 않았다. 실행 직전에 **현재 컨텍스트 → 클러스터 → 서버** 를 네트워크 없이 확인해 막는다. 이제 실제 kubectl 이 PATH 에 있는 채로 `internal/stack/...` 가 66초에 끝난다.
+
+- **두 번째 스택 설치를 매번 막던 ESO 소유권 — 인수 대상을 애노테이션으로 찾는다** (`internal/stack/adapter/helm/external-secrets.go`, `internal/stack/usecase/delete_stack.go`): 스택을 지우고 **다른 네임스페이스에 새로 만들면 그때마다 설치가 죽었다.** 실환경 재설치에서 드러났다.
+
+  **인수 대상이 24분의 2였다.** ESO CRD 는 클러스터 범위라 Helm 이 릴리스 삭제 시 지우지 않는다. 코드는 그 사실을 알고 소유권 인수 로직을 두었는데(주석도 *"멀티 스택 제품에서는 반드시 발생하는 상황"* 이라 적고 있다), 대상 목록에 CRD 두 개만 하드코딩돼 있었다. 차트 2.7.0 이 실제로 만드는 것은 CRD 24개 · ClusterRole 5개 · ClusterRoleBinding 2개 · ValidatingWebhookConfiguration 2개다. 알파벳 순으로 첫 미인수 리소스(`acraccesstokens.generators.external-secrets.io`)에서 `invalid ownership metadata` 로 막혔다.
+
+  종류를 손으로 적는 대신 **Helm 이 소유권 충돌을 판정하는 바로 그 애노테이션**(`meta.helm.sh/release-name`)으로 찾는다. 차트가 리소스를 늘려도 따라가고, 살아 있는 다른 스택의 것을 뺏지 않는 기존 가드는 그대로다. 건별 로그는 30건을 넘겨 설치 흐름을 덮으므로 한 줄로 요약한다.
+
+- **네임스페이스가 영구 Terminating 으로 남던 것 — ESO 웹훅을 커스텀 리소스보다 먼저 지운다** (`internal/stack/usecase/delete_stack.go`): 스택을 지우면 네임스페이스가 삭제되지 않고 **몇 시간이고 Terminating 에 머물렀다.** 사람이 손을 대야만 풀렸다.
+
+  **웹훅과 그것이 검증하는 리소스의 순서 문제다.** 삭제는 ExternalSecret 을 먼저 지우도록 이미 정렬돼 있었지만, 검증 웹훅 설정은 아무도 지우지 않았다. 웹훅이 남은 채 그것을 서빙하던 서비스가 사라지면 남은 ExternalSecret 삭제 요청이 **webhook 호출 실패로 거부되고**, 네임스페이스는 그 리소스를 회수하지 못한다.
+
+  웹훅을 커스텀 리소스보다 **먼저** 지운다. 호출 순서가 곧 규칙이므로 순서 자체를 테스트로 고정했다. 이름으로 찾지 않는다 — 실제 이름이 `externalsecret-validate` / `secretstore-validate` 라 `external-secrets` 로 훑는 코드가 놓친다. ESO CRD 도 Argo CD·Gateway 와 같이 삭제 시 정리한다.
+
+- **게이트웨이 설치가 helm CLI 버전에 묶여 있던 것 — 라이브러리에 레지스트리 클라이언트를 붙인다** (`internal/stack/adapter/helm/installer.go`): `installing_gateway` 가 `missing registry client; fallback helm cli install failed` 로 죽었다.
+
+  `action.Configuration.Init` 은 레지스트리 클라이언트를 만들지 않아 `oci://` 차트 조회가 실패했고, 그동안은 helm CLI 로 폴백해 넘겼다. **그 폴백이 PATH 의 CLI 버전에 묶여 있다** — helm v4 가 잡히면 폴백까지 함께 실패해 게이트웨이가 통째로 막힌다. 런북은 helm 존재만 확인하고 버전은 보지 않는다. `registry.NewClient()` 를 붙여 라이브러리 안에서 해결한다. 폴백 경로는 남겨 두되 이제 타지 않는다.
+
+- **GitLab CI 가 한 건도 돌지 않던 것 — 러너 토큰을 등록 토큰으로 넘긴다** (`internal/stack/adapter/helm/gitlab-runner.go`, `orchestrator.go`): `gitlab-*` 골든패스로 설치한 스택에서 러너가 크래시 루프로 죽어 **파이프라인이 하나도 실행되지 않았다.** 실환경 리허설에서 드러났다.
+
+  **원인은 토큰의 종류를 구분하지 않은 것이다.** 설치기가 rails 로 인스턴스 러너를 만들어 그 **인증 토큰**을 얻고, 그것을 차트의 `runnerToken` 으로 넘겼다. 인증 토큰은 "이미 등록된 러너의 자격증명" 이므로 러너는 등록이 아니라 **검증**을 시도한다. 그 러너가 GitLab 에서 사라지자 `Verifying runner... is removed` 로 30회 재시도 후 죽었고, **복구 경로가 없었다** — 인증 토큰은 일회성이라 다시 등록할 수단이 없다.
+
+  등록 토큰(`runnerRegistrationToken`)을 쓰면 러너가 **스스로 등록**하므로 같은 상황에서 회복한다. 그래서 rails 탐침 한 번으로 `allow_runner_registration_token` 과 두 토큰을 함께 읽고, 등록 토큰을 쓸 수 있으면 그쪽을, 막혀 있으면 인증 토큰을 고른다. 토큰 종류를 타입으로 들고 다녀(`runnerToken{Value, Kind}`) **자리를 잘못 잡는 실수가 컴파일 단계에서 막히게** 했다.
+
+  탐침 출력을 `key=value` 로 고정했다. 예전 파서는 "마지막 공백 없는 줄" 을 토큰으로 집었는데, rails 가 뒤에 경고 한 줄만 찍어도 그것이 토큰이 되는 구조였다.
+
+  **설치 시점 검사만으로는 못 잡는다.** `verifyReleaseRuntimeReadiness` 가 `container.Ready` 까지 보지만, 러너는 설치 직후엔 정상이었고 그 뒤에 무너졌다 — 설치는 `completed` 로 끝났고 CI 는 영영 돌지 않았다. 자가 치유되는 토큰을 쓰는 것이 이 부류에 대한 답이다.
+
+- **Harbor 가 공개된 기본 암호화 키로 돌고 있었다** (`internal/stack/adapter/helm/values.go`, `secret-provisioning.go`, `internal/stack/domain/connection.go`): Harbor 는 로봇 계정 자격증명과 레플리케이션 엔드포인트 비밀번호를 **DB 에 암호화해 저장**하는데, 그 키가 차트 기본값 `not-a-secure-key` 였다. 설치된 클러스터에서 값을 꺼내 확인했다.
+
+  **백업이 이 결함을 증폭한다.** 산출물 `volumes/harbor-database.tar` 를 손에 넣은 사람은 Harbor 차트에 공개된 문자열로 그 안의 자격증명을 전부 풀 수 있다. 백업을 잘 만들수록 노출이 커지는 종류다.
+
+  관리자 비밀번호가 이미 지나가는 길에 얹었다 — Nullus 가 생성 → OpenBao write → ExternalSecret → K8s Secret → 차트가 `existingSecretSecretKey` 로 참조. 값을 values 에 직접 넣지 않는 이유가 있다: **values 는 Helm 릴리스 Secret 에 그대로 저장되므로** 평문으로 넘기면 키를 한 곳 더 흘린다. Secret 이름만 넘긴다.
+
+  길이를 엔트리별로 지정할 수 있게 `SecretEntry.Length` 를 더했다. Harbor 의 이 키는 AES-128 이라 **정확히 16자**여야 하고, 기본 43자를 넣으면 core 가 기동 시 죽는다.
+
+  **부수 효과로 Helm 재적용 복구의 전제가 설계가 된다.** 지금까지 재설치해도 복원된 Harbor DB 를 읽을 수 있었던 것은 그 키가 우연히 고정 기본값이었기 때문이고, 차트가 버전을 올려 랜덤화하면 조용히 깨질 자리였다. 이제 금고가 SoT 이므로 복구가 금고를 되돌리면 같은 키가 돌아온다.
+
+  **기존 설치에는 자동 적용되지 않는다.** 키를 바꾸면 이미 암호화된 데이터를 읽지 못하므로, 이 변경은 신규 설치부터 유효하다. 기존 스택은 Harbor 의 재암호화 절차가 필요하다.
+
+- **백업 화면에 갈 방법이 없었다** (`web/src/app/routes.tsx`, `web/src/components/layout/nav-model.tsx`): 화면은 만들어졌는데 **어디서도 열 수 없었다.** `BackupPage` 의 lazy 선언과 사이드바 아이콘 import 는 들어갔지만 정작 라우트 항목(`{ path: 'admin/backup' }`)과 메뉴 항목이 빠져, 주소를 직접 쳐도 404 였고 사이드바에도 나오지 않았다.
+
+  컴포넌트 테스트 10건은 전부 통과하고 있었다 — **페이지를 직접 렌더하므로 라우팅을 지나간다.** 그래서 선언이 아니라 **등록**을 보는 테스트를 넣었다(`routes.backup.test.tsx`): 라우트 항목 · 메뉴 항목 · 두 언어의 번역 키.
+
+- **백업 목록이 5분간 비어 보였다** (`web/src/features/admin/api/backup-api.ts`): `useBackupRuns` 가 `initialData: []` 를 주는데 전역 `staleTime` 이 5분이다(`lib/query-client.ts`). react-query 는 그 빈 배열을 **신선한 값으로 보고 조회하지 않는다** — 백업이 있어도 화면은 "아직 백업이 없습니다" 로 남고, 5분이 지나거나 다른 이유로 무효화될 때까지 그대로다.
+
+  `initialData` 를 빼고 호출부에서 기본값을 준다. 캐시를 빈 값으로 채우지 않는다는 성질을 테스트로 고정했다.
+
+- **복구가 "이전 상태" 를 재현할 수 있게 하는 두 가지** (`internal/backup/**`, `internal/stack/adapter/helm/preflight.go`, `internal/shared/domain/restore_marker.go` 신규): 실환경 리허설에서 지문이 일치하고 파이프라인까지 다시 도는 것을 확인한 뒤, **그 다음 단계에서 막히는 두 지점**이 드러났다.
+
+  **① 차트 버전을 몰라서 같은 버전으로 되돌릴 수 없었다.** 복구가 다른 버전으로 재설치하면 도구들이 기동하며 **스키마 마이그레이션을 돌린다** — 그 순간 데이터는 백업 시점의 모습이 아니게 되고, 되돌릴 수 없다. "복구했다" 와 "이전 상태다" 가 갈리는 지점인데 근거가 될 값이 어디에도 없었다.
+
+    릴리스 Secret(`sh.helm.release.v1.*`)은 리소스 덤프에 이미 담겨 있었지만 그것은 **암호화된 데다 통째로 풀어야** 읽을 수 있다. 버전 선택은 복구를 시작하기 전에 해야 하므로, 암호화하지 않는 매니페스트에 `helm_releases` 로 따로 남긴다(`HelmReleaseReader`). 리비전마다 Secret 이 남으므로 **가장 높은 리비전만** 고른다 — 낡은 것을 고르면 백업 시점에 실제로 돌던 버전이 아니다. 매니페스트의 "비밀값을 담지 않는다" 불변식은 그대로다(차트 이름·버전은 비밀이 아니다).
+
+    복구는 대상 네임스페이스의 현재 버전과 대조해 어긋나면 무엇이 어긋났는지 남긴다(`CompareHelmReleases`). **막지는 않는다** — 버전을 올린 뒤 데이터만 회수하는 길이 있고, 여기서 멈추면 그 길이 막힌다. 기록이 없는 옛 백업은 비교하지 않는다: 없는 것을 "다르다" 로 읽으면 멀쩡한 복구가 경고투성이가 되어 진짜 경고가 묻힌다.
+
+  **② 설치 preflight 가 복구된 볼륨을 잔여물로 오인해 막았다.** 이 가드는 이유가 있다 — 이전 설치의 볼륨이 남으면 새 설치가 옛 데이터베이스를 물려받고, 그 비밀번호는 이번에 만든 Secret 과 어긋나 **20분 뒤 Gitea 의 28P01 이나 Harbor 의 401 로** 드러난다. 그런데 **복구가 방금 놓아둔 볼륨은 사정이 다르다**: 복구는 볼륨과 함께 그 시점의 Secret 과 금고까지 되돌리므로 어긋날 것이 없다.
+
+    두 경우를 가를 근거를 **볼륨 자체에** 둔다(`backup.nullus.io/restored-from` = 백업 실행 ID). 네임스페이스 밖의 기록에 의존하면 그 기록이 사라진 뒤 다시 구분할 수 없다. 남은 볼륨이 **전부 같은 백업에서 왔을 때만** 통과시킨다 — 하나라도 출처가 없거나 서로 다르면 어느 시점의 상태인지 말할 수 없고, 말할 수 없으면 막는 편이 싸다. 판정은 `kubectl` 호출과 분리해 클러스터 없이 검증한다(`classifyLeftovers`): 이 판정이 틀리면 복구본을 잔여로 오인해 부당하게 막거나, 잔여를 복구본으로 오인해 통과시킨다. **뒤쪽이 훨씬 비싸다.**
+
+  둘 다 **Helm 릴리스 재적용 방식으로 가기 위한 선행 조건**이다. 오늘 나온 결함 ③④⑤ 와 Argo CD 누락은 모두 "손으로 관리하는 종류 목록에서 빠졌다" 는 한 뿌리이고, 그 목록을 없애려면 복구가 릴리스를 다시 설치할 수 있어야 한다. 그러려면 **어느 버전인지**(①) 알아야 하고, **볼륨이 남은 채로 설치가 가능해야**(②) 한다.
+
+- **백업/복구가 실제 스택에서 동작하지 않던 결함 4건** — 실환경 리허설(스택 설치 + React 파이프라인 구동 상태에서 백업·복구)에서 드러났다. 넷 다 단위·통합 테스트와 축소 리허설을 전부 통과한 코드에서 나왔다.
+
+  **① `backup_runs.stack_id` 가 UUID 였다** (`db/migrations/000076`). Nullus 스택 ID 는 UUID 가 아니라 `stk_352e9f68db06` 형태의 varchar 다. 그래서 **스택을 대상으로 하는 백업(`full`·`stack_only`)이 행을 만드는 순간 죽었다** — `platform_only` 만 통과해 그동안 드러나지 않았고, 통합 테스트도 `stack_id` 에 uuid 를 넣고 있어 못 잡았다.
+
+  **② KV export 가 운영 경로에서 동작하지 않았다** (두 겹). `ListKeys` 가 HTTP `LIST` 메서드를 쓰는데, **운영 경로인 API server proxy transport 는 GET/POST 만 지원한다** — 로컬 직결에서는 되고 운영에서만 죽는다. `GET ...?list=true` 로 바꾸자 이번엔 그 쿼리가 `Suffix()` 를 통해 **경로 조각으로 이스케이프돼** 프록시 URL 이 깨졌다. transport 가 쿼리를 분리하도록 함께 고쳤다.
+
+  **③ ESO 시크릿 배선이 백업에서 통째로 빠졌다.** ESO 가 만든 Secret 은 `ownerReferences` 때문에 건너뛴다(소유자가 다시 만들 것이므로 옳다). 그런데 그 **소유자인 `ExternalSecret`/`SecretStore` CR 도 `dumpKinds` 에 없었다.** 다시 만들 주체가 사라져, **복구가 `succeeded` 를 반환하고도 Gitea·Harbor·Jenkins 가 `CreateContainerConfigError` 로 멈춘 채 남았다.** 값은 금고(OpenBao)가 SoT 이므로, 되살릴 것은 배선이고 값은 KV import 가 되돌린 금고에서 ESO 가 다시 끌어온다.
+
+  **④ 클러스터 범위 CRD 가 백업에서 빠졌다.** CRD 는 클러스터 범위라 네임스페이스 덤프에 들어가지 않는다. 그래서 복구가 ESO 의 `SecretStore`/`ExternalSecret` 을 되돌릴 때 **`no matches for kind` 로 죽었다** — CRD 가 등록되기 전에 그 CR 을 밀었기 때문이다. 스택의 Helm 릴리스가 소유한 CRD 를 백업에 넣고, **복원 순서를 CRD → CR 로 강제**했다(등록이 discovery 에 반영될 때까지 기다린다).
+
+  **③④ 는 같은 뿌리다.** 복구 모델이 "네임스페이스 리소스를 apply" 인데 스택 설치는 **Helm 릴리스**로 이루어진다 — Helm 이 만드는 클러스터 범위 리소스(CRD)와 컨트롤러가 재생성하는 리소스(ESO Secret)가 그 사이로 빠진다. 국소적으로는 위 두 수정으로 메웠고, 복구를 Helm 릴리스 재적용으로 바꾸는 근본안은 설계에 남긴다.
+
+  ①은 원래 결함으로 되돌려 회귀 테스트가 실제로 잡는지 확인했다. ②③④ 에도 회귀 테스트를 붙였다.
+
+
+- **에어갭 번들에서 빠져 있던 런타임 이미지 5종** (`internal/shared/domain/runtime_images.go` 신규): 폐쇄망 설치에서 GitLab 버킷 부트스트랩·Harbor/Nexus 프로비저닝·Jenkins 빌드·React 앱 빌드가 각각 `ImagePullBackOff` 로 실패하는 상태였다. 설치가 한참 진행된 뒤에야 드러나는 종류다.
+
+  **원인은 사각지대였다.** 에어갭 이미지 목록(`airgap/images/images.txt`)은 `helm template` 렌더 결과에서 자동 생성된다 — 그래서 **차트에 없는 이미지는 목록에 오르지 않는다.** Nullus 는 설치·프로비저닝·파이프라인 과정에서 매니페스트를 Go 코드로 직접 만들어 적용하는데, 그 안의 이미지가 정확히 helm 이 볼 수 없는 자리에 있다. 빠져 있던 것: `minio/mc`(버킷 부트스트랩) · `curlimages/curl`(Harbor·Nexus 프로비저닝) · `node:22-alpine`(생성된 앱 Dockerfile) · `docker:27-cli`/`docker:27-dind`(Jenkins 빌드 파드).
+
+  같은 문제가 과거에 한 번 있었고, 그때는 Jenkins 이미지 하나를 손으로 `INFRA_IMAGES` 에 덧붙이며 주석까지 남겨 뒀다 — *"helm render 로는 잡히지 않는다… 빼면 인터넷 없는 설치에서 Jenkins 가 뜨지 않는다."* **한 건씩 손으로 막는 방식으로는 다음 것을 놓친다.**
+
+  그래서 이미지 상수를 `RuntimeImages()` 한곳으로 모으고, 그 목록이 ① 에어갭 번들과 ② 생성기 스크립트 양쪽에 다 들어 있는지 테스트가 지킨다. **둘 중 하나만 고치면 CI 에서 막힌다.** 실제로 드리프트를 잡는지 이미지를 하나 빼서 확인했고, 다섯 태그가 레지스트리에 실제로 존재하는지도 확인했다.
+
+  **검증했다**(`scripts/verify-airgap-runtime-images.sh`): 6종을 에어갭 경로 그대로 pull → save → `ctr import` 로 kind 노드에 넣고, 노드에 실제로 들어갔는지 containerd 로 확인한 뒤, `mc` 이미지로 **실제 버킷 부트스트랩을 `imagePullPolicy: Never` 로** 돌렸다 — 레지스트리로 나가지 못하는 상태에서 버킷 3개가 만들어졌다. 목록에 이름이 오른 것과 폐쇄망에서 실제로 도는 것은 다른 문제라서다.
+
+  발견 경위: 백업/복구 작업(#241) 중 `mc` 태그 불일치를 부수 발견으로 기록해 뒀던 것을 따라가다 나머지 4종이 함께 드러났다.
+
+- **kind 클러스터 확인이 간헐적으로 실패하던 스크립트 버그** (`scripts/backup-rehearsal-incluster.sh`, `scripts/verify-airgap-runtime-images.sh`): `kind get clusters | grep -qx` 에서 `grep -q` 가 매치 즉시 파이프를 닫으면 `kind` 가 SIGPIPE 로 죽고 `set -o pipefail` 이 그 종료 코드를 전파해, **클러스터가 있는데도 "없다"** 가 됐다. 타이밍에 따라 갈려 간헐적으로 보였다 — 처음 마주쳤을 때 일시적 현상으로 넘겼던 것이 실제 버그였다. 출력을 먼저 받아 두고 검사한다.
 
 - **CI 가 실패를 초록불로 보고하던 것 — E2E 게이트 복원** (`.github/workflows/ci.yml`, `web/playwright.config.ts`, `web/e2e/**`): `e2e` 잡이 `continue-on-error: true` 로 묶여 있어, 78 건이 실패하는 동안에도 CI 는 초록이었고 **어떤 회귀도 PR 을 막지 못했다.** 그 플래그는 "아직 통과가 확인되지 않았으니 막지는 말자" 는 뜻이었는데, 확인하는 일이 뒤따르지 않아 다섯 달 동안 방치됐다.
 
@@ -354,16 +763,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **브랜드 마크와 그 생성기** (`docs/40_UI_UX/logo/emit.mjs`, `web/src/components/brand/`, `web/public/favicon.svg`): 브랜드가 놓이는 자리가 전부 임시값이었다 — 사이드바와 홈 히어로는 lucide 의 `Box` 아이콘, 로그인 카드는 금색 타일 위의 글자 "N", 파비콘은 프로젝트와 무관한 보라색 도형, 탭 제목은 `web`. 네 자리가 서로 다른 그림이라 같은 제품으로 보이지 않았다. 세잎 매듭(trefoil) 하나로 통일하고, 세 가닥에 쿠버네티스 파랑 → 인프라 보라 → 애플리케이션 청록을 흘렸다 — 세 층이 따로 놀지 않고 한 흐름으로 묶인다는 뜻이다. **도형은 손으로 그리지 않는다**: 매듭은 세 교차점에서 어느 가닥이 위인지가 일관되지 않으면 매듭이 아니라 그냥 겹친 선이 되는데, 그 판정을 눈으로 하면 반드시 틀린다. `emit.mjs` 가 매개변수식에서 점을 뽑고 자기교차점을 수치로 찾아 **파비콘 SVG 와 컴포넌트가 읽는 경로 데이터를 함께** 굽는다. 앱은 이 스크립트를 실행하지 않는다 — 좌표가 박힌 산출물만 쓴다. 아래로 지나가는 가닥을 끊는 간격은 좌표로 따로 계산하지 않고 **위 가닥과 같은 경로를 굵게 그은 마스크**로 낸다. 따로 계산하면 굵기를 고칠 때마다 간격이 위 가닥과 어긋나지만, 같은 경로에서 파생시키면 언제나 나란하다. 마크의 3색은 `web/DESIGN.md` 토큰이 **아니다** — 테마를 따라 회색이 되는 로고는 로고가 아니라 아이콘이다. 그래서 `src/components/brand/**` 만 hex 금지 규칙에서 면제했고(외부 도구 브랜드 색을 한 파일에 모아 둔 `tool-brand-colors.ts` 와 같은 이유), 색이 정해진 바탕 위에 얹어야 할 때를 위해 `tone="current"` 로 단색 한 붓이 되는 길을 열어 뒀다. **어두운 바탕용으로는 밝기만 올린 두 번째 벌을 함께 굽는다**: HSL 의 lightness 는 사람이 느끼는 밝기가 아니라서 파랑과 보라 사이를 HSL 로 이으면 중간이 양 끝보다 어두운 남색으로 꺼지는데(휘도 .176 → .071 → .118), 밝은 바탕에서는 그 구간이 오히려 또렷하지만 어두운 바탕에서는 대비가 2.1:1 까지 떨어져 매듭의 그쪽 절반이 배경에 잠긴다 — 청록 쪽은 7.3:1 이라 한 마크 안에서 3.5배가 벌어졌다. 다크 벌은 색상·채도를 그대로 두고 목표에 못 미치는 색만 lightness 를 이분법으로 올려 `--color-surface-base` 기준 4.5:1 을 보장한다(편차 1.81배). 파랑·청록은 거의 그대로이고 보라만 `#6b3fd4` → `#8663dc` 로 올라간다. 바탕을 판별하는 신호는 두 곳이 다르다 — 앱은 `theme-store` 를 읽고(사용자가 OS 와 무관하게 테마를 고르므로 `prefers-color-scheme` 을 쓰면 강제로 라이트를 켠 사용자에게 어긋난다), React 밖의 독립 문서인 파비콘은 브라우저 크롬이 OS 를 따르므로 SVG 안에 `prefers-color-scheme` 규칙을 넣었다. 대비 약속은 테스트가 `tokens.generated.css` 의 실제 바탕 토큰을 읽어 검사한다 — 바탕이 밝아지면 마크만 조용히 과하게 밝은 채로 남기 때문이다. 홈 히어로에서는 금색 타일을 없앴다 — 마크가 스스로 3색을 가지므로 금색 바탕에 얹으면 색이 싸우고, 바로 아래 제목이 이미 이름을 말한다. 파비콘은 번들을 타지 않는 정적 파일이라 컴포넌트와 따로 노는데, 한쪽만 다시 굽고 커밋하는 사고는 테스트가 경로 대조로 막는다. 한 화면에 마크가 둘 이상 놓일 때 mask id 가 겹쳐 한쪽이 통째로 사라지는 것도 `useId` 로 막고 테스트로 고정했다.
 
 - **배포된 애플리케이션의 실시간 자원 그래프와 컨테이너 로그** (`internal/stack/adapter/handler/workloads.go`, `internal/stack/adapter/handler/workload_logs.go`, `web/src/features/observability/components/app-runtime-panels.tsx`): CI/CD 로 배포한 앱은 "Running" 이라는 상태 문자열뿐이었다 — 그것만으로는 파드가 메모리 한계에 붙어 있는지 놀고 있는지, 무엇을 하다 죽었는지 알 수 없어 결국 `kubectl` 로 넘어가게 된다. `/workloads` 가 metrics-server 에서 파드별 사용량을 함께 읽고, 새로 만든 `GET /stacks/:id/workloads/logs` 가 스택 라벨로 찾은 파드들의 컨테이너 로그를 타임스탬프로 섞어 준다(파드별로 나누면 요청이 어느 파드로 갔는지를 사람이 맞춰 봐야 한다 — `kubectl logs -l` 이 섞는 이유와 같다). 백엔드는 "지금" 만 주므로 폴링(5초) 결과를 화면에서 쌓아 시계열을 만든다. **값을 못 읽은 시점은 0 이 아니라 선을 끊는다** — metrics-server 는 선택 설치라 없는 클러스터가 정상인데 0 으로 이으면 선이 바닥을 기어 "안 쓰는 앱" 으로 읽힌다. 모니터링 대시보드(스택 단위)와 CI/CD 목록 상세(파이프라인 단위)가 같은 컴포넌트를 쓰고 보는 범위만 좁힌다.
+
 - **스택 상세의 Workloads 탭** (`web/src/features/stack/components/stack-workloads-tab.tsx`): "상세 설치 카드는 숨김 처리되었습니다" 라는 안내만 있던 자리에 실제 파드 목록(이름·도구·상태·재시작·CPU·메모리·노드)을 넣었다. 조회는 스택별로 동적이다.
+
 - **배포 매니페스트에 스택·CI/CD 템플릿 라벨** (`internal/cicd/adapter/scaffold/renderer.go`): 배포된 워크로드가 어느 스택·어느 템플릿에서 나왔는지 클러스터만 보고 알 수 있어야 한다. 네임스페이스로는 판별할 수 없다 — 파이프라인이 `default` 에 깔 수도 있고 여러 스택이 한 네임스페이스를 공유할 수도 있다. `nullus.io/stack-id` 와 `nullus.io/cicd-template-id` 를 Deployment·파드 템플릿·Service 에 붙인다. 라벨 값은 항상 id 다 — 이름("Nullus Sample App — Backend")은 공백과 em dash 때문에 라벨 값으로 유효하지 않고, 바뀌면 이미 떠 있는 파드와 어긋난다.
 
 
 - **디자인 단일 출처 `web/DESIGN.md` 와 토큰 파생 파이프라인** (`web/DESIGN.md`, `web/scripts/generate-theme.mjs`, `web/src/theme/`): 색·타입·간격·모양·깊이의 값을 고칠 곳이 한 곳도 아니었다 — 문서(`docs/40_UI_UX/Nullus_디자인시스템.md`)와 `index.css` 가 서로 다른 값을 갖고 있었고(문서는 라이트 보더를 `#e2e8f0`, 구현은 `#1f2937`), 정작 화면은 둘 다 무시하고 TSX 에 색을 직접 박고 있었다(hex 767곳 + rgba 750곳). 이제 [google-labs-code/design.md](https://github.com/google-labs-code/design.md) 스펙을 따르는 `web/DESIGN.md` 가 유일한 출처이고 `npm run theme:generate` 가 거기서 MUI 테마·Tailwind 토큰·AG Grid 테마를 굽는다. 런타임에 `--mui-palette-*` 를 참조하지 않고 빌드 시점에 굽는 이유는 `index.css` 가 JS 보다 먼저 로드되기 때문이다 — 의존하면 첫 페인트에서 값이 비어 색이 무너진다. CI 가 세 가지를 막는다: 생성물 신선도(`npm run theme:check`), DESIGN.md 유효성(`@google/design.md lint`), 토큰 대비 AA(`contrast-audit.test.ts` 45건). Tailwind v4 와는 `@layer theme, base, mui, components, utilities` 순서 + `StyledEngineProvider enableCssLayer` + `@theme inline` 로 붙였다 — 순서를 선언하지 않으면 MUI 의 emotion 런타임 주입이 Tailwind 유틸리티를 덮어쓴다.
+
 - **화면 정보 인벤토리 대조와 시각 회귀 게이트** (`web/scripts/extract-ui-inventory.mjs`, `web/e2e/visual/screens.spec.ts`, `.github/workflows/ci.yml`): UI 를 대규모로 손볼 때 필드·컬럼·라벨이 조용히 사라지는 것을 막는다. 전자는 TypeScript AST 로 각 화면의 i18n 키·표시 문자열·표 컬럼·라벨을 뽑아 스냅샷과 대조한다(스타일은 의도적으로 추적하지 않는다 — 그건 바뀌어야 하는 것이다). 판정 기준은 "이 문자열이 소스 어딘가에 아직 있는가" 라서 파일과 필드 종류를 넘나들며 찾는다 — 컴포넌트 추출이나 하드코딩 라벨을 `t()` 폴백으로 옮기는 리팩터링을 막지 않는다. 후자는 화면 28개 × 두 테마 = 58장을 고정한다. 로그인이 프론트엔드 목 인증이라 백엔드 없이 돌고, `/api/v1/*` 를 빈 응답으로 스텁해 빈 상태까지 렌더한다. 스텁 경로를 정확히 맞춰야 한다 — `**/api/**` 같은 글롭은 Vite 가 서빙하는 소스 모듈(`/src/features/admin/api/*.ts`)까지 가로채 lazy 라우트를 깨뜨린다.
 
 - **GitHub 스택에서 파이프라인 프로비저닝 지원** (`internal/cicd/adapter/github/`, `internal/cicd/adapter/provisioning/bundle_factory.go`): `github-argocd-v1` 템플릿은 예전부터 설치는 됐지만 파이프라인을 만들 수 없었다 — 번들 팩토리가 self-hosted GitLab 이 아니면 그 자리에서 거절했기 때문이다. 이제 소스 저장소 도구에 따라 GitLab/GitHub 어댑터를 골라 조립한다. GitHub 은 SaaS 라 GitLab 과 두 가지가 근본적으로 다르다. 하나, Organization 을 API 로 만들 수 없어 `EnsureGroup` 은 존재 확인만 하고 없으면 "먼저 만들라"고 끊는다(개인 계정이면 `POST /user/repos` 로 간다). 둘, 리포 범위 토큰 API 가 없어 워크플로는 내장 `GITHUB_TOKEN`(`contents: write`)으로 매니페스트를 되쓰고, Argo CD·이미지 pull 인증에는 조직 PAT 를 재사용한다. 스캐폴딩은 `.github/workflows/nullus-ci.yml` 로 나가며 dind 배관과 `[skip ci]` 마커가 없다 — 호스티드 러너에는 Docker 데몬이 이미 있고, `GITHUB_TOKEN` 으로 만든 push 는 워크플로를 재트리거하지 않는다. Actions 시크릿은 평문을 받지 않으므로 리포 공개키로 sealed box 암호화해서 올린다. PAT 와 organization·API 주소는 `token_sources`(provider=`github`, metadata 의 `owner`/`api_base_url`)에서 읽는다.
+
 - **설치 마법사에서 GitHub 연동 정보를 입력** (`web/.../stack-install-page.tsx`, `internal/stack/usecase/token_source_inputs.go`): 소스 저장소로 GitHub 을 고르면 Organization·API 주소·PAT 입력이 나타난다. **PAT 는 스택 구성에 저장하지 않는다** — `stacks.config` 는 평문 JSONB 로 저장되고 조회 API 로 다시 내려오므로, 토큰을 넣으면 스택을 볼 수 있는 누구에게나 노출된다. 대신 배포 요청 본문(`source_control.personal_access_token`)으로만 흘려보내고, 설치가 끝나는 시점에 그 스택의 OpenBao 로 옮긴다(`kv/nullus/{env}/{org}/cicd/github/api-token`). Organization 은 비밀이 아니라서 구성에 남고 `token_sources.metadata` 로 전달된다 — 토큰만으로는 어느 org 에 리포를 만들지 알 수 없기 때문이다. 재시도·이어하기도 같은 본문을 받는다: 첫 설치가 등록 직전에 실패하면 OpenBao 에 아무것도 없어, 여기서 다시 받지 않으면 복구할 방법이 없다. 경로 문자열은 쓰는 쪽(stack)과 읽는 쪽(cicd)이 다른 모듈이라 `internal/shared/secrets/paths.go` 로 단일화했다 — 한쪽만 바뀌면 컴파일은 통과하고 파이프라인 생성에서만 "등록된 PAT 가 없다" 로 드러난다. 이 등록은 `authentication.provider` 선택과 **무관하게** 일어난다: 시크릿 평면(OpenBao)은 그 값과 상관없이 항상 설치되는데(PostgreSQL·MinIO 가 `provisioning_secrets` 가 만든 Secret 을 참조한다) 마법사 기본값은 `provider=''` 라, 회전 대상 항목과 같은 게이트에 두면 사용자가 입력한 토큰이 조용히 사라진다 — 등록 실패가 아니라 "등록할 것이 없음" 이라 설치 로그에 경고도 남지 않는다. 반대로 회전 대상 항목은 종전 조건을 유지한다. 그쪽은 회전 컨트롤러가 값을 채우는 빈 경로라 범위를 넓히면 영영 채워지지 않는 행만 늘어난다.
+
 - **GHCR 을 컨테이너 레지스트리 선택지로 추가** (`internal/cicd/adapter/registry/resolver.go`): 다른 레지스트리와 달리 사용자가 등록할 자격증명이 없다 — GitHub Actions 잡이 `packages: write` 권한의 내장 토큰으로 자기 리포 패키지에 push 할 수 있기 때문이다. 경로는 항상 소문자로 만든다. GHCR 은 대문자가 섞인 경로를 거부하는데 그 오류가 권한 문제처럼 보여 원인을 찾기 어렵다.
+
 - **플랫폼 도구 상태를 실측으로 채우고 모니터링 화면에 노출** (`internal/observability/adapter/toolhealth/`, `web/.../platform-tool-health.tsx`): `/observability/dashboard` 의 `tool_health` 는 지금까지 죽은 필드였다 — 프로덕션 경로인 Prometheus 리포지토리는 목록을 아예 채우지 않았고, Prometheus 미설정 시 폴백만 하드코딩된 가짜 값(Harbor 는 늘 `running`, Nexus 는 아예 없음)을 돌려줬으며, 이 값을 그리는 화면도 없었다. 이제 설치된 스택의 실제 파드에서 상태를 뽑는다. 같은 도구가 여러 스택에 있으면 한 줄로 합치고 가장 나쁜 상태를 남긴다. 실측 조회에 실패하면 시뮬레이션 값으로 되돌아가지 않고 목록을 비운다 — 죽은 도구가 `running` 으로 보이는 것이 가장 나쁜 오답이기 때문이다. 화면은 Monitoring 페이지 상단 카드로, 클러스터·스택 선택과 무관하게 항상 보인다.
 
 - **파이프라인 삭제 시 부수 리소스를 골라서 함께 정리** (`internal/cicd/usecase/delete_pipeline.go`, `web/.../delete-pipeline-dialog.tsx`): 지금까지 파이프라인 삭제는 `DELETE FROM pipelines` 한 줄이 전부였다. Argo CD Application 이 고아로 남아 계속 동기화하므로 **목록에서는 사라졌는데 앱은 계속 돌았고**, 저장소·이미지도 그대로 남았다. 이제 확인 대화상자에서 클러스터 리소스·컨테이너 이미지·소스 저장소를 각각 고른다. 셋 다 기본은 꺼짐이다 — 종전 동작을 유지하고, 되돌릴 수 없는 일과 서비스가 멈추는 일은 명시적으로 요청받는다. 저장소를 고르면 이름을 그대로 입력해야 확인 버튼이 열린다. 클러스터 정리는 Application 에 `resources-finalizer.argocd.argoproj.io` 를 붙인 뒤 삭제해 Argo CD 가 워크로드까지 걷어내게 한다 — 생성 시점에 넣지 않는 이유는 그러면 Application 을 손으로 지울 때도 항상 배포가 함께 사라지기 때문이다. 요청한 삭제가 하나라도 실패하면 레코드를 남긴다. 레코드가 사라지면 목록에서 안 보이는데 리소스는 남아 다시 시도할 방법조차 없어진다. 이미지 삭제 수단이 없는 레지스트리(Harbor·Nexus)는 조용히 건너뛰지 않고 `IMAGE_DELETION_UNSUPPORTED` 로 끊는다 — 넘어가면 사용자는 지워진 줄 안다. 공용 `common` 저장소는 여러 앱이 공유하므로 대상이 아니다.
@@ -389,27 +804,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **메인 화면의 지원 OSS 목록을 실제 배선이 있는 것으로 좁힌다** (`web/src/features/home/utils/support-tools.ts`): 목록의 출처가 설치 마법사의 선택지여서 23개가 전부 떴는데, 그중 Gitea·Jenkins·Flux CD·Spinnaker·JFrog·Docker Hub·Thanos·VictoriaMetrics·OpenSearch Dashboards 는 **고를 수는 있지만 배포해도 아무것도 설치되지 않는다** — helm 단계 카탈로그에도, `resolveChartSpecForStep` 의 차트 분기에도 없다. 프론트의 `TOOL_HELM_META` 에 차트 이름만 적혀 있어 지원하는 것처럼 보였을 뿐이다(`docker-hub` 의 `dockerhub/proxy-cache` 는 실재하지 않는 이름이다). 이제 기준은 "설치되거나, 클러스터 밖이지만 연동 구현체가 있거나" 이고 15장이 남는다. 테스트의 방향도 뒤집었다 — 예전 규칙("마법사의 모든 선택지가 카드여야 한다")이 바로 이 상태를 만든 원인이었다. 이제 마법사 선택지는 **카드이거나 `NOT_INSTALLABLE` 에 이유와 함께 선언되어 있거나** 둘 중 하나여야 통과한다: 새 OSS 가 조용히 빠지는 것도, 배선 없는 도구가 조용히 "지원" 으로 붙는 것도 막는다.
 
 - **아이콘을 기본적으로 읽는 도구에서 숨긴다** (`web/src/components/ui/icon.ts`): 아이콘 314곳 중 `aria-label` 을 가진 것이 **0곳**이었다. lucide 는 아무 것도 붙이지 않은 `<svg>` 를 내보내므로 이름 없는 그래픽 300여 개가 그대로 읽혔다 — 화면을 소리로 듣는 사람에게는 잡음이다. 거의 모든 자리에서 아이콘은 옆 글자를 거드는 장식이고 아이콘만 있는 버튼은 버튼 쪽에 이름이 붙으므로, `iconProps()` 가 `aria-hidden` 을 기본으로 준다. 아이콘이 홀로 뜻을 지는 자리만 `StatusIcon` 의 `label` 로 이름을 준다. 진짜 이름이 없던 아이콘 전용 버튼 5곳에는 `aria-label` 을 붙였다(AST 로 훑어 찾았다 — 정규식으로 보면 `{t(...)}` 를 글자로 세지 못해 오탐이 난다).
+
 - **사이드바 메뉴 아이콘의 뜻을 바로잡고 스택/CI/CD 를 구별한다** (`web/src/components/layout/nav-model.tsx`): 크기·굵기를 통일하는 것과 **어떤 글리프가 그 메뉴를 뜻하는지**는 다른 문제다. 메뉴 22개를 다시 보니 8곳이 어긋나 있었다. 같은 그룹 안에서 겹친 것 — 스택 버전과 스택 버전 관리가 둘 다 `Shield`, 조직이 "관리" 그룹 헤더와 같은 `Settings`, 모니터링 대시보드가 "관측성" 헤더와 같은 `ChartColumn`(그룹을 접으면 구분되지 않는다). 뜻이 틀린 것 — **알림 이력이 `BellOff`** 였는데 그건 "알림 끔" 이고, 스택 이력·CI/CD 이력이 둘 다 `History` 인데 여기만 어긋났다. **알려진 이슈는 `TriangleAlert`** 라 경고 *상태* 글리프와 같은 모양이어서 상태로 오해됐다(`Bug` 로 바꾸면서 래칫 예외도 하나 사라졌다). 스택 버전의 `Shield` 는 보안으로 읽혀 `Tag` 로, 호환성 매트릭스를 다루는 스택 버전 관리만 `ShieldCheck` 로 남겼다.
 
   **템플릿·목록은 스택과 CI/CD 가 같은 글리프를 쓰고 있어 갈랐다**: CI/CD 템플릿은 `FileCode2`(파이프라인 템플릿은 실제로 워크플로 정의 파일이고, 이미 CI/CD 화면들이 그 뜻으로 쓰고 있다), CI/CD 목록은 `Workflow`(파이프라인은 줄이 아니라 흐름이다). 기준은 **아이콘이 그 화면의 '대상'을 그린다** 는 것이고, 스택 쪽이 기본형을 갖고 CI/CD 가 도메인 고유 글리프를 갖는다. 같은 이유로 이력 3곳은 `History` 로 남는다 — 셋 다 대상이 시간이다. `Layers` 는 후보에서 뺐다. 모니터링이 "파이프라인 수" 에 이미 쓰고 있어 뜻이 겹친다.
 - **화면이 각자 들고 있던 상태→아이콘 표를 레지스트리로 걷어낸다** (`web/src/features/admin/pages/cluster-page.tsx`, `web/src/features/observability/components/monitoring-chart-widgets.tsx`): 앱을 실제로 띄워 보고 드러났다 — `StatusBadge` 를 쓰지 않는 화면들이 자기 `STATUS_CONFIG` 를 들고 있어서, 레지스트리를 세워도 거기만 옛 매핑으로 남았다. 클러스터 관리 화면은 **대기가 시계(`Clock`)**, 연결 불가와 인증 실패가 둘 다 `CircleAlert` 였고, 도구 상태 카드는 **경고가 원(`CircleAlert`)** 이었다 — 다른 화면에서는 각각 `CircleDashed` · `TriangleAlert` · `CircleX` 다. 이제 두 화면 모두 tone 만 정하고 글리프와 색은 레지스트리가 준다. 앞으로의 드리프트는 **래칫 테스트**가 막는다: 상태 전용 글리프를 새로 import 하는 파일이 생기면 실패하고, 기존 16곳은 목록에 적어 두되 그 목록이 낡으면(이미 옮겼는데 안 지웠으면) 그것도 실패한다. 목록에 남는 것 중 일부는 상태가 아니라 영영 남는다 — `nav-model` 의 `TriangleAlert` 는 "Known Issues" 메뉴 아이콘이고, `confirm-dialog` 의 것은 파괴적 동작 경고다.
+
 - **Tailwind 기본 팔레트 직접 사용을 토큰으로 옮기고 클래스명 우회를 막는다** (`web/src/features/observability/`, `web/eslint.config.js`): `text-emerald-400` · `bg-amber-500/15` 처럼 팔레트를 직접 쓴 곳이 17곳 있었다. 그 초록은 `--color-success` 와 다른 값이라 **같은 "정상"이 화면마다 다른 초록**이었다. hex 금지 규칙이 이걸 못 잡은 이유는 클래스명이 그냥 문자열이기 때문이다. 전부 토큰으로 옮기고, 팔레트 클래스와 숫자 아이콘 크기를 각각 막는 `no-restricted-syntax` 규칙을 추가했다(둘 다 실제로 걸리는지 확인했다). 로고 `NullusMark` 는 크기 규칙에서 뺀다 — 로고는 아이콘이 아니라서 자리마다 크기가 따로 정해진다(로그인 52px, 홈 히어로 80px).
 
 - **화면 정보 인벤토리 스냅샷 갱신** (`web/e2e/inventory/ui-inventory.json`, `docs/40_UI_UX/화면_정보_인벤토리.md`): 로그인 카드의 임시 로고였던 글자 "N" 이 마크로 바뀌면서 게이트에 걸렸다. 다시 구우면서 **이번 브랜치와 무관한 드리프트 2건이 함께 흡수됐다** — 스냅샷이 직전 개편(#134) 이후로 갱신되지 않아 이미 어긋나 있던 것이라 남겨 둘 수가 없었다. (1) `monitoring-cicd-view.tsx` 의 안내 문구와 라이브 패널 항목들은 `app-runtime-panels.tsx` 로 컴포넌트가 분리되면서 옮겨 간 것이다 — 화면에는 그대로 나온다(추출기가 지역 문자열 객체의 값은 훑지 않아 유실로 잡혔다). (2) `stack-history-page.tsx` 는 Stack Name·Cluster 컬럼과 `stackHistoryPage.table.stackName` 키를 실제로 잃었다. 페이지가 스택을 드롭다운으로 고르는 형태라 행마다 스택 이름을 반복할 이유는 없어 보이지만, **이 브랜치가 판단할 일이 아니므로 의도된 제거인지는 확인이 필요하다.**
 
 - **호환성 매트릭스의 기준선을 외부 프로젝트에서 실제 설치 경로로 이관** (`internal/stack/domain/connection.go`, `db/migrations/000062_compat_baseline_matches_install.up.sql`): 매트릭스는 Pre-Deploy Gate 에서 "검증된 조합" 으로 화면에 뜨는데, 그 값이 실제로 깔리는 버전과 갈라져 있었다(GitLab 9.5.1 vs 8.7.2, Argo CD 6.8.0 vs 7.7.16, Prometheus 67.0.0 vs 69.3.0, Grafana 8.5.0 vs 8.9.0, MinIO 5.2.0 vs 5.4.0). 원인은 기준선을 외부 프로젝트 Narwhal(`dasomel/narwhal`)의 `VERSIONS.md` 에 둔 것이다 — Nullus 의 설치 경로가 독자적으로 올라가면서 따라갈 이유가 사라졌는데 값만 남았다. Harbor·Nexus 만 어긋나지 않았는데 그 둘만 `domain` 상수를 참조했기 때문이다. 이제 출처는 `domain` 상수 하나이고 차트 스펙과 매트릭스가 같은 상수를 본다. 드리프트 테스트를 클러스터에 설치되는 전 도구로 넓혔고(2건 → 11건), 매트릭스 테스트도 리터럴 대신 상수를 참조하게 해 세 번째 출처가 생기지 않게 했다. Prometheus 의 app 버전만 차트 `appVersion` 을 그대로 쓰지 않는다 — 그 값은 prometheus-operator 버전이라 화면에 오퍼레이터 버전이 Prometheus 인 양 뜬다. 화면 문구에서도 외부 프로젝트 이름을 뺐다.
+
 - **셀렉트 펼침 목록을 브라우저 기본에서 테마 목록으로** (`web/src/components/ui/select.tsx`): `NativeSelect` 는 진짜 `<select>` 라 펼친 목록이 OS 위젯이었다 — 다크 테마에서 흰 목록이 떴다. MUI `Select`(포털 Menu)로 바꾸면서 `<option>`/`<optgroup>` 을 `MenuItem`/`ListSubheader` 로 변환하는 어댑터를 유지해 소비자 코드를 그대로 뒀다. react-hook-form `register()` 는 DOM `.value` 를 직접 쓰므로 `reset()` 후 표시가 조용히 어긋난다 — 6곳을 `Controller` 로 옮겼다. 이름이 더 이상 네이티브가 아니게 되어 `Select` 로 바꿨다.
+
 - **파이프라인 토폴로지를 역할별 스테이지 레일로** (`web/src/features/stack/components/pipeline-topology.tsx`): 도구를 나열하던 그림을 스테이지 레일 + 로고 형태로 바꾸고, Artifacts 를 용도(소스·패키지·이미지·스토리지)별로 분리했다. GitLab 처럼 한 도구가 세 역할을 겸하면 `shared` 로 묶어 한 번만 그린다. 모니터링 대시보드에 있던 "플랫폼 도구 상태" 카드를 걷어내고 그 정보를 이 그림 안에 넣었다 — 배치와 동작을 같은 그림에서 읽는 편이 낫고, 그 카드는 클러스터·스택을 고르기도 전에 떠 있어 "선택해서 시작하라" 는 화면 흐름과 어긋났다.
+
 - **화면 껍데기와 제목을 뷰포트에 고정** (`web/src/app/layout.tsx`, `web/src/components/layout/page-header.tsx`): 본문을 스크롤해도 사이드바와 화면 제목이 제자리에 있다. 사이드바는 본문 길이를 따라 늘어나 로그아웃 줄이 화면 밖으로 밀려 있었다(1938px). 제목은 `position: sticky` 로 고정하되 본문이 그 위로 스쳐 지나가지 않게 배경을 full-bleed 로 깔았고, 스크롤 컨테이너의 `padding-top` 을 걷었다 — `top: 0` 은 콘텐츠 박스를 기준으로 붙으므로 패딩이 남아 있으면 그만큼 틈이 생긴다. 상단 경로도 `상위메뉴 › 하위메뉴` 로 바꿨다.
 
 - **공용 UI 프리미티브 6종의 내부를 MUI 로 교체** (`web/src/components/ui/`): Button·Input·NativeSelect·Skeleton·Modal·Card 를 MUI v9 로 바꿨다. **파일 경로·export 이름·prop 시그니처를 그대로 둔 어댑터 방식**이라 28개 화면 18,823 LOC 을 한 줄도 고치지 않고 Button 124곳·Input 95곳·Modal 11곳이 한 번에 통일됐다. 색은 전부 토큰을 참조해 테마 전환에 따라간다 — 이전 구현은 `#a5b4fc`·`#f87171` 같은 다크 기준 hex 를 박아서 라이트 테마에서 1.91:1 까지 무너졌다. Select 가 아니라 **NativeSelect** 를 쓴 이유는 MUI `Select` 가 진짜 `<select>` 대신 listbox 를 렌더해서 소비자가 넘기는 `<option>` children 과 테스트의 `getByRole('combobox')`·`fireEvent.change` 가 전부 깨지기 때문이다. Modal 은 손으로 만든 포커스 트랩 ~70줄을 지웠다(MUI Modal 이 첫 요소 포커스·Tab 순환·닫힐 때 복원·Esc·스크롤 락을 모두 한다). 다만 `if (!open) return null` 로 즉시 언마운트하는 동작은 유지했다 — 이전 구현에 퇴장 애니메이션이 없었고 소비자 테스트 3곳이 그 동기적 제거에 의존한다(Cancel 클릭 직후 `queryByText(...).not.toBeInTheDocument()`). MUI 전환에 맡기면 전환 시간만큼 DOM 에 남아 그 계약이 깨진다.
+
 - **배포 이력의 행 확장을 좌우 분할 상세로 대체** (`web/src/features/cicd/pages/cicd-history-page.tsx`, `web/src/components/shared/data-table.tsx`): 행을 펼쳐 보여주던 상세 패널의 6개 필드가 **메인 테이블 컬럼과 완전히 같았다** — 같은 행을 세로로 다시 그린 것이라 새 정보가 0 이었다. 게다가 행 확장은 28개 화면 중 이 한 곳뿐인 일회성 패턴인데, 좌우 분할 상세는 `list-detail-panel` 로 컴포넌트화돼 3화면이 쓴다. 이제 행을 선택하면 표 **오른쪽**에 상세가 뜬다 — 처음에는 표 아래에 두었다가 좌우로 옮겼다. 아래로 펼치면 행을 고를 때마다 표가 밀려 내려가 방금 고른 행을 잃고, 배포가 몇 건뿐일 때는 그 아래로 화면 절반이 빈 채 남는다. 선택 행이 필터 결과에서 빠지면 상세도 함께 사라진다 — 목록에 없는 항목의 상세가 남아 있으면 안 된다. `DataTable` 에서 아무도 쓰지 않게 된 `expandedRowId`/`renderExpanded` prop 을 제거했다. 실제 하위 엔티티(배포 단계 `steps`)는 `GET /cicd/deployments/{id}` 에 이미 있지만 그걸 붙이는 것은 기능 추가라 별 티켓으로 분리했다.
+
 - **테마 소유권을 theme-store 하나로 통일** (`web/src/theme/theme-sync.tsx`, `web/src/stores/theme-store.ts`): MUI 테마에 `cssVariables` + `colorSchemeSelector: '[data-theme=%s]'` 를 주면 MUI 가 `<html data-theme>` 를 직접 관리한다. 그런데 이 앱은 이미 zustand `theme-store` 가 같은 속성을 쓰고 있어서, **MUI 의 `defaultMode` 가 스토어 값을 덮어써 라이트 테마가 다크로 렌더됐다**(시각 회귀 스냅샷을 눈으로 보고 발견했다). 스토어를 단일 소유자로 두고 영속화 키를 MUI `modeStorageKey` 와 공유하고, `ThemeSync` 가 스토어 → MUI 로 mode 를 밀어 넣는다.
+
 - **⚠️ `github-argocd-v1` 의 컨테이너 레지스트리를 Harbor 에서 GHCR 로 교체** (`db/migrations/000060_github_stack_uses_ghcr.up.sql`, `internal/stack/adapter/repository/memory_template.go`): 이 스택은 GitHub 호스티드 러너에서 빌드하는데, 러너는 GitHub 네트워크에 있어 클러스터 내부 Harbor(`harbor.<access_domain>`, 보통 `.internal`)에 닿을 수 없다 — 즉 `docker push` 가 반드시 실패하는 조합이었다. 이미지는 러너가 닿을 수 있는 GHCR 에 올린다. Harbor 가 빠지면서 최소 자원은 `6 vCPU / 12Gi / 80Gi` → `4 vCPU / 8Gi / 50Gi`, 예상 설치 시간은 60분 → 45분으로 줄었다. 호환성 행렬에서도 Harbor 의 amd64 전용 제약이 사라져, arm64 클러스터에서 설치할 수도 없는 도구를 이유로 게이트가 막던 문제가 함께 해소된다. **기존에 이 템플릿으로 만든 스택은 영향을 받지 않는다**(설치 시점의 선택이 스택에 저장되므로).
+
 - **토큰 소스 등록이 스택 범위 시크릿 저장소를 쓰도록 수정** (`internal/stack/adapter/repository/postgres_token_source_registry.go`): `Upsert` 가 토큰 값을 전역 저장소에 기록했는데, OpenBao 는 스택마다 배포되므로 스택 범위로 읽는 쪽(cicd 모듈)이 값을 찾지 못한다. `StackID` 가 실린 항목은 그 스택의 저장소에 쓴다. 지금까지는 설치 경로가 값을 실어 보내지 않아(회전 컨트롤러가 나중에 채우는 구조) 드러나지 않았다. 아울러 `token_sources.metadata` 에 호출자 값을 병합할 수 있게 했다 — 고정 필드 위에 얹으므로 `secret_manager` 같은 값이 덮이지 않는다.
+
 - **외부 SaaS 도구가 회전 대상 토큰 소스로 등록되지 않도록 제외** (`internal/stack/usecase/token_source_inputs.go`): GitHub·GitHub Actions·GHCR 은 우리가 토큰을 발급할 수 없는데도 `kv/.../artifacts/github/token` 같은 항목이 만들어지고 있었다. 값이 영영 채워지지 않는 죽은 행인 데다, GitHub PAT 항목과 provider 가 같아 소유자 정보가 없는 행이 하나 더 생겨 연동 설정 조회가 둘 중 어느 것을 집을지 알 수 없게 된다.
+
 - **GitHub·GitHub Actions 에 걸려 있던 actions-runner-controller 차트 매핑 제거** (`web/src/features/stack/utils/install-constants.ts`): 프론트는 두 도구를 ARC 차트로 설치할 것처럼 계획을 세웠지만 백엔드는 `external` 로 표시해 설치를 건너뛰고 있었다 — 설치 계획이 실제 동작과 어긋나 있었다. 러너는 GitHub 에서 돌므로 클러스터에 설치할 것이 없다.
+
 - **⚠️ 차트 기본 인증 모드를 `session` 에서 `oidc` 로 변경** (`deploy/helm/nullus/values.yaml`): `session` 은 클라이언트가 보낸 `X-User-ID`·`X-User-Role` 헤더를 그대로 믿는 알파 시절 방식이라 아무나 `X-User-Role: admin` 을 붙이면 관리자가 된다(코드 주석도 "simplified for alpha" 라고 인정). 그런데 그것이 차트 기본값이었다. SPA 폴백 기본값도 `session` 이라 한쪽만 바꾸면 프론트는 세션 헤더를 보내는데 API 는 JWT 를 기다려 전부 401 이 되므로 `config.auth.mode` 와 `web.auth.mode` 를 함께 옮긴다. **기본값으로 설치하려면 이제 IdP 설정이 필요하다** — `config.auth.oidcIssuerUrl`, `web.auth.{oidcProvider,oidcAuthority,oidcClientId}`. 기존에 `oidc` 를 명시하던 배포(zadara 등)는 영향이 없다.
+
 - **레이트리밋을 IP 상한 + 사용자 한도 2단으로 분리** (`internal/shared/middleware/rate_limiter.go`): 전역은 IP 기준 폭주 상한(600/분), 인증 그룹에는 사용자 키 리미터(300/분)를 붙인다. 사용자 리미터는 `RequireRole` 앞에 둬 403 으로 튕기는 요청도 사용량에 잡힌다. development 모드는 인증 미들웨어를 아예 켜지 않으므로 익명 한도를 인증 한도와 같게 둔다 — 5초마다 폴링하는 화면 하나만 열어도 429 가 나던 문제가 사라진다.
 
 ### Fixed
@@ -851,33 +1279,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **스택 상세 STORAGE 칸의 이름이 세로로 접히던 문제** (`web/src/features/stack/components/pipeline-topology.tsx`): 버전 칸이 `shrink-0` 이라 MinIO 의 `RELEASE.2024-12-18T13-15-44Z` 가 폭을 다 가져가 이름 칸이 0 이 되고, 고정 폭 카드 안에서 "minio" 가 한 글자씩 세로로 접혔다. 이름이 읽히는 폭을 먼저 보장한다.
 
 - **설치 리소스 값이 Helm 에 한 번도 실리지 않던 문제** (`cmd/api/main.go`, `internal/stack/adapter/helm/resource-defaults.go`): 마법사에서 고른 규모(Local/Startup/…)와 OSS별 리소스 조정이 클러스터에 반영되지 않고 있었다. 원인이 둘이었다 — `WithResourceDefaultRepository` 가 `main.go` 에서 배선되지 않았고, 사용자가 조정한 `AppliedResourceOverrides` 는 저장만 되고 읽는 곳이 없었다. 배선 누락이 다시 생기지 않도록 `OrchestratorOption` 이 전부 `main.go` 에서 쓰이는지 AST 로 검사하는 테스트를 뒀다. 아울러 소수 Gi 값이 파드 스펙에 `257698037760m`(밀리바이트)로 남던 문제도 고쳤다 — 0.24Gi 같은 값이 `246Mi` 로 나간다.
+
 - **⚠️ metrics-server 가 스택 네임스페이스에 설치돼 클러스터의 모든 네임스페이스 삭제를 교착시키던 문제** (`internal/stack/adapter/helm/helm_step_metadata.go`): 이 차트가 만드는 `APIService v1beta1.metrics.k8s.io` 는 cluster-scoped 라, 스택을 지우면 Service 만 사라지고 APIService 는 죽은 대상을 계속 가리킨다. 그러면 API discovery 가 실패해 **무관한 네임스페이스까지 전부 Terminating 에 갇힌다** — 실제로 스택 셋이 이틀 넘게 갇혀 있었다. `kube-system` 으로 못박는다. cert-manager 가 같은 이유로 이미 자기 네임스페이스를 고정하고 있었다.
+
 - **GitLab 번들 Prometheus 가 OOM 으로 죽던 문제** (`internal/stack/adapter/helm/resource-defaults.go`): 자원 규모를 낮춘 구성에서 메모리 한도가 328Mi 가 되어 기동 중 OOMKilled(exit 137)로 34번 재시작하며 CrashLoopBackOff 에 갇혔다 — 스택은 "실행 중" 인데 파드 하나가 영원히 안 뜨는 상태다. Prometheus 의 메모리는 스택 크기가 아니라 긁는 대상 수와 WAL 재생에 좌우되므로 비율만으로는 맞출 수 없다. webservice·sidekiq·redis 가 이미 쓰고 있던 하한/상한 방식을 적용했다(한도 1~2Gi). 한도를 1Gi 로 올린 뒤 사용량은 311Mi 로 안정됐다 — 옛 한도 바로 아래였으니 조금만 튀어도 죽던 값이다.
+
 - **모니터링 대시보드의 CI/CD 탭이 파이프라인이 있는 클러스터에서 잠기던 문제** (`web/src/features/observability/pages/monitoring-page.tsx`): 탭을 클러스터가 선언한 타입으로 열고 있었다. 파이프라인이 사는 클러스터는 `types=['pipeline']` 이라 탭이 잠기고, 탭이 열리는 `target` 클러스터에는 파이프라인이 하나도 없어 정상 구성에서 지표가 어디서도 안 나왔다. 등록 타입은 사람이 손으로 적는 값이지만 파이프라인의 `cluster_id` 는 이 화면이 그리려는 데이터 자체다 — 그것으로 연다. 첫 화면이 `clusters[0]` 을 골라 빈 클러스터가 잡히던 것도 스택이 있는 첫 클러스터로 바꿨다.
+
 - **id 를 이름 자리에 넣어 보여주던 곳들** (`internal/stack/adapter/handler/stack_handler.go`, `web/src/features/stack/api/stack-normalizers.ts`, `web/src/features/cicd/pages/cicd-list-page.tsx`): 스택 이력의 "클러스터" 열에 `c75747e4-…`, CI/CD 목록의 "스택" 열에 `stk_c073…` 이 떴다. 이름을 못 찾으면 id 로 대신하고 있었는데, 이름이 아닌 것을 이름 자리에 두면 사용자는 그게 이름인 줄 알고 실제 상황(스택이 지워졌다)을 놓친다. 목록 응답에 `cluster_name` 을 넣고, 못 찾으면 빈 값을 줘서 화면이 `-` 나 "삭제됨" 으로 그리게 했다.
+
 - **스택 이력 화면의 잘못된 정보** (`web/src/features/stack/pages/stack-history-page.tsx`): "현재" 배지와 롤백 버튼이 정확히 거꾸로였다 — 현재 버전을 목록 첫 행으로 봤는데 API 가 오름차순이라, 지금 돌고 있는 버전을 롤백 대상으로 내놓고 되돌아갈 버전에는 버튼이 없었다. 설정 스냅샷은 중첩 객체를 `String()` 으로 찍어 전부 `[object Object]` 였다. 그리고 한 스택의 이력만 보는 화면인데 스택 이름·클러스터를 행마다 반복해 252px 를 먹어 "작업" 열이 칸 밖으로 밀렸다.
+
 - **라이트 테마에서 회색 덩어리로 뜨던 패널 6곳** (`web/src/__tests__/surface-tokens.test.ts` 외): 면을 글자색으로 만들고 있었다(`color-mix(--color-text-primary 45%)`). 다크에서는 흰색 45% 라 적당한 회색이지만 라이트에서는 검정 45% 라 진회색 면이 되고 그 위의 글자가 묻힌다 — 본문 대비 1.97:1 이었다. `--color-surface-sunken` 으로 바꿔 5.44:1 이 됐다. `bg` 에 글자색을 12% 넘게 쓰면 실패하는 소스 스캔 테스트를 뒀다.
+
 - **좁은 창에서 상세 레일이 목록을 짓누르던 문제** (`web/src/components/shared/list-detail-panel.tsx`): 상세가 `shrink-0` 고정폭이라 창이 좁아지면 상세는 폭을 지키고 목록만 줄었다 — 960px 창에서 목록 290px / 상세 380px 로 뒤집혀 7개 컬럼짜리 표가 290px 안에서 가로 스크롤됐다. `xl` 아래에서는 위아래로 쌓는다. 폭은 인라인 style 이 아니라 CSS 변수로 넘긴다 — style 로 박으면 미디어 쿼리로 되돌릴 수 없다.
 
 - **⚠️ 라이트 테마가 와이어프레임처럼 보이던 문제** (`web/src/theme/tokens.generated.css`, `web/DESIGN.md`): 배포본을 본 두 사람이 "흰색 배경에서 스켈레톤 같은 느낌이고 가독성이 떨어진다"고 지적했다. 원인은 셋이었다. 하나, 카드 배경(`--color-surface-card: #f8fafc`)과 페이지 배경(`body #f8fafc`)이 **같은 색**이었다 — 대비 1.00:1 이라 카드가 배경에 녹아 사라졌다. 둘, 면을 나누는 유일한 수단이 된 보더가 `#1f2937`(거의 검정, 카드 대비 14.03:1)이라 본문 텍스트보다 강하게 튀었다. 흰 종이에 검은 선만 남은 상태다. 셋, 그림자·elevation 토큰이 **하나도 없어서** 라이트 테마에는 깊이를 표현할 수단이 아예 없었다(다크는 표면 밝기 차로 버티고 있었다). 이제 카드 `#ffffff` / 페이지 `#f4f6f8` 로 면을 나누고(1.08:1), 보더는 `#cbd5e1`(1.48:1)로 낮추고, elevation 3단을 신설해 라이트는 그림자로 다크는 표면 밝기 차로 깊이를 만든다. 페이지 배경을 낮추면서 AA 를 놓치게 된 `--color-text-muted` 도 함께 조정했다(`#64748b` → `#5f6f85`).
+
 - **다크 테마 보조 텍스트가 WCAG AA 에 미달** (`web/src/theme/tokens.generated.css`): `--color-text-muted: #64748b` 가 카드에서 3.89:1, 페이지 배경에서 4.16:1 로 둘 다 4.5:1 을 넘지 못했다. `#8496a9` 로 올려 6.10 / 6.52 가 됐다.
+
 - **정의 없이 참조되던 CSS 토큰 3개** (`web/src/theme/tokens.generated.css`): `--color-primary`(5곳)·`--color-border`(2곳)·`--color-text-tertiary`(1곳)를 코드가 쓰는데 `index.css` 에 선언이 없었다. 값이 비면 해당 선언이 통째로 무효가 된다. 특히 `--color-primary` 는 모니터링 탭의 "흰 텍스트 + primary 배경" 버튼의 배경이라, **라이트 테마에서 사실상 보이지 않는 버튼**이었다. 생성기가 별칭으로 정의해 셋 다 살렸다.
+
 - **라이트 테마만 surface 토큰의 의미가 뒤집혀 있던 문제** (`web/src/theme/tokens.generated.css`): 다크는 `surface-base` 가 페이지 배경이고 `surface-card` 가 올라온 표면인데, 라이트만 base=`#ffffff` / card=`#f8fafc` 로 반대였다. 두 테마를 같은 의미로 통일했다(라이트 base=`#f4f6f8`, card=`#ffffff`).
+
 - **한국어 사용자에게 영문이 노출되던 번역 키 9개** (`web/src/i18n/ko.json`): `stackTemplatePage.actions.duplicateTemplate`, `stackList.table.cluster` 등이 `en.json` 에만 있어서 `t()` 의 인라인 폴백(영문)이 그대로 화면에 나왔다. 9개를 채우고 정합 테스트(양방향 키 일치·죽은 키·보간 변수 일치)로 고정했다.
+
 - **`Card` 의 `iconBg`/`iconColor` prop 이 동작하지 않던 문제** (`web/src/components/ui/card.tsx`): 삼항의 양쪽 분기가 같은 값이어서 무엇을 넘겨도 항상 indigo 였다. 디자인시스템의 "기능별 색상 매핑"(스택=indigo, 템플릿=emerald, CI/CD=amber …)이 문서에만 있고 코드에 반영되지 않고 있었다.
+
 - **만들어졌지만 접근할 수 없던 화면 4개 배선** (`web/src/app/routes.tsx`, `web/.../sidebar.tsx`): 컴포넌트는 있는데 라우트에도 사이드바에도 연결돼 있지 않아 어디에서도 열 수 없었다. 특히 토큰 관리는 백엔드에 API 가 9개(조회·회전·승인·일시중지·재인증·이벤트) 있는데 화면만 끊겨 있어 **회전 실패나 승인 대기 상태를 UI 로 확인할 방법이 없었다**. `/cicd/golden-paths`, `/admin/token-management`, `/stack/deployments/:deploymentId/retry-history` 를 새로 연결하고, 재배포 기록은 스택 목록 이력 패널에서 진입할 수 있게 버튼을 붙였다. 그리고 `/cicd/create` 는 개발자 셀프서비스 화면을 렌더링하고 있었다 — 정작 파이프라인 생성 화면이 자기 안에서 이 경로로 이동하므로 템플릿을 고르면 엉뚱한 화면으로 튕겼다. 원래 페이지로 바로잡았다.
+
 - **역할별 시작 경로가 로그인과 홈에서 달랐다** (`web/src/features/auth/role-landing.ts`): 로그인은 developer 를 `/cicd/developer-deploy` 로 보내는데 홈의 시작 버튼은 `/cicd/templates` 로 보냈다. 사이드바는 CI/CD 템플릿을 developer 에게 숨기므로 **홈에서 한 번 들어가면 메뉴로 다시 찾아갈 수 없었다**. 두 곳이 각자 목록을 들고 있던 것이 원인이라 단일 출처 모듈로 모았다.
+
 - **라우트 등록기가 정의만 되고 배선되지 않은 것 2건** (`cmd/api/main.go`): `PipelineHandler.RegisterStackRoutes`(`GET /api/v1/stacks/:stackId/pipelines`)와 `RetryHistoryHandler.RegisterRoutes`(`GET /api/v1/stacks/:id/retry-history`)가 호출되지 않아 404 였다. 앞의 것은 프론트가 `?stack_id=` 쿼리 방식을 써서, 뒤의 것은 그 API 를 쓰는 화면 자체가 라우팅돼 있지 않아 드러나지 않았다. 이런 누락은 컴파일도 테스트도 통과하고 해당 엔드포인트만 404 가 되므로, `main.go` 를 파싱해 정의된 등록기가 전부 호출되는지 확인하는 테스트(`cmd/api/wiring_test.go`)를 함께 넣었다. 의도적으로 등록하지 않는 것은 사유와 함께 목록에 적고, 그 목록이 낡는 것도 같은 테스트가 잡는다.
 
 - **이미 있는 저장소에 다시 프로비저닝하면 스캐폴딩이 기존 파일을 덮어쓰던 문제** (`internal/cicd/usecase/provision_app_project.go`, `internal/cicd/port/scm.go`): `CommitFiles` 는 upsert 라 재실행 때마다 `deploy/deployment.yaml` 의 이미지 태그가 초기값(`:bootstrap`)으로 되돌아갔다. 그 태그는 레지스트리에 없으므로 **돌던 배포가 ImagePullBackOff 로 떨어졌다가 CI 가 한 바퀴 더 돌아야 복구된다**(실측 약 3분). 사용자가 고친 Dockerfile·워크플로·매니페스트도 함께 사라지고, 자동화 토큰으로 만든 커밋이라 파이프라인까지 매번 다시 돈다. `EnsureProject` 가 새로 만들었는지(`SCMProject.Created`)를 돌려주고, 기존 저장소면 스캐폴딩과 공용 프로젝트 README 를 쓰지 않는다. 건너뛴 사실은 응답의 `scaffold_skipped` 와 경고로 알린다 — 조용히 넘기면 파일이 갱신된 줄 알고 배포가 예전 매니페스트로 도는 이유를 엉뚱한 데서 찾게 된다.
+
 - **자리표시자 Dockerfile 이 고른 포트에서 듣지 않던 문제** (`internal/cicd/adapter/scaffold/renderer.go`): `FROM nginx:alpine` + `EXPOSE <포트>` 만 넣었는데 nginx 는 80 에서 듣고 `EXPOSE` 는 바인딩을 바꾸지 않는다. Service·Deployment·HTTPRoute 는 사용자가 고른 포트를 가리키므로 **첫 배포가 "파드는 Running 인데 아무도 응답하지 않는" 상태로 끝난다** — 자리표시자에 readinessProbe 가 없어 Argo CD 도 Healthy 로 보고한다. 이제 그 포트를 듣도록 nginx 설정을 함께 쓴다(80 이면 기본값 그대로 둔다).
+
 - **외부 SaaS 도구로 만들어진 죽은 토큰 소스 정리** (`db/migrations/000061_prune_external_scm_token_sources.up.sql`): 새로 만들지 않도록 막았지만 이미 만들어진 행은 남아, 회전 컨트롤러가 주기마다 실패하고(실측 `retry_count` 19, `status=failed_manual`) 사용자 PAT 항목과 provider 가 같아 연동 조회를 모호하게 만든다. `token_type='reissue'` 인 `github`·`github-actions`·`ghcr` 행만 소프트 삭제한다 — 마법사에 넣은 PAT 는 `token_type='pat'` 이라 이 조건이 없으면 살아 있는 자격증명까지 지운다. `token_rotation_events` 외래키 때문에 하드 삭제는 이력을 끊으므로 `deleted_at` 만 채우고, `metadata.pruned_by` 표식으로 down 이 이 마이그레이션이 지운 행만 되살린다.
+
 - **배포는 성공했는데 공개 엔드포인트 검증만 실패하던 문제** (`cd.yml` 의 `deploy-zadara`): `v0.4.1` 태그 배포에서 `helm upgrade` 와 두 deployment 의 `rollout status` 가 모두 성공한 직후 `https://nullus.io/` 가 502 를 돌려줘 잡이 실패로 끝났다. 잡이 끝난 뒤에도 서비스는 멀쩡했다 — 파드가 Ready 인 것과 ingress 가 새 엔드포인트로 수렴하고 옛 파드가 빠지는 것은 다른 일이고, 그 짧은 틈에 한 번뿐인 curl 이 걸린 것이다. 배포가 아니라 검증이 불안정했다. 12초 간격으로 최대 10회까지 기다린다. 이미 열려 있으면 첫 시도에 통과하므로 정상 배포가 느려지지는 않는다.
+
 - **Harbor·Nexus 가 모니터링에서 통째로 빠지던 문제** (`internal/stack/domain/tool_workload.go`): 설치 도구 목록을 만드는 함수가 9개 카테고리만 열거하고 `container_registry`·`package_registry` 를 누락해, 파드가 정상이어도 두 도구가 어느 화면에도 보이지 않았다. 이 함수 하나가 OSS 목록·요약 KPI·Tool Health 표를 모두 먹이므로 해당 파드는 CPU·메모리·Ready Pods 합계에서도 빠져 있었다. 판단 규칙을 `domain.InstalledToolWorkloads` 로 끌어올려 스택 화면과 플랫폼 대시보드가 같은 기준을 쓰게 한다. Nexus 는 컨테이너 레지스트리와 패키지 저장소를 겸할 수 있어 그대로 두면 같은 파드가 두 번 잡히므로 백엔드·프론트 양쪽에서 이름 기준으로 한 번만 남긴다.
+
 - **배포 API 5개가 인증 없이 열려 있던 문제** (`internal/stack/adapter/handler/deploy_handler.go`): `deployHandler` 가 인자로 받은 `v1` 에서 `v1.Group("/stacks")` 를 새로 만들어, 경로만 같고 `main.go` 가 구성한 `stacks` 그룹의 인증 체인을 타지 않았다. `deploy`·`retry`·`continue`·`status`·`deploy/logs` 가 운영 모드에서 미인증으로 호출 가능했다. 웹 파드가 `/api/` 를 백엔드로 프록시하므로 ingress 를 켠 배포에서는 인터넷에서 닿는다.
+
 - **레이트리밋의 인증 한도가 적용되지 않던 문제**: `RateLimiter` 를 전역 `e.Use` 로만 붙였는데 인증 미들웨어는 그룹에만 붙어, Echo 실행 순서상 리미터가 돌 때 사용자를 알 수 없었다. `Authenticated`(300/분) 는 도달 불가능한 죽은 설정이었고 운영에서도 전원이 IP당 30/분을 나눠 썼다.
+
 - **브라우저 WebSocket 이 인증을 통과할 수 없던 문제** (`internal/shared/middleware/ws_subprotocol.go`): 브라우저는 WebSocket 에 `Authorization` 헤더를 붙일 수 없다. `Sec-WebSocket-Protocol` 로 받은 토큰을 헤더로 옮긴 뒤 기존 검증을 그대로 태운다. 쿼리 파라미터를 쓰지 않은 것은 토큰이 액세스 로그·프록시 로그에 남기 때문이다.
+
 - **스택 삭제가 Harbor·Nexus 릴리스와 Argo CD CRD 를 남기던 문제** (`internal/stack/usecase/delete_stack.go`, `internal/stack/domain/helm_releases.go`): 삭제 대상 릴리스 목록에 `harbor`·`nexus` 가 없어 파드와 PVC 가 그대로 남았다 — 아래 `external-secrets`·`metrics-server` 누락과 같은 원인이라 두 릴리스도 단일 출처 `InstalledHelmReleaseNames` 에 등록했다. 또 Argo CD 가 기동하며 스스로 만드는 `default` AppProject 는 `helm uninstall` 로 지워지지 않는데, CRD 정리 가드가 이를 "다른 스택이 사용 중" 으로 오인해 정리를 영구히 건너뛰었다 — 남은 CRD 가 이전 네임스페이스 소유권을 물고 있어 다음 스택 설치가 `invalid ownership metadata` 로 실패했다.
+
 - **`auth.mode=oidc` 인데 issuer 가 비면 조용히 전부 401 이 되던 문제** (`internal/shared/config/auth_validation.go`): JWKS 를 받을 수 없어 모든 요청이 거절되는데 원인이 로그에 드러나지 않았다. 기동 시점에 명시적으로 실패시킨다. `session` 을 운영 모드로 켜면 "인증이 강제되지 않는다" 는 경고를 남긴다. development 는 인증 미들웨어를 붙이지 않으므로 두 검사에서 제외한다.
 
 ## [0.4.1] - 2026-08-10
@@ -1027,22 +1479,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Helm 차트 OCI 게시** (#100): `v*` 태그 push 시 `cd.yml`의 `publish-chart` 잡이 차트를 `oci://ghcr.io/cloud-nullus/charts`에 게시. 이제 저장소를 clone하지 않고 `helm install nullus oci://ghcr.io/cloud-nullus/charts/nullus --version 0.3.0-alpha`로 설치할 수 있다.
+
 - **로컬 kind 개발용 값 파일 분리** (#100): `deploy/helm/nullus/values-dev.yaml` 신규 — 로컬 빌드 이미지 태그(`dev`), `pullPolicy: Never`, 단일 레플리카, 개발 로그 설정. 차트 기본값에 로컬 환경 값을 커밋하던 문제를 구조적으로 차단한다.
+
 - **에어갭(air-gap) 클린 설치 전 과정 자동화** (#75, #76): 오프라인 번들만으로 외부 접근·스택 설치·DB 마이그레이션까지 동작하도록 누락 단계를 자동화. 인-클러스터 오케스트레이터가 온라인 Helm 레포 대신 로컬 OCI 레지스트리(`kind-registry:5000/charts`)에서 차트를 pull 하도록 지원.
+
 - **카카오클라우드 air-gap 배포 자산** (#79): OpenTofu IaC 3모듈(network/security/compute)과 provision→build→transfer→install→expose 5단계 스크립트, 운영 문서를 추가. kind 기반 트랙과 kubeadm 멀티노드 트랙을 분리.
+
 - **에어갭 번들 SBOM 자동 생성** (#91): `scripts/pre/generate-sbom.sh`가 번들 이미지와 Helm 차트의 SBOM(SPDX/CycloneDX)을 `bundle/sbom/`에 생성. syft 미설치 시 경고 후 건너뛰어 번들 빌드를 막지 않음.
+
 - **에어갭 설치 검증에 노드 아키텍처 확인 추가** (#90): `99-verify.sh`가 각 노드의 `architecture`를 `EXPECTED_ARCH`(기본 `amd64`)와 대조해, arm64 번들을 x86 호스트에 반입하는 오반입을 설치 검증 시점에 검출.
+
 - **스택 설정 export/import** (#92): export API를 UI에 연결하고 파일명·포맷 선택 UX를 추가. import는 preview → apply 흐름으로 신규 스택 생성과 동일 이름 스택 업데이트를 모두 지원하며, OSS별 리소스 override와 round-trip 정합성을 함께 정리.
+
 - **공유 Prometheus용 ServiceMonitor** (#71): Argo CD / Envoy Gateway / GitLab Prometheus Server 메트릭을 공유 Prometheus가 수집하도록 `deploy/monitoring/prometheus-servicemonitors.yaml` 추가.
+
 - **Helm 차트 `imagePullSecrets` 지원** (#87): 차트에 top-level `imagePullSecrets`(기본 `[]`)를 추가하고 runbook이 생성한 `ghcr-pull-secret`을 실제로 전달하도록 배선 — private 이미지 pull에 시크릿이 적용되지 않던 문제 해소.
+
 - **GitLab object storage 버킷 사전 생성 단계** (#70): 설치 DAG에 `installing_object_storage_buckets`를 추가하고 `installing_gitlab`의 선행 단계로 연결.
+
 - **에어갭 차트 카탈로그 동기화** (#59): 스택 오케스트레이터가 사용하는 14개 Helm 차트 중 번들에 누락된 9개를 추가하고 버전이 어긋난 3개를 정렬 — 에어갭에서 일부 스택을 설치할 수 없던 문제 해소.
+
 - **스택 배포 재개 흐름 보강** (#58): 실패 지점부터의 재개 경로와 배포 로그 kubeconfig·Argo CD 시크릿 배선을 정리하고, kind 규모에 맞는 로컬 리소스 프로파일을 추가.
+
 - **로컬 개발 환경 자동화** (#55): `runbook_local.sh`가 kind 클러스터 등록과 템플릿 시드를 자동 수행.
 
 - **Stack Continue 배포** (`POST /api/v1/stacks/:id/continue`): 실패한 스택 배포를 rollback 없이 재개. 이미 설치된 Helm 릴리즈를 보존하고 실패 지점부터 재시작. `InstallStackInput`에 `Continue`/`PreserveLogs` 필드 추가, 실패 시 UI에 Continue 버튼 노출.
+
 - **Pod Watch WebSocket** (`GET /ws/deployments/:id/pods`): kubectl get pods -n <namespace> -w 출력을 WebSocket으로 실시간 스트리밍. 배포 로그 페이지에 Pod Watch 패널 추가 (네임스페이스, Ready, Status, Restarts, Age 표시).
+
 - **Org Resource Profile 저장** (`/api/v1/admin/org-resource-profiles`): 조직 단위 리소스 프로파일 CRUD. Stack Install Wizard Sizing 탭에서 프로파일 저장·불러오기 드롭다운 지원. DB 마이그레이션 `000049_org_resource_profiles`, `000050_allow_local_resource_profile`.
+
 - **`Orchestrator.IsStepEnabled` 공개 메서드**: `stepEnabledChecker` 인터페이스를 통해 usecase 레이어에서 각 설치 단계 활성화 여부를 조회 가능.
 
 - OpenBao 선택형 배포 경로 구현: `authentication.provider=openbao` 선택 시 `installing_openbao` 단계에서 OpenBao(공식 이미지) Deployment/Service를 생성하고 Gateway 기본 번들에 `openbao.<access_domain>` 라우트를 자동 추가합니다.
@@ -1135,11 +1602,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **설치 단계 실행 방식을 DAG 의존성 기반으로 전환** (#61): 고정 phase 루프 대신 단계 간 의존성을 따라 실행하도록 변경. OpenBao는 PostgreSQL/MinIO 이후·핵심 서비스 직전으로 정렬.
+
 - **예시 시드 데이터 제거** (#82): 예시용 `nullus-devsecops-stack` 기본값을 제거하고, kind 클러스터 등록이 실제 endpoint를 사용하도록 수정.
+
 - **스택 툴 아이콘·분류 표시 정리** (#73): 툴 아이콘을 로컬 SVG로 교체하고 템플릿 툴을 카테고리별 색상으로 구분.
+
 - **배포 로그 페이지 UI 개선**: 타임라인 스텝, 세그먼트 프로그레스 바, Raw Logs 콘솔, Attention 패널(warn/error 필터), Pod Watch 패널로 구성한 새 레이아웃. WS 연결 전 "Connecting..." / 연결 후 파드 없음 "No pods in namespace yet." 으로 상태 구분.
+
 - **Status API `namespace` 필드**: `omitempty` 제거 — 스택 네임스페이스가 빈 값이어도 항상 필드 포함해 반환.
+
 - **`podNamespace` 폴백 처리**: `??` → `||` 변경으로 빈 문자열까지 폴백 처리.
+
 - **Stack Install 페이지**: Quick Start 카드 및 Kubernetes Preview 섹션 제거.
 - Monitoring Dashboard Cluster 뷰를 선택 클러스터 기준으로 재구성: Stack 모니터링 합산 + Stack 매핑이 없을 때 클러스터 실집계 자동 fallback
 - Monitoring Dashboard의 CI/CD 탭 표시 정책 변경: 탭은 항상 노출하고, 클러스터 타입이 `target`이 아닐 때 비활성화
@@ -1182,17 +1655,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **차트 기본 이미지가 존재하지 않는 경로를 가리키던 문제** (#100): 저장소 리네임 이후 `values.yaml`의 기본값이 `ghcr.io/cloud-nullus/nullus-api`(세그먼트 부족) + ghcr에 없는 태그 `0.1.0-alpha`를 가리켜, 차트만으로는 설치가 불가능했다. 실재 경로 `ghcr.io/cloud-nullus/nullus/nullus-*`로 교정하고 `tag`를 비워 `Chart.appVersion` 폴백이 동작하도록 변경 — 릴리즈 시 동기화할 지점이 `Chart.yaml` 한 곳으로 줄었다.
+
 - **스택 설치 기본 클러스터 선택** (#97): 클러스터 이름 하드코딩(`kind-nullus-platform`) 폴백에 의존해, name/type 데이터가 어긋나면 의도와 다른 클러스터가 선택될 수 있었다. `type`/`types` 필드만으로 판단하는 `findPlatformCluster`로 통일.
+
 - **로그인 후 로그인 화면으로 튕기던 문제** (#78): 저장소가 `cloud-nullus/draft` → `cloud-nullus/nullus`로 리네임된 뒤에도 에어갭 설정이 옛 ghcr 경로를 참조해, 리네임 직전에 고정된 구버전 `nullus-web` 이미지가 설치되고 있었다. 해당 번들에는 세션 인증 헤더 전송 수정이 빠져 있어 API가 401을 반환하고 프론트가 로그아웃 처리했다. 이미지 경로를 새 경로로 교정.
+
 - **GitHub 선택 시 GitLab이 함께 설치되던 문제** (#56): `installing_gitlab`·`installing_runner` 실행 조건을 도구 이름 기준으로 제한.
+
 - **GitLab CE 표기 시 GitLab 설치 단계를 건너뛰던 문제** (#85): 템플릿 상세 모달의 버전 표기도 매트릭스 스냅샷 기준으로 정정.
+
 - **OpenBao 설치 순서·헬스 게이트 정합화** (#57, #61, #88): OpenBao 단계를 Phase A 초반으로 배치하고 미선택 시 자동 비활성화. 토큰 소스는 설치 시점과 별도 동기화 경로에서 공통 생성하도록 정리.
+
 - **kind 클러스터 재생성 후 설치 실패** (#62): kubeconfig 조회 시 endpoint drift를 자동 동기화해 cert-manager 단계에서 실패하던 문제를 완화.
+
 - **otel-collector 이미지 pull 실패** (#63): 실재하지 않는 image:tag 조합을 만들던 override를 제거하고 차트 기본값을 사용 (#59 회귀).
+
 - **클러스터 모니터링 Pod 목록 모달 복구** (#67): Pod Status 카드에서 파드 런타임 상태를 바로 확인하는 흐름을 원복.
+
 - **카카오클라우드 배포 정합성·이식성·스크립트 버그** (#86): #79에 대한 리뷰 지적 19건을 트리아지해 검증된 항목을 반영.
+
 - **Stack List 회귀** (#60): 머지 후 이전 버전 목록이 표시되던 문제 수정.
+
 - **Sizing Profile 드롭다운 즉시 반영**: 프로파일 저장 후 드롭다운에 즉시 반영되지 않는 버그 수정 (캐시 invalidation 누락).
+
 - **`usePodWatch` 재연결 시 에러 초기화**: WS 재연결 성공 시 이전 연결의 stale 에러 메시지가 남는 문제 수정.
 - 스택 재시도 안정화: cert-manager 네임스페이스/CRD ownership 감지, startupapicheck job optional 처리, GitLab rollout timeout 확장, rollback 잔존 리소스 정리를 반영해 rolled_back 재배포 경로를 안정화했습니다.
 - 설치 단계 정합성 수정: `installing_openbao` 단계가 Orchestrator/UseCase 순서와 일치하도록 정렬해 `integration_check out-of-order` 실패를 수정했습니다.
@@ -1227,6 +1712,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - **OSS SSO 자동로그인** (#98): Keycloak을 IdP로 포털(nullus-web)과 OSS 스택 앱(Argo CD·Grafana·Harbor·MinIO·GitLab·Prometheus·OpenSearch)을 단일 SSO로 묶었다. 포털 OIDC 로그인·로그아웃(end-session), OSS 앱 confidential client 자동 프로비저닝, OIDC 미지원 앱(Prometheus·OpenSearch)의 oauth2-proxy 우회를 포함. 브라우저 `crypto.subtle`이 secure context를 요구해 PKCE의 전제가 되므로 게이트웨이 HTTP 80 → HTTPS 443 강제 리다이렉트를 함께 배선했다. #93·#95의 provider 추상화와는 층위가 다르다 — 그쪽은 IdP 기동·주입, 이쪽은 기동된 IdP에 앱을 물리는 부분이다.
+
 - **OIDC를 설치 옵션으로 분리** (#93): IdP를 플랫폼 상시 기능이 아니라 runbook 선택 옵션(`--auth=<keycloak|authentik|none>`, 기본 `keycloak`)으로 정리하고, provider별 OIDC 환경변수를 API·웹에 주입하도록 배선. 기본값이 `keycloak`이므로 기존 동작은 보존된다. provider 선정 근거는 `docs/20_개발가이드/OIDC_Provider_선정기준.md` 참조.
 
 ### Known Issues
@@ -1234,6 +1720,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 alpha 단계이므로 아래 결함을 안고 릴리즈합니다 (릴리즈 정책 §9.0-3). `ci.yml`이 `disabled_manually` 상태라 자동 게이트가 없고, 2026-07-28 릴리즈 담당 로컬 검증에서 확인한 값입니다.
 
 - **Go e2e 테스트 2건 실패**: `TestScenario4_CICDPipelineFlow`, `TestUAT2_Jieun_Developer`. 나머지 32개 패키지와 `make build`는 통과.
+
 - **프론트엔드 단위 테스트 38건 실패** (9파일 / 490건 중). 타입체크(`tsc --noEmit`)는 통과.
 - 위 실패는 이번 릴리즈에서 새로 생긴 것이 아니라 기존 결함이며, `ci.yml` 재활성화와 함께 수정합니다 (정책 §13-2).
 - **`0.1.0-alpha`·`0.2.0-alpha`에는 태그·Release가 없습니다.** 해당 섹션은 기록상의 버전이므로 compare 링크도 걸리지 않습니다 (정책 §3).

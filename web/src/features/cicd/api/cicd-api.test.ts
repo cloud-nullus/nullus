@@ -32,11 +32,15 @@ import {
   useDeploymentStatus,
   useDeployments,
   useDeployPipeline,
+  usePipelineImageScans,
+  usePipelineScanVulnerabilities,
   usePipelines,
   useRollbackDeployment,
   useUpdateCicdTemplate,
 } from './cicd-api'
 import { api as mockApi } from '../../../lib/api'
+import { DEFAULT_VULNERABILITY_FILTER } from '../../../lib/vulnerability-list'
+import type { VulnerabilityListFilter } from '../../../types'
 
 describe('cicd-api hooks and exports', () => {
   const latestMutationConfig = () => {
@@ -178,6 +182,200 @@ describe('cicd-api hooks and exports', () => {
   })
 })
 
+describe('파이프라인 이미지 스캔', () => {
+  const rawScan = {
+    id: 'scan_dep_ci_pip_x_2',
+    pipeline_id: 'pip_x',
+    deployment_id: 'dep_ci_pip_x_2',
+    image_repository: 'harbor.example/nullus/app',
+    image_tag: '09b48b6e',
+    image_digest: 'sha256:0c92',
+    scan_source: 'central',
+    scanner: 'trivy',
+    scanner_version: '0.74.0',
+    db_updated_at: '2026-09-13T07:13:14Z',
+    counts: { critical: 0, high: 6, medium: 23, low: 19, unknown: 0 },
+    gate_result: 'warn',
+    report_uri: 'https://gitlab.example/nullus/app/-/jobs/11/artifacts/file/trivy-report.json',
+    scanned_at: '2026-09-13T13:29:51Z',
+    db_stale: false,
+  }
+
+  beforeEach(() => {
+    mockUseQuery.mockReset()
+    mockUseQuery.mockReturnValue({})
+    vi.mocked(mockApi.get).mockReset()
+  })
+
+  it('응답을 화면 모델로 옮긴다', () => {
+    expect(cicdApiCalls.mapPipelineImageScan(rawScan)).toEqual({
+      id: 'scan_dep_ci_pip_x_2',
+      pipelineId: 'pip_x',
+      deploymentId: 'dep_ci_pip_x_2',
+      imageRepository: 'harbor.example/nullus/app',
+      imageTag: '09b48b6e',
+      imageDigest: 'sha256:0c92',
+      scanSource: 'central',
+      scanner: 'trivy',
+      scannerVersion: '0.74.0',
+      dbUpdatedAt: '2026-09-13T07:13:14Z',
+      counts: { critical: 0, high: 6, medium: 23, low: 19, unknown: 0 },
+      gateResult: 'warn',
+      reportUri: 'https://gitlab.example/nullus/app/-/jobs/11/artifacts/file/trivy-report.json',
+      scannedAt: '2026-09-13T13:29:51Z',
+      dbStale: false,
+    })
+  })
+
+  it('camelCase 표기도 받는다', () => {
+    const scan = cicdApiCalls.mapPipelineImageScan({
+      id: 's1',
+      pipelineId: 'pip_x',
+      deploymentId: 'dep_1',
+      gateResult: 'block',
+      dbStale: true,
+      reportUri: 'https://x/report.json',
+    })
+
+    expect(scan.deploymentId).toBe('dep_1')
+    expect(scan.gateResult).toBe('block')
+    expect(scan.dbStale).toBe(true)
+    expect(scan.reportUri).toBe('https://x/report.json')
+  })
+
+  // counts 가 없다는 건 건수를 모른다는 뜻이다. 0 으로 채우면 스캔 오류가 "취약점 0" 으로 보인다.
+  it('counts 가 없으면 undefined 로 남긴다', () => {
+    const withoutCounts: Record<string, unknown> = { ...rawScan, gate_result: 'error' }
+    delete withoutCounts.counts
+    const scan = cicdApiCalls.mapPipelineImageScan(withoutCounts)
+
+    expect(scan.counts).toBeUndefined()
+    expect(scan.gateResult).toBe('error')
+  })
+
+  it('빈 선택 필드는 없음으로, db_stale 은 불리언으로 옮긴다', () => {
+    const scan = cicdApiCalls.mapPipelineImageScan({
+      id: 's1',
+      pipeline_id: 'pip_x',
+      report_uri: '',
+      deployment_id: '',
+      db_stale: true,
+      gate_result: 'pass',
+    })
+
+    expect(scan.reportUri).toBeUndefined()
+    expect(scan.deploymentId).toBeUndefined()
+    expect(scan.dbStale).toBe(true)
+  })
+
+  // 모르는 판정 값을 pass 로 떨어뜨리면 초록 통과로 보인다. 판정 불가(error)로 둔다.
+  it('모르는 gate_result 는 error 로 둔다', () => {
+    const scan = cicdApiCalls.mapPipelineImageScan({ id: 's1', gate_result: 'maybe' })
+
+    expect(scan.gateResult).toBe('error')
+    expect(scan.dbStale).toBe(false)
+  })
+
+  it('파이프라인의 스캔 목록 경로를 부른다', async () => {
+    vi.mocked(mockApi.get).mockResolvedValueOnce({ data: { items: [rawScan], total: 1 } } as never)
+
+    const result = await cicdApiCalls.getPipelineImageScans('pip_x')
+
+    expect(vi.mocked(mockApi.get)).toHaveBeenCalledWith('/cicd/pipelines/pip_x/image-scans')
+    expect(result.total).toBe(1)
+    expect(result.items[0].gateResult).toBe('warn')
+  })
+
+  // 실행 목록 조회가 서버에서 스캔 기록을 만든다. 실행 목록이 새로 오면 스캔도
+  // 다시 읽도록 그 갱신 시각을 키에 넣는다.
+  it('실행 목록 갱신 시각을 키에 넣고, 실행 목록을 받기 전에는 조회하지 않는다', () => {
+    usePipelineImageScans('pip_x', 1234)
+    expect(mockUseQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['cicd', 'pipelineImageScans', 'pip_x', 1234],
+        enabled: true,
+        retry: false,
+      }),
+    )
+
+    usePipelineImageScans('pip_x', 0)
+    expect(mockUseQuery).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }))
+
+    usePipelineImageScans('', 1234)
+    expect(mockUseQuery).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }))
+  })
+})
+
+describe('파이프라인 스캔 취약점 목록', () => {
+  beforeEach(() => {
+    mockUseQuery.mockReset()
+    mockUseQuery.mockReturnValue({})
+    vi.mocked(mockApi.get).mockReset()
+  })
+
+  function lastQueryOptions() {
+    const calls = mockUseQuery.mock.calls
+    return calls[calls.length - 1]?.[0]
+  }
+
+  it('스캔 id 경로에 필터를 쿼리로 붙여 부르고 응답을 정규화한다', async () => {
+    vi.mocked(mockApi.get).mockResolvedValueOnce({
+      data: { status: 'unavailable', reason: 'report_expired', targets: null, items: null, total: 0, limit: 50, offset: 0 },
+    } as never)
+    const filter: VulnerabilityListFilter = {
+      ...DEFAULT_VULNERABILITY_FILTER,
+      severities: ['critical'],
+      vulnerabilityClass: 'os',
+      query: ' openssl ',
+      offset: 50,
+    }
+
+    const result = await cicdApiCalls.getPipelineScanVulnerabilities('pip_x', 'scan_dep_ci_pip_x_2', filter)
+
+    expect(vi.mocked(mockApi.get)).toHaveBeenCalledWith(
+      '/cicd/pipelines/pip_x/image-scans/scan_dep_ci_pip_x_2/vulnerabilities',
+      { params: { severity: 'critical', class: 'os', q: 'openssl', limit: 50, offset: 50 } },
+    )
+    expect(result.status).toBe('unavailable')
+    expect(result.reason).toBe('report_expired')
+    expect(result.items).toEqual([])
+  })
+
+  it('필터를 키에 넣고 펼쳤을 때만 조회하며, 404 는 재시도하지 않는다', () => {
+    usePipelineScanVulnerabilities('pip_x', 'scan_1', DEFAULT_VULNERABILITY_FILTER, true)
+    expect(mockUseQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        queryKey: ['cicd', 'pipelineScanVulnerabilities', 'pip_x', 'scan_1', DEFAULT_VULNERABILITY_FILTER],
+        enabled: true,
+      }),
+    )
+    expect(lastQueryOptions().retry(0, { status: 404, message: 'IMAGE_SCAN_NOT_FOUND' })).toBe(false)
+
+    usePipelineScanVulnerabilities('pip_x', 'scan_1', DEFAULT_VULNERABILITY_FILTER, false)
+    expect(mockUseQuery).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }))
+
+    usePipelineScanVulnerabilities('pip_x', '', DEFAULT_VULNERABILITY_FILTER, true)
+    expect(mockUseQuery).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }))
+  })
+
+  it('페이지를 넘기는 동안 같은 스캔의 직전 결과만 잠시 둔다', () => {
+    usePipelineScanVulnerabilities('pip_x', 'scan_1', DEFAULT_VULNERABILITY_FILTER, true)
+    const { placeholderData } = lastQueryOptions()
+    const previous = { status: 'available' }
+
+    expect(
+      placeholderData(previous, {
+        queryKey: ['cicd', 'pipelineScanVulnerabilities', 'pip_x', 'scan_1', { ...DEFAULT_VULNERABILITY_FILTER, offset: 50 }],
+      }),
+    ).toBe(previous)
+    expect(
+      placeholderData(previous, {
+        queryKey: ['cicd', 'pipelineScanVulnerabilities', 'pip_x', 'scan_2', DEFAULT_VULNERABILITY_FILTER],
+      }),
+    ).toBeUndefined()
+  })
+})
+
 describe('getDeployments 응답 표기 대응', () => {
   // 회귀 배경: API 는 camelCase 로 응답하는데 매퍼가 snake_case 만 읽어서
   // CI/CD 이력 화면의 파이프라인·배포자·시작·완료 컬럼이 항상 비어 보였다.
@@ -226,5 +424,148 @@ describe('getDeployments 응답 표기 대응', () => {
     expect(item.triggeredBy).toBe('kim.dev')
     expect(item.startedAt).toBe('2026-08-11T10:07:45+09:00')
     expect(item.completedAt).toBe('2026-08-11T10:07:46+09:00')
+  })
+})
+
+// 템플릿 생성·수정은 서버 필드명(snake_case)으로 보내야 한다. camelCase `appType` 로 보내던 동안
+// 서버는 유형을 빈 값으로 받았다 — 저장소가 TODO 로 성공만 돌려줘 드러나지 않았다.
+describe('cicd-api template mutations', () => {
+  const rawTemplate = {
+    id: 'team-backend-v1',
+    name: 'Team Backend',
+    description: '팀 표준',
+    app_type: 'backend',
+    stages: ['CI', 'CD'],
+    created_by: 'alice',
+    git_repo_url: 'https://gitlab.example.com/team/backend',
+    dockerfile_path: 'Dockerfile',
+    docker_context: '.',
+    env_vars: { PORT: '8080' },
+  }
+
+  beforeEach(() => {
+    vi.mocked(mockApi.post).mockReset()
+    vi.mocked(mockApi.put).mockReset()
+    vi.mocked(mockApi.delete).mockReset()
+  })
+
+  it('생성은 서버 필드명으로 보내고 응답을 화면 모양으로 옮긴다', async () => {
+    vi.mocked(mockApi.post).mockResolvedValueOnce({ data: rawTemplate } as never)
+
+    const result = await cicdApiCalls.createTemplate({
+      id: 'team-backend-v1',
+      name: 'Team Backend',
+      description: '팀 표준',
+      appType: 'backend',
+      stages: ['CI', 'CD'],
+    })
+
+    expect(vi.mocked(mockApi.post)).toHaveBeenCalledWith('/cicd/templates', {
+      id: 'team-backend-v1',
+      name: 'Team Backend',
+      description: '팀 표준',
+      app_type: 'backend',
+      stages: ['CI', 'CD'],
+    })
+    expect(result).toEqual({
+      id: 'team-backend-v1',
+      name: 'Team Backend',
+      description: '팀 표준',
+      appType: 'backend',
+      stages: ['CI', 'CD'],
+      createdBy: 'alice',
+      gitRepoUrl: 'https://gitlab.example.com/team/backend',
+      dockerfilePath: 'Dockerfile',
+      dockerContext: '.',
+      envVars: { PORT: '8080' },
+    })
+  })
+
+  it('수정은 경로의 ID 로 PUT 하고 같은 필드명을 쓴다', async () => {
+    vi.mocked(mockApi.put).mockResolvedValueOnce({ data: { ...rawTemplate, name: 'Renamed' } } as never)
+
+    const result = await cicdApiCalls.updateTemplate({
+      id: 'team-backend-v1',
+      name: 'Renamed',
+      description: '',
+      appType: 'web',
+      stages: ['CI'],
+    })
+
+    expect(vi.mocked(mockApi.put)).toHaveBeenCalledWith('/cicd/templates/team-backend-v1', {
+      id: 'team-backend-v1',
+      name: 'Renamed',
+      description: '',
+      app_type: 'web',
+      stages: ['CI'],
+    })
+    expect(result.name).toBe('Renamed')
+    expect(result.appType).toBe('backend')
+  })
+
+  it('삭제는 경로의 ID 로 DELETE 한다', async () => {
+    vi.mocked(mockApi.delete).mockResolvedValueOnce({ data: undefined } as never)
+
+    await cicdApiCalls.deleteTemplate('team-backend-v1')
+
+    expect(vi.mocked(mockApi.delete)).toHaveBeenCalledWith('/cicd/templates/team-backend-v1')
+  })
+})
+
+// 화면이 보여 주는 클러스터는 앱이 실제로 서 있는 곳이어야 한다. 스택 클러스터 규칙이
+// 생기기 전에 만든 스택 파이프라인에는 화면에서 고른 클러스터가 저장돼 있어, 그 값을
+// 쓰면 정보 탭과 클러스터 필터가 앱이 없는 클러스터를 가리켰다.
+describe('getPipelines 배포 클러스터', () => {
+  beforeEach(() => {
+    vi.mocked(mockApi.get).mockReset()
+    vi.mocked(mockApi.get).mockImplementation((url: string) => {
+      if (url === '/cicd/pipelines')
+        return Promise.resolve({
+          data: {
+            items: [
+              { id: 'pip_legacy', name: 'orders', stack_id: 'stk_1', cluster_id: 'c-chosen', deploy_cluster_id: 'c-stack' },
+              { id: 'pip_old_api', name: 'billing', cluster_id: 'c-chosen' },
+            ],
+          },
+        })
+      if (url === '/admin/clusters')
+        return Promise.resolve({
+          data: { items: [{ id: 'c-stack', name: 'stack-k8s' }, { id: 'c-chosen', name: 'chosen-k8s' }] },
+        })
+      if (url === '/cicd/templates') return Promise.resolve({ data: [] })
+      return Promise.resolve({ data: { items: [] } })
+    })
+  })
+
+  it('서버가 계산한 배포 클러스터를 보여 준다', async () => {
+    const result = await cicdApiCalls.getPipelines()
+    const legacy = result.items.find((p) => p.id === 'pip_legacy')
+
+    expect(legacy?.clusterId).toBe('c-stack')
+    expect(legacy?.clusterName).toBe('stack-k8s')
+  })
+
+  it('배포 클러스터가 없는 응답이면 저장된 클러스터를 쓴다', async () => {
+    const result = await cicdApiCalls.getPipelines()
+    const old = result.items.find((p) => p.id === 'pip_old_api')
+
+    expect(old?.clusterId).toBe('c-chosen')
+    expect(old?.clusterName).toBe('chosen-k8s')
+  })
+})
+
+describe('createPipeline 배포 클러스터', () => {
+  it('응답 최상위의 배포 클러스터를 쓴다', async () => {
+    vi.mocked(mockApi.post).mockReset()
+    vi.mocked(mockApi.post).mockResolvedValueOnce({
+      data: {
+        pipeline: { id: 'pip_1', name: 'orders', stack_id: 'stk_1', cluster_id: 'c-stack' },
+        deploy_cluster_id: 'c-stack',
+      },
+    } as never)
+
+    const created = await cicdApiCalls.createPipeline({ name: 'orders', appType: 'web-backend', clusterId: '', stackId: 'stk_1' })
+
+    expect(created.clusterId).toBe('c-stack')
   })
 })

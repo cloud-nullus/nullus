@@ -226,7 +226,7 @@ describe('StackTemplatePage', () => {
     expect(screen.getByRole('button', { name: 'Create Template' })).toBeInTheDocument()
   })
 
-  it('shows full Artifact, CI/CD, and Observability categories in create modal tool picker', async () => {
+  it('shows full Artifact, CI/CD, Observability, and Security categories in create modal tool picker', async () => {
     useAuthStore.setState({ role: 'admin', user: null, token: null, isAuthenticated: true })
     renderWithProviders(<StackTemplatePage />)
 
@@ -239,6 +239,8 @@ describe('StackTemplatePage', () => {
       Artifacts: ['Package Registry', 'Source Repository', 'Container Registry'],
       'CI/CD': ['CI Platform', 'CD Tool'],
       Observability: ['Metrics', 'Visualization', 'Logs', 'Agent', 'Traces'],
+      // 스캐너를 고를 수 없으면 Trivy 를 넣은 템플릿을 화면에서 만들 수 없다.
+      Security: ['Image Scanner'],
     }
 
     for (const [section, categories] of Object.entries(SECTION_CATEGORIES)) {

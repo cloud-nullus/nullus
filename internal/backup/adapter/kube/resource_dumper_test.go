@@ -131,23 +131,33 @@ func TestSanitize_서버_관리_필드를_걷어낸다(t *testing.T) {
 	assert.Equal(t, float64(3), items[0]["spec"].(map[string]any)["replicas"])
 }
 
-func TestSanitize_Service_의_clusterIP_를_뺀다(t *testing.T) {
-	// 클러스터가 배정하는 값이다. 그대로 되돌리면 이미 쓰이는 주소와
-	// 충돌하거나 다른 클러스터에서는 범위 밖이다.
-	items := sanitizedItems(t, rawList(map[string]any{
-		"kind":     "Service",
-		"metadata": map[string]any{"name": "gitlab"},
-		"spec": map[string]any{
-			"clusterIP":  "10.96.0.10",
-			"clusterIPs": []any{"10.96.0.10"},
-			"ports":      []any{map[string]any{"port": float64(80)}},
+// ClusterIP 를 남긴다. 설치는 스택 게이트웨이의 ClusterIP 를 러너·Argo CD 의 hostAliases 에 박는다
+// (stack/adapter/helm/gitlab-runner-host-aliases.go). 복구가 IP 를 버리면 게이트웨이는 새 주소를
+// 받는데 hostAliases 는 옛 주소를 가리켜, 파이프라인이 "Could not resolve host" 로 멈춘다.
+// 같은 클러스터로 되돌리면 그 IP 는 대개 비어 있다 — 못 쓰면 Apply 가 새 주소로 되돌린다.
+func TestSanitize_Service_의_clusterIP_를_남긴다(t *testing.T) {
+	items := sanitizedItems(t, rawList(
+		map[string]any{
+			"kind":     "Service",
+			"metadata": map[string]any{"name": "envoy-gateway"},
+			"spec": map[string]any{
+				"clusterIP":  "10.96.45.47",
+				"clusterIPs": []any{"10.96.45.47"},
+				"ports":      []any{map[string]any{"port": float64(80)}},
+			},
 		},
-	}))
-	require.Len(t, items, 1)
-	spec := items[0]["spec"].(map[string]any)
-	assert.NotContains(t, spec, "clusterIP")
-	assert.NotContains(t, spec, "clusterIPs")
-	assert.Contains(t, spec, "ports", "포트 정의는 남아야 한다")
+		// headless 는 None 이 정체다. 지우면 일반 Service 로 돌아와 StatefulSet 의 파드별 DNS
+		// (openbao-internal, gitlab-gitaly …)가 끊긴다.
+		map[string]any{
+			"kind":     "Service",
+			"metadata": map[string]any{"name": "openbao-internal"},
+			"spec":     map[string]any{"clusterIP": "None", "clusterIPs": []any{"None"}},
+		},
+	))
+	require.Len(t, items, 2)
+	assert.Equal(t, "10.96.45.47", items[0]["spec"].(map[string]any)["clusterIP"])
+	assert.Equal(t, []any{"10.96.45.47"}, items[0]["spec"].(map[string]any)["clusterIPs"])
+	assert.Equal(t, "None", items[1]["spec"].(map[string]any)["clusterIP"])
 }
 
 func TestSanitize_컨트롤러가_소유한_것은_뺀다(t *testing.T) {
@@ -191,4 +201,223 @@ func TestSanitize_Helm_릴리스_Secret_은_남긴다(t *testing.T) {
 func TestSanitize_깨진_입력(t *testing.T) {
 	_, err := sanitize([]byte("not json"))
 	require.Error(t, err)
+}
+
+// ── 결함: ESO 배선이 빠져 복구가 "성공" 하고도 스택이 뜨지 않았다 ────────
+//
+// ESO 가 만든 Secret 은 ownerReferences 때문에 건너뛴다(소유자가 다시 만든다).
+// 그런데 그 소유자인 CR 까지 빠지면 다시 만들 주체가 없어진다. 실환경
+// 리허설에서 Gitea·Harbor·Jenkins 가 CreateContainerConfigError 로 멈췄다.
+
+func TestDumpKinds_ESO_배선을_담는다(t *testing.T) {
+	for _, k := range []string{
+		"externalsecrets.external-secrets.io",
+		"secretstores.external-secrets.io",
+	} {
+		assert.Contains(t, dumpKinds, k,
+			"%s 가 빠지면 ESO 가 만들던 Secret 을 되살릴 주체가 사라진다", k)
+	}
+}
+
+func TestSanitize_ESO_가_만든_Secret_은_건너뛴다(t *testing.T) {
+	// 값은 금고가 SoT 다. 소유자(ExternalSecret)가 복원되면 ESO 가 다시 만든다.
+	// 여기서 되살리면 금고와 어긋난 옛 값이 유효한 것처럼 남는다.
+	items := sanitizedItems(t, rawList(map[string]any{
+		"kind": "Secret",
+		"metadata": map[string]any{
+			"name": "nullus-postgresql-credentials",
+			"ownerReferences": []any{map[string]any{
+				"kind": "ExternalSecret", "name": "nullus-postgresql-credentials",
+			}},
+		},
+	}))
+	assert.Empty(t, items)
+}
+
+func TestSanitize_ExternalSecret_자체는_남긴다(t *testing.T) {
+	items := sanitizedItems(t, rawList(map[string]any{
+		"kind":     "ExternalSecret",
+		"metadata": map[string]any{"name": "nullus-postgresql-credentials"},
+		"spec":     map[string]any{"refreshInterval": "1h"},
+	}))
+	require.Len(t, items, 1, "배선은 되살려야 ESO 가 Secret 을 다시 만든다")
+}
+
+// ── 결함: CRD 가 없는 상태에서 CR 을 apply 해 복구가 죽었다 ──────────────
+//
+// CRD 는 클러스터 범위라 네임스페이스 덤프에 들어가지 않는다. 그래서 복구가
+// ESO 의 SecretStore/ExternalSecret 을 밀 때 "no matches for kind" 로 실패했다.
+
+func TestSanitizeOwnedBy_스택이_소유한_것만_남긴다(t *testing.T) {
+	// 클러스터 범위라 남의 것까지 되돌리면 클러스터 전체에 영향을 준다.
+	raw := rawList(
+		map[string]any{
+			"kind": "CustomResourceDefinition",
+			"metadata": map[string]any{
+				"name":        "externalsecrets.external-secrets.io",
+				"annotations": map[string]any{"meta.helm.sh/release-namespace": "nullus-app"},
+			},
+		},
+		map[string]any{
+			"kind": "CustomResourceDefinition",
+			"metadata": map[string]any{
+				"name":        "certificates.cert-manager.io",
+				"annotations": map[string]any{"meta.helm.sh/release-namespace": "other-ns"},
+			},
+		},
+		map[string]any{
+			"kind":     "CustomResourceDefinition",
+			"metadata": map[string]any{"name": "no-owner.example.com"},
+		},
+	)
+	out, err := sanitizeOwnedBy(raw, "nullus-app")
+	require.NoError(t, err)
+
+	var parsed struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(out, &parsed))
+	require.Len(t, parsed.Items, 1)
+	assert.Equal(t, "externalsecrets.external-secrets.io",
+		parsed.Items[0]["metadata"].(map[string]any)["name"])
+}
+
+func TestSanitizeOwnedBy_소유한_것이_없으면_비어_있다(t *testing.T) {
+	out, err := sanitizeOwnedBy(rawList(map[string]any{
+		"kind":     "CustomResourceDefinition",
+		"metadata": map[string]any{"name": "x"},
+	}), "nullus-app")
+	require.NoError(t, err)
+	assert.Nil(t, out)
+}
+
+func TestClusterScopedKinds_CRD_를_담는다(t *testing.T) {
+	assert.Contains(t, clusterScopedKinds, "customresourcedefinitions.apiextensions.k8s.io",
+		"CRD 가 빠지면 그 CR 을 복원할 수 없다")
+}
+
+func TestClusterScopedKinds_RBAC_를_담는다(t *testing.T) {
+	// 컨트롤러의 ClusterRole/ClusterRoleBinding 이 빠지면, CR 과 CRD 를 되돌려도
+	// 컨트롤러가 그것을 **볼 권한이 없어** 조정이 시작되지 않는다. 실환경
+	// 리허설에서 ESO 가 정확히 그렇게 멈췄다:
+	//
+	//   externalsecrets.external-secrets.io is forbidden: User
+	//   "system:serviceaccount:nullus-app:external-secrets" cannot list
+	//   resource "externalsecrets" ... at the cluster scope
+	//
+	// 그 결과는 결함 ③ 과 똑같다 — 복구가 succeeded 를 반환하고도 Gitea·Harbor·
+	// Jenkins 가 CreateContainerConfigError 로 멈춘 채 남는다.
+	for _, kind := range []string{
+		"clusterroles.rbac.authorization.k8s.io",
+		"clusterrolebindings.rbac.authorization.k8s.io",
+	} {
+		assert.Contains(t, clusterScopedKinds, kind,
+			"%s 가 빠지면 컨트롤러가 자기 CR 을 볼 권한을 잃는다", kind)
+	}
+}
+
+func TestSanitizeOwnedBy_남의_클러스터_RBAC_은_건드리지_않는다(t *testing.T) {
+	// ClusterRole/ClusterRoleBinding 은 클러스터 전체에 걸린다. 소유권을 안
+	// 보고 되돌리면 스택 복구가 **다른 스택이나 시스템의 권한을 덮어쓴다** —
+	// CRD 보다 훨씬 비싼 사고다.
+	raw := rawList(
+		map[string]any{
+			"kind": "ClusterRole",
+			"metadata": map[string]any{
+				"name":        "external-secrets-controller",
+				"annotations": map[string]any{"meta.helm.sh/release-namespace": "nullus-app"},
+			},
+		},
+		map[string]any{
+			"kind": "ClusterRoleBinding",
+			"metadata": map[string]any{
+				"name":        "external-secrets-controller",
+				"annotations": map[string]any{"meta.helm.sh/release-namespace": "nullus-app"},
+			},
+		},
+		// 다른 스택의 것
+		map[string]any{
+			"kind": "ClusterRole",
+			"metadata": map[string]any{
+				"name":        "other-stack-controller",
+				"annotations": map[string]any{"meta.helm.sh/release-namespace": "other-ns"},
+			},
+		},
+		// 쿠버네티스 기본 제공 (어노테이션 없음)
+		map[string]any{
+			"kind":     "ClusterRole",
+			"metadata": map[string]any{"name": "cluster-admin"},
+		},
+	)
+	out, err := sanitizeOwnedBy(raw, "nullus-app")
+	require.NoError(t, err)
+
+	var parsed struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(out, &parsed))
+
+	names := make([]string, 0, len(parsed.Items))
+	for _, it := range parsed.Items {
+		names = append(names, it["metadata"].(map[string]any)["name"].(string))
+	}
+	assert.ElementsMatch(t, []string{"external-secrets-controller", "external-secrets-controller"}, names)
+	assert.NotContains(t, names, "cluster-admin", "시스템 ClusterRole 을 백업에 담으면 복구가 클러스터를 망친다")
+	assert.NotContains(t, names, "other-stack-controller")
+}
+
+func TestDumpKinds_ArgoCD_애플리케이션을_담는다(t *testing.T) {
+	// 앱의 Deployment 는 **Git 에서 파생된다** — Argo CD 가 매니페스트를 보고
+	// 만든다. 그래서 Deployment 만 되돌리면 백업 시점의 이미지 태그가 그대로
+	// 굳는다. Argo CD 가 다시 맞춰 줘야 하는데, 그러려면 Application CR 이
+	// 있어야 한다.
+	//
+	// 실환경 리허설에서 복구 뒤 Application 이 하나도 없었고, 되살아난
+	// Deployment 는 스캐폴드 초기값 :bootstrap 을 가리킨 채 ImagePullBackOff
+	// 로 남았다 — 그 태그는 레지스트리에 존재하지 않는다. 조정할 주체가 없어
+	// 스스로 회복하지 못한다.
+	//
+	// delete_stack.go 의 argoCDCRDNames 는 이 세 가지를 이미 알고 있었다.
+	// 지우는 쪽만 알고 백업하는 쪽은 몰랐다.
+	for _, kind := range []string{
+		"applications.argoproj.io",
+		"appprojects.argoproj.io",
+	} {
+		assert.Contains(t, dumpKinds, kind,
+			"%s 가 빠지면 복구 후 앱을 배포할 주체가 사라진다", kind)
+	}
+}
+
+// kube-prometheus-stack 의 Prometheus · Alertmanager 는 **CR 이 주체다** — 오퍼레이터가 CR 을 읽어
+// StatefulSet 을 만든다. 그 StatefulSet 은 ownerReferences 때문에 덤프에서 빠지는데(소유자가 다시
+// 만든다), 소유자인 CR 까지 빠지면 다시 만들 주체가 없다. 2026-10-12 제품 삭제 뒤 복구 리허설에서
+// 복구가 succeeded 인데 prometheus·alertmanager StatefulSet 이 영영 돌아오지 않았고, 워크로드 재개
+// 단계가 "statefulsets … not found" 를 남겼다. ServiceMonitor · PrometheusRule 이 빠지면 스크랩
+// 대상과 알림 규칙이 사라져 Grafana 가 비어 보인다. Application(Argo CD) · ExternalSecret 과 같은
+// 뿌리다 — 컨트롤러가 다시 만드는 것의 **원본**은 덤프에 있어야 한다.
+func TestDumpKinds_모니터링_CR_을_담는다(t *testing.T) {
+	for _, k := range []string{
+		"prometheuses.monitoring.coreos.com",
+		"alertmanagers.monitoring.coreos.com",
+		"servicemonitors.monitoring.coreos.com",
+		"podmonitors.monitoring.coreos.com",
+		"prometheusrules.monitoring.coreos.com",
+		"probes.monitoring.coreos.com",
+		"scrapeconfigs.monitoring.coreos.com",
+		"alertmanagerconfigs.monitoring.coreos.com",
+	} {
+		assert.Contains(t, dumpKinds, k, "오퍼레이터가 다시 만드는 StatefulSet 의 원본이다")
+	}
+	// 모니터링 스택이 없는 클러스터(api-resources 에 없음)에서는 조회하지 않는다.
+	assert.NotContains(t, filterAvailable(dumpKinds, "deployments.apps\nsecrets\n"), "prometheuses.monitoring.coreos.com")
+}
+
+// 접근 도메인 인증서(nullus-access-domain-cert)는 cert-manager 의 Certificate 가 주체다. 그 Secret
+// (nullus-access-domain-tls)은 덤프에 담겨 되살아나지만 Certificate 가 빠지면 갱신할 주체가 없다 —
+// 복구 직후에는 멀쩡하다가 만기(기본 90일)에 게이트웨이 TLS 가 조용히 죽는다. 2026-10-12 리허설
+// 지문 대조에서 Certificate 가 복구 뒤 사라진 것이 드러났다. 복구가 cert-manager 를 먼저 세우므로
+// (EnsureSharedComponents) 네임스페이스 리소스 단계에서 CR 을 적용할 수 있다.
+func TestDumpKinds_cert_manager_Certificate_를_담는다(t *testing.T) {
+	assert.Contains(t, dumpKinds, "certificates.cert-manager.io")
+	assert.Contains(t, dumpKinds, "issuers.cert-manager.io")
 }

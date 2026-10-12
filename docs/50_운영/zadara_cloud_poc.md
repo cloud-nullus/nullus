@@ -1,5 +1,7 @@
 # Zadara Cloud PoC — Kubespray 기반 Kubernetes 클러스터 구축 가이드
 
+> **2026-09-09 검토:** 이 문서는 기존 클러스터 구축 절차를 보존한 자료다. 현재 배포 계획과 단계별 통과 기준은 [Zadara Cloud PoC 배포 재계획](zadara_cloud_deployment_plan.md)을 먼저 확인한다. 아래 OS·버전·접근 경로는 현재 인프라를 재확인한 값이 아니며, 초기화/재설치 명령을 실행하기 전에 기존 데이터와 배포 상태를 확인한다.
+
 Nullus Platform PoC를 위해 Zadara Cloud 위에 Kubespray로 Kubernetes 클러스터 2식(platform / develop)을 구축하는 절차를 정리한다.
 
 - **Kubespray**: v2.30.0 (Kubernetes **v1.34.3** 기본 / containerd 2.2 / Calico)

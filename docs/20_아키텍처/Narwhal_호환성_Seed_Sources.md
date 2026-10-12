@@ -59,7 +59,7 @@ Harbor 와 Nexus 만 어긋나지 않았는데, 그 둘만 `domain` 상수를 �
 2. **외부 SaaS** — GitHub / GitHub Actions / GHCR 처럼 클러스터에 설치되지 않는 것은 `helm_version=external`, `app_version=external`.
 3. **편집 값** — `MinK8sVersion`, `ArchSupport`, `Tier` 는 차트에서 끌어올 수 없다. 아래 제약을 따른다.
    - **Kubernetes min**: 플랫폼 계열(GitLab, GitHub, Harbor) `1.27`, 그 외 워크로드 계열 `1.26`. EKS / GKE 의 LTS 지원 구간과 일치한다.
-   - **아키텍처**: Harbor 및 GitLab 계열 차트는 공식 arm64 이미지를 2026-Q1 기준 미발행. 그 외는 amd64/arm64 듀얼.
+   - **아키텍처**: GitLab 계열 차트는 공식 arm64 이미지를 2026-Q1 기준 미발행. Nexus 는 설치하는 3.64.0 이 amd64 뿐이다(멀티아키는 3.80 부터). Harbor 는 공식 이미지가 amd64 뿐이지만 설치가 arm64 노드에서 멀티아키 재빌드(`ghcr.io/dasomel/goharbor`)로 바꾸므로 `amd64,arm64` 다 — 이 선언은 매트릭스가 아니라 `domain.ToolImageProfile`(`internal/stack/domain/arch_image_source.go`)이 소유하고 매트릭스는 따른다(nullus#270, `000085`). 그 외는 amd64/arm64 듀얼.
    - **Tier**: 매트릭스 `status` 가 `verified` 면 `stable`, `untested` 면 `beta`, `unsupported` 면 `deprecated` (`000041_compat_tool_fields` 규칙과 동일).
 
 ### AppVersion 예외 하나
@@ -75,7 +75,7 @@ Harbor 와 Nexus 만 어긋나지 않았는데, 그 둘만 `domain` 상수를 �
 | `source_repository` | GitLab CE | `8.7.2` | `v17.7.0` | `1.27` | `amd64` |
 | `ci_platform` | GitLab CI | `8.7.2` | `v17.7.0` | `1.27` | `amd64` |
 | `container_registry` | GitLab Registry | `8.7.2` | `v17.7.0` | `1.27` | `amd64` |
-| `container_registry` | Harbor | `1.15.0` | `2.11.0` | `1.27` | `amd64` |
+| `container_registry` | Harbor | `1.15.0` | `2.11.0` | `1.27` | `amd64,arm64` (arm64 는 대체 이미지) |
 | `package_registry` | Nexus | `64.2.0` | `3.64.0` | `1.27` | `amd64` |
 | `storage_backend` | MinIO | `5.4.0` | `RELEASE.2024-12-18T13-15-44Z` | `1.26` | `amd64,arm64` |
 | `cd_tool` | Argo CD | `7.7.16` | `v2.13.3` | `1.26` | `amd64,arm64` |

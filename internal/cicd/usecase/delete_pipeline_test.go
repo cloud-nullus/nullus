@@ -414,3 +414,48 @@ func TestDeletePipeline_DeletesRecordWhenStackIsGone(t *testing.T) {
 	require.NotEmpty(t, out.Warnings)
 	assert.Contains(t, out.Warnings[0], "직접 지워야")
 }
+
+// 스택에 묶인 파이프라인의 Application 과 워크로드는 스택 클러스터에 있다.
+// 파이프라인에 적힌 클러스터가 다르면 거기엔 아무것도 없고, 삭제기는 "이미
+// 없음" 을 성공으로 보므로 앱이 조용히 남는다 — 실제로 그렇게 남았다.
+func TestDeletePipeline_ClusterResourcesLiveOnStackCluster(t *testing.T) {
+	repo := &fakePipelineRepo{pipeline: &domain.Pipeline{
+		ID: "pip_1", Name: "myapp", ClusterID: "c-chosen",
+		StackID: "stk_1", Namespace: "apps",
+		ExecutionMode: domain.ExecutionModeStackIntegrated,
+	}}
+	argo := &fakeArgoAppDeleter{}
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), harborResolver())
+	bundle.CDApplications = argo
+	require.Equal(t, "c1", bundle.ClusterID, "번들의 클러스터는 스택의 것이다")
+	kubeconfigs := &fakeKubeconfigProvider{}
+	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle}, kubeconfigs)
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"c1"}, kubeconfigs.asked, "스택 클러스터의 kubeconfig 로 지운다")
+	assert.Equal(t, []string{"devsecops/myapp"}, argo.calls)
+}
+
+// 긴급 직접 배포는 플랫폼이 파이프라인의 클러스터에 직접 적용했다. 그쪽을 지운다.
+func TestDeletePipeline_EmergencyDirectDeletesFromPipelineCluster(t *testing.T) {
+	repo := &fakePipelineRepo{pipeline: &domain.Pipeline{
+		ID: "pip_1", Name: "myapp", ClusterID: "c-chosen",
+		StackID: "stk_1", Namespace: "apps",
+		ExecutionMode: domain.ExecutionModeEmergencyDirect,
+	}}
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), harborResolver())
+	bundle.CDApplications = &fakeArgoAppDeleter{}
+	kubeconfigs := &fakeKubeconfigProvider{}
+	uc := NewDeletePipeline(repo, &fakeBundleFactory{bundle: bundle}, kubeconfigs)
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"c-chosen"}, kubeconfigs.asked)
+}

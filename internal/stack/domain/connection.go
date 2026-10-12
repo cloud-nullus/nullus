@@ -71,6 +71,69 @@ const (
 	HarborAdminSecret  = "nullus-harbor-credentials" // #nosec G101 -- Secret 리소스 이름
 	HarborAdminPassKey = "HARBOR_ADMIN_PASSWORD"     // 차트의 existingSecretAdminPasswordKey 기본값
 
+	// HarborSecretKeyKey 는 Harbor 가 **DB 에 저장하는 자격증명을 암호화할 때**
+	// 쓰는 키다. 로봇 계정과 레플리케이션 엔드포인트 비밀번호가 이것으로 잠긴다.
+	//
+	// 차트 기본값은 `not-a-secure-key` 라는 공개 문자열이다. 그대로 두면
+	// Harbor DB 를 손에 넣은 사람이 차트에 적힌 키로 전부 풀 수 있다 —
+	// 우리 백업 산출물(volumes/harbor-database)이 곧 평문이 된다는 뜻이다.
+	//
+	// 키 이름은 차트가 정한다(existingSecretSecretKey 가 가리키는 Secret 안에서
+	// `secretKey` 를 찾는다). 임의로 바꿀 수 없다.
+	HarborSecretKeyKey = "secretKey" // #nosec G101 -- Secret 안의 키 이름
+
+	// HarborSecretKeyLength 는 Harbor 가 요구하는 길이다. AES-128 키라
+	// **정확히** 16자여야 하며, 다르면 core 가 기동 시 죽는다.
+	HarborSecretKeyLength = 16
+
+	// TrivyReleaseName 은 이미지 취약점 스캐너 릴리스명이다.
+	//
+	// server 모드로 선다 — 취약점 DB 를 이 서버에만 두고, CI 잡은 client 로
+	// 붙어 패키지 목록만 보낸다. 클라이언트는 DB 를 내려받지 않으므로
+	// 에어갭 반입 지점이 파이프라인마다가 아니라 이 서버 하나로 줄어든다.
+	//
+	// 이름과 포트는 shared 가 소유한다 — cicd 가 CI 잡이 붙을 주소를 만들 때
+	// 같은 값을 봐야 하는데, 모듈끼리 서로의 internal 을 참조할 수 없다.
+	TrivyReleaseName = shareddomain.TrivyReleaseName
+	TrivyServiceName = TrivyReleaseName
+	// TrivyServicePort 는 client 가 CVE 매칭을 요청하는 포트다.
+	// 차트 기본 service.port 와 같아야 한다.
+	TrivyServicePort = shareddomain.TrivyServicePort
+	// 호환성 매트릭스가 선언한 버전과 같아야 한다. 화면은 매트릭스 값을
+	// 보여주고 설치는 차트 스펙을 쓰므로, 갈라지면 안내와 실제가 어긋난다.
+	// (고정: TestChartVersionsMatchCompatibilityMatrix)
+	TrivyChartVersion = "0.26.0"
+	TrivyAppVersion   = "0.74.0"
+
+	// SonarQubeReleaseName 은 소스 정적 분석(SAST) 서버 릴리스명이다.
+	//
+	// 차트 기본 이름은 <릴리스>-sonarqube 라 fullnameOverride 로 릴리스명과 같게
+	// 둔다 — Service·StatefulSet·PVC 이름이 모두 이 값이 된다.
+	SonarQubeReleaseName = shareddomain.SonarQubeReleaseName
+	SonarQubeServiceName = SonarQubeReleaseName
+	// SonarQubeServicePort 는 화면과 웹 API 포트다. 차트 기본 service.externalPort 와 같다.
+	SonarQubeServicePort = shareddomain.SonarQubeServicePort
+	// SonarQubeSecret 은 DB 비밀번호·모니터링 패스코드·관리자 비밀번호를 담는다.
+	// OpenBao 에서 만든 값을 ESO 가 이 이름으로 옮긴다.
+	SonarQubeSecret = "nullus-sonarqube-credentials"
+	// 키 이름은 차트 jdbcOverwrite.jdbcSecretPasswordKey · monitoringPasscodeSecretKey
+	// 에 그대로 넘긴다.
+	SonarQubeDBPasswordKey         = "jdbc-password"
+	SonarQubeMonitoringPasscodeKey = "monitoring-passcode"
+	SonarQubeAdminPasswordKey      = "admin-password"
+	// SonarQubeAdminUser 는 차트가 처음 만드는 관리자다. 첫 비밀번호는 admin 이고
+	// 프로비저닝이 바로 바꾼다.
+	SonarQubeAdminUser = "admin"
+	// SonarQubeDatabase / SonarQubeDBUser 는 공유 PostgreSQL 안의 전용 자리다.
+	// GitLab DB 와 테이블 이름(users·projects·issues)이 겹쳐 같은 DB 를 쓸 수 없다.
+	SonarQubeDatabase = "sonarqube"
+	SonarQubeDBUser   = "sonarqube"
+	// 차트 버전과 실제로 깔리는 Community 빌드 번호다. 차트의 appVersion(2026.5.2)은
+	// 유료 Server 판의 번호라 Community 를 고르면 깔리는 것과 다르다.
+	// (고정: TestChartVersionsMatchCompatibilityMatrix)
+	SonarQubeChartVersion = "2026.5.1002"
+	SonarQubeAppVersion   = "26.9.0.129388"
+
 	// NexusServiceName 은 Nexus 진입 Service 다. 차트 기본 이름은
 	// {release}-nexus-repository-manager 라 길어지므로 fullnameOverride 로 맞춘다.
 	NexusReleaseName = "nexus"
@@ -144,6 +207,13 @@ const (
 	// 세 항목이 같은 버전을 봐야 한다.
 	GitLabChartVersion = "8.7.2"
 	GitLabAppVersion   = "v17.7.0"
+
+	// GitLab Runner 는 별도 차트다. 차트 0.72.0 이 러너 17.7.0 을 싣는다.
+	// AppVersion 은 helper 이미지 태그에 그대로 들어가므로(gitlab-runner-helper:
+	// arm64-v17.7.0) 차트를 올릴 때 함께 올려야 한다 — 어긋나면 그 태그가 없어
+	// helper 를 받지 못하고 모든 CI 잡이 멈춘다.
+	GitLabRunnerChartVersion = "0.72.0"
+	GitLabRunnerAppVersion   = "v17.7.0"
 
 	// Gitea 는 소스 저장소만 담당한다 — GitLab 과 달리 CI 도 레지스트리도 겸하지
 	// 않으므로, 이 스택은 CI(Jenkins)와 레지스트리(Harbor)를 따로 세운다.
@@ -222,7 +292,12 @@ const (
 	ArgoCDAdminSecret   = "argocd-initial-admin-secret" // #nosec G101 -- Secret 리소스 이름
 	ArgoCDAdminUser     = "admin"
 	ArgoCDAdminPassKey  = "password"
-	GitLabRootSecret    = "gitlab-gitlab-initial-root-password" // #nosec G101 -- Secret 리소스 이름
+	// GitLabRootSecret 은 설치가 금고 값(artifacts/gitlab/root-password)으로 ESO 프로비저닝하는
+	// Secret 이다. 차트의 global.initialRootPassword 가 이것을 참조하므로 실제 root 비밀번호다.
+	// 차트가 스스로 만드는 gitlab-gitlab-initial-root-password 는 참조하지 않는다 — 참조하지 않으면
+	// 차트가 임의 비밀번호를 거기 만들어, 금고·연결 정보·백업이 전부 가짜를 가리켰다(2026-10-12 실측).
+	// 이 변경 전에 설치한 스택은 차트가 만든 그 Secret 이 실제 비밀번호다.
+	GitLabRootSecret    = "gitlab-initial-root-password" // #nosec G101 -- Secret 리소스 이름
 	GitLabRootUser      = "root"
 	GitLabRootPassKey   = "password"
 	GrafanaAdminUser    = "admin"

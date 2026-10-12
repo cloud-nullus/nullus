@@ -28,7 +28,7 @@ func TestMemoryCICDTemplateRepository_GetByID_WebBackend(t *testing.T) {
 	assert.Equal(t, "web-backend-v1", tmpl.ID)
 	assert.Equal(t, "User Custom Pipeline", tmpl.Name)
 	// 단계 목록의 출처는 스캐폴딩이다 — 손으로 적으면 실제 파이프라인과 어긋난다.
-	assert.Equal(t, scaffold.PipelineStageNames(), tmpl.Stages)
+	assert.Equal(t, scaffold.PipelineStageNames(scaffold.StageOptions{}), tmpl.Stages)
 }
 
 func TestMemoryCICDTemplateRepository_DoesNotReturnRemovedWebFrontend(t *testing.T) {
@@ -48,7 +48,7 @@ func TestMemoryCICDTemplateRepository_GetByID_BatchJob(t *testing.T) {
 	assert.Equal(t, "Batch Job Pipeline", tmpl.Name)
 	// 스캐폴딩은 app_type 과 무관하게 같은 파이프라인을 만든다.
 	// CronJob 배포는 아직 구현돼 있지 않아 선언만 남기면 없는 기능을 약속한다.
-	assert.Equal(t, scaffold.PipelineStageNames(), tmpl.Stages)
+	assert.Equal(t, scaffold.PipelineStageNames(scaffold.StageOptions{}), tmpl.Stages)
 }
 
 func TestMemoryCICDTemplateRepository_GetByID_NotFound(t *testing.T) {
@@ -83,4 +83,48 @@ func TestMemoryCICDTemplateRepository_GetByID_ReturnsExpectedAppType(t *testing.
 	require.NoError(t, err)
 
 	assert.Equal(t, domain.AppTypeBackend, tmpl.AppType)
+}
+
+// Postgres 저장소와 같은 규칙 — 핸들러가 errors.Is 로 404/409 를 가르므로 두 구현이 같은 에러를 내야 한다.
+func TestMemoryCICDTemplateRepository_CreateRejectsDuplicateID(t *testing.T) {
+	repo := NewMemoryCICDTemplateRepository()
+
+	err := repo.Create(context.Background(), &domain.PipelineTemplate{ID: "web-backend-v1", Name: "dup"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrTemplateAlreadyExists)
+
+	tmpl, err := repo.GetByID(context.Background(), "web-backend-v1")
+	require.NoError(t, err)
+	assert.Equal(t, "User Custom Pipeline", tmpl.Name, "duplicate create must not overwrite")
+}
+
+func TestMemoryCICDTemplateRepository_UpdateAndDeleteMissingReturnNotFound(t *testing.T) {
+	repo := NewMemoryCICDTemplateRepository()
+
+	err := repo.Update(context.Background(), &domain.PipelineTemplate{ID: "missing"})
+	assert.ErrorIs(t, err, domain.ErrTemplateNotFound)
+
+	err = repo.Delete(context.Background(), "missing")
+	assert.ErrorIs(t, err, domain.ErrTemplateNotFound)
+
+	_, err = repo.GetByID(context.Background(), "missing")
+	assert.ErrorIs(t, err, domain.ErrTemplateNotFound)
+}
+
+func TestMemoryCICDTemplateRepository_CreateUpdateDeleteRoundTrip(t *testing.T) {
+	repo := NewMemoryCICDTemplateRepository()
+	ctx := context.Background()
+
+	tmpl := &domain.PipelineTemplate{ID: "team-v1", Name: "Team", AppType: domain.AppTypeWeb, Stages: []string{"Build"}}
+	require.NoError(t, repo.Create(ctx, tmpl))
+
+	tmpl.Name = "Team v2"
+	require.NoError(t, repo.Update(ctx, tmpl))
+	got, err := repo.GetByID(ctx, "team-v1")
+	require.NoError(t, err)
+	assert.Equal(t, "Team v2", got.Name)
+
+	require.NoError(t, repo.Delete(ctx, "team-v1"))
+	_, err = repo.GetByID(ctx, "team-v1")
+	assert.ErrorIs(t, err, domain.ErrTemplateNotFound)
 }

@@ -17,6 +17,11 @@ type Workload struct {
 	Namespace string
 	Name      string
 	Replicas  int32
+	// OwnerManaged 는 다른 리소스가 소유한 워크로드다(ownerReferences) — 오퍼레이터가 CR 을 읽어
+	// 만드는 Prometheus·Alertmanager StatefulSet 이 그렇다. 정지는 똑같이 멈추되(쓰기를 끊어야
+	// 한다) 복구의 재개는 건너뛴다: 덤프가 소유된 것을 담지 않으므로 복구 뒤에는 오퍼레이터가
+	// CR 에서 다시 만들고, 그때 재개가 그것을 찾지 못해 내는 "수동 조치" 경보는 거짓이다.
+	OwnerManaged bool
 }
 
 // QuiesceTarget 은 실제로 멈출 워크로드와 되돌릴 값이다.
@@ -28,6 +33,8 @@ type QuiesceTarget struct {
 	// 않으면 복구 시점에 몇으로 되돌려야 하는지 알 수 없다.
 	OriginalReplicas int32
 	ScaleDownTo      int32
+	// OwnerManaged 는 Workload 의 것을 그대로 잇는다 — 매니페스트까지 가야 복구가 본다.
+	OwnerManaged bool
 }
 
 // QuiescePlan 은 한 번의 정지 창에서 멈출 대상 전체다.
@@ -51,6 +58,7 @@ func NewQuiescePlan(workloads []Workload) QuiescePlan {
 			Name:             w.Name,
 			OriginalReplicas: w.Replicas,
 			ScaleDownTo:      0,
+			OwnerManaged:     w.OwnerManaged,
 		})
 	}
 	return QuiescePlan{Targets: targets}

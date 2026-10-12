@@ -117,6 +117,10 @@ const StackVersionsAdminPage = lazy(() =>
   import('../features/admin/pages/stack-versions-page').then((m) => ({ default: m.StackVersionsAdminPage }))
 )
 
+const BackupPage = lazy(() =>
+  import('../features/admin/pages/backup-page').then((m) => ({ default: m.BackupPage }))
+)
+
 
 function Loading() {
   return (
@@ -184,6 +188,7 @@ export const router = createBrowserRouter([
           { path: 'admin/known-issues', element: withSuspense(<KnownIssuesPage />) },
           { path: 'admin/token-management', element: withSuspense(<TokenManagementPage />) },
           { path: 'admin/stack-versions', element: withSuspense(<StackVersionsAdminPage />) },
+          { path: 'admin/backup', element: withSuspense(<BackupPage />) },
         ],
       },
       { path: '*', element: withSuspense(<NotFoundPage />) },

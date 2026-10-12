@@ -23,7 +23,7 @@ func TestValuesForStep_HarborExternalURLUsesAccessDomain_WithoutYAMLOverrides(t 
 
 	values := o.valuesForStep("installing_harbor", spec)
 
-	assert.Equal(t, "http://harbor.nullus-devsecops-stack.internal", values["externalURL"])
+	assert.Equal(t, "https://harbor.nullus-devsecops-stack.internal", values["externalURL"])
 }
 
 // YAML override 가 있는 경로는 이미 cfg 를 넘기고 있었다 — 회귀 방지로 함께 고정한다.
@@ -39,7 +39,7 @@ func TestValuesForStep_HarborExternalURLUsesAccessDomain_WithYAMLOverrides(t *te
 
 	values := o.valuesForStep("installing_harbor", spec)
 
-	assert.Equal(t, "http://harbor.nullus-devsecops-stack.internal", values["externalURL"])
+	assert.Equal(t, "https://harbor.nullus-devsecops-stack.internal", values["externalURL"])
 }
 
 // 접근 도메인이 없으면 클러스터 내부 주소로 되돌아간다 — 기존 동작 유지.

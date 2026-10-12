@@ -47,13 +47,53 @@ const (
 	ComponentKeycloakDB         Component = "keycloak_db"
 	ComponentOpenBaoKV          Component = "openbao_kv"
 	ComponentNamespaceResources Component = "ns_resources"
-	ComponentVolume             Component = "volume"
+	// ComponentSharedResources 는 클러스터의 마지막 스택을 지우면 회수되는, Nullus 가 설치한
+	// 공용 자원이다 — 설치 표시가 붙은 Gateway CRD·GatewayClass·내부 CA(ClusterIssuer·
+	// Certificate·Secret). 네임스페이스 리소스가 기대는 것이라 복구는 이것을 먼저, 없을
+	// 때만 되살린다. 빠지면 복구가 Gateway CR 에서 "no matches for kind" 로 죽는다.
+	ComponentSharedResources Component = "shared_resources"
+	ComponentVolume          Component = "volume"
 )
+
+// ParseComponents 는 사용자가 고른 백업 대상을 검증해 도메인 값으로 바꾼다.
+//
+// 모르는 이름은 **거부한다.** 조용히 버리면 사용자가 고른 것과 실제로 백업된
+// 것이 달라지고, 그 사실은 복구할 때에야 드러난다 — 그때는 늦다.
+//
+// 빈 입력은 nil 을 돌려준다. 호출부가 "고르지 않았다"(모드에서 파생) 와
+// "아무것도 고르지 않았다" 를 구분할 수 있어야 하기 때문이다.
+func ParseComponents(raw []string) ([]Component, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	known := map[Component]bool{
+		ComponentPlatformDB:         true,
+		ComponentKeycloakDB:         true,
+		ComponentOpenBaoKV:          true,
+		ComponentNamespaceResources: true,
+		ComponentSharedResources:    true,
+		ComponentVolume:             true,
+	}
+	out := make([]Component, 0, len(raw))
+	seen := make(map[Component]bool, len(raw))
+	for _, r := range raw {
+		c := Component(strings.TrimSpace(r))
+		if !known[c] {
+			return nil, ErrInvalidComponent(r)
+		}
+		if seen[c] {
+			continue
+		}
+		seen[c] = true
+		out = append(out, c)
+	}
+	return out, nil
+}
 
 // ModeComponents 는 모드별 대상 컴포넌트를 돌려준다 (설계 §6.5).
 func ModeComponents(mode Mode) []Component {
 	platform := []Component{ComponentPlatformDB, ComponentKeycloakDB, ComponentOpenBaoKV}
-	stack := []Component{ComponentNamespaceResources, ComponentVolume}
+	stack := []Component{ComponentSharedResources, ComponentNamespaceResources, ComponentVolume}
 	switch mode {
 	case ModePlatformOnly:
 		return platform
@@ -68,6 +108,8 @@ type BackupRun struct {
 	ID      string
 	OrgID   string
 	StackID string
+	// SetID 는 이 실행이 속한 백업 세트다(backup_set.go). 비어 있으면 단독 실행이다.
+	SetID   string
 	Trigger Trigger
 	Mode    Mode
 	Scope   []Component

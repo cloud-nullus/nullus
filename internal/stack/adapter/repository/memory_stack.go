@@ -80,6 +80,34 @@ func (r *MemoryStackRepository) ListInFlight(_ context.Context) ([]*domain.Stack
 	return result, nil
 }
 
+// ListByCluster 는 한 클러스터의 지우지 않은 스택을 조직과 무관하게 돌려준다.
+func (r *MemoryStackRepository) ListByCluster(_ context.Context, clusterID string) ([]*domain.Stack, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]*domain.Stack, 0, len(r.stacks))
+	for _, s := range r.stacks {
+		if s.DeletedAt == nil && s.ClusterID == clusterID {
+			cp := *s
+			result = append(result, &cp)
+		}
+	}
+	return result, nil
+}
+
+// ListCompleted 는 설치가 끝난 스택을 조직과 무관하게 돌려준다.
+func (r *MemoryStackRepository) ListCompleted(_ context.Context) ([]*domain.Stack, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]*domain.Stack, 0, len(r.stacks))
+	for _, s := range r.stacks {
+		if s.DeletedAt == nil && s.State == domain.StateCompleted {
+			cp := *s
+			result = append(result, &cp)
+		}
+	}
+	return result, nil
+}
+
 // Update replaces a stored stack with the given value.
 // TouchUpdatedAt 은 갱신 시각만 찍는다. 설치가 살아 있음을 알리는 데 쓴다.
 func (r *MemoryStackRepository) TouchUpdatedAt(_ context.Context, stackID string) error {
@@ -105,6 +133,35 @@ func (r *MemoryStackRepository) Update(_ context.Context, stack *domain.Stack) e
 
 func (r *MemoryStackRepository) UpdateTools(ctx context.Context, stack *domain.Stack) error {
 	return r.Update(ctx, stack)
+}
+
+// SetYAMLOverride 는 스택 설정의 yaml_overrides 에서 키 하나만 바꾼다. 행의 다른 값은 그대로다.
+func (r *MemoryStackRepository) SetYAMLOverride(_ context.Context, stackID, key, yamlText string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	existing, ok := r.stacks[stackID]
+	if !ok || existing.DeletedAt != nil {
+		return fmt.Errorf("stack %q not found", stackID)
+	}
+	var cfg domain.StackConfig
+	switch c := existing.Config.(type) {
+	case domain.StackConfig:
+		cfg = c
+	case *domain.StackConfig:
+		if c != nil {
+			cfg = *c
+		}
+	}
+	overrides := make(map[string]string, len(cfg.YAMLOverrides)+1)
+	for k, v := range cfg.YAMLOverrides {
+		overrides[k] = v
+	}
+	overrides[key] = yamlText
+	cfg.YAMLOverrides = overrides
+	cp := *existing
+	cp.Config = cfg
+	r.stacks[stackID] = &cp
+	return nil
 }
 
 // Delete removes a stack by ID.

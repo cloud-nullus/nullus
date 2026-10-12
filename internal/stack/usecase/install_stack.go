@@ -78,6 +78,18 @@ var installDAG = []installStep{
 	{name: "installing_nexus", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
 	{name: "provisioning_nexus", phase: "B", duration: time.Second, deps: []string{"installing_nexus"}},
 
+	// 이미지 스캐너는 server 모드로 홀로 선다 — 레지스트리에 의존하지 않는다.
+	// 스캔은 CI 잡이 client 로 붙어 요청하는 것이라, 설치 시점에는 서로 알 필요가
+	// 없다. 스캐너를 고르지 않은 스택에서는 술어가 이 단계를 끈다.
+	{name: "installing_trivy", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
+
+	// SonarQube 는 공유 PostgreSQL 안의 전용 DB 에 붙는다(그 DB 는 설치 단계가 만든다).
+	// provisioning_sso 가 PostgreSQL 뒤에 오므로 그것에 기대면 순서가 선다. SSO 를 붙일 때
+	// SAML 클라이언트도 그 단계에서 만들어진다.
+	{name: "installing_sonarqube", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
+	// 설치만 한 SonarQube 의 관리자는 admin/admin 이다.
+	{name: "provisioning_sonarqube", phase: "B", duration: time.Second, deps: []string{"installing_sonarqube"}},
+
 	{name: "installing_argocd", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
 	{name: "installing_runner", phase: "B", duration: time.Second, deps: []string{"provisioning_sso", "installing_gitlab"}},
 
@@ -108,6 +120,12 @@ type InstallStack struct {
 	tokenRegistry       port.TokenSourceRegistry
 	tokenRegistryEnv    string
 	secretRouter        *secrets.Router
+	imageScan           installedImageScanRunner
+}
+
+// installedImageScanRunner 는 설치가 끝난 스택의 OSS 이미지를 스캔한다(보고용).
+type installedImageScanRunner interface {
+	Execute(ctx context.Context, stackID string) (*domain.StackImageScanReport, error)
 }
 
 type stackConfigAwareExecutor interface {
@@ -131,6 +149,27 @@ type resumeAwareExecutor interface {
 // 실행기다. 구현하지 않은 실행기(단위 테스트의 가짜 등)는 검사를 건너뛴다.
 type preflightExecutor interface {
 	PreflightNamespace(ctx context.Context, namespace string) error
+}
+
+// architecturePreflightExecutor 는 설치를 시작하기 전에 노드 아키텍처와 도구 이미지가
+// 맞는지 볼 수 있는 실행기다. notices 는 설치 로그에 남길 안내(대체 이미지 사용 등)다.
+type architecturePreflightExecutor interface {
+	PreflightArchitecture(ctx context.Context, stackID string) (notices []string, err error)
+}
+
+// recordPreflightFailure 는 설치 전 검사에서 멈춘 이유를 스택에 남긴다.
+//
+// 이어서 진행하던 스택은 이전 실패 단계를 들고 있어 handleFailure 가 실패 기록을
+// 건너뛴다. 그러면 화면에는 이전 실패 사유가 계속 보인다. 실패 단계(재개 지점)는
+// 바꾸지 않는다 — validate 로 바꾸면 다음 Continue 가 처음부터 다시 돈다.
+func (uc *InstallStack) recordPreflightFailure(ctx context.Context, stack *domain.Stack, cause error) {
+	if stack == nil || cause == nil || stack.LastFailedStep == "" || uc.stackRepo == nil {
+		return
+	}
+	stack.LastFailureReason = cause.Error()
+	if err := uc.stackRepo.Update(ctx, stack); err != nil {
+		slog.Warn("failed to persist preflight failure reason", "stack_id", stack.ID, "error", err)
+	}
 }
 
 type deploymentVerifiableExecutor interface {
@@ -187,6 +226,13 @@ func WithTokenSourceRegistry(registry port.TokenSourceRegistry, env string) Inst
 func WithSecretRouter(router *secrets.Router) InstallStackOption {
 	return func(uc *InstallStack) {
 		uc.secretRouter = router
+	}
+}
+
+// WithInstalledImageScan 은 설치가 끝난 뒤 설치 이미지를 스캔하도록 배선한다.
+func WithInstalledImageScan(runner installedImageScanRunner) InstallStackOption {
+	return func(uc *InstallStack) {
+		uc.imageScan = runner
 	}
 }
 
@@ -367,6 +413,27 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 		}
 	}
 
+	// 노드 아키텍처에서 뜰 이미지가 없는 도구가 있으면 여기서 멈춘다.
+	//
+	// 헬름은 이미지 아키텍처를 보지 않으므로 설치는 성공하고 파드만 크래시한다 —
+	// DGX Spark(arm64)에서 공식 이미지가 amd64 뿐인 Harbor 가 그렇게 멈췄다(#270).
+	// Pre-Deploy Gate 는 저장된(낡거나 비어 있을 수 있는) 클러스터 정보를 보므로,
+	// 설치 직전에 노드를 직접 읽어 한 번 더 본다.
+	//
+	// 잔여 볼륨 검사와 달리 이어서 진행할 때도 돈다. 노드를 읽어야 남은 단계가
+	// 노드에 맞는 이미지를 받는다. 재개 지점 앞의 단계는 실행기가 건너뛴다.
+	if archPreflight, ok := executor.(architecturePreflightExecutor); ok {
+		notices, err := archPreflight.PreflightArchitecture(ctx, stack.ID)
+		if err != nil {
+			uc.recordPreflightFailure(ctx, stack, err)
+			uc.handleFailure(ctx, stack, executor, err)
+			return
+		}
+		for _, notice := range notices {
+			uc.emit(ctx, deploymentID, "info", "validate", "A", notice)
+		}
+	}
+
 	uc.emit(ctx, deploymentID, "info", "validate", "A", "validation complete")
 	uc.markStepCompleted(ctx, stack, "validate")
 
@@ -428,6 +495,55 @@ func (uc *InstallStack) run(ctx context.Context, stack *domain.Stack, executor p
 				fmt.Sprintf("GitHub 자격증명 등록에 실패했습니다 — 파이프라인 생성 전에 다시 등록해야 합니다: %v", err))
 		}
 	}
+	uc.scanInstalledImages(ctx, stack, deploymentID)
+}
+
+// scanInstalledImages 는 설치가 끝난 스택의 OSS 이미지를 스캔해 보고서로 남긴다.
+//
+// 보고용이다 — 결과가 어떻든 설치는 이미 완료다. 실패해도 설치를 되돌리지 않고
+// 경고만 남긴다. 주기 재스캔이 다음에 다시 시도한다.
+func (uc *InstallStack) scanInstalledImages(ctx context.Context, stack *domain.Stack, deploymentID string) {
+	if uc.imageScan == nil || stack == nil {
+		return
+	}
+	report, err := uc.imageScan.Execute(ctx, stack.ID)
+	if err != nil {
+		slog.Warn("installed image scan failed", "stack_id", stack.ID, "error", err)
+		uc.emit(ctx, deploymentID, "warn", "completed", "C",
+			fmt.Sprintf("설치 이미지 취약점 스캔을 하지 못했습니다 — 보고용이라 설치에는 영향이 없고, 주기 재스캔이 다시 시도합니다: %v", err))
+		return
+	}
+	if report == nil {
+		return
+	}
+	uc.emit(ctx, deploymentID, "info", "completed", "C", installedImageScanMessage(report))
+}
+
+func installedImageScanMessage(report *domain.StackImageScanReport) string {
+	switch report.Status {
+	case domain.ImageScanStateNotScanned:
+		if report.Reason == domain.ImageScanReasonAirgap {
+			return "설치 이미지 취약점 스캔: 에어갭 설치라 스캔하지 않습니다"
+		}
+		return "설치 이미지 취약점 스캔: 이미지 스캐너(Trivy)를 설치하지 않은 스택이라 스캔하지 않습니다"
+	case domain.ImageScanStatePending:
+		return "설치 이미지 취약점 스캔: 결과가 아직 없습니다"
+	}
+	failed := 0
+	for _, item := range report.Items {
+		if item.Status == domain.ImageScanStatusFailed {
+			failed++
+		}
+	}
+	msg := fmt.Sprintf("설치 이미지 취약점 스캔(보고용): 이미지 %d개", len(report.Items))
+	if report.Summary != nil {
+		msg += fmt.Sprintf(" — CRITICAL %d · HIGH %d · MEDIUM %d · LOW %d",
+			report.Summary.Critical, report.Summary.High, report.Summary.Medium, report.Summary.Low)
+	}
+	if failed > 0 {
+		msg += fmt.Sprintf(" (스캔하지 못한 이미지 %d개)", failed)
+	}
+	return msg
 }
 
 func (uc *InstallStack) runOpenBaoHealthGate(ctx context.Context, stack *domain.Stack, phase string) error {

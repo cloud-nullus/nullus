@@ -28,6 +28,8 @@ interface BadgeProps {
   /** 팔레트가 클래스가 아니라 값으로 오는 곳(status-style.ts)을 위해 남긴다. */
   style?: CSSProperties
   'aria-label'?: string
+  /** 줄여 적은 배지의 풀이(예: 취약점 DB 가 오래됐다는 설명). */
+  title?: string
 }
 
 export function Badge({ children, className, pill = false, style, ...rest }: BadgeProps) {

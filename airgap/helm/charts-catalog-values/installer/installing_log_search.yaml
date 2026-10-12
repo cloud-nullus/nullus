@@ -1,0 +1,15 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_log_search
+# chart: opensearch 2.22.0
+config:
+    opensearch.yml: |
+        cluster.name: opensearch-cluster
+        network.host: 0.0.0.0
+        plugins.security.disabled: true
+extraEnvs:
+    - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+      value: NullusAdmin123!
+protocol: http
+securityConfig:
+    enabled: false
+singleNode: true

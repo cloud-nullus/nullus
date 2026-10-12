@@ -95,3 +95,7 @@ func TestOIDCValues_NoIssuerYieldsNoValues(t *testing.T) {
 		t.Fatalf("expected no OIDC values without an issuer, got %v", got)
 	}
 }
+
+func (s stubSSOProvisioner) UsesClientSecret(string) bool { return true }
+
+func (s stubSSOProvisioner) SAMLSigningCertificate(context.Context) (string, error) { return "", nil }

@@ -8,6 +8,7 @@ import { useTourStore } from '../../stores/tour-store'
 import type { Role } from '../../types'
 import { LanguageSwitcher } from '../shared/language-switcher'
 import { IconButton } from '../ui/icon-button'
+import { JobNotificationBell } from '../../features/common/components/job-notification-bell'
 
 const roleIcons: Record<Role, ReactNode> = {
   admin: <ShieldCheck {...iconProps('sm')} />,
@@ -24,7 +25,7 @@ const roleLabels: Record<Role, string> = {
 export function Header() {
   const { i18n, t } = useTranslation()
   const { theme, toggleTheme } = useThemeStore()
-  const { role } = useAuthStore()
+  const { role, isAuthenticated } = useAuthStore()
   const startTour = useTourStore((state) => state.start)
 
   const handleLanguageChange = (language: string) => {
@@ -38,6 +39,10 @@ export function Header() {
         {roleIcons[role]}
         {t(roleLabels[role])}
       </div>
+
+      {/* 로그인 전에는 걸지 않는다. 종은 목록 API 두 개를 폴링하므로, 인증이
+          없는 동안 붙어 있으면 401 만 반복해서 쌓인다. */}
+      {isAuthenticated && <JobNotificationBell />}
 
       <LanguageSwitcher currentLanguage={i18n.language} onLanguageChange={handleLanguageChange} />
 

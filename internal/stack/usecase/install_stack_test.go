@@ -901,6 +901,19 @@ func (r *fakeStackRepo) ListInFlight(context.Context) ([]*domain.Stack, error) {
 	return nil, nil
 }
 
+func (r *fakeStackRepo) ListByCluster(_ context.Context, clusterID string) ([]*domain.Stack, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*domain.Stack, 0, len(r.stacks))
+	for _, stack := range r.stacks {
+		if stack.DeletedAt == nil && stack.ClusterID == clusterID {
+			cp := *stack
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+
 // 리퍼는 갱신 시각만 보고 끊긴 설치를 판정한다. 그런데 갱신 시각은 단계가
 // 시작·완료될 때만 움직인다 — 한 단계가 임계값보다 오래 걸리면(Harbor·GitLab
 // 이미지 풀은 흔히 그렇다) 멀쩡히 도는 설치가 끊긴 것으로 표시된다.

@@ -21,6 +21,17 @@ func NewPostgresTemplateRepository(pool *pgxpool.Pool) *PostgresTemplateReposito
 	return &PostgresTemplateRepository{pool: pool}
 }
 
+// estimated_install_time 컬럼은 분 단위다 — 시드 마이그레이션이 110 같은 분 값을
+// 넣는다. 도메인은 time.Duration 이라 경계에서 바꾼다. 나노초를 그대로 쓰면 int4 를
+// 넘쳐 템플릿 생성이 거절되고, 시드 템플릿은 110ns 로 읽힌다.
+func installMinutes(d time.Duration) int {
+	return int(d / time.Minute)
+}
+
+func installDuration(minutes int) time.Duration {
+	return time.Duration(minutes) * time.Minute
+}
+
 func (r *PostgresTemplateRepository) Create(ctx context.Context, template *domain.Template) error {
 	toolsJSON, err := json.Marshal(template.Tools)
 	if err != nil {
@@ -46,7 +57,7 @@ func (r *PostgresTemplateRepository) Create(ctx context.Context, template *domai
 		template.Name,
 		template.Description,
 		toolsJSON,
-		int64(template.EstimatedInstallTime),
+		installMinutes(template.EstimatedInstallTime),
 		template.RecommendedUseCase,
 		template.MinResources,
 		domain.NormalizePlanningProfile(template.PlanningProfile),
@@ -84,7 +95,7 @@ func (r *PostgresTemplateRepository) Update(ctx context.Context, template *domai
 		template.Name,
 		template.Description,
 		toolsJSON,
-		int64(template.EstimatedInstallTime),
+		installMinutes(template.EstimatedInstallTime),
 		template.RecommendedUseCase,
 		template.MinResources,
 		domain.NormalizePlanningProfile(template.PlanningProfile),
@@ -120,9 +131,9 @@ func (r *PostgresTemplateRepository) GetByID(ctx context.Context, id string) (*d
 		WHERE id = $1`
 
 	var (
-		t                 domain.Template
-		toolsJSON         []byte
-		estimatedDuration int64
+		t                domain.Template
+		toolsJSON        []byte
+		estimatedMinutes int
 	)
 
 	err := r.pool.QueryRow(ctx, q, id).Scan(
@@ -130,7 +141,7 @@ func (r *PostgresTemplateRepository) GetByID(ctx context.Context, id string) (*d
 		&t.Name,
 		&t.Description,
 		&toolsJSON,
-		&estimatedDuration,
+		&estimatedMinutes,
 		&t.RecommendedUseCase,
 		&t.MinResources,
 		&t.PlanningProfile,
@@ -145,7 +156,7 @@ func (r *PostgresTemplateRepository) GetByID(ctx context.Context, id string) (*d
 	if err := json.Unmarshal(toolsJSON, &t.Tools); err != nil {
 		return nil, fmt.Errorf("unmarshal tools: %w", err)
 	}
-	t.EstimatedInstallTime = time.Duration(estimatedDuration)
+	t.EstimatedInstallTime = installDuration(estimatedMinutes)
 
 	return &t, nil
 }
@@ -165,9 +176,9 @@ func (r *PostgresTemplateRepository) List(ctx context.Context) ([]*domain.Templa
 	var templates []*domain.Template
 	for rows.Next() {
 		var (
-			t                 domain.Template
-			toolsJSON         []byte
-			estimatedDuration int64
+			t                domain.Template
+			toolsJSON        []byte
+			estimatedMinutes int
 		)
 
 		if err := rows.Scan(
@@ -175,7 +186,7 @@ func (r *PostgresTemplateRepository) List(ctx context.Context) ([]*domain.Templa
 			&t.Name,
 			&t.Description,
 			&toolsJSON,
-			&estimatedDuration,
+			&estimatedMinutes,
 			&t.RecommendedUseCase,
 			&t.MinResources,
 			&t.PlanningProfile,
@@ -186,7 +197,7 @@ func (r *PostgresTemplateRepository) List(ctx context.Context) ([]*domain.Templa
 		if err := json.Unmarshal(toolsJSON, &t.Tools); err != nil {
 			return nil, fmt.Errorf("unmarshal tools: %w", err)
 		}
-		t.EstimatedInstallTime = time.Duration(estimatedDuration)
+		t.EstimatedInstallTime = installDuration(estimatedMinutes)
 
 		templates = append(templates, &t)
 	}

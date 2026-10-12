@@ -1,4 +1,8 @@
-import type { ClusterStatus, PlanningProfile } from "../../../types";
+import type {
+  ClusterStatus,
+  PlanningProfile,
+  VulnerabilityCounts,
+} from "../../../types";
 
 export interface TemplateMutationRequest {
   id: string;
@@ -268,3 +272,42 @@ export type ApplyReleaseValuesInput = {
   mode: ReleaseValuesMode;
   yaml: string;
 };
+
+/**
+ * 스택에 설치된 OSS 이미지의 취약점 보고(GET /stacks/{id}/image-scans).
+ *
+ * 보고용이다 — 설치를 막은 적이 없다. 파이프라인 이미지 스캔의 게이트 판정과 다르다.
+ * - scanned: 결과가 있다 · pending: 스캐너는 있지만 아직 결과가 없다
+ * - not_scanned: 스캔하지 않는 스택이다. 이유는 reason 에 있다.
+ */
+export type StackImageScanStatus = "scanned" | "pending" | "not_scanned";
+
+export interface StackImageScanItem {
+  image: string;
+  imageDigest?: string;
+  release?: string;
+  workloads: string[];
+  status: "scanned" | "failed";
+  /** status 가 failed 일 때의 이유. */
+  error?: string;
+  /** 없으면 건수를 모른다. 0 이 아니다. */
+  counts?: VulnerabilityCounts;
+  fixableCounts?: VulnerabilityCounts;
+  scannerVersion?: string;
+  dbUpdatedAt?: string;
+  /** 취약점 DB 가 30일보다 오래됐거나 날짜를 모른다. */
+  dbStale: boolean;
+  scannedAt?: string;
+}
+
+export interface StackImageScanReport {
+  stackId: string;
+  status: StackImageScanStatus;
+  /** not_scanned 인 이유. "scanner_not_installed" | "airgap" | "" */
+  reason: string;
+  lastScannedAt?: string;
+  /** 수정 버전이 없는 취약점까지 포함한 합계. 스캔하지 않았으면 없다. */
+  summary?: VulnerabilityCounts;
+  items: StackImageScanItem[];
+  total: number;
+}

@@ -1,0 +1,8 @@
+---
+kube_network_plugin: calico
+calico_network_backend: vxlan
+calico_ipip_mode: Never
+calico_vxlan_mode: Always
+kubeconfig_localhost: true
+helm_enabled: true
+metrics_server_enabled: true

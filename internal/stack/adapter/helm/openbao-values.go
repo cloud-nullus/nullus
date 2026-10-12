@@ -3,6 +3,7 @@ package helm
 import (
 	"context"
 	"fmt"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"strings"
 )
 
@@ -14,7 +15,7 @@ const (
 
 	// OpenBaoKubectlImage 는 init Job 이 K8s Secret 을 만들 때 사용하는 이미지다.
 	// OpenBao 이미지에는 kubectl 이 없어 별도 컨테이너가 필요하다.
-	OpenBaoKubectlImage = "docker.io/bitnamilegacy/kubectl:1.33.4"
+	OpenBaoKubectlImage = shareddomain.KubectlImage
 
 	// OpenBaoUnsealKeysSecret 은 init Job 이 만든 unseal key 와 root token 을 담는다.
 	// 이 Secret 과 OpenBao PVC 는 생애주기를 함께한다 — 한쪽만 남으면 재설치 시

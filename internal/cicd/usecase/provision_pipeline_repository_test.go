@@ -44,9 +44,15 @@ func (f *fakeApplier) ApplyWithTracking(ctx context.Context, kc []byte, manifest
 	return f.Apply(ctx, kc, manifests)
 }
 
-type fakeKubeconfigProvider struct{ err error }
+type fakeKubeconfigProvider struct {
+	err error
+	// asked 는 어느 클러스터의 kubeconfig 를 요청했는지다. 클러스터를 잘못 고르면
+	// 호출은 성공하고 결과만 비어 보이므로, 어디를 봤는지를 직접 확인해야 한다.
+	asked []string
+}
 
-func (f *fakeKubeconfigProvider) GetKubeconfig(_ context.Context, _ string) ([]byte, error) {
+func (f *fakeKubeconfigProvider) GetKubeconfig(_ context.Context, clusterID string) ([]byte, error) {
+	f.asked = append(f.asked, clusterID)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -245,4 +251,27 @@ func TestEnsureRequesterIsOrgMember_SilentWithoutEmail(t *testing.T) {
 
 	assert.Equal(t, "", ensureRequesterIsOrgMember(context.Background(), bundle, "nullus", ""))
 	assert.Equal(t, "", members.org)
+}
+
+// 정의 갱신은 Argo CD Application 을 다시 적용하지 않는다 — 사용자가 손본 Application
+// 을 기본값으로 되돌릴 이유가 없고, 갱신의 목적은 CI 정의와 변수다.
+func TestProvisionPipelineRepository_RefreshDefinitionOnly_는_Argo_Application_을_건드리지_않는다(t *testing.T) {
+	scm := newFakeSCM()
+	scm.projectExists = true
+	applier := &fakeApplier{}
+	uc := NewProvisionPipelineRepository(
+		&fakeBundleFactory{bundle: newBundle(scm, newFakePipelineConfig(), harborResolver())},
+		applier,
+		&fakeKubeconfigProvider{},
+	)
+	in := repoInput()
+	in.RefreshDefinitionOnly = true
+
+	out, err := uc.Execute(context.Background(), in)
+	require.NoError(t, err)
+
+	assert.True(t, out.DefinitionRefreshed)
+	assert.False(t, out.ArgoApplicationCreated)
+	assert.Empty(t, applier.applied, "Application·자격증명 매니페스트를 다시 적용하지 않는다")
+	assert.NotEmpty(t, out.Stages)
 }

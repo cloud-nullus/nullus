@@ -169,6 +169,30 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			Values:  DefaultValues("installing_harbor"),
 			Wait:    false,
 		}, true
+	case "installing_trivy":
+		// server 모드로 선다 — 취약점 DB 를 이 서버에만 두고 CI 잡은 client 로
+		// 붙는다. standalone 이면 잡마다 DB 를 받아야 해서, 파이프라인마다
+		// DB 를 감당하는 구조로 되돌아간다.
+		return ChartSpec{
+			ReleaseName: domain.TrivyReleaseName,
+			ChartName:   "trivy",
+			RepoURL:     "https://aquasecurity.github.io/helm-charts/",
+			Version:     domain.TrivyChartVersion,
+			Values:      DefaultValues("installing_trivy"),
+			Wait:        false,
+		}, true
+	case "installing_sonarqube":
+		// Community 판이다. 공유 PostgreSQL 안의 전용 DB 는 설치 전에
+		// ensureSonarQubeDatabase 가 만들고, 관리자 비밀번호는 provisioning_sonarqube
+		// 가 바꾼다.
+		return ChartSpec{
+			ReleaseName: domain.SonarQubeReleaseName,
+			ChartName:   "sonarqube",
+			RepoURL:     "https://SonarSource.github.io/helm-chart-sonarqube",
+			Version:     domain.SonarQubeChartVersion,
+			Values:      DefaultValues("installing_sonarqube"),
+			Wait:        false,
+		}, true
 	case "installing_nexus":
 		// sonatype/nexus-repository-manager 는 상위 차트가 deprecated 로 표시돼
 		// 있으나, 대체재인 nxrm-ha 는 PostgreSQL 기반 HA 구성이라 Pro 라이선스가
@@ -214,7 +238,7 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 		return ChartSpec{
 			ChartName: "gitlab-runner",
 			RepoURL:   "https://charts.gitlab.io/",
-			Version:   "0.72.0",
+			Version:   domain.GitLabRunnerChartVersion,
 			Values:    DefaultValues(stepInstallingRunner),
 			Wait:      false,
 		}, true

@@ -34,6 +34,12 @@ type SCMBundle struct {
 	CITrigger CIBuildTrigger
 	// CIBuilds 는 CI 서버의 빌드 이력을 읽는다. 지원하지 않으면 nil.
 	CIBuilds CIBuildReader
+	// CIArtifacts 는 실행이 남긴 산출물(스캔 리포트)을 읽는다. 지원하지 않으면 nil —
+	// 스캔 판정은 단계 결과만으로 남고 건수는 비어 있다.
+	CIArtifacts CIArtifactReader
+	// ScanPolicy 는 스캔 정책을 파이프라인이 읽는 자리에 싣는다. 정책을 실을
+	// 경로가 배선되지 않은 스택에서는 nil 이다.
+	ScanPolicy ScanPolicyPublisher
 	// CIBaseURL 은 CI 서버의 주소다. webhook 대상 주소를 만드는 데 쓴다.
 	CIBaseURL string
 	// SCMInClusterURL 은 클러스터 안에서 SCM 에 닿는 주소다.
@@ -86,7 +92,28 @@ type SCMBundle struct {
 	// AccessDomain / GatewayName 은 배포된 앱을 외부에 노출할 때 쓴다.
 	// 비어 있으면 앱은 클러스터 내부에서만 접근 가능하다.
 	AccessDomain string
-	GatewayName  string
+	// ImageScannerEndpoint 는 스택 Trivy 서버의 클러스터 내 주소다.
+	// 스캐너를 고르지 않은 스택에서는 비어 있고, 그때는 스캐폴딩이
+	// 이미지 스캔 단계를 만들지 않는다.
+	ImageScannerEndpoint string
+	// ImageScannerJavaDBRepository 는 에어갭 설치에서 CI 잡의 trivy client 가 Java DB 를
+	// 받을 내부 미러다. 클러스터 안 CI(GitLab 러너·Jenkins 에이전트) 번들에만 싣는다.
+	ImageScannerJavaDBRepository string
+	// SASTServerEndpoint 는 스택 SonarQube 의 클러스터 내 주소다. SonarQube 를 고르지 않은
+	// 스택에서는 비어 있고, 그때는 스캐폴딩이 소스 정적 분석 단계를 만들지 않는다.
+	SASTServerEndpoint string
+	// SASTWebURL 은 사람이 여는 SonarQube 주소다(https://sonarqube.<접근 도메인>). 분석 결과의
+	// 링크를 만든다. SonarQube 가 없거나 접근 도메인이 없으면 비어 있다.
+	SASTWebURL string
+	// SASTToken 은 CI 가 분석에 쓸 토큰을 푼다. 스택 설치가 OpenBao 에 둔 값이다.
+	// SonarQube 가 없거나 시크릿 백엔드가 배선되지 않았으면 nil 이다.
+	SASTToken   SASTTokenResolver
+	GatewayName string
+}
+
+// SASTTokenResolver 는 스택 SonarQube 의 분석 토큰을 읽는다. 발급하지 않고 읽기만 한다.
+type SASTTokenResolver interface {
+	AnalysisToken(ctx context.Context) (string, error)
 }
 
 // PipelineCredentialPlane 은 파이프라인 자격증명을 준비하고 그것을 클러스터에

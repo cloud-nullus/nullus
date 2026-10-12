@@ -1,0 +1,13 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_prometheus
+# chart: kube-prometheus-stack 69.3.0
+alertmanager:
+    ingress:
+        enabled: false
+crds:
+    enabled: false
+grafana:
+    enabled: false
+prometheus:
+    ingress:
+        enabled: false

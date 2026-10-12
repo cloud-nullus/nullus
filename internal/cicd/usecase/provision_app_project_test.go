@@ -3,11 +3,13 @@ package usecase
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/scaffold"
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
@@ -309,4 +311,94 @@ func TestProvisionAppProject_WebAppCommitsReactSources(t *testing.T) {
 	require.Contains(t, files, "src/App.tsx")
 	assert.Contains(t, files["package.json"], `"react"`)
 	assert.Contains(t, files["Dockerfile"], "npm run build")
+}
+
+// ── 파이프라인 정의 갱신 ──────────────────────────────────────────────────
+//
+// SAST 리포트를 남기기 전에 만든 파이프라인의 sast 잡은 sast-report.json 을 남기지 않아
+// 실행 기록에 결과가 붙지 않았다. 파이프라인을 다시 만드는 것 말고는 방법이 없었다 —
+// 기존 저장소에는 스캐폴딩을 쓰지 않기 때문이다(사용자가 고친 Dockerfile·매니페스트·
+// CI 가 갱신한 이미지 태그를 되돌린다). 정의 파일 **하나만** 다시 쓰는 경로를 둔다.
+
+func commitPaths(spec port.CommitSpec) []string {
+	paths := make([]string, 0, len(spec.Files))
+	for _, f := range spec.Files {
+		paths = append(paths, f.Path)
+	}
+	return paths
+}
+
+func TestProvisionAppProject_RefreshDefinitionOnly_기존_저장소에는_정의_파일만_다시_쓴다(t *testing.T) {
+	cases := map[string]struct {
+		platform port.SCMPlatform
+		want     string
+	}{
+		"GitLab": {port.SCMPlatformGitLab, scaffold.GitLabPipelinePath},
+		"GitHub": {port.SCMPlatformGitHub, scaffold.GitHubWorkflowPath},
+		"Gitea":  {port.SCMPlatformGitea, scaffold.JenkinsfilePath},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			scm := newFakeSCM()
+			scm.projectExists = true
+			uc := NewProvisionAppProject(scm, newFakePipelineConfig(), gitlabResolver())
+
+			out, err := uc.Execute(context.Background(), ProvisionAppProjectInput{
+				AppName: "myapp", AppType: domain.AppTypeBackend, GroupPath: "acme",
+				Namespace: "apps", Platform: tc.platform, SASTServerEndpoint: "http://sonarqube:9000",
+				RefreshDefinitionOnly: true,
+			})
+			require.NoError(t, err)
+
+			assert.True(t, out.DefinitionRefreshed)
+			assert.False(t, out.ScaffoldSkipped, "건너뛴 것이 아니라 정의를 다시 쓴 것이다")
+			assert.False(t, out.RepositoryRecreated)
+			commits := scm.commits[out.Project.ID]
+			require.Len(t, commits, 1, "정의 파일 커밋 하나")
+			assert.Equal(t, []string{tc.want}, commitPaths(commits[0]),
+				"앱 코드·Dockerfile·매니페스트는 건드리지 않는다")
+			assert.Contains(t, out.Stages, "SAST", "다시 쓴 정의의 단계가 돌아와야 화면이 맞는다")
+			for _, w := range out.Warnings {
+				assert.NotContains(t, w, "건너뛰었습니다")
+			}
+		})
+	}
+}
+
+// 저장소가 사라졌으면 다시 만들 수밖에 없다 — 그때는 전체 스캐폴딩이고, 그 사실을 알린다.
+func TestProvisionAppProject_RefreshDefinitionOnly_저장소가_없으면_다시_만들고_알린다(t *testing.T) {
+	scm := newFakeSCM()
+	scm.projectExists = false
+	uc := NewProvisionAppProject(scm, newFakePipelineConfig(), gitlabResolver())
+
+	out, err := uc.Execute(context.Background(), ProvisionAppProjectInput{
+		AppName: "myapp", AppType: domain.AppTypeBackend, GroupPath: "acme",
+		Namespace: "apps", Platform: port.SCMPlatformGitLab, RefreshDefinitionOnly: true,
+	})
+	require.NoError(t, err)
+
+	assert.True(t, out.RepositoryRecreated)
+	assert.True(t, out.DefinitionRefreshed)
+	commits := scm.commits[out.Project.ID]
+	require.Len(t, commits, 1)
+	assert.Contains(t, commitPaths(commits[0]), "Dockerfile", "없던 저장소는 전체 스캐폴딩이다")
+	joined := strings.Join(out.Warnings, "\n")
+	assert.Contains(t, joined, "다시 만들었습니다")
+}
+
+// 갱신을 요청하지 않은 기존 저장소는 종전대로 건드리지 않는다.
+func TestProvisionAppProject_기존_저장소는_요청_없이_덮어쓰지_않는다(t *testing.T) {
+	scm := newFakeSCM()
+	scm.projectExists = true
+	uc := NewProvisionAppProject(scm, newFakePipelineConfig(), gitlabResolver())
+
+	out, err := uc.Execute(context.Background(), ProvisionAppProjectInput{
+		AppName: "myapp", AppType: domain.AppTypeBackend, GroupPath: "acme",
+		Namespace: "apps", Platform: port.SCMPlatformGitLab,
+	})
+	require.NoError(t, err)
+
+	assert.True(t, out.ScaffoldSkipped)
+	assert.False(t, out.DefinitionRefreshed)
+	assert.Empty(t, scm.commits[out.Project.ID])
 }

@@ -23,7 +23,8 @@
     "knownIssues": "Known Issues",
     "logout": "Logout",
     "cicdGoldenPath": "Golden Paths",
-    "tokenManagement": "Token Management"
+    "tokenManagement": "Token Management",
+    "backup": "Backup"
   },
   "common": {
     "save": "Save",
@@ -36,7 +37,58 @@
     "notFound": "Page not found",
     "notFoundDesc": "The page you are looking for does not exist or has been moved.",
     "close": "Close",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "vulnerability": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low",
+      "unknown": "Unknown severity",
+      "countsUnknown": "Counts unknown"
+    },
+    "vulnerabilityList": {
+      "show": "View vulnerability list",
+      "hide": "Hide vulnerability list",
+      "loading": "Loading vulnerabilities...",
+      "error": "Couldn't load the vulnerability list.",
+      "empty": "No vulnerabilities were found in this image.",
+      "emptyFiltered": "No vulnerabilities match the current filters.",
+      "resetFilters": "Clear filters",
+      "classFilterLabel": "Package type",
+      "severityFilterLabel": "Severity",
+      "allClasses": "All",
+      "fixableOnly": "Fixable only",
+      "searchLabel": "Search vulnerabilities",
+      "searchPlaceholder": "Search CVE or package",
+      "targetsLabel": "Scan targets",
+      "targetTotal": "{{count}} found",
+      "class": {
+        "os": "Base image OS packages",
+        "library": "App dependencies",
+        "other": "Other"
+      },
+      "columns": {
+        "severity": "Severity",
+        "id": "Vulnerability",
+        "package": "Package",
+        "installed": "Installed",
+        "fixed": "Fixed in",
+        "target": "Target"
+      },
+      "noFix": "No fixed version",
+      "range": "{{from}}–{{to}} / {{total}}",
+      "rangeUnknownTotal": "{{from}}–{{to}}",
+      "pagination": "Vulnerability list pages",
+      "previous": "Previous",
+      "next": "Next",
+      "unavailable": {
+        "reportExpired": "The CI report is past its retention period, so the list can't be shown. Severity counts are still recorded.",
+        "reportMissing": "No CI report was recorded for this scan. The scan may have failed before writing its report.",
+        "ciUnreachable": "Couldn't reach the CI server. Try again later.",
+        "notRecorded": "This image was scanned before the vulnerability list was available. The list appears after the next scan.",
+        "unknown": "The vulnerability list is not available."
+      }
+    }
   },
   "header": {
     "roles": {
@@ -126,7 +178,11 @@
       "metrics": "Metrics",
       "logs": "Logs",
       "traces": "Traces",
-      "traceExporter": "Exporter / Agent"
+      "traceExporter": "Exporter / Agent",
+      "imageScanner": "Image Scanner",
+      "imageScannerHint": "Not installed unless selected. Harbor's built-in scanner can serve instead.",
+      "sast": "Static Analysis (SAST)",
+      "sastHint": "Not installed unless selected. Uses the stack's PostgreSQL and signs in with Keycloak when SSO is on."
     },
     "resourceTotal": {
       "description": "Combined request/limit totals for {{count}} selected OSS"
@@ -306,6 +362,12 @@
       "name": "Name",
       "namePlaceholder": "e.g. Standard Web Backend",
       "description": "Description",
+      "appType": "Application Type",
+      "appTypeOptions": {
+        "web": "Web",
+        "backend": "Backend",
+        "batch": "Batch"
+      },
       "stages": "Capabilities"
     },
     "errors": {
@@ -547,6 +609,14 @@
         "label": "VictoriaMetrics",
         "description": "High-performance time-series database"
       },
+      "trivy": {
+        "label": "Trivy",
+        "description": "Container image vulnerability scanning (server mode)"
+      },
+      "sonarqube": {
+        "label": "SonarQube",
+        "description": "Static source code analysis (Community)"
+      },
       "grafana": {
         "label": "Grafana",
         "description": "Open-source metrics visualization"
@@ -766,6 +836,14 @@
       "irreversible": "This cannot be undone",
       "typeToConfirm": "Type the repository name to confirm: {{path}}",
       "typeToConfirmLabel": "Confirm repository name"
+    },
+    "refreshDefinitionDialog": {
+      "title": "Refresh CI definition",
+      "intro": "Rewrite the CI definition of pipeline \"{{name}}\" with the platform default.",
+      "overwrites": "Overwritten: the stack's pipeline definition file (.gitlab-ci.yml, .github/workflows/nullus-ci.yml or Jenkinsfile) and CI variables such as SONAR_TOKEN. Edits you made to that file are lost.",
+      "keeps": "Left alone: application code, Dockerfile, deploy/ manifests and the Argo CD Application.",
+      "why": "Pipelines created before a stage existed (for example SAST reports) only get it after this refresh.",
+      "confirm": "Refresh definition"
     }
   },
   "cicdListPage": {
@@ -797,7 +875,71 @@
     "deleteWarnings": {
       "title": "Deleted, but some resources remain"
     },
-    "accessUrl": "Access URL"
+    "accessUrl": "Access URL",
+    "imageScan": {
+      "title": "Image scan",
+      "gate": {
+        "pass": "Passed",
+        "warn": "Passed with warnings",
+        "block": "Blocked by policy",
+        "error": "Scan error"
+      },
+      "dbStale": "Stale DB",
+      "dbStaleHint": "The vulnerability DB is older than 30 days or its age is unknown, so recent vulnerabilities may be missing from this result.",
+      "errorHint": "The scan could not be performed or evaluated. This is not a vulnerability finding.",
+      "viewReport": "View report",
+      "image": "Image",
+      "digest": "Digest",
+      "scanner": "Scanner",
+      "dbUpdatedAt": "Vulnerability DB",
+      "scannedAt": "Scanned",
+      "unknown": "Unknown"
+    },
+    "sast": {
+      "label": "SAST",
+      "title": "Static analysis (SonarQube)",
+      "gate": {
+        "pass": "Quality Gate passed",
+        "warn": "Quality Gate failed (warn)",
+        "block": "Blocked by Quality Gate",
+        "error": "Analysis failed"
+      },
+      "warnHint": "The Quality Gate failed, but the stack policy is set to warn, so the deployment went ahead.",
+      "errorHint": "The analysis could not run (SonarQube unreachable or authentication failed). This is not a code finding.",
+      "failedConditions": "Failed conditions",
+      "failsWhen": "fails when",
+      "metrics": {
+        "vulnerabilities": "Vulnerabilities",
+        "bugs": "Bugs",
+        "securityHotspots": "Security hotspots",
+        "codeSmells": "Code smells",
+        "coverage": "Coverage",
+        "duplications": "Duplications",
+        "ncloc": "Lines of code"
+      },
+      "metricNames": {
+        "new_violations": "New issues",
+        "new_coverage": "Coverage on new code",
+        "new_duplicated_lines_density": "Duplications on new code",
+        "new_security_hotspots_reviewed": "Security hotspots reviewed",
+        "new_reliability_rating": "Reliability rating on new code",
+        "new_security_rating": "Security rating on new code",
+        "new_maintainability_rating": "Maintainability rating on new code"
+      },
+      "metricsUnknown": "Metrics unavailable",
+      "openInSonarQube": "Open in SonarQube",
+      "analyzedAt": "Analyzed"
+    },
+    "refreshDefinition": {
+      "button": "Refresh definition",
+      "busy": "Refreshing…",
+      "doneTitle": "CI definition refreshed",
+      "done": "Stages: {{stages}}. The next run uses the new definition.",
+      "repositoryRecreated": "The repository was missing and has been recreated with a full scaffold — push the application code again.",
+      "missingVariables": "Variables to fill in by hand: {{variables}}",
+      "failedTitle": "CI definition could not be refreshed",
+      "failed": "The CI definition could not be refreshed"
+    }
   },
   "cicdHistoryPage": {
     "title": "CI/CD History",
@@ -922,7 +1064,8 @@
       "history": "History",
       "version-upgrade": "Version Upgrade",
       "workloads": "Workloads",
-      "config": "Config"
+      "config": "Config",
+      "image-scans": "Image Vulnerabilities"
     },
     "status": {
       "pending": "Pending",
@@ -992,6 +1135,39 @@
       "summary": "{{ready}} / {{total}} pods ready",
       "loading": "Reading pods from the cluster...",
       "empty": "No pods found for this stack in the cluster."
+    },
+    "imageScans": {
+      "title": "Installed image vulnerabilities",
+      "reportOnly": "Report only — these results never blocked the installation.",
+      "loading": "Loading image scan results...",
+      "noData": "No image scan data is available for this stack.",
+      "pending": "Waiting for the first scan. Installed images are scanned right after install and then periodically.",
+      "notScanned": {
+        "scannerNotInstalled": "Trivy is not selected for this stack, so installed images are not scanned. This does not mean there are no vulnerabilities.",
+        "airgap": "Air-gapped installs do not scan installed images. This does not mean there are no vulnerabilities.",
+        "unknown": "Installed images have not been scanned."
+      },
+      "lastScannedAt": "Last scanned {{time}}",
+      "summaryHint": "Totals include vulnerabilities without an available fix.",
+      "empty": "No installed images were reported for this stack.",
+      "dbStale": "Stale DB",
+      "dbStaleHint": "Older than 30 days or unknown",
+      "item": {
+        "failed": "Scan failed",
+        "failedNoReason": "The scanner did not report a reason.",
+        "fixable": "Fixable: Critical {{critical}} · High {{high}} · Medium {{medium}} · Low {{low}}",
+        "unknown": "Unknown",
+        "scanned": "Scanned",
+        "vulnerabilityList": "Vulnerability list",
+        "vulnerabilityListFor": "Vulnerability list — {{image}}"
+      },
+      "columns": {
+        "image": "Image",
+        "release": "Release",
+        "fixable": "Fixable",
+        "status": "Status"
+      },
+      "summaryScanner": "Scanner {{scanner}} · Vulnerability DB {{db}}"
     }
   },
   "deploy": {
@@ -1369,6 +1545,7 @@
     "form": {
       "stackOptional": "Stack",
       "stackRequired": "Stack 선택",
+      "clusterLockedToStack": "Fixed to the cluster the stack is installed on. The stack's Argo CD deploys the app there.",
       "manualInput": "Manual Input",
       "appName": "App Name",
       "imageRegistry": "Image Registry",
@@ -1851,6 +2028,87 @@
         "title": "Congratulations — now try it yourself!",
         "body": "That is the whole flow, end to end. Press Quick Start and put up your first stack — it installs the lightweight one that fits a single 8Gi node. Stuck later? The tutorial button in the header reopens this tour anywhere."
       }
+    }
+  },
+  "backupPage": {
+    "breadcrumb": {
+      "current": "Backup"
+    },
+    "title": "Backup",
+    "description": "Run a backup and review past runs.",
+    "run": "Run backup",
+    "empty": "No backups yet.",
+    "table": {
+      "startedAt": "Started",
+      "mode": "Mode",
+      "size": "Size",
+      "quiesce": "Downtime",
+      "status": "Status",
+      "target": "Target",
+      "platform": "Platform",
+      "set": "Set"
+    },
+    "dialog": {
+      "title": "Select backup targets",
+      "description": "Choose what to include in this backup.",
+      "start": "Start backup",
+      "nothingSelected": "Select at least one target.",
+      "quiesceWarning": "Including volumes stops the workloads while the backup runs.",
+      "confirmLabel": "Type the namespace to confirm",
+      "stackLabel": "Backup target",
+      "platformOnly": "Platform only (no stack)",
+      "platformOnlyHint": "Vault, Kubernetes resources and volumes belong to a stack. Pick a stack to include them.",
+      "allStacks": "Everything — platform + all stacks",
+      "allStacksCount": "{{count}} stacks",
+      "allStacksHint": "One run for the platform and one per stack, tied together as a set — every target, every time. Restore a set from the API with its set ID.",
+      "allStacksWarning": "Every stack's workloads stop in turn while its volumes are backed up.",
+      "allConfirmLabel": "Type the word to confirm"
+    },
+    "target": {
+      "platformDb": "Platform DB",
+      "platformDbDesc": "Nullus metadata — stacks, pipelines, cluster records",
+      "keycloakDb": "Keycloak DB",
+      "keycloakDbDesc": "Accounts and roles. Without it you cannot sign in after a restore",
+      "openbaoKv": "Vault (OpenBao)",
+      "openbaoKvDesc": "Tokens and credentials. Without it the tools cannot authenticate to each other",
+      "nsResources": "Kubernetes resources",
+      "nsResourcesDesc": "Wiring and configuration — Deployments, Secrets, CRDs, Argo CD Applications",
+      "sharedResources": "Shared cluster resources",
+      "sharedResourcesDesc": "What deleting the last stack reclaims — Gateway CRDs, GatewayClass, the internal CA. Restored first, and only when missing",
+      "volume": "Volumes",
+      "volumeDesc": "Data inside the tools — Git repos, build history, container images. The largest, and the only one that stops the service"
+    }
+  },
+  "jobNotifications": {
+    "trigger": "Background jobs",
+    "triggerBusy": "Background jobs — {{running}} in progress",
+    "title": "Background jobs",
+    "empty": "Nothing is running right now.",
+    "summaryRunning": "{{running}} in progress",
+    "summaryIdle": "All done",
+    "kind": {
+      "stack": "Stack install",
+      "deployment": "Pipeline deploy"
+    },
+    "phase": {
+      "running": "In progress",
+      "succeeded": "Completed",
+      "failed": "Failed"
+    },
+    "stage": {
+      "pending": "Queued",
+      "validating": "Validating",
+      "installing": "Installing",
+      "configuring": "Configuring",
+      "health_check": "Health check",
+      "rolling_back": "Rolling back",
+      "running": "Running",
+      "terminating": "Removing",
+      "completed": "Completed",
+      "success": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "rolled_back": "Rolled back"
     }
   }
 }

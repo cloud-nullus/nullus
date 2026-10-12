@@ -198,8 +198,13 @@ func (s *OpenBaoStore) ListKeys(ctx context.Context, path string) ([]string, err
 		return nil, err
 	}
 	// KV v2 의 목록은 metadata 엔드포인트에 있다. data 로는 조회되지 않는다.
-	url := "/v1/" + mount + "/metadata/" + subpath
-	raw, err := s.request(ctx, "LIST", url, nil)
+	//
+	// HTTP LIST 메서드 대신 `GET ...?list=true` 를 쓴다. 둘은 OpenBao 에서
+	// 동등하지만, 운영 경로인 API server proxy transport 는 GET/POST 만
+	// 지원한다(apiserver_proxy.go:65). LIST 로 두면 로컬 직결에서는 되고
+	// **운영에서만** "지원하지 않는 메서드: LIST" 로 죽는다 — 실제로 그랬다.
+	url := "/v1/" + mount + "/metadata/" + subpath + "?list=true"
+	raw, err := s.request(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		// 404 만 "하위가 없다" 이다 — 잎 경로이거나 비어 있는 경우다.
 		//

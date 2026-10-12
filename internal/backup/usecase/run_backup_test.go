@@ -10,6 +10,7 @@ import (
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
 	"github.com/cloud-nullus/draft/internal/backup/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 func newBackupFixture(t *testing.T) (*BackupUseCase, *trace, *fakeRepo, *fakeStore, *fakeScaler, *fakeArchiver, *fakeNotifier) {
@@ -29,11 +30,11 @@ func newBackupFixture(t *testing.T) (*BackupUseCase, *trace, *fakeRepo, *fakeSto
 		KV:        &fakeKV{tr: tr},
 		Scaler:    scaler,
 		Archiver:  archiver,
-		Resources: &fakeResources{tr: tr},
-		Sealer:    fakeSealer{},
-		Store:     store,
-		Notifier:  notifier,
-		Pauser:    &fakePauser{tr: tr},
+		Resources: &fakeResources{tr: tr}, Shared: &fakeShared{tr: tr},
+		Sealer:   fakeSealer{},
+		Store:    store,
+		Notifier: notifier,
+		Pauser:   &fakePauser{tr: tr},
 		Targets: DBTargets{
 			Platform: dbTarget(domain.ComponentPlatformDB, "nullus"),
 			Keycloak: dbTarget(domain.ComponentKeycloakDB, "keycloak"),
@@ -224,4 +225,190 @@ func TestRunBackup_스택이_있으면_금고를_뜬다(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.NotEqual(t, -1, tr.indexOf("kv.export"))
+}
+
+func TestRunBackup_고른_대상만_뜬다(t *testing.T) {
+	// full 모드라도 사용자가 볼륨을 뺐으면 볼륨을 뜨지 않는다 — 그리고
+	// 그러면 서비스를 멈출 이유도 없다. 이유 없이 멈추면 사용자가 백업을
+	// 피하게 되고, 피해진 백업은 없는 백업이다.
+	uc, _, _, _, scaler, _, _ := newBackupFixture(t)
+
+	run, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", StackID: "stack-1", Namespace: "nullus",
+		Mode:  domain.ModeFull,
+		Scope: []domain.Component{domain.ComponentPlatformDB},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []domain.Component{domain.ComponentPlatformDB}, run.Scope)
+	assert.False(t, run.RequiresQuiesce(), "볼륨을 빼면 정지 창이 없어야 한다")
+	assert.Empty(t, scaler.scaled, "멈출 이유가 없는데 워크로드를 내렸다")
+}
+
+func TestRunBackup_고르지_않으면_모드에서_파생한다(t *testing.T) {
+	// 스케줄 백업과 옛 호출부는 모드만 넘긴다.
+	uc, _, _, _, _, _, _ := newBackupFixture(t)
+
+	run, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", Namespace: "nullus",
+		Mode: domain.ModePlatformOnly, Trigger: domain.TriggerSchedule,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.ModeComponents(domain.ModePlatformOnly), run.Scope)
+}
+
+// 스택 클러스터에 닿을 수단(스택 ID 로 만든 어댑터)이 없으면 리소스·볼륨은 뜰 수 없다. 예전
+// 화면은 스택을 보내지 않고 full 을 요청했고, 그 요청은 비어 있는 어댑터를 그대로 불렀다.
+// 실행 기록을 만들기 전에, 무엇이 빠졌는지 말하며 거절한다.
+func TestRunBackup_스택_클러스터_없이_리소스나_볼륨을_고르면_거부한다(t *testing.T) {
+	for _, scope := range [][]domain.Component{
+		{domain.ComponentVolume},
+		{domain.ComponentNamespaceResources},
+		nil, // full 모드에서 파생 — 둘 다 담긴다
+	} {
+		uc, _, repo, _, _, _, _ := newBackupFixture(t)
+		uc.d.Scaler, uc.d.Archiver, uc.d.Resources = nil, nil, nil // 스택 ID 없이 만든 유스케이스
+
+		_, err := uc.Run(context.Background(), RunBackupRequest{
+			OrgID: "org-1", Namespace: "nullus-app", Mode: domain.ModeFull, Scope: scope,
+		})
+
+		var appErr *shareddomain.AppError
+		require.ErrorAs(t, err, &appErr, "scope=%v", scope)
+		assert.Equal(t, "BACKUP_STACK_REQUIRED", appErr.Code)
+		assert.Equal(t, 400, appErr.HTTPStatus)
+		runs, _ := repo.ListRuns(context.Background(), "org-1", 0)
+		assert.Empty(t, runs, "거절한 요청이 실행 기록을 남기면 '실행 중' 으로 영영 남는다")
+	}
+}
+
+// DB 만 고르면 스택이 없어도 된다.
+func TestRunBackup_스택_클러스터_없이도_DB_는_뜬다(t *testing.T) {
+	uc, _, _, _, _, _, _ := newBackupFixture(t)
+	uc.d.Scaler, uc.d.Archiver, uc.d.Resources = nil, nil, nil
+
+	run, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", Mode: domain.ModePlatformOnly,
+		Scope: []domain.Component{domain.ComponentPlatformDB, domain.ComponentKeycloakDB},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusSucceeded, run.Status)
+}
+
+// ── 공용 자원 ────────────────────────────────────────────────────────────
+//
+// 클러스터의 마지막 스택을 지우면 Nullus 가 설치한 공용 자원(설치 표시가 붙은 Gateway
+// CRD·GatewayClass·내부 CA)이 회수된다. 백업이 그것을 담지 않으면 복구는 네임스페이스
+// 리소스를 적용하다 "no matches for kind Gateway" 로 죽는다.
+
+func sharedBackupUC(tr *trace, repo *fakeRepo, shared port.SharedResourceDumper) *BackupUseCase {
+	return NewBackupUseCase(BackupDeps{
+		Repo: repo, Dumper: &fakeDumper{tr: tr}, KV: &fakeKV{tr: tr},
+		Scaler: &fakeScaler{tr: tr}, Archiver: &fakeArchiver{tr: tr},
+		Resources: &fakeResources{tr: tr}, Shared: shared,
+		Sealer: fakeSealer{}, Store: newFakeStore(tr), Notifier: &fakeNotifier{tr: tr},
+		Targets: DBTargets{
+			Platform: dbTarget(domain.ComponentPlatformDB, "nullus"),
+			Keycloak: dbTarget(domain.ComponentKeycloakDB, "keycloak"),
+		},
+	})
+}
+
+func TestRunBackup_공용_자원을_담는다(t *testing.T) {
+	tr := &trace{}
+	repo := newFakeRepo()
+	uc := sharedBackupUC(tr, repo, &fakeShared{tr: tr, payload: "shared"})
+
+	run, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", StackID: "stack-1", Namespace: "nullus", Mode: domain.ModeStackOnly,
+		Scope: []domain.Component{domain.ComponentSharedResources, domain.ComponentNamespaceResources},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusSucceeded, run.Status)
+	assert.Contains(t, tr.all(), "shared.dump")
+
+	arts, _ := repo.ListArtifacts(context.Background(), run.ID)
+	var comps []domain.Component
+	for _, a := range arts {
+		comps = append(comps, a.Component)
+	}
+	assert.Contains(t, comps, domain.ComponentSharedResources)
+}
+
+// 담을 것이 없으면(클러스터에 Nullus 가 설치한 공용 자원이 없다) 빈 산출물을 남기지 않는다 —
+// 빈 산출물은 "담았다" 로 읽힌다.
+func TestRunBackup_공용_자원이_없으면_산출물을_만들지_않는다(t *testing.T) {
+	tr := &trace{}
+	repo := newFakeRepo()
+	uc := sharedBackupUC(tr, repo, &fakeShared{tr: tr, payload: ""})
+
+	run, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", StackID: "stack-1", Namespace: "nullus", Mode: domain.ModeStackOnly,
+		Scope: []domain.Component{domain.ComponentSharedResources},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusSucceeded, run.Status)
+
+	arts, _ := repo.ListArtifacts(context.Background(), run.ID)
+	for _, a := range arts {
+		assert.NotEqual(t, domain.ComponentSharedResources, a.Component)
+	}
+}
+
+// 공용 자원은 스택 클러스터에서 뜬다. 어댑터가 없으면(스택을 고르지 않음) 다른 스택
+// 대상과 같이 실행 기록을 만들기 전에 거절한다.
+func TestRunBackup_공용_자원도_스택_어댑터가_필요하다(t *testing.T) {
+	tr := &trace{}
+	uc := sharedBackupUC(tr, newFakeRepo(), nil)
+
+	_, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", StackID: "stack-1", Namespace: "nullus", Mode: domain.ModeStackOnly,
+		Scope: []domain.Component{domain.ComponentSharedResources},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "shared_resources")
+}
+
+// ── 요청이 끊긴 정지 창 ──────────────────────────────────────────────────
+//
+// 백업은 HTTP 요청 안에서 동기로 돈다. 클라이언트가 떠나면(탭 닫음·프록시 타임아웃) 요청
+// 컨텍스트가 취소되고, 재개가 그 컨텍스트에 묶여 있으면 첫 호출부터 실패해 워크로드가 0 으로
+// 남는다 — 백업하려다 서비스를 못 살리는 것이 최악이다(§9 F3). 실행 기록도 running 으로 남아
+// 사용자는 무엇이 일어났는지 모른다.
+func TestRunBackup_요청이_끊겨도_워크로드를_재개하고_기록을_닫는다(t *testing.T) {
+	tr := &trace{}
+	repo := newFakeRepo()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	scaler := &fakeScaler{tr: tr, workloads: []domain.Workload{
+		{Kind: "Deployment", Namespace: "nullus", Name: "gitlab", Replicas: 2},
+	}}
+	// 정지 창 한가운데(볼륨 아카이브)에서 요청이 끊긴다.
+	archiver := &fakeArchiver{tr: tr, pvcs: []domain.VolumeSpec{{Name: "data-gitlab", SizeBytes: 100}},
+		onArchive: cancel}
+	uc := NewBackupUseCase(BackupDeps{
+		Repo: repo, Dumper: &fakeDumper{tr: tr}, KV: &fakeKV{tr: tr},
+		Scaler: scaler, Archiver: archiver,
+		Resources: &fakeResources{tr: tr}, Shared: &fakeShared{tr: tr},
+		Sealer: fakeSealer{}, Store: newFakeStore(tr), Notifier: &fakeNotifier{tr: tr},
+		Pauser: &fakePauser{tr: tr},
+		Targets: DBTargets{
+			Platform: dbTarget(domain.ComponentPlatformDB, "nullus"),
+			Keycloak: dbTarget(domain.ComponentKeycloakDB, "keycloak"),
+		},
+	})
+
+	run, _ := uc.Run(ctx, RunBackupRequest{
+		OrgID: "org-1", StackID: "stack-1", Namespace: "nullus", Mode: domain.ModeStackOnly,
+		Scope: []domain.Component{domain.ComponentVolume},
+	})
+	require.NotNil(t, run)
+
+	assert.NotEqual(t, domain.StatusSucceeded, run.Status, "끊긴 백업이 성공일 수는 없다")
+	assert.Contains(t, scaler.scaled, "gitlab=2", "원래 replica 로 되살려야 한다")
+	assert.NotContains(t, tr.all(), "scale.canceled:gitlab=2", "재개는 요청 컨텍스트에 묶이면 안 된다")
+	assert.Contains(t, tr.all(), "rotation.resume", "회전 스케줄러도 다시 돌아야 한다")
+	require.NotEmpty(t, repo.updatedStatus)
+	last := repo.updatedStatus[len(repo.updatedStatus)-1]
+	assert.NotEqual(t, domain.StatusRunning, last, "실행 기록이 running 으로 남으면 안 된다")
+	assert.Equal(t, run.Status, last)
 }

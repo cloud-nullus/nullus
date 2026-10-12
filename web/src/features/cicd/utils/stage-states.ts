@@ -15,6 +15,16 @@ export type StageState =
  *
  * 스텝 정보가 없으면 'unknown' 이다 — 초록 체크 대신 모른다고 말한다.
  */
+/**
+ * stageKey 는 CI 마다 다르게 적는 단계 이름을 비교용 키로 만든다.
+ *
+ * Jenkins 는 stage('ImageScan'), GitLab·GitHub 은 잡 키 image-scan 으로 보고한다.
+ * 대소문자만 맞추면 같은 단계가 "모름" 으로 그려진다. 서버의 port.StageKey 와 같은 규칙이다.
+ */
+function stageKey(name: string): string {
+  return name.trim().toLowerCase().replace(/[\s_-]/g, '')
+}
+
 export function buildStageStates(
   stages: string[],
   steps: { name?: string; status?: string }[],
@@ -24,15 +34,35 @@ export function buildStageStates(
 
   const byName = new Map<string, string>()
   for (const step of steps) {
-    if (step.name) byName.set(step.name.toLowerCase(), (step.status ?? '').toLowerCase())
+    if (step.name) byName.set(stageKey(step.name), (step.status ?? '').toLowerCase())
   }
 
   return stages.map((stage) => {
-    const status = byName.get(stage.toLowerCase())
+    const status = byName.get(stageKey(stage))
     if (status === undefined) return 'unknown'
     if (status === 'success' || status === 'completed') return 'completed'
-    if (status === 'failed' || status === 'error') return 'failed'
+    // 취소는 백엔드에서 따로 보고된다(스캔 판정을 남기지 않으려고). 화면에서는
+    // 끝나지 못한 단계로 보여 준다 — 대기 중으로 그리면 아직 돌 것처럼 보인다.
+    if (status === 'failed' || status === 'error' || status === 'canceled') return 'failed'
     if (status === 'running' || status === 'in_progress') return 'in_progress'
     return 'queued'
   })
+}
+
+/**
+ * resolvePipelineStages 는 이력 화면에 그릴 단계 목록을 고른다.
+ *
+ * 이미지 스캔 같은 선택 단계는 파이프라인마다 켜고 끈다. 템플릿은 그것을 알 수
+ * 없으므로, 파이프라인이 기록한 단계가 있으면 그것을 믿는다 — 템플릿을 쓰면
+ * 돌고 있는 스캔 단계가 화면에서 사라진다.
+ *
+ * 기록이 비어 있으면 템플릿으로 떨어진다. 단계 기록이 생기기 전에 만든
+ * 파이프라인이 그렇고, 비었다고 단계가 없는 것으로 그리면 이력이 통째로 빈다.
+ */
+export function resolvePipelineStages(
+  pipelineStages: string[] | undefined,
+  templateStages: string[] | undefined,
+): string[] {
+  if (pipelineStages && pipelineStages.length > 0) return pipelineStages
+  return templateStages ?? []
 }

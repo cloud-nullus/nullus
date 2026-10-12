@@ -276,3 +276,46 @@ select option {
     opacity: 0;
   }
 }
+
+/* 상단 작업 알림의 종 (features/common/components/job-notification-bell.tsx).
+   GCP 콘솔처럼 "돌고 있다" 를 종의 흔들림으로 말한다. 회전(spin)이 아니라
+   좌우 흔들림인 이유: 종은 매달린 물건이라 한 바퀴 도는 움직임이 물리적으로
+   읽히지 않고, 옆의 로딩 스피너들과 구분도 되지 않는다.
+   transform-origin 을 꼭지(위쪽 가운데)에 두어야 매달린 것처럼 흔들린다. */
+.nullus-bell {
+  transform-origin: 50% 10%;
+}
+
+.nullus-bell--busy {
+  animation: nullus-bell-swing 1.6s ease-in-out infinite;
+}
+
+@keyframes nullus-bell-swing {
+  /* 앞 40% 만 흔들고 나머지는 쉰다. 쉬지 않고 흔들면 헤더 구석에서 계속
+     움직이는 물체가 되어 본문을 읽는 것을 방해한다. */
+  0%,
+  40%,
+  100% {
+    transform: rotate(0deg);
+  }
+  8% {
+    transform: rotate(12deg);
+  }
+  16% {
+    transform: rotate(-10deg);
+  }
+  24% {
+    transform: rotate(7deg);
+  }
+  32% {
+    transform: rotate(-4deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 전역 규칙은 duration 만 줄여 오히려 더 빠르게 떨게 만든다. 끝없이 도는
+     애니메이션은 여기서 아예 끈다 — 진행 중임은 배지의 숫자가 말해 준다. */
+  .nullus-bell--busy {
+    animation: none !important;
+  }
+}

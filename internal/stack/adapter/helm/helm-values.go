@@ -41,6 +41,41 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 		base = mergeMaps(base, o.giteaSharedServiceValues())
 	}
 
+	// SonarQube 의 JDBC 주소와 서버 주소도 네임스페이스·접속 도메인에서 파생된다.
+	if step == "installing_sonarqube" {
+		base = mergeMaps(base, o.sonarqubeSharedServiceValues())
+	}
+
+	// GitLab Runner 의 helper 이미지와 CI 잡의 이름 해석은 차트 values 가 아니라
+	// 러너 설정 TOML 안에 들어간다. 그래서 archImageValuesForStep 경로가 아니라
+	// 여기서 조립한다. 둘이 같은 키(runners.config)를 쓰므로 한 번에 만든다 —
+	// 따로 병합하면 뒤에 오는 쪽이 앞의 것을 지운다.
+	if step == stepInstallingRunner {
+		base = mergeMaps(base, o.gitLabRunnerValues())
+	}
+
+	// Grafana 는 스택이 함께 깐 백엔드에 연결돼야 쓸모가 있다. 어느 것을 깔았는지는
+	// 스택 설정이 알고 있으므로 여기서 조립한다.
+	if step == "installing_grafana" {
+		o.mu.Lock()
+		grafanaCfg := o.stackConfig
+		o.mu.Unlock()
+		base = mergeMaps(base, grafanaDatasourceValues(grafanaCfg))
+	}
+
+	// Argo CD 는 스택 GitLab 에서 매니페스트를 읽는다. 그 인증서는 스택이 만든
+	// 내부 CA 로 발급되므로, 신뢰를 함께 넣지 않으면 Application 이 Synced 에
+	// 도달하지 못한다.
+	if step == "installing_argocd" {
+		o.mu.Lock()
+		argoCfg := o.stackConfig
+		o.mu.Unlock()
+		if argoCfg != nil {
+			base = mergeMaps(base, argoCDInternalCAValues(o.internalCACertPEM(), argoCfg.AccessDomain))
+			base = mergeMaps(base, argoCDGatewayHostAliasValues(o.gatewayClusterIP(), argoCfg.AccessDomain))
+		}
+	}
+
 	// OpenBao values 는 선택된 StorageClass 에 의존하므로 여기서 조립한다.
 	if step == "installing_openbao" {
 		base = mergeMaps(base, openBaoValues(o.stackStorageClass()))
@@ -53,6 +88,19 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 	}
 	if step == stepInstallingOTelAgent {
 		base = mergeMaps(base, otelAgentValues(o.namespace))
+	}
+
+	// 에어갭 설치의 Trivy 서버는 내부 레지스트리에서 DB 를 받는다. 오버라이드 유무와
+	// 무관하게 필요하고, 사용자 오버라이드가 뒤에 합쳐지므로 다른 미러로 바꿀 수 있다.
+	if step == "installing_trivy" {
+		base = mergeMaps(base, trivyAirgapDBValues(airgapOCIRegistry()))
+	}
+
+	// 공식 이미지가 노드 아키텍처를 내지 않는 도구는 대체 출처의 이미지로 바꾼다
+	// (arm64 의 Harbor). 기본값 자리에 두어 사용자 오버라이드가 뒤에서 이긴다 —
+	// 자기 미러나 다른 빌드로 바꿀 수 있어야 한다.
+	if images := archImageValuesForStep(step, o.nodeArchitectures()); len(images) > 0 {
+		base = mergeMaps(base, images)
 	}
 
 	// OSS 가 자기 메트릭을 내주도록 켠다. 사용자가 오버라이드로 끌 수 있어야
@@ -107,14 +155,11 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 		return base
 	}
 
-	if step == "installing_gitlab" && strings.TrimSpace(cfg.AccessDomain) != "" {
-		base = mergeMaps(base, map[string]any{
-			"global": map[string]any{
-				"hosts": map[string]any{
-					"domain": cfg.AccessDomain,
-				},
-			},
-		})
+	// override 가 없는 분기와 같은 공용 값을 준다. 여기에 도메인만 두었더니 다른
+	// 도구 하나만 손봐도 registry.authEndpoint(https realm)와 global.hosts.https 가
+	// 빠져, 이미지 스캔이 http realm 에서 다시 거부됐다.
+	if step == "installing_gitlab" {
+		base = mergeMaps(base, o.gitlabSharedServiceValues())
 	}
 
 	if step == "installing_postgresql" {
@@ -180,7 +225,10 @@ func (o *Orchestrator) resolveChartSpecForStep(step string, spec ChartSpec) Char
 	}
 
 	if step == "installing_log_search" {
-		switch strings.TrimSpace(cfg.Logging.Search.Name) {
+		// 카탈로그·템플릿은 도구 이름을 사람이 읽는 대로 준다("Loki", "Tempo").
+		// TrimSpace 만으로 비교하면 전부 default 로 떨어진다 — 자원 기본값 쪽은
+		// 이미 정규화해서 비교하므로, 고른 도구의 값이 엉뚱한 차트에 실린다.
+		switch normalizeToolName(cfg.Logging.Search.Name) {
 		case "loki":
 			// 화면은 Loki 를 고를 수 있게 열어 두는데 여기에 분기가 없어
 			// 아래 default 로 떨어졌다 — Loki 를 골라도 OpenSearch 가 깔렸다.
@@ -207,7 +255,7 @@ func (o *Orchestrator) resolveChartSpecForStep(step string, spec ChartSpec) Char
 	}
 
 	if step == "installing_opentelemetry" {
-		switch strings.TrimSpace(cfg.Logging.TraceLayer.Name) {
+		switch normalizeToolName(cfg.Logging.TraceLayer.Name) {
 		case "tempo":
 			spec.ChartName = "tempo"
 			spec.RepoURL = "https://grafana.github.io/helm-charts"
@@ -272,15 +320,19 @@ func (o *Orchestrator) sharedPostgresValues(cfg *domain.StackConfig) map[string]
 func (o *Orchestrator) harborExternalURLValues(cfg *domain.StackConfig) map[string]any {
 	if cfg != nil {
 		if accessDomain := strings.TrimSpace(cfg.AccessDomain); accessDomain != "" {
-			// Harbor 는 redirect_uri 도 이 값에서 만든다. SSO 를 켠 설치에서는
-			// Keycloak 에 등록된 redirect(https://harbor.<도메인>/c/oidc/callback)와
-			// 스킴이 같아야 한다 — 다르면 로그인이 "Invalid parameter: redirect_uri"
-			// 로 막힌다.
+			// 항상 https 다. SSO·TLS 설정과 무관하다.
 			//
-			// SSO 를 쓰지 않으면 http 그대로 둔다. 이 값은 docker login/push 의
-			// 토큰 realm 이기도 해서, 스킴을 바꾸면 클라이언트(containerd 포함)가
-			// 게이트웨이 인증서의 CA 를 신뢰해야 한다.
-			return map[string]any{"externalURL": fmt.Sprintf("%s://harbor.%s", o.toolURLScheme(), accessDomain)}
+			// Harbor 는 레지스트리 토큰 realm 을 따로 정하는 설정이 없어
+			// <externalURL>/service/token 을 광고한다. 게이트웨이는 HTTPS 리스너를
+			// 늘 열므로 스캐너(Trivy 등 go-containerregistry)는 https 로 붙는데,
+			// http realm 을 받으면 "realm scheme "http" not allowed for a secure
+			// registry" 로 거부해 스캔 잡이 매번 실패한다(GitLab 레지스트리에서 실측).
+			//
+			// 같은 값에서 나오는 것들도 https 여야 맞는다: OIDC redirect_uri 는
+			// Keycloak 에 https 로 등록되고, 화면의 도구 링크(domain.ToolAccessURL)도
+			// https 다. blob 업로드 Location 은 registry.relativeurls 로 스킴이 나가지
+			// 않는다. Harbor UI 의 CSRF 쿠키가 Secure 가 되므로 UI 는 https 로 연다.
+			return map[string]any{"externalURL": fmt.Sprintf("https://harbor.%s", accessDomain)}
 		}
 	}
 
@@ -719,6 +771,17 @@ func (o *Orchestrator) gitlabSharedServiceValues() map[string]any {
 				"domain": accessDomain,
 				"https":  o.toolURLScheme() == "https",
 			},
+		},
+		// 레지스트리 인증 realm 은 항상 https 다. 게이트웨이는 설정과 무관하게
+		// HTTPS 리스너를 열고(defaultGatewayBundleManifest), https 로 접속한 엄격한
+		// 클라이언트(Trivy·crane 등 go-containerregistry)는 http realm 을 "not allowed
+		// for a secure registry" 로 거부한다 — kind 스택에서 이미지 스캔이 매번 실패했다.
+		//
+		// GitLab 외부 주소 전체(global.hosts.https)는 건드리지 않는다. 그것을 바꾸면
+		// 러너 clone 과 deploy 잡의 push 가 내부 CA 신뢰 문제에 걸린다. 차트가
+		// 뒤에 /jwt/auth 를 붙이므로 스킴과 호스트만 준다.
+		"registry": map[string]any{
+			"authEndpoint": fmt.Sprintf("https://gitlab.%s", accessDomain),
 		},
 	}
 }

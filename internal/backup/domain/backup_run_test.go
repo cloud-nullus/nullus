@@ -84,10 +84,33 @@ func TestModeComponents_모드별_대상(t *testing.T) {
 		ModeComponents(ModePlatformOnly))
 
 	assert.ElementsMatch(t,
-		[]Component{ComponentNamespaceResources, ComponentVolume},
+		[]Component{ComponentSharedResources, ComponentNamespaceResources, ComponentVolume},
 		ModeComponents(ModeStackOnly))
 
-	assert.Len(t, ModeComponents(ModeFull), 5, "full 은 다섯 컴포넌트를 모두 담는다")
+	assert.Len(t, ModeComponents(ModeFull), 6, "full 은 여섯 컴포넌트를 모두 담는다")
+}
+
+// 클러스터의 마지막 스택을 지우면 Nullus 가 설치한 공용 자원(Gateway CRD·GatewayClass·
+// 내부 CA)까지 회수된다. 네임스페이스 리소스만 되돌리면 Gateway CR 이 "no matches for
+// kind" 로 죽는다 — 스택 백업은 기본으로 공용 자원을 담는다.
+func TestModeComponents_스택_대상에_공용_자원이_든다(t *testing.T) {
+	assert.Contains(t, ModeComponents(ModeFull), ComponentSharedResources)
+	assert.Contains(t, ModeComponents(ModeStackOnly), ComponentSharedResources)
+	assert.NotContains(t, ModeComponents(ModePlatformOnly), ComponentSharedResources,
+		"플랫폼만 뜨는 백업은 스택 클러스터에 붙지 않는다")
+}
+
+func TestParseComponents_공용_자원을_받는다(t *testing.T) {
+	got, err := ParseComponents([]string{"shared_resources"})
+	require.NoError(t, err)
+	assert.Equal(t, []Component{ComponentSharedResources}, got)
+}
+
+// 공용 자원은 클러스터 범위의 작은 객체들이다. 뜨는 데 정지 창이 필요 없다.
+func TestBackupRun_공용_자원은_정지창을_열지_않는다(t *testing.T) {
+	run := NewBackupRun("o", ModeStackOnly, TriggerManual,
+		[]Component{ComponentSharedResources, ComponentNamespaceResources})
+	assert.False(t, run.RequiresQuiesce())
 }
 
 func TestBackupRun_RequiresQuiesce(t *testing.T) {
@@ -95,4 +118,44 @@ func TestBackupRun_RequiresQuiesce(t *testing.T) {
 	assert.False(t, NewBackupRun("o", ModePlatformOnly, TriggerManual, ModeComponents(ModePlatformOnly)).RequiresQuiesce())
 	assert.True(t, NewBackupRun("o", ModeStackOnly, TriggerManual, ModeComponents(ModeStackOnly)).RequiresQuiesce())
 	assert.True(t, NewBackupRun("o", ModeFull, TriggerManual, ModeComponents(ModeFull)).RequiresQuiesce())
+}
+
+func TestParseComponents_알려진_항목만_받는다(t *testing.T) {
+	got, err := ParseComponents([]string{"platform_db", "volume"})
+	require.NoError(t, err)
+	assert.Equal(t, []Component{ComponentPlatformDB, ComponentVolume}, got)
+}
+
+func TestParseComponents_모르는_항목은_거부한다(t *testing.T) {
+	// 조용히 버리면 사용자가 고른 것과 실제로 백업된 것이 달라진다 —
+	// 그 사실은 복구할 때에야 드러난다.
+	_, err := ParseComponents([]string{"platform_db", "그런건없다"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "그런건없다")
+}
+
+func TestParseComponents_중복은_한_번만(t *testing.T) {
+	got, err := ParseComponents([]string{"volume", "volume", "platform_db"})
+	require.NoError(t, err)
+	assert.Equal(t, []Component{ComponentVolume, ComponentPlatformDB}, got)
+}
+
+func TestParseComponents_비어_있으면_nil(t *testing.T) {
+	// 호출부는 이때 모드에서 파생한다 — 빈 선택과 "선택하지 않음" 을 구분한다.
+	got, err := ParseComponents(nil)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+func TestRequiresQuiesce_볼륨을_빼면_무중단이다(t *testing.T) {
+	// 정지 창을 만드는 것은 볼륨뿐이다. 볼륨을 뺀 선택까지 서비스를 멈추면
+	// 사용자가 백업을 피하게 되고, 피해진 백업은 없는 백업이다.
+	withVolume := NewBackupRun("org", ModeFull, TriggerManual,
+		[]Component{ComponentPlatformDB, ComponentVolume})
+	assert.True(t, withVolume.RequiresQuiesce())
+
+	withoutVolume := NewBackupRun("org", ModeFull, TriggerManual,
+		[]Component{ComponentPlatformDB, ComponentKeycloakDB, ComponentNamespaceResources})
+	assert.False(t, withoutVolume.RequiresQuiesce(),
+		"full 모드라도 볼륨을 빼면 멈출 이유가 없다")
 }

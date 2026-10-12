@@ -25,16 +25,52 @@ REPO_ROOT="$(cd "$ROOT_DIR/.." && pwd)"
 CHART_DIR="$REPO_ROOT/deploy/helm/nullus"
 VALUES_AIRGAP="$ROOT_DIR/helm/values-airgap.yaml"
 OUT_FILE="$ROOT_DIR/images/images.txt"
+# 차트는 에어갭 kind 노드의 쿠버네티스 버전으로 렌더한다. helm 의 기본 kubeVersion(v1.20)으로
+# 렌더하면 kubeVersion 제약이 있는 차트(argo-cd ≥1.25, cert-manager ≥1.22)가 실패해 이미지가 빠진다.
+KIND_CONFIG="$ROOT_DIR/kind/kind-airgap.yaml"
+KUBE_VERSION="${KUBE_VERSION:-$(awk '/image:[[:space:]]*kindest\/node:v/ { sub(/.*kindest\/node:v/, ""); print; exit }' "$KIND_CONFIG")}"
+# 설치 코드가 에어갭 모드에서 쓰는 단계별 values(go test ... -update-airgap-values 로 생성).
+# 차트 기본값만 렌더하면 설치가 덮어쓰는 이미지(bitnamilegacy postgresql, OpenBao 2.5.5 등)가 빠진다.
+INSTALLER_VALUES_DIR="$ROOT_DIR/helm/charts-catalog-values/installer"
 
 INFRA_IMAGES=(
   "kindest/node:v1.30.0"
   "registry:2"
-  # OpenBao: installed via inline manifest by stack orchestrator (not a helm chart)
-  "openbao/openbao:latest"
+  # OpenBao: 설치 코드 상수(internal/stack/adapter/helm/openbao-values.go 의 OpenBaoImage*)와 같아야 한다.
+  "openbao/openbao:2.5.5"
   # Jenkins: 플러그인을 구운 자체 이미지라 helm render 로는 잡히지 않는다.
   # 스택 설치가 values 로 지정한다(internal/stack/adapter/helm/values.go 의
   # jenkinsImage* 상수). 빼면 인터넷 없는 설치에서 Jenkins 가 뜨지 않는다.
   "ghcr.io/cloud-nullus/nullus/nullus-jenkins:2.568.2"
+)
+
+# RUNTIME_IMAGES: Go 코드가 **런타임에 만드는 매니페스트**가 참조하는 이미지.
+#
+# helm render 에 잡히지 않는다는 점에서 위 Jenkins 항목과 같은 부류다. 다만
+# 한 건씩 손으로 덧붙이는 방식으로는 다음 것을 놓친다 — 실제로 5종이 빠져
+# 있었고(2026-09-02) 폐쇄망 설치의 해당 단계가 ImagePullBackOff 로 실패했다.
+#
+# 단일 출처는 internal/shared/domain/runtime_images.go 의 RuntimeImages() 이고,
+# 그 목록과 이 배열이 어긋나면 runtime_images_test.go 가 CI 에서 막는다.
+# **여기만 고치거나 저기만 고치면 실패한다 — 둘 다 고쳐야 한다.**
+RUNTIME_IMAGES=(
+  # GitLab 오브젝트 스토리지 버킷 부트스트랩 Job
+  "quay.io/minio/mc:RELEASE.2025-05-21T01-59-54Z"
+  # Harbor·Nexus 프로비저닝 Job (REST API 호출)
+  "curlimages/curl:8.11.1"
+  # OpenBao init/bootstrap 사이드카
+  "docker.io/bitnamilegacy/kubectl:1.33.4"
+  # 생성된 React 앱 Dockerfile 의 빌드 단계
+  "node:22-alpine"
+  # Jenkins kubernetes 플러그인이 빌드마다 띄우는 파드(dind 는 GitLab build 잡 서비스와 같다)
+  "docker:27-cli"
+  "docker:27-dind"
+  # 생성된 .gitlab-ci.yml 의 build · deploy 잡
+  "docker:27"
+  "alpine:3.20"
+  # 파이프라인 SAST 단계 — 공식 이미지는 amd64 만 내서 우리가 멀티아치로 굽는다
+  # (deploy/images/sonar-scanner). 태그는 Dockerfile 의 스캐너 버전이다.
+  "ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389"
 )
 
 if [[ -t 1 ]]; then
@@ -67,7 +103,8 @@ if [[ "$MODE" == "write" ]]; then
   }
 fi
 
-HELM_ARGS=(template nullus "$CHART_DIR")
+[[ -n "$KUBE_VERSION" ]] || { log_err "kubeVersion 을 $KIND_CONFIG 에서 읽지 못했다"; exit 1; }
+HELM_ARGS=(template nullus "$CHART_DIR" --kube-version "$KUBE_VERSION")
 if [[ -f "$VALUES_AIRGAP" ]]; then
   HELM_ARGS+=(-f "$VALUES_AIRGAP")
 fi
@@ -119,6 +156,7 @@ fi
 CATALOG_DIR="${ROOT_DIR}/helm/charts-catalog"
 CATALOG_VALUES_DIR="${ROOT_DIR}/helm/charts-catalog-values"
 CATALOG_IMAGES=""
+INSTALLER_FAILED=()
 if [[ -d "$CATALOG_DIR" && "$DRY_RUN" != "1" ]]; then
   log_info "카탈로그 chart 스캔: $CATALOG_DIR"
   shopt -s nullglob
@@ -133,10 +171,29 @@ if [[ -d "$CATALOG_DIR" && "$DRY_RUN" != "1" ]]; then
     else
       log_info "  helm template $name"
     fi
-    rendered="$(helm template "$name" "$tgz" ${extra_args[@]+"${extra_args[@]}"} 2>/dev/null || true)"
+    rendered="$(helm template "$name" "$tgz" --kube-version "$KUBE_VERSION" ${extra_args[@]+"${extra_args[@]}"} 2>/dev/null || true)"
     [[ -z "$rendered" ]] && { log_warn "    렌더 실패 — 건너뜀 (values override 필요?)"; continue; }
     imgs="$(printf '%s\n' "$rendered" | extract_images | rewrite_upstream | sort -u)"
     CATALOG_IMAGES+="$imgs"$'\n'
+  done
+  # 설치 코드의 values 로도 렌더한다 — 설치가 실제로 받는 이미지.
+  for values in "$INSTALLER_VALUES_DIR"/*.yaml; do
+    IFS=' ' read -r chart version < <(awk '/^# chart: / { print $3, $4; exit }' "$values")
+    tgz=""
+    for cand in "$CATALOG_DIR/${chart}-${version}.tgz" "$CATALOG_DIR/${chart}-v${version}.tgz"; do
+      [[ -f "$cand" ]] && { tgz="$cand"; break; }
+    done
+    if [[ -z "$tgz" ]]; then
+      INSTALLER_FAILED+=("$(basename "$values") (차트 ${chart}-${version} 이 카탈로그에 없음)")
+      continue
+    fi
+    rendered="$(helm template "$chart" "$tgz" --kube-version "$KUBE_VERSION" -f "$values" 2>/dev/null || true)"
+    if [[ -z "$rendered" ]]; then
+      INSTALLER_FAILED+=("$(basename "$values") (렌더 실패)")
+      continue
+    fi
+    log_info "  helm template $chart $version (installer values: $(basename "$values"))"
+    CATALOG_IMAGES+="$(printf '%s\n' "$rendered" | extract_images | rewrite_upstream | sort -u)"$'\n'
   done
   shopt -u nullglob
   # 2025-08 Bitnami 정책: 버전 태그는 docker.io/bitnamilegacy/* 로 이관됨
@@ -149,6 +206,13 @@ if [[ -d "$CATALOG_DIR" && "$DRY_RUN" != "1" ]]; then
   fi
 fi
 
+# 설치 values 해시 — 파일 이름 순으로 내용을 이어 붙인 sha256(테스트와 같은 규칙).
+INSTALLER_VALUES_SHA="$(find "$INSTALLER_VALUES_DIR" -maxdepth 1 -name '*.yaml' | LC_ALL=C sort | xargs cat | shasum -a 256 | awk '{print $1}')"
+if [[ ${#INSTALLER_FAILED[@]} -gt 0 ]]; then
+  log_err "설치 values 로 렌더하지 못한 단계가 있다 — 그 단계의 이미지가 목록에서 빠진다:"
+  for f in "${INSTALLER_FAILED[@]}"; do log_err "  - $f"; done
+  exit 1
+fi
 tmp_file="$(mktemp)"
 trap 'rm -f "$tmp_file"' EXIT
 
@@ -160,6 +224,8 @@ trap 'rm -f "$tmp_file"' EXIT
   printf '# Regenerate whenever chart deps or app versions change.\n'
   printf '# Format : <registry>/<repo>:<tag>, one per line. Blank / "#" lines ignored.\n'
   printf '# CI     : MODE=check ./00-generate-images.sh blocks drift.\n'
+  # 어떤 설치 values 로 만든 목록인지 남긴다 — TestAirgapImages_GeneratedFromCurrentInstallerValues 가 본다.
+  printf '# installer-values-sha256: %s\n' "$INSTALLER_VALUES_SHA"
   printf '\n'
   printf '# --- Nullus app + chart dependency images (rendered from chart) ---\n'
   printf '%s\n' "$CHART_IMAGES"
@@ -171,6 +237,14 @@ trap 'rm -f "$tmp_file"' EXIT
   printf '\n'
   printf '# --- Infra images (not part of helm render) ---\n'
   for img in "${INFRA_IMAGES[@]}"; do printf '%s\n' "$img"; done
+  printf '\n'
+  printf '# --- Runtime manifest images (built by Go code, not by helm) ---\n'
+  printf '# Source of truth: internal/shared/domain/runtime_images.go\n'
+  # 차트 렌더에 이미 잡힌 것은 빼서 중복을 만들지 않는다.
+  RUNTIME_ONLY="$(comm -23 \
+    <(printf '%s\n' "${RUNTIME_IMAGES[@]}" | sort -u) \
+    <(printf '%s\n%s\n' "$CHART_IMAGES" "${CATALOG_IMAGES:-}" | grep -v '^$' | sort -u))"
+  printf '%s\n' "$RUNTIME_ONLY"
 } > "$tmp_file"
 
 case "$MODE" in
