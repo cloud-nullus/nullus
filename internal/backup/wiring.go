@@ -55,6 +55,9 @@ type Deps struct {
 	// SharedComponents 는 복구 중 공용 자원을 되살리기 전에 cert-manager·metrics-server 를 다시
 	// 세운다(스택 모듈의 설치기). 마지막 스택을 지운 클러스터로 되돌릴 때 필요하다.
 	SharedComponents port.SharedComponentsEnsurer
+	// Stacks 는 백업 세트가 "조직의 모든 설치 완료 스택" 을 읽는 창구다(스택 모듈의 저장소를 bridge 로 감싼다).
+	// 없으면 세트 백업은 배선되지 않았다고 거절한다 — 단독 백업·복구는 영향이 없다.
+	Stacks port.StackLister
 	// EncryptionKey 는 clusters.kubeconfig 복호화 키다 (ENCRYPTION_KEY).
 	// 백업이 쓰지는 않지만, 복구 전제 조건 검사에 필요하다 — 이 키가 없으면
 	// 복구해도 어떤 클러스터에도 접근할 수 없다 (§1.3).
@@ -249,6 +252,24 @@ func (m *Module) Backup(ctx context.Context, stackID string) (*usecase.BackupUse
 		deps.Releases = a.Releases
 	}
 	return usecase.NewBackupUseCase(deps), nil
+}
+
+// BackupSet 은 플랫폼 + 조직의 모든 스택을 한 세트로 뜨는 유스케이스를 만든다(설계 §6.7).
+// 멤버마다 Backup(stackID) 로 그 스택 클러스터의 어댑터를 조립한다.
+func (m *Module) BackupSet(context.Context) (*usecase.BackupSetUseCase, error) {
+	if m.deps.Stacks == nil {
+		return nil, fmt.Errorf("백업 세트가 배선되지 않았습니다 — 스택 목록 창구(Deps.Stacks)가 없습니다")
+	}
+	return usecase.NewBackupSetUseCase(usecase.BackupSetDeps{
+		Repo: m.Repo, Stacks: m.deps.Stacks, Factory: m.Backup, Logger: m.deps.Logger,
+	}), nil
+}
+
+// RestoreSet 은 백업 세트를 플랫폼 → 스택 순서로 되돌리는 유스케이스를 만든다.
+func (m *Module) RestoreSet(context.Context) (*usecase.RestoreSetUseCase, error) {
+	return usecase.NewRestoreSetUseCase(usecase.RestoreSetDeps{
+		Repo: m.Repo, Factory: m.Restore, Logger: m.deps.Logger,
+	}), nil
 }
 
 // Restore 는 스택별 복구 유스케이스를 만든다.

@@ -6,6 +6,7 @@ import { BackupPage } from "./backup-page";
 
 const mockUseBackupRuns = vi.hoisted(() => vi.fn());
 const mockMutate = vi.hoisted(() => vi.fn());
+const mockMutateSet = vi.hoisted(() => vi.fn());
 
 vi.mock("react-router-dom", async () => {
   const actual =
@@ -53,6 +54,7 @@ vi.mock("../api/backup-api", async () => {
     ...actual,
     useBackupRuns: () => mockUseBackupRuns(),
     useCreateBackup: () => ({ mutate: mockMutate, isPending: false }),
+    useCreateBackupSet: () => ({ mutate: mockMutateSet, isPending: false }),
   };
 });
 
@@ -154,6 +156,36 @@ describe("BackupPage", () => {
 
     expect(screen.getByText("gitlab-stack")).toBeInTheDocument();
     expect(screen.getByText(/^(Platform|플랫폼)$/)).toBeInTheDocument();
+  });
+
+  // 전체는 단독 백업 경로가 아니라 세트 경로로 간다 — 서버가 스택을 정하므로 stack_id·scope 를 보내지 않는다.
+  it("should start a backup set for everything", () => {
+    renderWithProviders(<BackupPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /백업 실행|Run backup/i }),
+    );
+    fireEvent.click(screen.getByRole("radio", { name: /Everything|전체/ }));
+    fireEvent.change(screen.getByPlaceholderText("all"), { target: { value: "all" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: /백업 시작|Start backup/i }),
+    );
+
+    expect(mockMutateSet).toHaveBeenCalledWith({ confirm: "all" }, expect.anything());
+    expect(mockMutate).not.toHaveBeenCalled();
+  });
+
+  it("should tag the runs that belong to one set", () => {
+    mockUseBackupRuns.mockReturnValue({
+      data: [
+        { id: "b5", set_id: "3f1c9a7e-5d2b-4c8e-9a1f-0b2c3d4e5f60", mode: "platform_only", trigger: "manual", status: "succeeded", total_bytes: 10, created_at: "2026-10-12T01:00:00Z" },
+        { id: "b6", set_id: "3f1c9a7e-5d2b-4c8e-9a1f-0b2c3d4e5f60", stack_id: "stk_a", mode: "stack_only", trigger: "manual", status: "succeeded", total_bytes: 10, created_at: "2026-10-12T01:01:00Z" },
+        { id: "b7", mode: "platform_only", trigger: "manual", status: "succeeded", total_bytes: 10, created_at: "2026-10-12T00:00:00Z" },
+      ],
+    });
+    renderWithProviders(<BackupPage />);
+
+    expect(screen.getAllByText(/(Set|세트) 3f1c9a7e/)).toHaveLength(2);
   });
 
   it("should say so when there is nothing yet", () => {

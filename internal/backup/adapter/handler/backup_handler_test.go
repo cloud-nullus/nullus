@@ -42,12 +42,36 @@ func (s *stubRepo) ListArtifacts(context.Context, string) ([]*domain.Artifact, e
 func (s *stubRepo) GetRestore(context.Context, string) (*domain.RestoreRun, error) {
 	return s.restore, nil
 }
+func (s *stubRepo) ListRunsBySet(_ context.Context, setID string) ([]*domain.BackupRun, error) {
+	out := []*domain.BackupRun{}
+	for _, r := range s.runs {
+		if r.SetID == setID {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
 
 // stubFactory 는 유스케이스를 만들지 않고 호출 여부만 기록한다.
 // 확인 절차가 유스케이스에 닿기 전에 막는지 보는 것이 목적이다.
 type stubFactory struct {
-	backupCalled  bool
-	restoreCalled bool
+	backupCalled     bool
+	restoreCalled    bool
+	backupSetCalled  bool
+	restoreSetCalled bool
+}
+
+func (f *stubFactory) BackupSet(context.Context) (*usecase.BackupSetUseCase, error) {
+	f.backupSetCalled = true
+	return nil, &shareddomain.AppError{
+		Code: "STUB", HTTPStatus: http.StatusTeapot, Message: "유스케이스까지 도달했다",
+	}
+}
+func (f *stubFactory) RestoreSet(context.Context) (*usecase.RestoreSetUseCase, error) {
+	f.restoreSetCalled = true
+	return nil, &shareddomain.AppError{
+		Code: "STUB", HTTPStatus: http.StatusTeapot, Message: "유스케이스까지 도달했다",
+	}
 }
 
 func (f *stubFactory) Backup(context.Context, string) (*usecase.BackupUseCase, error) {
@@ -415,4 +439,92 @@ func TestResolveOrgID_확인기가_없으면_헤더를_믿는다(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "org-any", repo.listedOrg)
+}
+
+// ---- 백업 세트 (설계 §6.7) ----
+
+// 세트는 조직의 모든 스택을 멈춘다 — 어느 스택을 뜰지 서버가 정하므로 네임스페이스 대신 "all" 을 받는다.
+func TestCreateBackupSet_확인이_없으면_거부한다(t *testing.T) {
+	e, _, f := newTestHandler(&stubRepo{})
+
+	rec := post(e, "/api/v1/backups/sets", `{}`)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "BACKUP_SET_CONFIRM_REQUIRED")
+	assert.False(t, f.backupSetCalled, "확인 전에 유스케이스를 부르면 안 된다")
+
+	rec = post(e, "/api/v1/backups/sets", `{"confirm":"nullus"}`)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.False(t, f.backupSetCalled)
+}
+
+func TestCreateBackupSet_확인이_맞으면_진행한다(t *testing.T) {
+	e, _, f := newTestHandler(&stubRepo{})
+
+	rec := post(e, "/api/v1/backups/sets", `{"confirm":"all"}`)
+
+	assert.True(t, f.backupSetCalled)
+	assert.Equal(t, http.StatusTeapot, rec.Code, "확인을 통과해 유스케이스까지 갔다")
+	assert.False(t, f.backupCalled, "세트는 단독 백업 경로를 타지 않는다")
+}
+
+func TestGetBackupSet_세트의_실행과_파생_상태를_준다(t *testing.T) {
+	e, _, _ := newTestHandler(&stubRepo{runs: []*domain.BackupRun{
+		{ID: "b1", SetID: "set-1", Mode: domain.ModePlatformOnly, Status: domain.StatusSucceeded},
+		{ID: "b2", SetID: "set-1", StackID: "stk_a", Mode: domain.ModeStackOnly, Status: domain.StatusFailed},
+		{ID: "b3", SetID: "set-2", Mode: domain.ModePlatformOnly, Status: domain.StatusSucceeded},
+	}})
+
+	rec := getWithOrg(e, "/api/v1/backups/sets/set-1", "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var body struct {
+		SetID  string              `json:"set_id"`
+		Status string              `json:"status"`
+		Runs   []backupRunResponse `json:"runs"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, "set-1", body.SetID)
+	assert.Equal(t, "partial", body.Status, "멤버 하나가 실패하면 세트는 partial 이다")
+	require.Len(t, body.Runs, 2, "다른 세트의 실행은 섞이지 않는다")
+	assert.Equal(t, "set-1", body.Runs[0].SetID, "실행 응답에도 세트 ID 가 있다")
+}
+
+func TestGetBackupSet_없으면_404(t *testing.T) {
+	e, _, _ := newTestHandler(&stubRepo{})
+	rec := getWithOrg(e, "/api/v1/backups/sets/nope", "")
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.Contains(t, rec.Body.String(), "BACKUP_SET_NOT_FOUND")
+}
+
+// 세트 복구도 파괴적이다 — 세트 ID 재입력.
+func TestCreateRestoreSet_확인이_없거나_틀리면_거부한다(t *testing.T) {
+	e, _, f := newTestHandler(&stubRepo{})
+
+	rec := post(e, "/api/v1/restores/sets", `{"set_id":"set-1"}`)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "RESTORE_CONFIRM_REQUIRED")
+
+	rec = post(e, "/api/v1/restores/sets", `{"set_id":"set-1","confirm":"set-2"}`)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	rec = post(e, "/api/v1/restores/sets", `{"confirm":"x"}`)
+	assert.Equal(t, http.StatusBadRequest, rec.Code, "set_id 가 없으면 거부")
+	assert.False(t, f.restoreSetCalled)
+}
+
+func TestCreateRestoreSet_확인이_맞으면_진행한다(t *testing.T) {
+	e, _, f := newTestHandler(&stubRepo{})
+	rec := post(e, "/api/v1/restores/sets", `{"set_id":"set-1","confirm":"set-1"}`)
+	assert.True(t, f.restoreSetCalled)
+	assert.Equal(t, http.StatusTeapot, rec.Code)
+	assert.False(t, f.restoreCalled, "세트는 단독 복구 경로를 타지 않는다")
+}
+
+func TestToResponse_세트_ID_를_노출한다(t *testing.T) {
+	res := toResponse(&domain.BackupRun{ID: "b1", SetID: "set-1"}, nil, false)
+	assert.Equal(t, "set-1", res.SetID)
+	alone := toResponse(&domain.BackupRun{ID: "b2"}, nil, false)
+	raw, _ := json.Marshal(alone)
+	assert.NotContains(t, string(raw), "set_id", "단독 실행에는 set_id 가 없다")
 }

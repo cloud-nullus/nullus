@@ -210,7 +210,10 @@ func (uc *RestoreUseCase) run(ctx context.Context, req RunRestoreRequest, rr *do
 	}
 
 	// ── 8b. 스택 금고 KV import. 금고 파드가 뜬 뒤라 기다려 다시 시도한다 ──
-	if touchPlatform && deferVault {
+	//
+	// touchPlatform 과 무관하다 — 스택 금고는 스택 데이터다. 세트 복구가 스택을 stack_only 로 되돌릴 때도
+	// 금고는 돌아와야 한다(볼륨이 담겼으면 이미 그 안에 있고, 없으면 이것이 유일한 길이다).
+	if deferVault {
 		uc.restoreStackVault(ctx, backup, arts)
 	}
 

@@ -165,5 +165,41 @@ describe("BackupTargetDialog", () => {
     setup([]);
     expect(screen.getByRole("radio", { name: /Platform only|플랫폼만/ })).toBeChecked();
     expect(box("volume")).toBeDisabled();
+    // 스택이 없으면 전체는 플랫폼만과 같다 — 보여 주지 않는다.
+    expect(screen.queryByRole("radio", { name: /Everything|전체/ })).toBeNull();
+  });
+
+  // 전체는 플랫폼 + 모든 스택을 한 세트로 뜬다. 어느 스택인지는 서버가 정하므로 대상은 고를 수 없고,
+  // 모든 스택이 멈추니 네임스페이스 대신 고정 문구 "all" 을 받는다(서버 handler.SetConfirmPhrase).
+  it("should back up everything as a set after typing the word all", () => {
+    const { onSubmit } = setup();
+    fireEvent.click(screen.getByRole("radio", { name: /Everything|전체/ }));
+
+    for (const id of ALL) {
+      expect(box(id)).toBeChecked();
+      expect(box(id)).toBeDisabled();
+    }
+    expect(screen.getByRole("alert")).toHaveTextContent(/멈춥|stop/i);
+    expect(startButton()).toBeDisabled();
+
+    fireEvent.change(screen.getByPlaceholderText("all"), { target: { value: "nullus-gitlab" } });
+    expect(startButton()).toBeDisabled();
+
+    fireEvent.change(screen.getByPlaceholderText("all"), { target: { value: "all" } });
+    fireEvent.click(startButton());
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      all: true,
+      stackId: undefined,
+      namespace: undefined,
+      scope: ALL,
+      confirm: "all",
+    });
+  });
+
+  it("should say how many stacks the set will include", () => {
+    setup();
+    expect(screen.getByRole("radio", { name: /Everything|전체/ })).toBeInTheDocument();
+    expect(screen.getByText(/2 (stacks|스택)/)).toBeInTheDocument();
   });
 });

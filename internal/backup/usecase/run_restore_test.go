@@ -531,3 +531,15 @@ func TestRunRestore_platform_only_도_스택_금고로_되돌린다(t *testing.T
 	assert.NotEqual(t, -1, tr.indexOf("kv.import"))
 	assert.Equal(t, -1, tr.indexOf("scale.up:gitlab"))
 }
+
+// 세트 복구는 스택을 stack_only 로 되돌린다. 스택 금고(KV)는 스택 데이터이므로 플랫폼을 건드리지
+// 않는 복구에서도 되돌려야 한다 — 워크로드 재개 뒤, 뜬 곳(스택 금고)으로.
+func TestRunRestore_stack_only_도_스택_금고를_되돌린다(t *testing.T) {
+	uc, tr, _, _, kv, _, backupID := seedBackup(t, domain.ModeFull)
+
+	_, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeStackOnly})
+	require.NoError(t, err)
+	assert.Equal(t, "stack-1", kv.importedStack)
+	assert.Less(t, tr.indexOf("scale.up:gitlab"), tr.indexOf("kv.import"), "금고 파드가 뜬 뒤")
+	assert.Equal(t, -1, tr.indexOf("db.restore:platform_db"), "플랫폼 DB 는 건드리지 않는다")
+}

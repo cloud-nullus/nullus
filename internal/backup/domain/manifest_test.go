@@ -171,3 +171,10 @@ func TestNewManifest_소유자_관리_워크로드를_표시한다(t *testing.T)
 	assert.True(t, m.Workloads[0].OwnerManaged, "복구의 재개 단계가 이 표시로 건너뛴다")
 	assert.False(t, m.Workloads[1].OwnerManaged)
 }
+
+// 복구(특히 세트 복구)가 어디로 되돌릴지는 매니페스트가 알아야 한다 — 백업 요청의 네임스페이스를 담는다.
+func TestBuildManifest_네임스페이스를_담는다(t *testing.T) {
+	run := NewBackupRun("org-1", ModeStackOnly, TriggerManual, ModeComponents(ModeStackOnly))
+	m := BuildManifest(run, ManifestInput{Namespace: "nullus-a"})
+	assert.Equal(t, "nullus-a", m.Namespace)
+}

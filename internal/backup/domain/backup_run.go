@@ -108,6 +108,8 @@ type BackupRun struct {
 	ID      string
 	OrgID   string
 	StackID string
+	// SetID 는 이 실행이 속한 백업 세트다(backup_set.go). 비어 있으면 단독 실행이다.
+	SetID   string
 	Trigger Trigger
 	Mode    Mode
 	Scope   []Component
