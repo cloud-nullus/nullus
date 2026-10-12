@@ -45,6 +45,20 @@ func (a *StackSSOAdapter) Deprovision(ctx context.Context, stepName string) erro
 	return a.inner.DeprovisionSSO(ctx, stepName)
 }
 
+func (a *StackSSOAdapter) UsesClientSecret(stepName string) bool {
+	if a == nil || a.inner == nil {
+		return false
+	}
+	return a.inner.UsesClientSecret(stepName)
+}
+
+func (a *StackSSOAdapter) SAMLSigningCertificate(ctx context.Context) (string, error) {
+	if a == nil || a.inner == nil {
+		return "", nil
+	}
+	return a.inner.SAMLSigningCertificate(ctx)
+}
+
 // NewStackSSOFactory 는 스택별 provisioner 를 만드는 팩토리를 돌려준다.
 func NewStackSSOFactory(kc *KeycloakClient) stackport.SSOProvisionerFactory {
 	return func(accessDomain, stackSlug string) stackport.SSOProvisioner {

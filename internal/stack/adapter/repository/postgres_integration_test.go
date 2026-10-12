@@ -112,6 +112,42 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 		assert.Nil(t, notFound)
 	})
 
+	// 스택 삭제가 클러스터의 마지막 스택인지 볼 때 쓴다. 조직과 무관하게 같은 클러스터의 지우지 않은
+	// 스택만 돌려준다.
+	t.Run("stack repository lists live stacks of a cluster across orgs", func(t *testing.T) {
+		repo := NewPostgresStackRepository(pool)
+		orgID, clusterID := createTestOrgAndCluster(t, ctx, pool)
+		otherOrgID, otherClusterID := createTestOrgAndCluster(t, ctx, pool)
+
+		newStack := func(org, cluster string) *domain.Stack {
+			now := time.Now().UTC().Truncate(time.Microsecond)
+			s := &domain.Stack{
+				ID: "stack-" + uuid.NewString(), Name: "cluster-list", TemplateID: "gitlab-allinone-v1",
+				OrgID: org, ClusterID: cluster, Namespace: "nullus-cluster-list", State: domain.StateCompleted,
+				Config: sampleStackConfig("GitLab CE"), CreatedAt: now, UpdatedAt: now,
+			}
+			require.NoError(t, repo.Create(ctx, s))
+			return s
+		}
+		sameOrg := newStack(orgID, clusterID)
+		otherOrg := newStack(otherOrgID, clusterID)
+		otherCluster := newStack(orgID, otherClusterID)
+		deleted := newStack(orgID, clusterID)
+		require.NoError(t, repo.Delete(ctx, deleted.ID))
+
+		stacks, err := repo.ListByCluster(ctx, clusterID)
+		require.NoError(t, err)
+		assert.True(t, containsStackID(stacks, sameOrg.ID))
+		assert.True(t, containsStackID(stacks, otherOrg.ID), "다른 조직의 스택도 같은 클러스터를 쓴다")
+		assert.False(t, containsStackID(stacks, otherCluster.ID))
+		assert.False(t, containsStackID(stacks, deleted.ID))
+
+		// 형식이 틀린 ID 는 쿼리 오류가 아니라 "없음" 이다.
+		none, err := repo.ListByCluster(ctx, "cluster-1")
+		require.NoError(t, err)
+		assert.Empty(t, none)
+	})
+
 	t.Run("template repository seeded templates and tools decoding", func(t *testing.T) {
 		repo := NewPostgresTemplateRepository(pool)
 
@@ -250,13 +286,18 @@ func TestPostgresRepositories_StackModuleIntegration(t *testing.T) {
 
 		require.NoError(t, stackRepo.Delete(ctx, stackID))
 
+		// 스택 삭제는 soft delete 다(deleted_at). 이력 화면은 지운 스택도 띄우고 그 버전 이력을
+		// 불러오므로(include_deleted) 버전은 남아야 한다 — 지우면 그 화면이 빈 이력으로 보인다.
+		// 한때 hard delete(버전 cascade 삭제)였다가 이력 보존으로 되돌아왔는데 이 기대만 남아 있었다.
 		versionsAfterDelete, err := repo.ListVersions(ctx, stackID)
 		require.NoError(t, err)
-		require.Len(t, versionsAfterDelete, 0)
+		require.Len(t, versionsAfterDelete, 2)
+		assert.Equal(t, newer.ID, versionsAfterDelete[0].ID)
 
 		got, err := repo.GetVersion(ctx, stackID, older.ID)
 		require.NoError(t, err)
-		require.Nil(t, got)
+		require.NotNil(t, got)
+		assert.Equal(t, older.ID, got.ID)
 	})
 
 	t.Run("compatibility repository seeded data", func(t *testing.T) {
@@ -441,27 +482,6 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
 			return fmt.Errorf("apply migration %s: %w", filename, err)
 		}
-	}
-
-	return nil
-}
-
-func ensurePreMigrationTables(ctx context.Context, pool *pgxpool.Pool) error {
-	const q = `
-		CREATE TABLE IF NOT EXISTS golden_path_templates (
-			id VARCHAR(100) PRIMARY KEY,
-			name VARCHAR(255) NOT NULL,
-			description TEXT,
-			tools JSONB NOT NULL DEFAULT '[]',
-			estimated_install_time BIGINT NOT NULL DEFAULT 0,
-			recommended_use_case TEXT,
-			min_resources TEXT,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		)`
-
-	if _, err := pool.Exec(ctx, q); err != nil {
-		return fmt.Errorf("ensure golden_path_templates table: %w", err)
 	}
 
 	return nil

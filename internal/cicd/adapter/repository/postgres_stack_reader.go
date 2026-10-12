@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -37,17 +38,20 @@ func (r *PostgresStackReader) GetStackSummary(ctx context.Context, stackID strin
 		       COALESCE(config->'artifacts'->'container_registry'->>'name', ''),
 		       COALESCE(config->>'access_domain', ''),
 		       COALESCE(config->'logging'->'trace_exporter'->>'enabled', 'false'),
-		       COALESCE(config->'security'->'image_scanner'->>'enabled', 'false')
+		       COALESCE(config->'security'->'image_scanner'->>'enabled', 'false'),
+		       COALESCE(config->'security'->'sast'->>'enabled', 'false'),
+		       COALESCE(config->'security'->'sast'->>'version', '')
 		FROM stacks
 		WHERE id = $1`
 
 	var s port.StackSummary
 	var collectorEnabled string
 	var scannerEnabled string
+	var sastEnabled, sastVersion string
 	err := r.pool.QueryRow(ctx, q, stackID).Scan(
 		&s.ID, &s.Name, &s.OrgID, &s.ClusterID, &s.State,
 		&s.Namespace, &s.SourceRepository, &s.ContainerRegistry, &s.AccessDomain,
-		&collectorEnabled, &scannerEnabled,
+		&collectorEnabled, &scannerEnabled, &sastEnabled, &sastVersion,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -67,6 +71,11 @@ func (r *PostgresStackReader) GetStackSummary(ctx context.Context, stackID strin
 	// 스캔 단계가 렌더링되고, CI 잡은 없는 서버에 붙어 전부 실패한다.
 	if scannerEnabled == "true" {
 		s.ImageScannerEndpoint = shareddomain.TrivyServerEndpoint(s.Namespace)
+	}
+	// SonarQube 도 같다. 외부 SonarQube(version=external)는 스택이 설치하지 않으므로
+	// 클러스터 안 주소가 없다 — stack 의 HasSAST 와 같은 판단이다.
+	if sastEnabled == "true" && !strings.EqualFold(strings.TrimSpace(sastVersion), "external") {
+		s.SASTServerEndpoint = shareddomain.SonarQubeServerEndpoint(s.Namespace)
 	}
 
 	return &s, nil

@@ -108,3 +108,7 @@ func TestDeleteStack_DeletesAccessDomainCertificateAndSecret(t *testing.T) {
 	assert.True(t, rec.has("delete secret", domain.AccessDomainTLSSecretName, "-n ssowire"),
 		"cert-manager 는 Certificate 를 지워도 TLS 시크릿을 남긴다.\n호출: %v", rec.calls)
 }
+
+func (f *fakeSSOProvisioner) UsesClientSecret(string) bool { return true }
+
+func (f *fakeSSOProvisioner) SAMLSigningCertificate(context.Context) (string, error) { return "", nil }

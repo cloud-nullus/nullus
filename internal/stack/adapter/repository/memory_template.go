@@ -176,6 +176,27 @@ func goldenPathTemplates() []*domain.Template {
 			PlanningProfile:      "standard",
 		},
 		{
+			// gitlab-argocd-v1 에 소스 정적 분석(SonarQube)을 더한 구성이다. 버전은 설치
+			// 경로가 쓰는 값이다(시드 000087 과 같아야 한다).
+			ID:          "gitlab-argocd-sonarqube-v1",
+			Name:        "GitLab + Argo CD + SonarQube",
+			Description: "GitLab CI와 GitLab Registry, Argo CD GitOps 구성에 SonarQube 정적 분석 서버를 함께 설치합니다. SonarQube는 스택의 PostgreSQL을 함께 씁니다.",
+			Tools: []domain.ToolConfig{
+				{Category: "source_repository", Name: "GitLab CE", HelmVersion: domain.GitLabChartVersion, AppVersion: domain.GitLabAppVersion},
+				{Category: "ci_platform", Name: "GitLab CI", HelmVersion: domain.GitLabChartVersion, AppVersion: domain.GitLabAppVersion},
+				{Category: "container_registry", Name: "GitLab Registry", HelmVersion: domain.GitLabChartVersion, AppVersion: domain.GitLabAppVersion},
+				{Category: "storage_backend", Name: "MinIO", HelmVersion: domain.MinIOChartVersion, AppVersion: domain.MinIOAppVersion},
+				{Category: "cd_tool", Name: "Argo CD", HelmVersion: domain.ArgoCDChartVersion, AppVersion: domain.ArgoCDAppVersion},
+				{Category: "monitoring_collection", Name: "Prometheus", HelmVersion: domain.PrometheusChartVersion, AppVersion: domain.PrometheusAppVersion},
+				{Category: "monitoring_visualization", Name: "Grafana", HelmVersion: domain.GrafanaChartVersion, AppVersion: domain.GrafanaAppVersion},
+				{Category: "sast", Name: "SonarQube", HelmVersion: domain.SonarQubeChartVersion, AppVersion: domain.SonarQubeAppVersion},
+			},
+			EstimatedInstallTime: 130 * time.Minute,
+			RecommendedUseCase:   "코드 품질·보안 정적 분석을 함께 운영하려는 GitOps 조직",
+			MinResources:         "12 vCPU / 24Gi RAM / 150Gi Storage",
+			PlanningProfile:      "standard",
+		},
+		{
 			ID:          "gitlab-nexus-v1",
 			Name:        "GitLab + Nexus",
 			Description: "컨테이너 이미지와 Maven/npm 패키지를 Nexus 한 곳에 모읍니다. 빌드 산출물이 이미지만이 아닌 조직에 맞습니다.",

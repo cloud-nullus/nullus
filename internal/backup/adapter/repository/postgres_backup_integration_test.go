@@ -29,12 +29,17 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // stack ID 는 UUID 가 아니다 — stacks.id 는 `stk_<hex>` 형태의 짧은 식별자다.
 // 여기에 uuid 를 넣어 두는 바람에 stack_id 컬럼이 UUID 로 선언된 것을 아무도
 // 잡지 못했고, 실제 스택으로 백업을 돌려 보고서야 드러났다(000076).
 const realisticStackID = "stk_352e9f68db06"
+
+// backup_runs.org_id 는 organizations 를 참조한다(000091). 없는 조직으로는 행을 만들
+// 수 없으므로 시드 기본 조직(000017)을 쓴다 — 화면이 보는 바로 그 조직이다.
+const seededOrg = shareddomain.SeededDefaultOrgID
 
 func newRun(orgID string) *domain.BackupRun {
 	run := domain.NewBackupRun(orgID, domain.ModeFull, domain.TriggerManual, domain.ModeComponents(domain.ModeFull))
@@ -48,7 +53,7 @@ func TestPostgresBackupRepository_실행_왕복(t *testing.T) {
 
 	repo := NewPostgresBackupRepository(pool)
 	ctx := context.Background()
-	orgID := uuid.NewString()
+	orgID := seededOrg
 
 	run := newRun(orgID)
 	require.NoError(t, repo.CreateRun(ctx, run))
@@ -88,7 +93,7 @@ func TestPostgresBackupRepository_스택_ID_는_UUID_가_아니다(t *testing.T)
 	repo := NewPostgresBackupRepository(pool)
 	ctx := context.Background()
 
-	run := newRun(uuid.NewString())
+	run := newRun(seededOrg)
 	require.NoError(t, repo.CreateRun(ctx, run), "stk_* 형식이 저장돼야 한다")
 
 	got, err := repo.GetRun(ctx, run.ID)
@@ -104,7 +109,7 @@ func TestPostgresBackupRepository_stack_id_가_없어도_된다(t *testing.T) {
 	repo := NewPostgresBackupRepository(pool)
 	ctx := context.Background()
 
-	run := domain.NewBackupRun(uuid.NewString(), domain.ModePlatformOnly, domain.TriggerSchedule,
+	run := domain.NewBackupRun(seededOrg, domain.ModePlatformOnly, domain.TriggerSchedule,
 		domain.ModeComponents(domain.ModePlatformOnly))
 	require.NoError(t, repo.CreateRun(ctx, run))
 
@@ -129,7 +134,7 @@ func TestPostgresBackupRepository_산출물_왕복과_CASCADE(t *testing.T) {
 	repo := NewPostgresBackupRepository(pool)
 	ctx := context.Background()
 
-	run := newRun(uuid.NewString())
+	run := newRun(seededOrg)
 	require.NoError(t, repo.CreateRun(ctx, run))
 
 	for _, a := range []*domain.Artifact{
@@ -170,7 +175,7 @@ func TestPostgresBackupRepository_실행을_지우면_산출물도_사라진다(
 	repo := NewPostgresBackupRepository(pool)
 	ctx := context.Background()
 
-	run := newRun(uuid.NewString())
+	run := newRun(seededOrg)
 	require.NoError(t, repo.CreateRun(ctx, run))
 	require.NoError(t, repo.AddArtifact(ctx, &domain.Artifact{
 		BackupRunID: run.ID, Component: domain.ComponentPlatformDB, Location: "s3://b/x", ChecksumSHA256: "c",
@@ -191,7 +196,7 @@ func TestPostgresBackupRepository_목록과_요약(t *testing.T) {
 
 	repo := NewPostgresBackupRepository(pool)
 	ctx := context.Background()
-	orgID := uuid.NewString()
+	orgID := seededOrg
 
 	for i := 0; i < 3; i++ {
 		run := newRun(orgID)
@@ -200,8 +205,8 @@ func TestPostgresBackupRepository_목록과_요약(t *testing.T) {
 		run.Complete(map[domain.Component]error{domain.ComponentPlatformDB: nil})
 		require.NoError(t, repo.UpdateRun(ctx, run))
 	}
-	// 다른 조직 것은 섞이면 안 된다.
-	other := newRun(uuid.NewString())
+	// 다른 조직 것은 섞이면 안 된다. FK 때문에 그 조직도 실제로 있어야 한다.
+	other := newRun(insertOrganization(t, pool, "other-org"))
 	require.NoError(t, repo.CreateRun(ctx, other))
 
 	runs, err := repo.ListRuns(ctx, orgID, 0)
@@ -224,7 +229,7 @@ func TestPostgresBackupRepository_복구_실행_왕복(t *testing.T) {
 	repo := NewPostgresBackupRepository(pool)
 	ctx := context.Background()
 
-	backupRun := newRun(uuid.NewString())
+	backupRun := newRun(seededOrg)
 	require.NoError(t, repo.CreateRun(ctx, backupRun))
 
 	rr := domain.NewRestoreRun(backupRun.ID, domain.ModeFull)
@@ -258,6 +263,27 @@ func TestPostgresBackupRepository_복구_실행_왕복(t *testing.T) {
 
 func setupBackupPostgres(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
+	pool, cleanup := startBackupPostgres(t)
+	if err := applyMigrationRange(context.Background(), pool, "", ""); err != nil {
+		cleanup()
+		t.Fatalf("마이그레이션: %v", err)
+	}
+	return pool, cleanup
+}
+
+// insertOrganization 은 두 번째 조직을 만든다. 조직 테이블은 admin 모듈의 것이지만,
+// 여기서는 FK 를 만족시킬 행이 필요할 뿐이다.
+func insertOrganization(t *testing.T, pool *pgxpool.Pool, slug string) string {
+	t.Helper()
+	var id string
+	require.NoError(t, pool.QueryRow(context.Background(),
+		`INSERT INTO organizations (name, slug) VALUES ($1, $1) RETURNING id::text`, slug).Scan(&id))
+	return id
+}
+
+// startBackupPostgres 는 빈 컨테이너와 풀만 준다. 마이그레이션은 호출자가 고른다.
+func startBackupPostgres(t *testing.T) (*pgxpool.Pool, func()) {
+	t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 
@@ -285,11 +311,6 @@ func setupBackupPostgres(t *testing.T) (*pgxpool.Pool, func()) {
 		cancel()
 		t.Fatalf("pgx 풀 생성: %v", err)
 	}
-	if err := applyBackupMigrations(ctx, pool); err != nil {
-		pool.Close()
-		cancel()
-		t.Fatalf("마이그레이션: %v", err)
-	}
 
 	return pool, func() {
 		pool.Close()
@@ -304,7 +325,15 @@ func setupBackupPostgres(t *testing.T) (*pgxpool.Pool, func()) {
 // 독립적이고, seed 를 포함한 전체 적용은 이 테스트에 필요 없는 시간을 쓴다.
 // 그 독립성 자체도 검증 대상이다 — 다른 모듈 테이블에 얽혀 있었다면
 // 여기서 바로 실패한다.
-func applyBackupMigrations(ctx context.Context, pool *pgxpool.Pool) error {
+// applyMigrationRange 는 db/migrations 의 up 마이그레이션 중 from <= 이름 < to 인 것을
+// 순서대로 적용한다. 빈 from 은 처음부터, 빈 to 는 끝까지다.
+//
+// 백업 마이그레이션만 골라 적용하던 것을 전체로 바꿨다 — backup_runs.org_id 가
+// organizations 를 참조하므로(000091) 백업 테이블만으로는 스키마가 서지 않는다.
+// 범위를 받는 이유는 마이그레이션 자체를 검증하기 위해서다: 어떤 버전 직전까지
+// 올린 뒤 데이터를 넣고, 나머지를 적용해 그 마이그레이션이 데이터를 어떻게
+// 다루는지 본다.
+func applyMigrationRange(ctx context.Context, pool *pgxpool.Pool, from, to string) error {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		return fmt.Errorf("호출 파일 경로를 알 수 없습니다")
@@ -318,12 +347,20 @@ func applyBackupMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	var files []string
 	for _, e := range entries {
-		if !e.IsDir() && (strings.HasPrefix(e.Name(), "000075_") || strings.HasPrefix(e.Name(), "000076_")) && strings.HasSuffix(e.Name(), ".up.sql") {
-			files = append(files, e.Name())
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".up.sql") {
+			continue
 		}
+		if from != "" && name < from {
+			continue
+		}
+		if to != "" && name >= to {
+			continue
+		}
+		files = append(files, name)
 	}
 	if len(files) == 0 {
-		return fmt.Errorf("백업 마이그레이션(000075/000076)을 찾지 못했습니다")
+		return fmt.Errorf("적용할 마이그레이션이 없습니다 (from=%q, to=%q)", from, to)
 	}
 	sort.Strings(files)
 
@@ -337,4 +374,47 @@ func applyBackupMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 	return nil
+}
+
+// 백업 세트(000093) — 세트 ID 가 왕복하고, 세트 조회는 그 세트의 실행만 만든 순서로 준다.
+// 단독 실행(set_id NULL)은 빈 문자열로 읽힌다 — 기존 행 전부가 그렇다.
+func TestPostgresBackupRepository_백업_세트_왕복(t *testing.T) {
+	pool, cleanup := setupBackupPostgres(t)
+	t.Cleanup(cleanup)
+
+	repo := NewPostgresBackupRepository(pool)
+	ctx := context.Background()
+	setID := "3f1c9a7e-5d2b-4c8e-9a1f-0b2c3d4e5f60"
+
+	platform := domain.NewBackupRun(seededOrg, domain.ModePlatformOnly, domain.TriggerManual,
+		domain.ModeComponents(domain.ModePlatformOnly))
+	platform.SetID = setID
+	require.NoError(t, repo.CreateRun(ctx, platform))
+
+	stack := domain.NewBackupRun(seededOrg, domain.ModeStackOnly, domain.TriggerManual,
+		domain.ModeComponents(domain.ModeStackOnly))
+	stack.StackID = realisticStackID
+	stack.SetID = setID
+	require.NoError(t, repo.CreateRun(ctx, stack))
+
+	alone := newRun(seededOrg)
+	require.NoError(t, repo.CreateRun(ctx, alone))
+
+	got, err := repo.GetRun(ctx, stack.ID)
+	require.NoError(t, err)
+	assert.Equal(t, setID, got.SetID, "세트 ID 왕복")
+
+	gotAlone, err := repo.GetRun(ctx, alone.ID)
+	require.NoError(t, err)
+	assert.Empty(t, gotAlone.SetID, "단독 실행은 세트가 없다")
+
+	members, err := repo.ListRunsBySet(ctx, setID)
+	require.NoError(t, err)
+	require.Len(t, members, 2, "세트의 실행만")
+	assert.Equal(t, platform.ID, members[0].ID, "플랫폼이 먼저 — 만든 순서")
+	assert.Equal(t, stack.ID, members[1].ID)
+
+	none, err := repo.ListRunsBySet(ctx, "00000000-0000-0000-0000-000000000000")
+	require.NoError(t, err)
+	assert.Empty(t, none)
 }

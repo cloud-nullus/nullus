@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -26,10 +27,15 @@ type PgDumper struct {
 	dumpBin    string
 	restoreBin string
 	psqlBin    string
+	// indexNames 는 보존할 테이블의 인덱스 이름을 읽는다. 복구 목차의 INDEX 항목에는 테이블
+	// 이름이 없어 이것으로 가른다. 테스트가 바꿔 끼운다.
+	indexNames func(ctx context.Context, target port.DBTarget, tables []string) ([]string, error)
 }
 
 func NewPgDumper(pool *pgxpool.Pool) *PgDumper {
-	return &PgDumper{pool: pool, dumpBin: "pg_dump", restoreBin: "pg_restore", psqlBin: "psql"}
+	d := &PgDumper{pool: pool, dumpBin: "pg_dump", restoreBin: "pg_restore", psqlBin: "psql"}
+	d.indexNames = d.queryIndexNames
+	return d
 }
 
 var versionRe = regexp.MustCompile(`(\d+(?:\.\d+)*)`)
@@ -140,6 +146,9 @@ func (d *PgDumper) Dump(ctx context.Context, target port.DBTarget, out io.Writer
 		return port.DumpResult{}, err
 	}
 
+	// 보존할 테이블(백업 이력)도 덤프에 담는다. 플랫폼 DB 를 통째로 잃으면 이전 백업들의
+	// 카탈로그(매니페스트·산출물 위치)를 되살릴 사본이 이 덤프뿐이다 — 버킷에는 매니페스트가 없다.
+	// 그 테이블을 지키는 일은 Restore 가 한다.
 	args := append([]string{"--format=custom", "--no-password"}, d.connArgs(target)...)
 	cmd := exec.CommandContext(ctx, d.dumpBin, args...)
 	cmd.Env = append(cmd.Environ(), d.env(target)...)
@@ -178,16 +187,207 @@ func (d *PgDumper) Restore(ctx context.Context, target port.DBTarget, in io.Read
 		"--single-transaction",
 	}, d.connArgs(target)...)
 
+	if len(target.PreserveTables) == 0 {
+		return d.runRestore(ctx, target, args, in)
+	}
+
+	// 보존할 테이블이 있으면 목차에서 그 항목을 빼고 되돌린다. 덤프에는 그 테이블이 들어 있다 —
+	// 그대로 되돌리면 --clean 이 지금의 이력을 백업 시점 것으로 바꾼다.
+	// 목차(-l)와 복원(-L)이 같은 아카이브를 두 번 읽어야 해서 파일로 받는다. 플랫폼 DB 는
+	// 볼륨과 달리 수 MB 수준이다.
+	archive, cleanup, err := spool(in)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	toc, err := d.listTOC(ctx, archive)
+	if err != nil {
+		return err
+	}
+	indexes, err := d.indexNames(ctx, target, target.PreserveTables)
+	if err != nil {
+		return fmt.Errorf("보존할 테이블의 인덱스 조회: %w", err)
+	}
+	list, err := os.CreateTemp("", "nullus-restore-*.list")
+	if err != nil {
+		return fmt.Errorf("복원 목록 파일: %w", err)
+	}
+	defer func() { _ = os.Remove(list.Name()) }()
+	if _, err := list.WriteString(filterTOC(toc, target.PreserveTables, indexes)); err != nil {
+		_ = list.Close()
+		return fmt.Errorf("복원 목록 쓰기: %w", err)
+	}
+	if err := list.Close(); err != nil {
+		return fmt.Errorf("복원 목록 쓰기: %w", err)
+	}
+
+	args = append(args, "-L", list.Name(), archive)
+	return d.runRestore(ctx, target, args, nil)
+}
+
+func (d *PgDumper) runRestore(ctx context.Context, target port.DBTarget, args []string, in io.Reader) error {
 	cmd := exec.CommandContext(ctx, d.restoreBin, args...)
 	cmd.Env = append(cmd.Environ(), d.env(target)...)
-	cmd.Stdin = in
+	if in != nil {
+		cmd.Stdin = in
+	}
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("pg_restore 실패: %w (%s)", err, strings.TrimSpace(stderr.String()))
+		msg := strings.TrimSpace(stderr.String())
+		if hint := preservedTableFKHint(msg, target.PreserveTables); hint != "" {
+			return fmt.Errorf("pg_restore 실패: %w (%s) — %s", err, msg, hint)
+		}
+		return fmt.Errorf("pg_restore 실패: %w (%s)", err, msg)
 	}
 	return nil
+}
+
+// preservedTableFKHint 는 보존하는 이력 테이블의 FK 가 --clean 을 막은 실패를 알아보고 조치를 말한다.
+//
+// 이력 테이블(backup_runs 등)이 되돌리는 테이블(organizations 등)을 FK 로 참조하면 pg_restore 가 그
+// 테이블의 PK 를 지우는 순간 "cannot drop constraint … because other objects depend on it / DETAIL:
+// constraint <fk> on table public.<이력 테이블> depends on …" 으로 죽는다. 2026-10-12 실환경 리허설에서
+// 000091 의 backup_runs_org_id_fkey 가 그랬다(000092 가 거뒀다). 원문만으로는 무엇을 고쳐야 하는지
+// 보이지 않는다 — 이력 테이블은 플랫폼 테이블을 참조하면 안 된다는 원칙과 조치를 덧붙인다.
+func preservedTableFKHint(stderr string, preserved []string) string {
+	if !strings.Contains(stderr, "cannot drop constraint") || !strings.Contains(stderr, "depends on") {
+		return ""
+	}
+	var blocking []string
+	for _, table := range preserved {
+		if strings.Contains(stderr, "on table public."+table+" ") || strings.Contains(stderr, "on table "+table+" ") {
+			blocking = append(blocking, table)
+		}
+	}
+	if len(blocking) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("보존하는 백업 이력 테이블(%s)이 되돌리는 테이블을 FK 로 참조해 --clean 을 막습니다. "+
+		"이력 테이블은 플랫폼 테이블을 FK 로 참조하면 안 됩니다 — 그 FK 를 거두는 마이그레이션을 적용한 뒤 다시 실행하세요(000092 참조)",
+		strings.Join(blocking, ", "))
+}
+
+// spool 은 아카이브 스트림을 임시 파일로 받는다. 파일은 소유자만 읽는다(평문 DB 덤프다).
+func spool(in io.Reader) (string, func(), error) {
+	f, err := os.CreateTemp("", "nullus-restore-*.dump")
+	if err != nil {
+		return "", nil, fmt.Errorf("복원 임시 파일: %w", err)
+	}
+	cleanup := func() { _ = os.Remove(f.Name()) }
+	if _, err := io.Copy(f, in); err != nil {
+		_ = f.Close()
+		cleanup()
+		return "", nil, fmt.Errorf("복원 임시 파일 쓰기: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("복원 임시 파일 쓰기: %w", err)
+	}
+	return f.Name(), cleanup, nil
+}
+
+// listTOC 는 아카이브의 목차(pg_restore -l)를 읽는다.
+func (d *PgDumper) listTOC(ctx context.Context, archive string) (string, error) {
+	cmd := exec.CommandContext(ctx, d.restoreBin, "-l", archive)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("pg_restore 목차 읽기 실패: %w (%s)", err, strings.TrimSpace(stderr.String()))
+	}
+	return string(out), nil
+}
+
+// queryIndexNames 는 대상 DB 에서 그 테이블들의 인덱스 이름을 읽는다.
+//
+// 목차의 INDEX 항목은 인덱스 이름만 담는다. 이력 테이블의 인덱스는 마이그레이션이 이름을 정하므로
+// 지금 DB 의 이름이 덤프 속 이름과 같다.
+func (d *PgDumper) queryIndexNames(ctx context.Context, target port.DBTarget, tables []string) ([]string, error) {
+	const q = `SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = ANY($1)`
+	var rows pgx.Rows
+	var err error
+	if strings.TrimSpace(target.Host) == "" {
+		if d.pool == nil {
+			return nil, fmt.Errorf("대상 호스트도 DB 풀도 없습니다")
+		}
+		rows, err = d.pool.Query(ctx, q, tables)
+	} else {
+		conn, cerr := pgx.Connect(ctx, dsn(target))
+		if cerr != nil {
+			return nil, fmt.Errorf("%s 에 연결: %w", target.Database, cerr)
+		}
+		defer func() { _ = conn.Close(context.WithoutCancel(ctx)) }()
+		rows, err = conn.Query(ctx, q, tables)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+// filterTOC 는 목차에서 보존할 테이블에 딸린 항목을 뺀다. 나머지는 순서를 지킨다(-L 은 목록
+// 순서대로 되돌린다).
+//
+// 항목 형식(pg_restore -l, PostgreSQL 18 실측): "<id>; <oid> <oid> <종류> <스키마> <이름…> <소유자>".
+// 테이블·데이터·제약은 이름에 테이블이 들어 있고, INDEX 는 인덱스 이름만 있어 indexes 로 가른다.
+func filterTOC(toc string, tables, indexes []string) string {
+	if len(tables) == 0 {
+		return toc
+	}
+	preserved := make(map[string]bool, len(tables))
+	for _, t := range tables {
+		preserved[t] = true
+	}
+	preservedIndex := make(map[string]bool, len(indexes))
+	for _, i := range indexes {
+		preservedIndex[i] = true
+	}
+
+	var b strings.Builder
+	for _, line := range strings.SplitAfter(toc, "\n") {
+		if !tocEntryTouches(line, preserved, preservedIndex) {
+			b.WriteString(line)
+		}
+	}
+	return b.String()
+}
+
+func tocEntryTouches(line string, tables, indexes map[string]bool) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" || strings.HasPrefix(trimmed, ";") {
+		return false
+	}
+	_, rest, ok := strings.Cut(trimmed, "; ")
+	if !ok {
+		return false
+	}
+	f := strings.Fields(rest)
+	if len(f) < 5 { // oid oid 종류 스키마 이름
+		return false
+	}
+	f = f[2:] // 종류부터
+	inPublic := func(i int) bool { return i < len(f) && f[i] == "public" }
+	switch {
+	case len(f) >= 3 && f[0] == "TABLE" && f[1] == "DATA":
+		return inPublic(2) && len(f) > 3 && tables[f[3]]
+	case len(f) >= 3 && f[0] == "FK" && f[1] == "CONSTRAINT":
+		return inPublic(2) && len(f) > 3 && tables[f[3]]
+	case f[0] == "TABLE", f[0] == "CONSTRAINT", f[0] == "TRIGGER", f[0] == "POLICY", f[0] == "RULE", f[0] == "DEFAULT":
+		return inPublic(1) && tables[f[2]]
+	case f[0] == "INDEX":
+		return inPublic(1) && indexes[f[2]]
+	case f[0] == "COMMENT", f[0] == "ACL":
+		// "COMMENT public TABLE <테이블>" · "COMMENT public COLUMN <테이블>.<열>"
+		if !inPublic(1) || len(f) < 4 {
+			return false
+		}
+		name, _, _ := strings.Cut(f[3], ".")
+		return (f[2] == "TABLE" || f[2] == "COLUMN") && tables[name]
+	}
+	return false
 }
 
 // SchemaState 는 **대상 DB** 의 golang-migrate schema_migrations 를 읽는다 (§6.2).

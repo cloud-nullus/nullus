@@ -228,8 +228,11 @@ ESO → 시크릿 → SSO)을 그대로 탑니다.
 ./scripts/runbook_local.sh stack-down stk_abc123  # 특정 스택만
 ```
 
-`stack-down` 은 끝나고 클러스터에 남은 helm 릴리스를 출력합니다. `cert-manager`
-와 `metrics-server` 는 스택 소유가 아닌 플랫폼 선행 구성이라 남는 것이 정상입니다.
+`stack-down` 은 끝나고 클러스터에 남은 helm 릴리스를 출력합니다. 클러스터의
+**마지막 스택**을 지우면 스택들이 함께 쓰던 공용 자원(`cert-manager`·내부 CA·
+`metrics-server`·Gateway API CRD)도 Nullus 가 설치한 것이면 회수합니다. 클러스터에
+원래 있던 것이나 아직 쓰는 곳이 있는 것(사용자 인증서·HPA·Gateway 등)은 남기고,
+무엇이 쓰는지 삭제 로그(`deleting_shared`)에 남깁니다.
 
 처음 설치 상태로 완전히 되돌리려면 `purge` 를 씁니다. 파이프라인 → 스택 →
 Nullus/백킹 → kind 클러스터 순으로 지우고, DB 볼륨까지 삭제해 다음 `up` 이

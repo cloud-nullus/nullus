@@ -75,3 +75,16 @@ func ErrInvalidMode(mode string) error {
 		Detail:     mode,
 	}
 }
+
+// ErrStackRequired 는 스택 클러스터가 있어야 뜰 수 있는 대상을 스택 없이 고른 요청을 거부한다.
+//
+// 리소스·볼륨은 스택 클러스터에서 뜬다. 서버는 스택 ID 로 그 클러스터를 찾으므로, 스택을
+// 고르지 않은 요청은 닿을 곳이 없다. Detail 에 빠진 대상을 담는다.
+func ErrStackRequired(components string) error {
+	return &shareddomain.AppError{
+		Code:       "BACKUP_STACK_REQUIRED",
+		HTTPStatus: http.StatusBadRequest,
+		Message:    "이 백업 대상은 스택을 골라야 뜰 수 있습니다",
+		Detail:     components,
+	}
+}

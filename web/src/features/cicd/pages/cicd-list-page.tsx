@@ -52,19 +52,30 @@ import {
   usePipelineDeployments,
   usePipelineImageScans,
   usePipelineResources,
+  usePipelineSASTResults,
   usePipelines,
   useTemplateById,
+  useRefreshPipelineDefinition,
 } from "../api/cicd-api";
 import {
   DeletePipelineDialog,
   type DeletePipelineSelection,
 } from "../components/delete-pipeline-dialog";
+import { RefreshDefinitionDialog } from "../components/refresh-definition-dialog";
 import {
   ImageScanDetail,
   ImageScanRowSummary,
 } from "../components/image-scan-summary";
 import { PipelineScanVulnerabilities } from "../components/pipeline-scan-vulnerabilities";
-import type { Pipeline, PipelineImageScan } from "../api/cicd-api";
+import {
+  SASTResultDetail,
+  SASTRowSummary,
+} from "../components/sast-result-summary";
+import type {
+  Pipeline,
+  PipelineImageScan,
+  PipelineSASTResult,
+} from "../api/cicd-api";
 import { useScopedClusters as useClusters } from "../../admin/api/admin-api";
 import { useStacks } from "../../stack/api/stack-api";
 import { Button } from "../../../components/ui/button";
@@ -237,7 +248,6 @@ function ExecuteModal({
   onExecute: () => void;
   isExecuting: boolean;
 }) {
-  const { data: clustersData } = useClusters();
   const { data: executeStacksData } = useStacks();
   // 스택을 아직 못 받았거나 스택 없이 만든 파이프라인이면 아무것도 붙이지
   // 않는다. 모르는 값을 그럴듯하게 지어내지 않는다.
@@ -246,30 +256,7 @@ function ExecuteModal({
         (stack) => stack.id === pipeline.stackId,
       )?.name ?? pipeline.stackId)
     : "";
-  const clusterList = clustersData?.items ?? [];
-  const targetClusters = clusterList.filter((c) => {
-    const types = Array.isArray((c as any).types)
-      ? (c as any).types
-      : [(c as any).type ?? ""];
-    return types
-      .flatMap((t: string) => t.split(","))
-      .map((t: string) => t.trim().toLowerCase())
-      .includes("target");
-  });
-  const clusterOptions =
-    targetClusters.length > 0
-      ? targetClusters
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .map((c) => ({ id: c.id, name: c.name }))
-      : [
-          { id: "c1", name: "prod-k8s" },
-          { id: "c2", name: "dev-k8s" },
-        ];
-
   const [activeTab, setActiveTab] = useState<ExecuteSetupTab>("cluster");
-  const [clusterId, setClusterId] = useState(
-    pipeline.clusterId || clusterOptions[0]?.id || "",
-  );
   const [dockerfileId, setDockerfileId] = useState(
     EXECUTE_DOCKERFILE_PRESETS[0].id,
   );
@@ -294,6 +281,9 @@ function ExecuteModal({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="execute-modal-title"
         className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[var(--color-border-default)] bg-[var(--color-surface-card)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -304,7 +294,10 @@ function ExecuteModal({
               <Rocket {...iconProps("sm")} />
             </div>
             <div>
-              <div className="text-[15px] font-bold text-[var(--color-text-primary)]">
+              <div
+                id="execute-modal-title"
+                className="text-[15px] font-bold text-[var(--color-text-primary)]"
+              >
                 Execute Pipeline
               </div>
               <div className="text-[12px] text-[var(--color-text-secondary)]">
@@ -335,18 +328,13 @@ function ExecuteModal({
         <div className="flex-1 overflow-y-auto p-5">
           {activeTab === "cluster" && (
             <div className="max-w-sm">
-              <Select
+              {/* 실행은 파이프라인에 정해진 클러스터로 간다 — 여기서 바꿀 수 없다.
+                  예전에는 고를 수 있었지만 고른 값을 서버에 보내지 않았다. 스택
+                  파이프라인은 스택의 Argo CD 가 스택 클러스터에 올린다. */}
+              <ConfigRow
                 label="Deploy Cluster"
-                value={clusterId}
-                onChange={(e) => setClusterId(e.target.value)}
-                className="w-full"
-              >
-                {clusterOptions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
+                value={pipeline.clusterName || pipeline.clusterId || "-"}
+              />
             </div>
           )}
 
@@ -1464,6 +1452,19 @@ function indexScansByDeployment(scans: PipelineImageScan[] | undefined) {
   return byDeployment;
 }
 
+// 실행 하나에 분석 결과도 하나다(sast_<실행 id>). 스캔과 같이 가장 최근 분석을 쓴다.
+function indexSASTByDeployment(results: PipelineSASTResult[] | undefined) {
+  const byDeployment = new Map<string, PipelineSASTResult>();
+  for (const result of results ?? []) {
+    if (!result.deploymentId) continue;
+    const existing = byDeployment.get(result.deploymentId);
+    if (!existing || result.analyzedAt > existing.analyzedAt) {
+      byDeployment.set(result.deploymentId, result);
+    }
+  }
+  return byDeployment;
+}
+
 function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
   const { t, i18n } = useTranslation();
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language);
@@ -1483,6 +1484,15 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
   const scanByDeployment = useMemo(
     () => indexScansByDeployment(imageScansData?.items),
     [imageScansData],
+  );
+  // 소스 정적 분석도 같은 요청이 들인다. 실패해도(미배선 503) 분석 표시만 빠진다.
+  const { data: sastResultsData } = usePipelineSASTResults(
+    pipeline.id,
+    deploymentsUpdatedAt,
+  );
+  const sastByDeployment = useMemo(
+    () => indexSASTByDeployment(sastResultsData?.items),
+    [sastResultsData],
   );
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<
     string | null
@@ -1510,6 +1520,9 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
     deployments.find((d) => d.id === selectedDeploymentId) ?? null;
   const selectedScan = selectedDeployment
     ? scanByDeployment.get(selectedDeployment.id)
+    : undefined;
+  const selectedSAST = selectedDeployment
+    ? sastByDeployment.get(selectedDeployment.id)
     : undefined;
   const { data: deploymentStatus, isLoading: isDeploymentStatusLoading } =
     useDeploymentStatus(selectedDeploymentId);
@@ -1555,6 +1568,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
               : "-";
         const isSelected = d.id === selectedDeploymentId;
         const rowScan = scanByDeployment.get(d.id);
+        const rowSAST = sastByDeployment.get(d.id);
 
         return (
           <div
@@ -1579,6 +1593,7 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
               {d.version}
             </button>
             {rowScan && <ImageScanRowSummary scan={rowScan} />}
+            {rowSAST && <SASTRowSummary result={rowSAST} />}
             <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">
               {d.triggeredBy || "-"}
             </span>
@@ -1618,6 +1633,10 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
                 scanId={selectedScan.id}
               />
             </ImageScanDetail>
+          )}
+
+          {selectedSAST && (
+            <SASTResultDetail result={selectedSAST} locale={locale} />
           )}
 
           {stages.length > 0 && (
@@ -1745,12 +1764,16 @@ function PipelineDetailPanel({
   onOpenLogs,
   onDelete,
   isDeleting,
+  onRefreshDefinition,
+  isRefreshingDefinition,
 }: {
   pipeline: Pipeline;
   onExecuteClick: () => void;
   onOpenLogs: () => void;
   onDelete: () => void;
   isDeleting: boolean;
+  onRefreshDefinition: () => void;
+  isRefreshingDefinition: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language);
@@ -1780,6 +1803,21 @@ function PipelineDetailPanel({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* 스택에 묶인 파이프라인만 — 플랫폼이 쓴 정의가 있어야 다시 쓸 것이 있다. */}
+          {pipeline.stackId && (
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={onRefreshDefinition}
+              disabled={isRefreshingDefinition}
+            >
+              <RefreshCw {...iconProps("xs")} />
+              {isRefreshingDefinition
+                ? t("cicdListPage.refreshDefinition.busy", "Refreshing…")
+                : t("cicdListPage.refreshDefinition.button", "Refresh definition")}
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="sm"
@@ -1859,6 +1897,16 @@ export function CicdListPage() {
   );
   // 삭제가 끝난 뒤 알려야 할 것들 — 지우지 못한 자원, 또는 삭제 실패 사유.
   const [deleteWarnings, setDeleteWarnings] = useState<string[]>([]);
+  // CI 정의 갱신 — 확인 대화상자와 결과 알림. 결과는 지우기 전까지 남는다(삭제 경고와 같다).
+  const [pipelinePendingRefresh, setPipelinePendingRefresh] =
+    useState<Pipeline | null>(null);
+  const [refreshingPipelineId, setRefreshingPipelineId] = useState<string | null>(null);
+  const [refreshNotice, setRefreshNotice] = useState<{
+    title: string;
+    items: string[];
+    failed: boolean;
+  } | null>(null);
+  const refreshDefinitionMutation = useRefreshPipelineDefinition();
   const [deployingPipelineId, setDeployingPipelineId] = useState<string | null>(
     null,
   );
@@ -2066,6 +2114,60 @@ export function CicdListPage() {
     }
   };
 
+  const confirmRefreshDefinition = async () => {
+    const pipeline = pipelinePendingRefresh;
+    if (!pipeline) return;
+    try {
+      setRefreshingPipelineId(pipeline.id);
+      setRefreshNotice(null);
+      const result = await refreshDefinitionMutation.mutateAsync(pipeline.id);
+      setPipelinePendingRefresh(null);
+      const items: string[] = [];
+      if (result.stages.length > 0) {
+        items.push(
+          t("cicdListPage.refreshDefinition.done", {
+            defaultValue: "단계: {{stages}}. 다음 실행부터 새 정의로 돕니다.",
+            stages: result.stages.join(" → "),
+          }),
+        );
+      }
+      if (result.repositoryRecreated) {
+        items.push(
+          t(
+            "cicdListPage.refreshDefinition.repositoryRecreated",
+            "저장소가 없어 다시 만들고 전체 스캐폴딩을 썼습니다 — 앱 코드를 다시 밀어야 합니다.",
+          ),
+        );
+      }
+      if (result.missingVariables.length > 0) {
+        items.push(
+          t("cicdListPage.refreshDefinition.missingVariables", {
+            defaultValue: "사람이 채워야 할 변수: {{variables}}",
+            variables: result.missingVariables.join(", "),
+          }),
+        );
+      }
+      items.push(...result.warnings);
+      setRefreshNotice({
+        title: t("cicdListPage.refreshDefinition.doneTitle", "CI 정의를 다시 썼습니다"),
+        items,
+        failed: false,
+      });
+    } catch (error) {
+      // 거부를 받아 두지 않으면 화면은 아무 일도 없었던 것처럼 보인다(삭제와 같다).
+      setRefreshNotice({
+        title: t("cicdListPage.refreshDefinition.failedTitle", "CI 정의를 다시 쓰지 못했습니다"),
+        items: [
+          deletePipelineErrorMessage(error) ||
+            t("cicdListPage.refreshDefinition.failed", "CI 정의를 다시 쓰지 못했습니다"),
+        ],
+        failed: true,
+      });
+    } finally {
+      setRefreshingPipelineId(null);
+    }
+  };
+
   const handleDeployPipeline = async (pipeline: Pipeline) => {
     try {
       setDeployingPipelineId(pipeline.id);
@@ -2138,6 +2240,43 @@ export function CicdListPage() {
               <li key={warning}>{warning}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {refreshNotice && (
+        <div
+          className={`mb-4 rounded-md border p-3 text-sm text-[var(--color-text-secondary)] ${
+            refreshNotice.failed
+              ? "border-[var(--color-error)]"
+              : "border-[var(--color-success)]"
+          }`}
+          data-testid="refresh-definition-notice"
+        >
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <p
+              className={`m-0 font-medium ${
+                refreshNotice.failed
+                  ? "text-[var(--color-error)]"
+                  : "text-[var(--color-success)]"
+              }`}
+            >
+              {refreshNotice.title}
+            </p>
+            <button
+              type="button"
+              className="text-xs underline"
+              onClick={() => setRefreshNotice(null)}
+            >
+              {t("common.dismiss", "Dismiss")}
+            </button>
+          </div>
+          {refreshNotice.items.length > 0 && (
+            <ul className="m-0 list-disc pl-4">
+              {refreshNotice.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -2220,6 +2359,8 @@ export function CicdListPage() {
                   pipeline={expandedPipeline}
                   onDelete={() => void handleDeletePipeline(expandedPipeline)}
                   isDeleting={deletingPipelineId === expandedPipeline.id}
+                  onRefreshDefinition={() => setPipelinePendingRefresh(expandedPipeline)}
+                  isRefreshingDefinition={refreshingPipelineId === expandedPipeline.id}
                   onExecuteClick={() =>
                     setExecuteModalPipeline(expandedPipeline)
                   }
@@ -2249,6 +2390,8 @@ export function CicdListPage() {
             pipeline={expandedPipeline}
             onDelete={() => void handleDeletePipeline(expandedPipeline)}
             isDeleting={deletingPipelineId === expandedPipeline.id}
+            onRefreshDefinition={() => setPipelinePendingRefresh(expandedPipeline)}
+            isRefreshingDefinition={refreshingPipelineId === expandedPipeline.id}
             onExecuteClick={() => setExecuteModalPipeline(expandedPipeline)}
             onOpenLogs={() =>
               navigate(`/cicd/pipelines/${expandedPipeline.id}/logs`)
@@ -2265,6 +2408,14 @@ export function CicdListPage() {
           isExecuting={deployingPipelineId === executeModalPipeline.id}
         />
       )}
+
+      <RefreshDefinitionDialog
+        open={pipelinePendingRefresh !== null}
+        pipelineName={pipelinePendingRefresh?.name ?? ""}
+        busy={refreshingPipelineId === pipelinePendingRefresh?.id}
+        onCancel={() => setPipelinePendingRefresh(null)}
+        onConfirm={() => void confirmRefreshDefinition()}
+      />
 
       <DeletePipelineDialog
         open={pipelinePendingDelete !== null}

@@ -23,6 +23,7 @@ export type PlanningSlot =
   | 'logging.traceLayer'
   | 'logging.traceExporter'
   | 'security.imageScanner'
+  | 'security.sast'
 
 // 어휘는 types/index.ts 가 갖는다 — 템플릿(API 응답)과 마법사가 같은 값을
 // 주고받아야 하므로 한쪽이 다른 쪽을 import 하는 관계로 두지 않는다.
@@ -145,6 +146,12 @@ export const PLANNING_OPTION_DEFS: Record<PlanningSlot, PlanningOptionDefinition
   'security.imageScanner': [
     { key: 'scansPerDay', label: '이미지 스캔 수/일', baseline: 40, min: 1, max: 2000, step: 1, weight: 0.6, impact: { cpu: 1, memory: 0.6, storage: 0.1 } },
     { key: 'concurrentScans', label: '동시 스캔 수', baseline: 2, min: 1, max: 50, step: 1, weight: 0.4, impact: { cpu: 0.9, memory: 0.8, storage: 0.1 } },
+  ],
+  // 분석 결과는 스택 PostgreSQL 에 쌓이고, 프로젝트 수만큼 검색 색인(메모리·디스크)이
+  // 커진다. Go 쪽(internal/stack/domain/planning.go PlanningOptionDefs)과 같은 값이어야 한다.
+  'security.sast': [
+    { key: 'scansPerDay', label: '분석 수/일', baseline: 40, min: 1, max: 2000, step: 1, weight: 0.6, impact: { cpu: 1, memory: 0.5, storage: 0.2 } },
+    { key: 'projectCount', label: '분석 프로젝트 수', baseline: 20, min: 1, max: 1000, step: 1, weight: 0.4, impact: { cpu: 0.3, memory: 0.8, storage: 0.6 } },
   ],
 }
 

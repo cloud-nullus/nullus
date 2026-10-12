@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	defaultSelfSignedBootstrapIssuer = "nullus-selfsigned-bootstrap"
-	defaultInternalCAIssuer          = "nullus-internal-ca-issuer"
-	defaultInternalCASecretName      = "nullus-internal-ca"
-	defaultInternalCACertName        = "nullus-internal-ca-cert"
+	// 내부 CA 이름은 스택 삭제가 회수할 때도 봐야 하므로 domain 에서 온다.
+	defaultSelfSignedBootstrapIssuer = domain.InternalCABootstrapIssuerName
+	defaultInternalCAIssuer          = domain.InternalCAIssuerName
+	defaultInternalCASecretName      = domain.InternalCASecretName
+	defaultInternalCACertName        = domain.InternalCACertName
 	defaultEnvoyDataPlaneTLSSecret   = "envoy"
 	defaultEnvoyControlPlaneSecret   = "envoy-gateway"
 	gatewayAPIStandardInstallURL     = "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml"
@@ -128,6 +129,9 @@ type Orchestrator struct {
 	// CI 잡과 Argo CD 에 넣는 데 쓴다 — internal-ca-trust.go.
 	internalCAEncoded string
 	internalCALoaded  bool
+	// samlSigningCert 는 Keycloak 이 SAML 응답에 서명하는 인증서다. SAML 로 로그인하는
+	// SonarQube 가 values 로 받는다 — sonarqube-sso.go.
+	samlSigningCert string
 }
 
 type OrchestratorOption func(*Orchestrator)
@@ -424,6 +428,8 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			"installing_nexus":           "config.artifacts.container_registry",
 			"provisioning_nexus":         "config.artifacts.container_registry",
 			"installing_trivy":           "config.security.image_scanner",
+			"installing_sonarqube":       "config.security.sast",
+			"provisioning_sonarqube":     "config.security.sast",
 			"installing_argocd":          "config.pipeline.cd_tool",
 			stepInstallingRunner:         "config.pipeline.ci_platform",
 			"installing_jenkins":         "config.pipeline.ci_platform",
@@ -492,6 +498,15 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// 대신할 수 있어 고르지 않는 편이 정상인 구성도 있다.
 			"installing_trivy": func(cfg domain.StackConfig) bool {
 				return isImageScannerSelection(cfg.Security.ImageScanner)
+			},
+			// SonarQube 도 선택이다. 무거운 도구라(JVM 셋) 고르지 않은 스택에 서면
+			// 자원만 먹는다. 외부 SonarQube 는 스택 안에 세우지 않는다.
+			"installing_sonarqube": func(cfg domain.StackConfig) bool {
+				return domain.HasSAST(cfg.Security.SAST)
+			},
+			// 설치만 한 SonarQube 의 관리자는 admin/admin 이다.
+			"provisioning_sonarqube": func(cfg domain.StackConfig) bool {
+				return domain.HasSAST(cfg.Security.SAST)
 			},
 			// 시크릿 평면(installing_openbao / installing_external_secrets /
 			// provisioning_secrets)은 stepConfigEnabled 에 넣지 않는다 — 항상 켜진다.
@@ -869,6 +884,18 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		return nil
 	}
 
+	if step == "provisioning_sonarqube" {
+		if !looksLikeKubeconfig(o.kubeconfig) {
+			o.markCompleted(stackID, order)
+			return nil
+		}
+		if err := o.ensureSonarQubeProvisioned(ctx, o.namespace); err != nil {
+			return fmt.Errorf("sonarqube 프로비저닝 실패: %w", err)
+		}
+		o.markCompleted(stackID, order)
+		return nil
+	}
+
 	if step == "provisioning_sso" {
 		// OIDC 클라이언트를 미리 만들어 둔다. 이를 소비하는 GitLab/Argo CD/
 		// Grafana 설치보다 앞서야 한다.
@@ -959,6 +986,9 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	}
 
 	if step == "installing_gateway" && looksLikeKubeconfig(o.kubeconfig) {
+		// 이 단계가 새로 까는 Gateway CRD 에만 설치 표시를 단다. 단계를 어떻게 끝내든 깔린 CRD 는
+		// 남으므로 실패해도 표시한다.
+		defer o.markGatewayCRDsCreatedSince(ctx, o.gatewayCRDSnapshot(ctx))
 		if err := o.ensureGatewayAPICRDs(ctx); err != nil {
 			return fmt.Errorf("ensure gateway api crds: %w", err)
 		}
@@ -983,6 +1013,13 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			}
 		}
 	}
+	// SAML 로 로그인하는 SonarQube 는 IdP 서명 인증서를 values 로 받는다. Argo CD 의
+	// CA 와 같은 이유로 values 를 만들기 전에 읽는다(sonarqube-sso.go).
+	if step == "installing_sonarqube" && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.loadSAMLSigningCertificate(ctx); err != nil {
+			return err
+		}
+	}
 	values := o.valuesForStep(step, spec)
 	if step == stepInstallingRunner {
 		if looksLikeKubeconfig(o.kubeconfig) {
@@ -1004,6 +1041,15 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	// 인수한다. 옛 네임스페이스가 주석에 박혀 있으면 Helm 이 ownership 충돌로
 	// 설치를 거부한다. 살아 있는 다른 릴리스 소유는 건드리지 않는다.
 	o.adoptClusterScopedResources(ctx, releaseName, namespace)
+	// 공용 릴리스의 설치 표시는 Nullus 가 새로 까는 릴리스에만 남긴다(install_marker.go).
+	values = o.withInstallMarkerIfOwned(ctx, releaseName, namespace, values)
+
+	// SonarQube 가 붙을 전용 DB 를 차트보다 먼저 만든다(sonarqube-provisioning.go).
+	if step == "installing_sonarqube" && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.ensureSonarQubeDatabase(ctx, namespace); err != nil {
+			return err
+		}
+	}
 
 	result, err := o.installer.Install(ctx, port.HelmInstallRequest{
 		ReleaseName: releaseName,
@@ -1062,7 +1108,7 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 			if err := o.reconcileGatewayDataPlaneTLSSecret(ctx, namespace); err != nil {
 				return fmt.Errorf("reconcile gateway data-plane tls secret: %w", err)
 			}
-			if err := o.applyManifest(ctx, namespace, defaultEnvoyGatewayClassManifest()); err != nil {
+			if err := o.ensureEnvoyGatewayClass(ctx); err != nil {
 				return fmt.Errorf("apply default gatewayclass manifest: %w", err)
 			}
 		}
@@ -1194,6 +1240,9 @@ func isOptInStep(step string) bool {
 	// 이미지 스캐너는 선택 항목이다. 설정을 모를 때 켜 두면 아무도 고르지 않은
 	// 스캐너가 서고, 배포 검증이 없는 릴리스의 상태를 물어 실패한다.
 	case "installing_trivy":
+		return true
+	// SonarQube 도 선택 항목이다.
+	case "installing_sonarqube", "provisioning_sonarqube":
 		return true
 	// Gitea 는 명시적으로 골라야 선다. 소스 저장소 슬롯의 기본값은 GitLab 이므로
 	// (isGitLabSourceRepositorySelection 이 빈 이름에 true 를 돌려준다) 여기 없으면

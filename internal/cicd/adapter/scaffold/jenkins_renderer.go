@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cloud-nullus/draft/internal/cicd/port"
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
@@ -12,7 +13,7 @@ import (
 // 차트로 세우지 않고 kubernetes 플러그인이 이 파드를 빌드마다 띄운다.
 const (
 	jenkinsAgentImage = shareddomain.JenkinsAgentImage
-	jenkinsDindImage  = shareddomain.JenkinsDindImage
+	jenkinsDindImage  = shareddomain.DindImage
 )
 
 // renderJenkinsfile 은 build → deploy 2단계 선언적 파이프라인을 만든다.
@@ -74,6 +75,17 @@ func renderJenkinsfile(in Input) string {
 		fmt.Fprintf(&b, "        - configMapRef: {name: %s, optional: true}\n", scanPolicyConfigMap)
 		// 스캐너는 빌드가 올린 이미지를 레지스트리에서 다시 받는다. 자격증명은
 		// 빌더와 같은 파이프라인 Secret 에서 온다.
+		fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
+	}
+	if opts.SAST {
+		// 분석기도 별도 컨테이너다. 정책은 스택 네임스페이스의 ConfigMap, 토큰은
+		// 파이프라인 Secret(SONAR_TOKEN)에서 온다 — sonar-scanner 가 그 이름을 그대로 읽는다.
+		b.WriteString("    - name: sonar-scanner\n")
+		fmt.Fprintf(&b, "      image: %s\n", defaultSASTScannerImage)
+		b.WriteString("      command: [\"cat\"]\n")
+		b.WriteString("      tty: true\n")
+		b.WriteString("      envFrom:\n")
+		fmt.Fprintf(&b, "        - configMapRef: {name: %s, optional: true}\n", scanPolicyConfigMap)
 		fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
 	}
 	b.WriteString("    - name: dind\n")
@@ -144,6 +156,38 @@ func renderJenkinsfile(in Input) string {
 	b.WriteString("        }\n")
 	b.WriteString("      }\n")
 	b.WriteString("    }\n\n")
+
+	if opts.SAST {
+		// SAST — 소스를 스택 SonarQube 로 분석하고 Quality Gate 로 판정한다.
+		fmt.Fprintf(&b, "    stage('%s') {\n", sastStageName)
+		b.WriteString("      when {\n")
+		b.WriteString("        beforeAgent true\n")
+		b.WriteString("        allOf {\n")
+		b.WriteString("          branch 'main'\n")
+		b.WriteString("          not { changeset pattern: 'deploy/**' , comparator: 'ANT' }\n")
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("      environment {\n")
+		fmt.Fprintf(&b, "        %s = %q\n", port.SASTServerVariable, in.SASTServerEndpoint)
+		b.WriteString("      }\n")
+		b.WriteString("      steps {\n")
+		fmt.Fprintf(&b, "        container('sonar-scanner') {\n")
+		b.WriteString("          sh '''\n")
+		b.WriteString("            set -eu\n")
+		for _, line := range sastScriptLines(app) {
+			fmt.Fprintf(&b, "            %s\n", line)
+		}
+		b.WriteString("          '''\n")
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		// 리포트는 게이트에 걸려도 남긴다 — 무엇에 걸렸는지는 실패한 실행에서 봐야 한다.
+		b.WriteString("      post {\n")
+		b.WriteString("        always {\n")
+		fmt.Fprintf(&b, "          archiveArtifacts artifacts: %q, allowEmptyArchive: true\n", port.SASTReportFile)
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("    }\n\n")
+	}
 
 	if opts.ImageScan {
 		// image-scan — 빌드한 이미지를 스택 Trivy 서버로 검사한다.

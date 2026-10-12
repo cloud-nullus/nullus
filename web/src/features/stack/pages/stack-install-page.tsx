@@ -15,6 +15,7 @@ import type {
   StorageTargetConfig,
 } from '../stores/stack-config-store'
 import { getToolAppVersion, getToolChartVersion } from '../stores/stack-config-store'
+import { sastStorageConflict } from '../utils/security-tools'
 import { useCreateStack, useDeployStack, useSaveDraft, useResourceDefaults, useStacks, useCompatibilityMatrix, useTemplates, useTestStorageConnection } from '../api/stack-api'
 import { useClusters, useOrgResourceProfiles, useCreateOrgResourceProfile, useUpdateOrgResourceProfile, useDeleteOrgResourceProfile } from '../../admin/api/admin-api'
 import type { CompatibilityMatrix, CreateStackRequest } from '../api/stack-api'
@@ -184,6 +185,27 @@ type PreDeployCompatibilityReport = {
 
 function normalizeText(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/**
+ * 호환성 게이트가 매트릭스와 대조할 도구 목록이다.
+ *
+ * 보안 도구는 넣지 않는다. 서버 게이트(stackConfigToCategoryMap)도 넣지 않고, 매트릭스는 몇몇
+ * 템플릿에만 보안 칸을 갖고 있어 넣으면 그 밖의 템플릿에서 스캐너·SAST 를 고르는 순간
+ * "일치하는 매트릭스 없음"으로 막힌다.
+ */
+export function compatibilityRequestedTools(items: Array<{ slot: PlanningSlot; toolKey: string }>): Record<string, string> {
+  return items.reduce<Record<string, string>>((acc, item) => {
+    if (item.slot.startsWith('security.')) {
+      return acc
+    }
+    const category = MATRIX_CATEGORY_BY_SLOT[item.slot]
+    if (!category || !item.toolKey) {
+      return acc
+    }
+    acc[category] = resolveMatrixToolName(item.toolKey)
+    return acc
+  }, {})
 }
 
 function resolveMatrixToolName(toolKey: string): string {
@@ -605,6 +627,22 @@ export function StackInstallPage() {
       toolLabel: toolLabel(draft.logging.traceExporter.tool, noneLabel),
       toolVersion: draft.logging.traceExporter.version,
     },
+    // 보안 도구도 설치 목록에 넣어야 게이트웨이 라우트·자원 계획·매니페스트에 잡힌다. 빠지면
+    // 화면이 만든 게이트웨이가 서버 기본값을 대신해 sonarqube.<도메인> 이 열리지 않는다.
+    {
+      slot: 'security.imageScanner',
+      category: 'Security > Image Scanner',
+      toolKey: draft.security.imageScanner.tool,
+      toolLabel: toolLabel(draft.security.imageScanner.tool, noneLabel),
+      toolVersion: draft.security.imageScanner.version,
+    },
+    {
+      slot: 'security.sast',
+      category: 'Security > Static Analysis',
+      toolKey: draft.security.sast.tool,
+      toolLabel: toolLabel(draft.security.sast.tool, noneLabel),
+      toolVersion: draft.security.sast.version,
+    },
   ] satisfies { slot: PlanningSlot; category: string; toolKey: string; toolLabel: string; toolVersion: string }[]).filter(
     (item) => item.toolKey.length > 0
   )
@@ -612,14 +650,7 @@ export function StackInstallPage() {
 
 
   const compatibilityGate = useMemo<PreDeployCompatibilityReport>(() => {
-    const requestedTools = selectedInstallItems.reduce<Record<string, string>>((acc, item) => {
-      const category = MATRIX_CATEGORY_BY_SLOT[item.slot]
-      if (!category || !item.toolKey) {
-        return acc
-      }
-      acc[category] = resolveMatrixToolName(item.toolKey)
-      return acc
-    }, {})
+    const requestedTools = compatibilityRequestedTools(selectedInstallItems)
 
     const setupKinds = new Set(selectedInstallItems.map((item) => getInstallType(getManifestBundleId(item.toolKey))))
     const setupType: 'Helm' | 'Deployment' | 'Mixed' =
@@ -2139,6 +2170,12 @@ export function StackInstallPage() {
       return false
     }
 
+    const sastConflict = sastStorageConflict(draft)
+    if (sastConflict) {
+      setTabGuardError(sastConflict)
+      return false
+    }
+
     if (draft.accessDomainTls.enabled) {
       const tlsSecretName = draft.accessDomainTls.secretName.trim()
       const tlsSecretNamespace = draft.accessDomainTls.secretNamespace.trim()
@@ -2188,6 +2225,8 @@ export function StackInstallPage() {
       pipeline: draft.pipeline as unknown as Record<string, { tool: string; version: string }>,
       monitoring: draft.monitoring as unknown as Record<string, { tool: string; version: string }>,
       logging: draft.logging as unknown as Record<string, { tool: string; version: string }>,
+      // 빠뜨리면 보안 탭에서 고른 Trivy·SonarQube 가 요청에서 조용히 사라진다.
+      security: draft.security as unknown as Record<string, { tool: string; version: string }>,
       resources: draft.resources,
       optionOverrides: planningOptionOverrides,
       appliedResourceOverrides: currentAppliedResources,
@@ -2822,6 +2861,19 @@ export function StackInstallPage() {
                   {t(
                     'stackInstall.labels.imageScannerHint',
                     "Not installed unless selected. Harbor's built-in scanner can serve instead.",
+                  )}
+                </p>
+                <ToolSelector
+                  label={t('stackInstall.labels.sast', 'Static Analysis (SAST)')}
+                  options={SECURITY_OPTIONS.sast}
+                  slot="sast"
+                  value={draft.security.sast}
+                  onChange={(v) => setTool('security', 'sast', v)}
+                />
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  {t(
+                    'stackInstall.labels.sastHint',
+                    "Not installed unless selected. Uses the stack's PostgreSQL and signs in with Keycloak when SSO is on.",
                   )}
                 </p>
               </>

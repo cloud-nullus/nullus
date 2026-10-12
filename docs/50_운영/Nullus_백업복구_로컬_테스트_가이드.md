@@ -95,14 +95,21 @@ PostgreSQL 과 MinIO 는 testcontainers 가 알아서 띄우고 지운다. 클�
 **통과하면 이런 출력이 나온다:**
 
 ```
-지문: file=fingerprint.bin sha256=bd4e9a3b1201fda9… replicas=2 db_rows=3
-[3.469s] 2. 백업 실행
-실제 정지 창: 3.097s
-산출물 5 건, 총 277923 bytes
-[48.1s] 3. 환경 초기화
-[6.39s] 4. 복구 실행
---- PASS: TestRecoveryRehearsal
+[8.341s] 1. 기준 환경 구성
+[7ms] 1b. 공용 자원 심기
+지문: file=fingerprint.bin sha256=b7188838ce7f7e44… replicas=2 db_rows=3
+[3.846s] 2. 백업 실행
+실제 정지 창: 3.1s
+산출물 5 건, 총 280005 bytes
+[48.586s] 3. 환경 초기화
+[4.873s] 4. 복구 실행
+[2ms] 4b. 공용 자원 확인
+[2.004s] 5. 워크로드 기동 대기
+[193ms] 6. 지문 대조
+--- PASS: TestRecoveryRehearsal (70.41s)
 ```
+
+`1b`·`4b` 는 **제품이 마지막 스택을 지울 때 회수하는 공용 자원**을 흉내 낸다. 설치 표시(`nullus.io/installed-by=nullus`)가 붙은 Gateway 계열 CRD 와 내부 CA Secret(`nullus-internal-ca`)을 심고, 3단계에서 네임스페이스와 함께 CRD 까지 지운 뒤, 복구가 `shared_resources` 산출물로 둘을 되살렸는지(CRD 는 설치 표시까지, Secret 은 키 바이트까지 같은지) 본다. 산출물 5 건에 `shared_resources` 가 든다.
 
 > ⚠️ **여기 나오는 시간은 RTO 근거가 아니다.** 데이터가 256KiB 다. 설계 §2.2 의 RTO 4시간은 100Gi 급 전제이고, 실환경 리허설로만 실측할 수 있다. 이 리허설이 검증하는 것은 시간이 아니라 **절차가 성립하는가** 다.
 
@@ -115,6 +122,7 @@ PostgreSQL 과 MinIO 는 testcontainers 가 알아서 띄우고 지운다. 클�
 | 리소스 덤프/복원, replica 복원 | RTO·정지 창 실측 |
 | 플랫폼 DB + Keycloak DB(같은 인스턴스, 별도 database) | 다중 노드 (RWO 볼륨이 노드에 흩어지는 경우) |
 | 산출물 봉인/해제, sha256 무결성 | |
+| **공용 자원** — 설치 표시가 붙은 Gateway 계열 CRD · 내부 CA Secret 을 심고, 회수된 뒤 복구가 **없을 때만** 되살리는 것 | 실제 GatewayClass · ClusterIssuer · cert-manager 재설치(설치기가 차트를 받아야 한다). 복구가 CA Secret → cert-manager 재설치 → 공용 자원 순으로 가고 cert-manager 실패에 멈추는 것은 단위 테스트가 본다. 전 과정은 §4.10 |
 
 ---
 
@@ -274,17 +282,22 @@ kubectl -n <네임스페이스> get pods --no-headers | wc -l   # 0 이면 시�
 
 ### 4.6 백업 실행
 
+조직 ID 는 **화면이 보는 조직**이어야 한다. 백업 목록은 로그인 사용자의 조직으로만 거르므로, 다른 조직으로 만든 백업은 어떤 화면에도 보이지 않는다. 로컬 시드 조직은 하나뿐이고, 없는 조직을 헤더에 적으면 API 가 `400 ORG_NOT_FOUND` 로 거절한다. 아래 `$ORG` 는 이 절부터 §4.9 까지 같은 셸에서 쓴다.
+
 ```bash
+# 시드 기본 조직 (db/migrations/000017). 다른 환경이면 GET /api/v1/admin/organizations 로 확인한다.
+ORG=11111111-1111-1111-1111-111111111111
+
 # 플랫폼 전용 — 무중단이라 확인 문자열이 필요 없다
 curl -sX POST localhost:8090/api/v1/admin/backups \
   -H 'Content-Type: application/json' \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
+  -H "X-Org-ID: $ORG" \
   -d '{"mode":"platform_only"}' | jq
 
 # 볼륨 포함 — 워크로드를 잠시 멈추므로 네임스페이스를 다시 입력해야 한다
 curl -sX POST localhost:8090/api/v1/admin/backups \
   -H 'Content-Type: application/json' \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
+  -H "X-Org-ID: $ORG" \
   -d '{"mode":"full","stack_id":"<스택 ID>","namespace":"nullus","confirm":"nullus"}' | jq
 ```
 
@@ -297,10 +310,12 @@ curl -sX POST localhost:8090/api/v1/admin/backups \
 ```bash
 curl -sX POST localhost:8090/api/v1/admin/backups \
   -H 'Content-Type: application/json' \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
-  -d '{"mode":"full","namespace":"nullus",
+  -H "X-Org-ID: $ORG" \
+  -d '{"mode":"full","stack_id":"<스택 ID>","namespace":"nullus",
        "scope":["platform_db","keycloak_db","openbao_kv","ns_resources"]}' | jq
 ```
+
+리소스·볼륨은 스택 클러스터에서 뜨므로 `stack_id` 가 있어야 한다 — 서버가 스택으로 그 클러스터를 찾는다. 빠지면 `BACKUP_STACK_REQUIRED` 로 거절된다(금고는 스택이 없으면 거절하지 않고 건너뛴다).
 
 | 값 | 무엇이 들어가나 | 빠지면 |
 |---|---|---|
@@ -328,15 +343,15 @@ curl -sX POST localhost:8090/api/v1/admin/backups \
 
 ```bash
 BID=$(curl -s localhost:8090/api/v1/admin/backups \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' | jq -r '.items[0].id')
+  -H "X-Org-ID: $ORG" | jq -r '.items[0].id')
 
 # 상세 — 매니페스트와 산출물 목록
 curl -s localhost:8090/api/v1/admin/backups/$BID \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' | jq
+  -H "X-Org-ID: $ORG" | jq
 
 # 무결성만 검증 (복원하지 않는다)
 curl -sX POST localhost:8090/api/v1/admin/backups/$BID/verify \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' | jq
+  -H "X-Org-ID: $ORG" | jq
 ```
 
 `verify` 는 복구 리허설을 상시로 돌릴 수 없는 상황에서 **"이 백업이 열리기는 하는가"** 를 확인하는 최소한의 방어선이다.
@@ -352,7 +367,7 @@ docker compose -f docker-compose.dev.yaml exec minio \
 
 ```bash
 curl -s localhost:8090/api/v1/admin/backups/$BID \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
+  -H "X-Org-ID: $ORG" \
   | jq '.manifest' | grep -iE 'password|secret|token|access_key' && echo "⚠️ 비밀값 발견" || echo "OK"
 ```
 
@@ -360,7 +375,7 @@ curl -s localhost:8090/api/v1/admin/backups/$BID \
 
 ```bash
 curl -s localhost:8090/api/v1/admin/backups/$BID \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
+  -H "X-Org-ID: $ORG" \
   | jq -r '.manifest.helm_releases[] | "\(.name)\t\(.version)\trev=\(.revision)"'
 ```
 
@@ -378,12 +393,13 @@ openbao   0.28.4   rev=1
 
 ```bash
 # 스택 네임스페이스를 통째로 지운다 (부분 초기화는 검증이 되지 않는다)
-kubectl delete ns nullus
+kubectl delete ns nullus --wait=true
 
-# 복구 — 파괴적이므로 백업 ID 를 다시 입력해야 한다
+# 복구 — 파괴적이므로 백업 ID 를 다시 입력해야 한다. 네임스페이스는 복구가 만든다(없을 때만).
+# full 복구는 플랫폼 DB 를 되돌리지만 백업 이력(backup_runs·backup_artifacts·restore_runs)은 건드리지 않는다
 curl -sX POST localhost:8090/api/v1/admin/restores \
   -H 'Content-Type: application/json' \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' \
+  -H "X-Org-ID: $ORG" \
   -d "{\"backup_run_id\":\"$BID\",\"namespace\":\"nullus\",\"mode\":\"full\",\"confirm\":\"$BID\"}" | jq
 ```
 
@@ -409,7 +425,7 @@ curl -sX POST localhost:8090/api/v1/admin/restores \
 # ① 클러스터 kubeconfig 복호화가 되는가
 #    이것이 안 되면 화면은 정상인데 어떤 클러스터도 조작할 수 없다 (설계 §1.3)
 curl -s localhost:8090/api/v1/admin/clusters/<클러스터 ID>/namespaces \
-  -H 'X-Org-Id: 00000000-0000-0000-0000-000000000001' | jq
+  -H "X-Org-ID: $ORG" | jq
 
 # ② 워크로드가 원래 replica 로 돌아왔는가
 kubectl -n nullus get deploy
@@ -460,6 +476,126 @@ kubectl -n <네임스페이스> annotate applications.argoproj.io <앱> \
 
 `Synced / Healthy` 가 되고 태그가 실제 커밋 SHA 로 바뀌면 된 것이다.
 
+### 4.10 제품에서 마지막 스택을 지운 뒤 복구
+
+§4.8 은 네임스페이스만 지운다 — 클러스터 공용 자원(cert-manager · metrics-server · Gateway API CRD · GatewayClass · 내부 CA)은 그대로다. **제품 기능으로 클러스터의 마지막 스택을 지우면 그것들까지 회수된다**(#284). 복구는 그 자리에서 cert-manager · metrics-server 를 스택 설치기로 다시 세운 뒤 공용 자원을 되살린다(설계 §11.3 Q16). 이 절은 그 전 과정을 kind 에서 돌린다. 2026-10-12 실측 기록은 설계 §10.2.3 이다.
+
+**회수가 일어나는 조건을 먼저 맞춘다.** 삭제는 "Nullus 가 설치했고 아무도 쓰지 않는 것" 만 회수한다. 둘 중 하나라도 어긋나면 cert-manager 가 남아 이 절이 검증하려는 길을 타지 않는다.
+
+```bash
+# (1) 이 클러스터에 다른 스택 레코드가 없어야 한다 — 네임스페이스가 없는 유령 레코드(설치 실패 뒤 남은 것)도 "다른 스택" 으로 센다
+curl -s -H "X-Org-ID: $ORG" localhost:8090/api/v1/stacks | jq -r '.items[] | "\(.id) \(.name) \(.state)"'
+
+# (2) 다른 네임스페이스에 Gateway API 리소스가 없어야 한다 — Argo CD 가 배포한 앱의 HTTPRoute 가 걸린다
+kubectl get httproute,gateway -A
+```
+
+앱 네임스페이스의 HTTPRoute 는 Argo CD 의 automated sync 가 되살리므로, 먼저 동기화를 끄고 지운다(백업은 이미 떠 두었으니 복구가 automated 설정을 그대로 돌려놓는다). 앱 네임스페이스를 통째로 지워도 된다 — 백업이 네임스페이스와 pull Secret(`nullus-registry`)을 `app_namespaces` 로 담고 복구가 없을 때만 다시 만든다. 복구 뒤 `kubectl -n <앱 네임스페이스> get secret nullus-registry` 가 보여야 한다:
+
+```bash
+kubectl -n <네임스페이스> patch applications.argoproj.io <앱> --type merge \
+  -p '{"spec":{"syncPolicy":{"syncOptions":["CreateNamespace=true"]}}}'
+kubectl delete ns <앱 네임스페이스> --wait
+```
+
+**지문을 먼저 뜬다(§4.9)** — 그리고 공용 자원의 지문도 함께:
+
+```bash
+kubectl -n cert-manager get secret nullus-internal-ca -o jsonpath='{.data.tls\.crt}' | shasum -a 256   # 내부 CA
+kubectl get gatewayclass envoy -o jsonpath='{.metadata.labels.nullus\.io/installed-by}'                  # nullus
+kubectl get crd -l nullus.io/installed-by=nullus --no-headers | wc -l                                      # Gateway 계열 CRD 수
+kubectl get clusterissuer
+```
+
+백업(§4.6, `mode: full`)을 뜬 뒤 **제품으로 지운다**:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE -H "X-Org-ID: $ORG" localhost:8090/api/v1/stacks/$STACK_ID   # 204
+```
+
+204 는 레코드가 지워졌다는 뜻이고 **클러스터 정리는 비동기다**(상한 30분). 복구는 정리가 끝난 뒤 시작해야 한다 — 끝났는지는 회수 결과로 본다:
+
+```bash
+kubectl get ns <스택 네임스페이스> cert-manager            # 둘 다 NotFound
+kubectl get gatewayclass                                   # 없음
+kubectl get crd -l nullus.io/installed-by=nullus           # 없음
+kubectl get crd | grep -c cert-manager.io                  # 0
+helm list -A                                               # 비어 있음
+```
+
+42 파드 스택 기준 약 2분이다. argoproj.io CRD 3개는 남는다 — Argo CD 차트가 `crds/` 로 까는 것이라 Helm 소유가 아니고, 공용 자원 정의 밖이다(다음 설치가 그대로 쓴다).
+
+**복구(§4.8 과 같은 요청)** 뒤 응답의 `integrity_report.shared_components` 를 본다 — `steps` 에 `installing_cert_manager` · `installing_metrics_server` 가 있어야 하고, `warnings` 는 비어 있어야 한다(metrics-server 만 실패하면 거기 남는다. cert-manager 실패는 복구 자체가 `공용 컨트롤러 재설치: …` 로 실패한다). 그리고 지문을 다시 뜬다 — **내부 CA 의 sha 가 같아야 한다.** 다르면 cert-manager 가 Secret 보다 먼저 섰다는 뜻이다(설계 §11.3 Q16 의 순서 함정).
+
+> **금고 복원은 스택 금고로 간다.** 복구는 백업이 뜬 곳(스택 금고)으로 KV 를 되돌리며, 워크로드가 다시 뜬 뒤 금고가 응답할 때까지(기본 2분) 기다려 다시 시도한다 — 로그에 `스택 금고가 아직 응답하지 않아 KV import 를 다시 시도합니다` 가 몇 번 찍히는 것은 정상이다. `dangling` 은 토큰 소스 경로가 그 금고에 없을 때 남는다 — 로컬에서는 토큰 회전이 전역 주소(`openbao.nullus.internal`, 호스트에서 못 품)로 쓰다 실패해 처음부터 어디에도 없는 경로가 그렇게 보인다. 복구 상태는 그대로 `succeeded` 다.
+
+> **삭제 직후 재시작 중인 파드의 `CreateContainerConfigError` 를 "곧 풀린다" 로 넘기지 말 것.** 2026-10-12 1차 시도는 유령 스택 레코드를 지운 것이 살아 있던 스택의 ESO CRD 를 걷어내(그 뒤 고쳤다 — CHANGELOG) 자격증명 Secret 이 사라진 상태에서 백업을 떴다. 파드가 `secret "…-credentials" not found` 로 멈춰 있으면 **백업을 뜨기 전에** 원인을 본다 — 그 상태의 백업은 되살려도 같은 자리에서 멈춘다.
+
+### 4.11 백업 세트 — 플랫폼 + 모든 스택을 한 번에
+
+한 실행은 플랫폼 하나 또는 스택 하나만 담는다. 스택이 둘 이상인 조직의 "플랫폼 전체" 는 **세트**다 — 플랫폼 `platform_only` 실행 하나 + 설치 완료 스택마다 `stack_only`(+ 금고) 실행 하나가 같은 `set_id` 로 묶인다(설계 §6.7). 이 절은 스택 둘로 **세트 백업 → 두 스택 제품 삭제 → 세트 복구**를 돌린다. 스택 둘은 클러스터가 달라도 된다 — 멤버마다 자기 클러스터의 어댑터를 조립한다(로컬에서는 kind 두 개: `nullus-platform` 의 GitLab 스택과 `nullus-develop` 의 lite 스택).
+
+```bash
+# 세트 백업 — 모든 스택이 차례로 멈추므로 확인 문구는 네임스페이스가 아니라 "all" 이다
+curl -sX POST localhost:8090/api/v1/admin/backups/sets \
+  -H 'Content-Type: application/json' -H "X-Org-ID: $ORG" \
+  -d '{"confirm":"all"}' | tee /tmp/nullus-set.json \
+  | jq '{set_id, status, failed, runs: [.runs[] | {id, stack_id, mode, status, quiesce_seconds, total_bytes, error}]}'
+SET_ID=$(jq -r .set_id /tmp/nullus-set.json)
+
+# 세트 조회 — 실행 목록(GET /admin/backups)에도 같은 set_id 가 붙어 있다
+curl -s localhost:8090/api/v1/admin/backups/sets/$SET_ID -H "X-Org-ID: $ORG" | jq '{status, n: (.runs | length)}'
+```
+
+확인할 것: `runs` 가 **스택 수 + 1** 개이고 첫 실행이 `platform_only`(스택 없음), 나머지가 스택마다 `stack_only` 다. 각 스택 실행의 매니페스트에 `namespace` 가 있다(`GET /admin/backups/<id> | jq .manifest.namespace`) — 세트 복구가 이것으로 어디로 되돌릴지 정한다. `confirm` 을 빼거나 네임스페이스를 적으면 `BACKUP_SET_CONFIRM_REQUIRED` 다.
+
+**두 스택을 제품으로 지운다**(§4.10 의 회수 조건 — 앱 HTTPRoute·유령 레코드 — 를 클러스터마다 맞춘 뒤):
+
+```bash
+for id in $STACK_A $STACK_B; do
+  curl -s -o /dev/null -w "$id %{http_code}\n" -X DELETE -H "X-Org-ID: $ORG" localhost:8090/api/v1/stacks/$id
+done
+# 클러스터마다 회수가 끝났는지 — 네임스페이스·cert-manager 가 NotFound
+```
+
+**세트 복구** — 플랫폼 멤버를 먼저 `platform_only` 로, 그 다음 스택 멤버를 `stack_only` 로 되돌린다. 네임스페이스는 적지 않는다(매니페스트에서 읽는다). 확인은 세트 ID 재입력이다:
+
+```bash
+curl -sX POST localhost:8090/api/v1/admin/restores/sets \
+  -H 'Content-Type: application/json' -H "X-Org-ID: $ORG" \
+  -d "{\"set_id\":\"$SET_ID\",\"confirm\":\"$SET_ID\"}" | tee /tmp/nullus-set-restore.json \
+  | jq '{failed, skipped, error, restores: [.restores[] | {id, backup_run_id, mode, status, error}]}'
+```
+
+| 볼 것 | 기대 |
+|---|---|
+| HTTP | `201`. 멤버 하나라도 실패하면 `409` 와 `failed` |
+| `restores` | 스택 수 + 1 개. 첫 번째가 `platform_only`, 나머지가 `stack_only`, 모두 `succeeded` |
+| `skipped` | 비어 있다(백업이 실패한 멤버가 있었다면 그 백업 ID — 그 스택은 복구되지 않았다) |
+| 스택 기록 | `GET /api/v1/stacks` 에 두 스택이 `completed` 로 돌아왔다(플랫폼 DB 가 백업 시점으로) |
+| 클러스터마다 | 네임스페이스·파드·cert-manager·GatewayClass 가 돌아왔고 **내부 CA sha 가 백업 전과 같다**(§4.10 의 지문) |
+| 스택 금고 | `stack_only` 멤버도 금고 KV 를 되돌린다 — 로그에 `스택 금고 KV import` 가 스택마다 있다 |
+
+플랫폼 복구가 실패하면 응답은 `409` 에 `error: 플랫폼 복구 실패 — 스택은 되돌리지 않았습니다` 고 스택은 건드리지 않는다 — 스택 복구는 플랫폼 DB 의 스택 기록으로 클러스터를 찾으므로 플랫폼이 없으면 갈 곳을 모른다.
+
+> 세트는 "같은 시각" 이 아니라 "같은 묶음" 이다. 멤버는 차례로 뜨고, 소요 시간은 스택 수 × (정지 창 + 전송) 이다. 두 번째 kind 클러스터가 CPU 에 쪼이면 lite 템플릿(`gitea-jenkins-argocd-lite-v1`)을 쓴다.
+
+#### 실측 (2026-10-12) — 통과
+
+kind 두 클러스터: `nullus-platform` 의 GitLab + Argo CD + SonarQube(39 파드, 앱 네임스페이스 `demo-api`) · `nullus-develop` 의 gitea-jenkins-argocd-lite(24 파드).
+
+| 단계 | 결과 |
+|---|---|
+| 세트 백업 | `201`, **137초**, 실행 3 — 플랫폼 0.77 MB · lite 336 MB(정지 49.9초) · GitLab 1.07 GB(정지 65.5초). 스택 실행 매니페스트에 `namespace` 있음 |
+| 제품 삭제 | 두 스택 `204` → **72초** 뒤 두 클러스터 모두 네임스페이스 · cert-manager · GatewayClass · CRD(25 / 6) · 내부 CA · Helm 릴리스 전부 회수(앱 네임스페이스는 Argo CD automated sync 를 끈 뒤 미리 지움) |
+| 세트 복구 | `201`, **323초**, 복구 3 모두 `succeeded`, 플랫폼 먼저. 스택 멤버 둘 다 `shared_components.steps = [installing_cert_manager, installing_metrics_server]`, `warnings` 없음 |
+| 지문 | 내부 CA sha 두 클러스터 모두 백업 전과 동일 · CRD 25 / 6 · GatewayClass · ClusterIssuer · Helm 릴리스 전부 복귀 · 스택 기록 둘 `completed` · `demo-api` 네임스페이스와 `nullus-registry` Secret 복귀 · Application 의 automated sync 복귀 |
+| 파드 | develop 24 Running 즉시. platform 39 Running 은 복구 끝 1분 뒤(직후엔 Init · CrashLoopBackOff 몇 개 — GitLab 기동 순서) |
+
+**드러난 것 — lite 멤버의 금고 KV import 가 끝내 실패했는데 응답은 `succeeded` 였다.** 2분(9회) 재시도 뒤 "금고 경로 25 건을 복원하지 못했습니다" 로 끝났고 로그에만 남았다. 원인은 로컬 제약이다 — 두 스택이 같은 접근 도메인 `nullus.local` 을 쓰고 호스트의 443(`nds-gw-443` → 플랫폼 노드포트)이 플랫폼 클러스터 하나로만 가므로, **호스트에서 도는 API 는 두 스택의 금고를 모두 GitLab 스택 금고로 본다**(lite 설치가 쓴 자격증명도 거기에 쓰였고 export 도 거기서 떴다). 복구 시점에 GitLab 스택의 게이트웨이가 아직 안 떠 있어 거절됐고, 2분 뒤 GitLab 멤버의 import 는 성공했다. 운영에서는 스택마다 접근 도메인이 다르므로 생기지 않는다. 그래도 제품은 둘을 고쳤다 — import 오류가 **원인**을 함께 남기고(`(원인: …)` — 경로 목록만으로는 "안 떴다 / 권한 없다 / 다른 금고다" 를 가를 수 없다), 결과가 복구 기록의 **`integrity_report.vault_import`**(`imported` · `attempts` · `error`)에 남는다. 세트 복구 뒤에는 멤버마다 이 값을 본다 — `imported: false` 면 그 스택의 도구들은 금고의 자격증명을 못 찾는다. 로컬에서 두 스택을 제대로 가르려면 접근 도메인을 다르게 주고(`stack-up --domain=`) 호스트 라우팅을 따로 둬야 한다.
+
+`dangling` 8 건은 세 멤버가 똑같다 — 토큰 소스 경로 중 처음부터 어느 금고에도 없던 것(§4.10 의 같은 로컬 제약).
+
 ---
 
 ## 5. 걸리기 쉬운 곳
@@ -481,7 +617,7 @@ kubectl -n <네임스페이스> annotate applications.argoproj.io <앱> \
 | 파이프라인 생성이 `ENCRYPTION_KEY must be 32 bytes` | 같은 원인 | 위와 같다. 설치 직후 파드 수를 세면 훨씬 일찍 잡힌다 |
 | 스택 생성이 `stack name ... already exists` | 네임스페이스만 지우면 `stacks` 레코드가 남는다 | DB 의 스택 행도 지운다. 외래키는 `pipelines.stack_id` 와 `stack_config_versions.stack_id` 둘뿐이다 |
 | 복구 뒤 앱이 `ImagePullBackOff`, 태그가 `:bootstrap` | Argo CD 가 아직 조정하지 않았다 | §4.9. `:bootstrap` 은 레지스트리에 없는 초기값이다 |
-| 복구 뒤 도메인이 옛 IP 를 가리킨다 | **복구는 Service 의 ClusterIP 를 보존하지 않는다** | 클러스터 안에서는 DNS 로 해석하므로 무해하다. IP 를 박아 둔 외부 배선(kind 노드 `/etc/hosts` 등)이 있으면 다시 쓴다 |
+| 복구 뒤 도메인이 옛 IP 를 가리킨다 | 복구는 Service 를 백업 때의 ClusterIP 로 되살리되, 그 IP 를 쓸 수 없으면(다른 클러스터·이미 쓰임) 새 주소로 되살린다 | 러너·Argo CD hostAliases 는 복구가 새 주소로 맞춘다(응답 `integrity_report.gateway_aliases`). kind 노드 `/etc/hosts` 는 손으로 다시 쓴다(로컬 E2E 가이드 13단계) |
 | kind 노드 `/etc/hosts` 에서 항목이 안 지워진다 | 그 파일은 bind mount 라 `sed -i` 가 새 파일을 만들어 갈아끼우지 못한다 | `grep -v ... > /tmp/h && cat /tmp/h > /etc/hosts` 로 **제자리 덮어쓰기** 한다. 안 그러면 낡은 항목이 누적되고 앞의 것이 이긴다 |
 | 네임스페이스를 지운 뒤 port-forward 가 안 돌아온다 | 대상 파드가 사라져 세션이 끊긴다 | 복구 후 다시 건다. 지문 수집이 이것 때문에 실패하면 **대조를 하지 말고** 포워드부터 살린다 |
 | Jenkins 빌드가 `SUCCESS` 인데 아무것도 안 만들어졌다 | HEAD 가 CD 의 `[skip ci]` 커밋이라 Build·Deploy 단계가 `when` 조건에서 걸러졌다 | 콘솔 로그에서 `Stage "Build" skipped due to when conditional` 을 확인한다. **성공 표시만으로 파이프라인이 돈다고 말할 수 없다** |
@@ -502,7 +638,7 @@ kubectl -n <네임스페이스> annotate applications.argoproj.io <앱> \
 - **다중 노드** — RWO 볼륨이 노드에 흩어지면 §3.5 의 "한 Job 이 전부 마운트" 전제가 깨진다. 리허설은 단일 워커였다
 - **에어갭** — 이미지 반입과 egress 경로(B4-2)
 - **Argo CD 자동 동기화** — 리허설에서는 `refresh=hard` 로 앞당겼다. 기본 주기 3분 내 자동 회복은 **추정이지 관찰이 아니다**
-- **Service ClusterIP 미보존의 영향** — 클러스터 안에서는 DNS 로 해석되어 무해했으나, IP 에 고정된 외부 배선이 있는 환경에서는 재설정이 필요하다
+- **다른 클러스터로의 복구** — Service 는 그 클러스터에서 새 주소를 받고, 복구가 러너·Argo CD hostAliases 를 새 주소로 맞춘다. 전체 복구로 다른 클러스터에 되돌리는 리허설은 아직 하지 않았다
 - **차트 버전이 다른 대상으로의 복구** — 매니페스트에 `helm_releases` 를 기록하고 대조해 경고까지는 하지만, 실제로 버전이 어긋난 상태로 복구했을 때 무엇이 깨지는지는 재보지 않았다
 
 ---

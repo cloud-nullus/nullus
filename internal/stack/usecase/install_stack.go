@@ -83,6 +83,13 @@ var installDAG = []installStep{
 	// 없다. 스캐너를 고르지 않은 스택에서는 술어가 이 단계를 끈다.
 	{name: "installing_trivy", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
 
+	// SonarQube 는 공유 PostgreSQL 안의 전용 DB 에 붙는다(그 DB 는 설치 단계가 만든다).
+	// provisioning_sso 가 PostgreSQL 뒤에 오므로 그것에 기대면 순서가 선다. SSO 를 붙일 때
+	// SAML 클라이언트도 그 단계에서 만들어진다.
+	{name: "installing_sonarqube", phase: "B", duration: 2 * time.Second, deps: []string{"provisioning_sso"}},
+	// 설치만 한 SonarQube 의 관리자는 admin/admin 이다.
+	{name: "provisioning_sonarqube", phase: "B", duration: time.Second, deps: []string{"installing_sonarqube"}},
+
 	{name: "installing_argocd", phase: "B", duration: time.Second, deps: []string{"provisioning_sso"}},
 	{name: "installing_runner", phase: "B", duration: time.Second, deps: []string{"provisioning_sso", "installing_gitlab"}},
 

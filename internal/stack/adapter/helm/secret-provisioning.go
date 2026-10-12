@@ -69,7 +69,7 @@ type ManagedSecret struct {
 const (
 	ProvisionedPostgresSecret      = domain.ProvisionedPostgresSecret
 	ProvisionedMinIOSecret         = domain.ProvisionedMinIOSecret
-	ProvisionedGitLabRootSecret    = "gitlab-initial-root-password" // #nosec G101 -- Secret 리소스 이름
+	ProvisionedGitLabRootSecret    = domain.GitLabRootSecret
 	ProvisionedObjectStorageSecret = domain.ProvisionedObjectStorageSecret
 
 	// Container Registry 전용 스토리지 설정. Rails 의 object_store 와 형식이
@@ -213,6 +213,25 @@ func managedSecrets(namespace string) []ManagedSecret {
 			RestartRequired: false,
 			Entries: []SecretEntry{
 				{PathSuffix: "artifacts/nexus/admin-password", TargetKey: domain.NexusAdminPassKey},
+			},
+		},
+		{
+			// SonarQube 는 공유 PostgreSQL 안의 전용 DB 에 붙고, 차트가 모니터링 패스코드를
+			// 요구한다. 관리자 비밀번호는 provisioning_sonarqube 가 첫 값(admin)에서 이 값으로
+			// 바꾼다 — 생성기 값(영숫자)은 SonarQube 비밀번호 정책을 못 맞추므로 계산한다.
+			TargetSecret:    domain.SonarQubeSecret,
+			Consumer:        "SonarQube",
+			RestartRequired: true,
+			Entries: []SecretEntry{
+				{PathSuffix: "security/sonarqube/db-password", TargetKey: domain.SonarQubeDBPasswordKey},
+				{PathSuffix: "security/sonarqube/monitoring-passcode", TargetKey: domain.SonarQubeMonitoringPasscodeKey},
+				{PathSuffix: "security/sonarqube/admin-password-seed", TargetKey: "admin-password-seed"},
+				{
+					PathSuffix: "security/sonarqube/admin-password",
+					TargetKey:  domain.SonarQubeAdminPasswordKey,
+					DeriveFrom: "security/sonarqube/admin-password-seed",
+					Derive:     deriveSonarQubeAdminPassword,
+				},
 			},
 		},
 	}

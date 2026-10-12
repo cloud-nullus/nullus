@@ -49,6 +49,29 @@ const (
 	TrivyServicePort = 4954
 )
 
+// SonarQube 는 소스 정적 분석 서버다. stack 은 이 이름으로 차트를 설치하고(fullnameOverride),
+// cicd 는 CI 잡이 붙을 주소를 만든다. Trivy 와 같은 이유로 규칙을 여기 둔다.
+const (
+	SonarQubeReleaseName = "sonarqube"
+	// SonarQubeServicePort 는 차트 Service 의 포트다(service.externalPort).
+	SonarQubeServicePort = 9000
+	// SonarQubeAnalysisTokenPath 는 CI 가 분석에 쓸 토큰의 OpenBao 경로 접미사다.
+	// 스택 설치(provisioning_sonarqube)가 발급해 쓰고, cicd 가 파이프라인을 만들 때 읽는다.
+	SonarQubeAnalysisTokenPath = "security/sonarqube/analysis-token"
+)
+
+// SonarQubeServerEndpoint 는 CI 잡의 sonar-scanner 가 붙을 주소다.
+//
+// SonarQube 를 고르지 않은 스택에서는 부르지 않는다 — 호출부가 "있음" 으로 오해한다.
+// 네임스페이스가 비면 빈 문자열이다.
+func SonarQubeServerEndpoint(namespace string) string {
+	ns := strings.TrimSpace(namespace)
+	if ns == "" {
+		return ""
+	}
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", SonarQubeReleaseName, ns, SonarQubeServicePort)
+}
+
 // TrivyClientImage 는 스택 서버에 붙는 trivy client 이미지다. 서버(스택 차트)와
 // 버전을 맞춘다 — client 와 server 의 버전이 갈리면 스캔 요청이 거절될 수 있다.
 //

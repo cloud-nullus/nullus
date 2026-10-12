@@ -67,6 +67,7 @@ var legacyReleaseArtifactExactNames = map[string]struct{}{
 	domain.NexusAdminSecret:                 {},
 	domain.GiteaAdminSecret:                 {},
 	domain.JenkinsAdminSecret:               {},
+	domain.SonarQubeSecret:                  {},
 	domain.AccessDomainTLSSecretName:        {},
 	domain.AccessDomainCertName:             {},
 }
@@ -139,13 +140,79 @@ var esoCRDGroupSuffixes = []string{
 	".external-secrets.io",
 }
 
+// esoUsageKinds 는 ESO CRD 를 "쓰는 중" 으로 세는 리소스다. ClusterSecretStore 는 Nullus 가 만들지
+// 않는다 — 있으면 사용자 것이다.
+var esoUsageKinds = []string{
+	"externalsecrets.external-secrets.io",
+	"secretstores.external-secrets.io",
+	"clustersecretstores.external-secrets.io",
+}
+
+// esoResourcesInUseOutside 는 스택 네임스페이스 **밖**에 ESO 리소스가 있는지 본다.
+//
+// ESO CRD 와 검증 웹훅은 클러스터에 하나뿐이고 모든 네임스페이스의 ESO 가 함께 쓴다. 스택 하나를
+// 지우며 걷어내면 다른 네임스페이스의 ExternalSecret 이 CRD 와 함께 사라지고, 그것이 만든 Secret
+// 은 가비지 컬렉터가 거둔다 — 그쪽 스택은 다음 파드 재시작에서 "secret not found" 로 죽는다.
+// 2026-10-12 리허설에서 DB 에만 남은 유령 스택을 지우자 살아 있던 스택의 자격증명 Secret 이 전부
+// 사라졌고, 그 뒤에 뜬 백업에는 그것들이 없었다. Argo CD CRD·공용 자원 회수와 같은 원칙이다 —
+// 쓰는 곳이 있으면 남기고, 확인하지 못하면 남긴다.
+func (uc *DeleteStack) esoResourcesInUseOutside(ctx context.Context, kubeconfig []byte, namespace string) bool {
+	if len(kubeconfig) == 0 {
+		return false
+	}
+	for _, kind := range esoUsageKinds {
+		out, err := uc.runKubectl(ctx, kubeconfig, "get", kind, "-A", "-o",
+			`jsonpath={range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}`)
+		if err != nil {
+			if isMissingResourceType(err) {
+				continue // 그 CRD 가 없다 — 지킬 것도 없다.
+			}
+			slog.Warn("eso 사용 여부를 확인하지 못해 CRD·웹훅을 남깁니다", "kind", kind, "error", err)
+			return true
+		}
+		if esoResourcesOutside(out, namespace) {
+			return true
+		}
+	}
+	return false
+}
+
+// esoResourcesOutside 는 `<namespace>/<name>` 줄 가운데 주어진 네임스페이스 밖의 것이 있는지 본다.
+// 네임스페이스가 빈 줄(클러스터 범위)도 밖이다.
+func esoResourcesOutside(out, namespace string) bool {
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		ns, _, _ := strings.Cut(line, "/")
+		if ns != namespace {
+			return true
+		}
+	}
+	return false
+}
+
+// isMissingResourceType 은 kubectl 이 그 종류 자체를 모를 때의 오류다(CRD 없음).
+func isMissingResourceType(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "doesn't have a resource type") || strings.Contains(msg, "the server could not find the requested resource")
+}
+
 // bestEffortDeleteExternalSecretsWebhooks 는 ESO 검증 웹훅 설정을 지운다.
 //
 // **ESO 커스텀 리소스보다 먼저** 불러야 한다. 웹훅이 살아 있는데 그것을 서빙하던
 // 서비스가 사라지면, 남은 ExternalSecret 을 지우려는 요청이 webhook 호출 실패로
 // 거부된다. 네임스페이스는 그 리소스를 회수하지 못해 영구 Terminating 이 되고,
 // 사람이 웹훅을 손으로 지워야만 풀린다(2026-09-10 실측).
-func (uc *DeleteStack) bestEffortDeleteExternalSecretsWebhooks(ctx context.Context, kubeconfig []byte, stackID string) {
+//
+// 다른 네임스페이스가 ESO 를 쓰면(usedElsewhere) 남긴다 — 웹훅은 클러스터에 하나뿐이라 지우면
+// 그쪽 ESO 의 검증이 깨진다. 그때 자기 CR 삭제는 아직 살아 있는 자기 웹훅 서비스를 거친다.
+func (uc *DeleteStack) bestEffortDeleteExternalSecretsWebhooks(ctx context.Context, kubeconfig []byte, stackID string, usedElsewhere bool) {
+	if usedElsewhere {
+		uc.emit(ctx, stackID, "deleting_crd", "info", "skipping eso webhook delete because another namespace still uses external-secrets")
+		return
+	}
 	for _, name := range esoWebhookConfigurationNames {
 		uc.emit(ctx, stackID, "deleting_crd", "info", fmt.Sprintf("deleting eso webhook %s", name))
 		if _, err := uc.runKubectl(ctx, kubeconfig,
@@ -161,7 +228,15 @@ func (uc *DeleteStack) bestEffortDeleteExternalSecretsWebhooks(ctx context.Conte
 // Argo CD·Gateway 와 같은 이유다 — helm uninstall 은 CRD 를 지우지 않고, 남으면
 // 소유 애노테이션이 삭제된 릴리스를 가리킨 채로 있어 다음 스택 설치가
 // "invalid ownership metadata" 로 막힌다.
-func (uc *DeleteStack) bestEffortDeleteExternalSecretsCRDs(ctx context.Context, kubeconfig []byte, stackID string) {
+//
+// 다른 네임스페이스가 ESO 를 쓰면(usedElsewhere) 남긴다 — CRD 를 지우면 그쪽 ExternalSecret 이
+// 함께 사라지고 그 Secret 은 가비지 컬렉터가 거둔다. 다음 설치는 남은 CRD 를 인수한다
+// (adoptExistingESOCRDs).
+func (uc *DeleteStack) bestEffortDeleteExternalSecretsCRDs(ctx context.Context, kubeconfig []byte, stackID string, usedElsewhere bool) {
+	if usedElsewhere {
+		uc.emit(ctx, stackID, "deleting_crd", "info", "skipping eso CRD delete because another namespace still uses external-secrets")
+		return
+	}
 	out, err := uc.runKubectl(ctx, kubeconfig, "get", "crd", "-o", "name")
 	if err != nil {
 		slog.Warn("eso crd cleanup skipped due to check failure", "error", err)
@@ -202,20 +277,10 @@ var argoCDCRDNames = []string{
 	"appprojects.argoproj.io",
 }
 
-var gatewayCRDNames = []string{
-	"gatewayclasses.gateway.networking.k8s.io",
-	"gateways.gateway.networking.k8s.io",
-	"httproutes.gateway.networking.k8s.io",
-	"grpcroutes.gateway.networking.k8s.io",
-	"referencegrants.gateway.networking.k8s.io",
-	"tcproutes.gateway.networking.k8s.io",
-	"tlsroutes.gateway.networking.k8s.io",
-	"udproutes.gateway.networking.k8s.io",
-}
-
 // 스택 네임스페이스에서 지워야 할 Gateway API 리소스.
 //
-// gatewayclasses 는 없다 — 클러스터 스코프이고 다른 스택과 공유한다.
+// gatewayclasses 는 없다 — 클러스터 스코프이고 다른 스택과 공유한다. 설치기가 만든 GatewayClass 와
+// Gateway API CRD 는 클러스터의 마지막 스택을 지울 때 회수한다(delete_shared_resources.go).
 var namespacedGatewayAPIResources = []string{
 	"httproutes.gateway.networking.k8s.io",
 	"grpcroutes.gateway.networking.k8s.io",
@@ -244,6 +309,32 @@ type DeleteStack struct {
 	// ssoFactory 는 설치 때 OIDC 클라이언트를 만든 provisioner 를 다시 만든다.
 	// 없으면 SSO 프로비저닝을 안 쓰는 설치다(BYO IdP / 미사용).
 	ssoFactory port.SSOProvisionerFactory
+	// releaseManagerFactory 는 공용 릴리스(cert-manager·metrics-server)의 values 를 읽어 Nullus 가
+	// 설치한 것인지 가린다. 없으면 가릴 수 없으므로 공용 릴리스를 남긴다.
+	releaseManagerFactory ReleaseManagerFactory
+	// readKubectlFunc 는 출력을 읽는 kubectl 호출이다. 표준 출력만 돌려준다 — 경고나 discovery 오류가
+	// 섞이면 그것을 리소스로 읽는다. 비어 있으면 runKubectlFunc(테스트) 또는 실제 kubectl 을 쓴다.
+	readKubectlFunc func(ctx context.Context, kubeconfig []byte, args ...string) (string, error)
+	// sharedWaitTimeout·sharedPollInterval 은 공용 자원 회수가 네임스페이스·파드가 빠지기를 기다리는
+	// 상한과 간격이다. 0 이면 기본값이다.
+	sharedWaitTimeout  time.Duration
+	sharedPollInterval time.Duration
+}
+
+// SetReleaseManagerFactory 는 공용 릴리스의 values 를 읽을 실행기를 주입한다.
+func (uc *DeleteStack) SetReleaseManagerFactory(factory ReleaseManagerFactory) {
+	uc.releaseManagerFactory = factory
+}
+
+// readKubectl 은 출력을 파싱하는 kubectl 호출이다. 표준 오류는 실패했을 때 오류 메시지에만 싣는다.
+func (uc *DeleteStack) readKubectl(ctx context.Context, kubeconfig []byte, args ...string) (string, error) {
+	switch {
+	case uc.readKubectlFunc != nil:
+		return uc.readKubectlFunc(ctx, kubeconfig, args...)
+	case uc.runKubectlFunc != nil:
+		return uc.runKubectlFunc(ctx, kubeconfig, args...)
+	}
+	return runKubectlStdoutWithKubeconfig(ctx, kubeconfig, args...)
 }
 
 // SetSSOProvisionerFactory 는 SSO provisioner 생성기를 주입한다.
@@ -359,18 +450,25 @@ func (uc *DeleteStack) deleteRecord(ctx context.Context, stackID string) (*domai
 // cleanupCluster 는 스택이 클러스터에 남긴 것을 걷어낸다.
 func (uc *DeleteStack) cleanupCluster(ctx context.Context, stack *domain.Stack, stackID string) {
 	kubeconfig := uc.loadKubeconfig(ctx, stack.ClusterID)
+	// 스택 네임스페이스를 통째로 회수할지는 한 번만 정한다. 공용 릴리스를 그 안에서 지울지와
+	// 공용 자원 회수가 그 네임스페이스를 기다릴지가 같은 판단에 달려 있다.
+	namespaceReclaimable := uc.namespaceReclaimable(ctx, stack)
 	gatewayNames := uc.collectGatewayNames(ctx, kubeconfig, stack)
 	gatewayNames = uc.mergeGatewayNames(gatewayNames, uc.collectGatewayNamesFromManagedResources(ctx, kubeconfig, stack))
 	uc.bestEffortDeleteYAMLResources(ctx, kubeconfig, stack, stackID)
+	// ESO CRD·웹훅은 클러스터에 하나뿐이다. 다른 네임스페이스가 쓰고 있으면 남긴다 — 자기 CR 을
+	// 지우기 전에 한 번 보고 웹훅·CRD 양쪽에 같은 판단을 쓴다(자기 네임스페이스 밖만 보므로 그 뒤
+	// 자기 CR 을 지워도 답이 바뀌지 않는다).
+	esoUsedElsewhere := uc.esoResourcesInUseOutside(ctx, kubeconfig, stack.Namespace)
 	// 검증 웹훅을 가장 먼저 지운다. 웹훅이 남은 채 그것을 서빙하던 서비스가
 	// 사라지면 ExternalSecret 삭제 요청이 거부되어 네임스페이스가 영구
 	// Terminating 이 된다 — 아래 CR 삭제가 바로 그 요청이다.
-	uc.bestEffortDeleteExternalSecretsWebhooks(ctx, kubeconfig, stackID)
+	uc.bestEffortDeleteExternalSecretsWebhooks(ctx, kubeconfig, stackID, esoUsedElsewhere)
 	// ESO 커스텀 리소스를 오퍼레이터보다 먼저 지운다.
 	// 순서가 뒤바뀌면 ExternalSecret 의 finalizer 를 처리할 컨트롤러가 사라져
 	// 네임스페이스와 CRD 가 영구 Terminating 상태로 남는다.
 	uc.bestEffortDeleteExternalSecretResources(ctx, kubeconfig, stack, stackID)
-	uc.bestEffortUninstall(ctx, kubeconfig, stack.Namespace, stackID)
+	uc.bestEffortUninstall(ctx, kubeconfig, stack.Namespace, stackID, namespaceReclaimable)
 	uc.bestEffortDeleteYAMLResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteStackLabeledResources(ctx, kubeconfig, stack, stackID)
 	// Gateway 를 먼저 지운다. 순서가 뒤바뀌면 컨트롤러가 살아 있는 Gateway 를 보고
@@ -381,9 +479,8 @@ func (uc *DeleteStack) cleanupCluster(ctx context.Context, stack *domain.Stack, 
 	uc.bestEffortDeleteLegacyGatewayPolicyResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteLegacyReleaseArtifacts(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteOrphanGatewayTempoResources(ctx, kubeconfig, stack, stackID)
-	uc.bestEffortDeleteGatewayCRDs(ctx, kubeconfig, stackID)
 	uc.bestEffortDeleteArgoCDCRDs(ctx, kubeconfig, stackID)
-	uc.bestEffortDeleteExternalSecretsCRDs(ctx, kubeconfig, stackID)
+	uc.bestEffortDeleteExternalSecretsCRDs(ctx, kubeconfig, stackID, esoUsedElsewhere)
 	uc.bestEffortDeleteStackLabeledResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteLegacyGatewayPolicyResources(ctx, kubeconfig, stack, stackID)
 	uc.bestEffortDeleteLegacyReleaseArtifacts(ctx, kubeconfig, stack, stackID)
@@ -401,9 +498,12 @@ func (uc *DeleteStack) cleanupCluster(ctx context.Context, stack *domain.Stack, 
 	// 생긴다 — 실제로 볼륨이 남아 다음 설치가 옛 데이터베이스를 물려받았고,
 	// Gitea 의 28P01 과 Harbor 의 401 로 두 번 드러났다. 네임스페이스를 지우면
 	// 그 안의 것은 종류를 몰라도 함께 사라진다.
-	uc.bestEffortDeleteStackNamespace(ctx, kubeconfig, stack, stackID)
+	namespaceDeleted := uc.bestEffortDeleteStackNamespace(ctx, kubeconfig, stack, stackID, namespaceReclaimable)
 	// 클러스터 범위 훅 리소스는 네임스페이스를 지워도 남는다. 회수 여부와 무관하게 지운다.
 	uc.bestEffortDeleteEnvoyGatewayClusterHookResources(ctx, kubeconfig, stack, stackID)
+	// 스택들이 함께 쓰는 공용 자원(cert-manager·내부 CA·metrics-server·Gateway API)은 스택 자신을 다
+	// 치운 뒤, 클러스터의 마지막 스택일 때만 회수한다 — delete_shared_resources.go.
+	uc.reclaimSharedClusterResources(ctx, kubeconfig, stack, stackID, namespaceDeleted)
 	uc.bestEffortDeprovisionSSO(ctx, stack, stackID)
 
 	uc.emit(ctx, stackID, "deleted", "info", "stack delete completed")
@@ -492,10 +592,10 @@ func (uc *DeleteStack) namespaceUsedByAnotherStack(ctx context.Context, stack *d
 //
 // --wait=false 로 던진다. 네임스페이스는 그 안의 것이 다 빠질 때까지 Terminating
 // 으로 남는데, 여기서 기다리면 삭제 요청이 몇 분씩 붙잡힌다. 회수는 컨트롤러가
-// 이어서 한다.
-func (uc *DeleteStack) bestEffortDeleteStackNamespace(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string) {
-	if len(kubeconfig) == 0 || !uc.namespaceReclaimable(ctx, stack) {
-		return
+// 이어서 한다. 지우기를 요청했으면 true 다.
+func (uc *DeleteStack) bestEffortDeleteStackNamespace(ctx context.Context, kubeconfig []byte, stack *domain.Stack, stackID string, reclaimable bool) bool {
+	if len(kubeconfig) == 0 || !reclaimable {
+		return false
 	}
 
 	namespace := strings.TrimSpace(stack.Namespace)
@@ -506,7 +606,9 @@ func (uc *DeleteStack) bestEffortDeleteStackNamespace(ctx context.Context, kubec
 		slog.Warn("namespace delete warning during stack delete", "namespace", namespace, "error", err)
 		uc.emit(ctx, stackID, "deleting_namespace", "warn",
 			fmt.Sprintf("네임스페이스 %s 삭제 경고: %v", namespace, err))
+		return false
 	}
+	return true
 }
 
 // bestEffortDeleteAccessDomainCertificate 는 게이트웨이 HTTPS 리스너용 와일드카드
@@ -601,7 +703,14 @@ func (uc *DeleteStack) loadKubeconfig(ctx context.Context, clusterID string) []b
 	return kubeconfig
 }
 
-func (uc *DeleteStack) bestEffortUninstall(ctx context.Context, kubeconfig []byte, namespace, stackID string) {
+// bestEffortUninstall 은 스택 릴리스를 지운다.
+//
+// 공용 릴리스(cert-manager·metrics-server)는 스택 네임스페이스를 통째로 회수할 때만 그 안에서 지운다 —
+// 어차피 함께 사라지고, 먼저 지워야 APIService 같은 클러스터 범위 리소스가 남지 않는다. 그 밖의 자리
+// (default 나 회수하지 않는 네임스페이스)의 공용 릴리스는 누가 깔았는지 모르므로 여기서 지우지 않는다.
+// 예전에는 default 의 cert-manager 를 스택을 지울 때마다 무조건 지웠다. 마지막 스택을 지울 때 소유를
+// 확인하고 회수한다(delete_shared_resources.go).
+func (uc *DeleteStack) bestEffortUninstall(ctx context.Context, kubeconfig []byte, namespace, stackID string, namespaceReclaimable bool) {
 	if uc.executorFactoryFunc == nil || len(kubeconfig) == 0 || namespace == "" {
 		return
 	}
@@ -613,6 +722,12 @@ func (uc *DeleteStack) bestEffortUninstall(ctx context.Context, kubeconfig []byt
 
 	for _, releaseName := range stackHelmReleaseNames {
 		namespaces := uninstallNamespacesForRelease(namespace, releaseName)
+		if _, shared := domain.InstallMarkerValuePath(releaseName); shared {
+			if !namespaceReclaimable {
+				continue
+			}
+			namespaces = []string{namespace}
+		}
 		for _, targetNamespace := range namespaces {
 			uc.emit(ctx, stackID, "deleting_release", "info", fmt.Sprintf("uninstalling release %s in namespace %s", releaseName, targetNamespace))
 			if err := installer.Uninstall(ctx, releaseName, targetNamespace); err != nil {
@@ -815,42 +930,6 @@ func argoCDResourcesInUse(applicationsOut, appProjectsOut string) bool {
 	}
 
 	return false
-}
-
-func (uc *DeleteStack) bestEffortDeleteGatewayCRDs(ctx context.Context, kubeconfig []byte, stackID string) {
-	if len(kubeconfig) == 0 {
-		return
-	}
-
-	hasGatewayResources := false
-	checks := [][]string{
-		{"get", "gateways.gateway.networking.k8s.io", "-A", "-o", "name"},
-		{"get", "httproutes.gateway.networking.k8s.io", "-A", "-o", "name"},
-		{"get", "gatewayclasses.gateway.networking.k8s.io", "-o", "name"},
-	}
-	for _, args := range checks {
-		out, err := uc.runKubectl(ctx, kubeconfig, args...)
-		if err != nil {
-			slog.Warn("gateway crd cleanup skipped due to check failure", "args", strings.Join(args, " "), "error", err)
-			return
-		}
-		if strings.TrimSpace(out) != "" {
-			hasGatewayResources = true
-			break
-		}
-	}
-	if hasGatewayResources {
-		uc.emit(ctx, stackID, "deleting_crd", "info", "skipping gateway CRD delete because gateway resources still exist")
-		return
-	}
-
-	for _, crd := range gatewayCRDNames {
-		uc.emit(ctx, stackID, "deleting_crd", "info", fmt.Sprintf("deleting gateway crd %s", crd))
-		if _, err := uc.runKubectl(ctx, kubeconfig, "delete", "crd", crd, "--ignore-not-found"); err != nil {
-			slog.Warn("gateway crd delete warning", "crd", crd, "error", err)
-			uc.emit(ctx, stackID, "deleting_crd", "warn", fmt.Sprintf("gateway crd %s delete warning: %v", crd, err))
-		}
-	}
 }
 
 func (uc *DeleteStack) collectGatewayNames(ctx context.Context, kubeconfig []byte, stack *domain.Stack) []string {
@@ -1129,11 +1208,15 @@ func (uc *DeleteStack) retryDeletePersistentVolumeClaims(ctx context.Context, ku
 }
 
 // parseResourceNames 는 kubectl -o name 출력에서 이름만 뽑는다.
+//
+// 출력에는 표준 오류가 섞인다(runKubectlWithKubeconfig 가 함께 읽는다). 죽은 APIService 의 discovery
+// 오류나 "No resources found …" 안내를 이름으로 읽으면 없는 볼륨이 남은 것으로 보인다 — 리소스 참조에는
+// 공백이 없으므로 공백이 든 줄은 건너뛴다.
 func parseResourceNames(output string) []string {
 	names := make([]string, 0, 4)
 	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
+		if trimmed == "" || strings.ContainsAny(trimmed, " \t") {
 			continue
 		}
 		names = append(names, resourceNameFromRef(trimmed))
@@ -1605,6 +1688,34 @@ func runKubectlWithKubeconfig(ctx context.Context, kubeconfig []byte, args ...st
 		return "", fmt.Errorf("kubectl %s failed: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
 	}
 	return string(output), nil
+}
+
+// runKubectlStdoutWithKubeconfig 는 runKubectlWithKubeconfig 와 같되 표준 출력만 돌려준다.
+func runKubectlStdoutWithKubeconfig(ctx context.Context, kubeconfig []byte, args ...string) (string, error) {
+	if err := sharedkubeconfig.RequireServer(kubeconfig); err != nil {
+		return "", err
+	}
+	tmpFile, err := os.CreateTemp("", "nullus-delete-kubeconfig-*.yaml")
+	if err != nil {
+		return "", fmt.Errorf("create kubeconfig temp file: %w", err)
+	}
+	defer func() {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
+	}()
+	if _, err := tmpFile.Write(kubeconfig); err != nil {
+		return "", fmt.Errorf("write kubeconfig temp file: %w", err)
+	}
+
+	var stdout, stderr strings.Builder
+	cmd := exec.CommandContext(ctx, "kubectl", append([]string{"--kubeconfig", tmpFile.Name()}, args...)...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		// 실패해도 표준 출력은 돌려준다 — api-resources 는 일부 그룹만 실패해도 나머지 목록을 낸다.
+		return stdout.String(), fmt.Errorf("kubectl %s failed: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.String(), nil
 }
 
 func (uc *DeleteStack) emit(ctx context.Context, stackID, step, level, message string) {

@@ -29,6 +29,7 @@ func TestMemoryTemplateRepository_ListReturnsSeededTemplates(t *testing.T) {
 		"gitlab-argocd-v1",
 		"gitlab-harbor-v1",
 		"gitlab-harbor-trivy-v1",
+		"gitlab-argocd-sonarqube-v1",
 		"gitlab-nexus-v1",
 		"github-argocd-v1",
 	})

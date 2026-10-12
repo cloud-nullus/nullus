@@ -3,6 +3,7 @@ package domain
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -111,4 +112,35 @@ func TestRuntimeImages_중복이_없다(t *testing.T) {
 		assert.False(t, seen[img], "%s 가 중복이다", img)
 		seen[img] = true
 	}
+}
+
+// 공식 sonar-scanner-cli 이미지는 amd64 만 낸다(Docker Hub 전 태그 실측, 2026-10). arm64
+// 노드에서는 에뮬레이션 없이는 SAST 단계가 서지 않고, 에어갭 arm64 번들은 그 이미지를
+// 아예 건너뛴다. 스캐너 zip 은 플랫폼 독립이라 멀티아치 JRE 위에 우리가 굽는다 — Jenkins
+// 이미지와 같은 자리(ghcr)·같은 CD 잡 모양이다. 태그는 Dockerfile 의 스캐너 버전이
+// 단일 출처다.
+func TestSonarScannerImage_우리가_굽는_멀티아치_이미지를_쓴다(t *testing.T) {
+	const repository = "ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner"
+	assert.True(t, strings.HasPrefix(SonarScannerImage, repository+":"), SonarScannerImage)
+
+	dockerfile, err := os.ReadFile(filepath.Join(repoRoot(t), "deploy", "images", "sonar-scanner", "Dockerfile"))
+	require.NoError(t, err)
+	m := regexp.MustCompile(`(?m)^ARG SONAR_SCANNER_VERSION=(\S+)$`).FindSubmatch(dockerfile)
+	require.Len(t, m, 2, "Dockerfile 에 ARG SONAR_SCANNER_VERSION 이 있어야 한다")
+	assert.Equal(t, repository+":"+string(m[1]), SonarScannerImage, "태그는 Dockerfile 의 스캐너 버전이다")
+
+	cd, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "cd.yml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(cd), "deploy/images/sonar-scanner/Dockerfile", "CD 가 이 이미지를 굽는다")
+	assert.Contains(t, string(cd), "nullus-sonar-scanner:", "CD 가 같은 이름으로 민다")
+	assert.Contains(t, string(cd), "SONAR_SCANNER_VERSION=", "CD 태그도 Dockerfile 의 버전에서 뽑는다")
+}
+
+// Trivy CLI 이미지는 CI 잡이 쓴다. 정책 변수와 함께 밀려야 하므로(port.ScanPolicyVariables)
+// 스캐폴드 어댑터가 아니라 여기 있어야 한다. 에어갭 번들은 Trivy 차트가 같은 태그를 이미 싣는다.
+func TestTrivyCLIImage_에어갭_번들에_있다(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "airgap", "images", "images.txt"))
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), TrivyCLIImage,
+		"CI 잡의 Trivy 이미지가 에어갭 번들에 없다 — 폐쇄망에서 이미지 스캔 단계가 ImagePullBackOff 다")
 }

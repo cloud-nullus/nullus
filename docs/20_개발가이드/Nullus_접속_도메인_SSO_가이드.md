@@ -60,6 +60,47 @@ PORT=8080 ./scripts/sso-access.sh
 
 **왜 :80 인가** — OIDC redirect 가 `http://keycloak.nullus.internal`(포트 없음 = :80)으로
 가므로, :8080 으로 띄우면 포털은 보여도 로그인 버튼에서 `keycloak.nullus.internal:80` 연결거부가 난다.
+
+### 2.2 로컬 런북 경로 (`*.nullus.local`)
+
+위 §2·2.1 은 에어갭 경로(`*.nullus.internal`)다. 런북(`runbook_local.sh`)으로 세운 스택은
+접속 도메인이 `*.<스택 도메인>`(기본 `nullus.local`)이고, 게이트웨이를 여는 스크립트도 다르다.
+
+```bash
+./scripts/port-forward-gateway.sh           # 열기(갱신)
+./scripts/port-forward-gateway.sh --hosts   # /etc/hosts 에 넣을 줄만 출력
+./scripts/port-forward-gateway.sh --down    # 내리기
+```
+
+kind 클러스터면 도커 네트워크 안에 SNI 라우터를 띄운다. 그래서 에어갭 경로와 세 가지가 다르다.
+
+| | 에어갭 경로(§2.1) | 로컬 런북 경로 |
+|---|---|---|
+| sudo | 필요 (특권 포트) | **불필요** — 도커가 443 을 잡는다 |
+| 동시 스택 수 | 1개 (443 을 한 프로세스가 점유) | **제한 없음** — 이름(SNI)으로 갈라 보낸다 |
+| 실행 유지 | 창을 켜둬야 한다 (Ctrl+C 로 끊김) | 컨테이너로 돌아 창을 닫아도 유지된다 |
+
+NodePort 를 고정하지 않는다 — 돌고 있는 게이트웨이에서 찾아내므로, 스택을 다시 깔아
+NodePort 가 바뀌어도 스크립트만 다시 돌리면 된다.
+
+스택을 콕 집으면 종전 `kubectl port-forward` 경로를 탄다. 원격 클러스터처럼 노드에
+도커로 닿을 수 없는 환경에서는 그 방법밖에 없다.
+
+```bash
+STACK_NAMESPACE=nullus-gitlab-argocd ./scripts/port-forward-gateway.sh
+```
+
+**인증서** — 게이트웨이는 스택이 만든 내부 CA 로 서명한 인증서를 쓴다. 브라우저가 그 CA 를
+모르면 경고가 뜨므로, `setup-local-domain.sh` 가 꺼내 주는
+`.runbook-logs/nullus-internal-ca.crt` 를 신뢰 저장소에 등록한다.
+
+**스택을 둘 이상 열 때** — 접속 도메인이 같으면 이름이 겹쳐 한쪽으로만 갈 수 있다.
+스택마다 도메인을 따로 준다.
+
+```bash
+./scripts/runbook_local.sh stack-up --template=gitlab-argocd-v1      --domain=nullus.local
+./scripts/runbook_local.sh stack-up --template=gitlab-argocd-otel-v1 --domain=obs.local
+```
 SSO 무재인증 로그인은 반드시 :80.
 
 ### 2.2 SSO 동작 (무재인증 체인)

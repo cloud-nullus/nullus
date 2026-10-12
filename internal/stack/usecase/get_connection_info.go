@@ -171,6 +171,16 @@ func toolCredentials(cfg domain.StackConfig, namespace string) []domain.ToolCred
 			SecretKey: domain.NexusAdminPassKey,
 		})
 	}
+	// SonarQube 의 관리자 비밀번호는 provisioning_sonarqube 가 첫 값(admin)에서 이
+	// Secret 값으로 바꿔 둔다. 외부 SonarQube 는 스택이 세우지 않았으므로 안내하지 않는다.
+	if domain.HasSAST(cfg.Security.SAST) {
+		tools = append(tools, domain.ToolCredential{
+			Name:      "SonarQube",
+			Username:  domain.SonarQubeAdminUser,
+			SecretRef: domain.SonarQubeSecret,
+			SecretKey: domain.SonarQubeAdminPasswordKey,
+		})
+	}
 	if sel := cfg.Artifacts.StorageBackend; sel.Enabled && normalizeTool(sel.Name) == "minio" {
 		tools = append(tools, domain.ToolCredential{
 			Name:      sel.Name,

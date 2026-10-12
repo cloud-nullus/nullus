@@ -20,6 +20,18 @@ MINIO_PORT=9000
 MINIO_CONSOLE_PORT=9001
 REDIS_PORT=6380
 KEYCLOAK_PORT=8180
+# 호스트에서 도는 API 가 스택 GitLab 에 닿는 길. 기본 주소는 클러스터 내부 DNS
+# (gitlab-webservice-default.<ns>.svc)라 맥에서 풀리지 않는다. 런북이 GitLab 스택을
+# 찾아 재접속 루프 포트포워드를 띄우고 NULLUS_GITLAB_URL 로 API 에 넘긴다.
+# 스택이 여럿이면 이 포트부터 하나씩 올려 쓰고 "네임스페이스=주소,..." 로 넘긴다.
+GITLAB_FORWARD_BASE_PORT="${NULLUS_GITLAB_FORWARD_PORT:-8181}"
+GITLAB_WEBSERVICE_SVC="gitlab-webservice-default"
+GITLAB_WEBSERVICE_PORT=8181
+GITLAB_FORWARD_STATE="$LOG_DIR/gitlab-forwards.txt"
+# API 환경 파일. 백업 설정처럼 런북이 모르는 값을 여기 두면 up/refresh 가 읽는다.
+# (NULLUS_GITLAB_URL 을 직접 적으면 자동 탐지보다 우선한다.)
+API_ENV_FILE="${NULLUS_API_ENV_FILE:-$HOME/.nullus-api.env}"
+
 # 로컬 Keycloak 의 부트스트랩 관리자. docker-compose.dev.yaml 의
 # KC_BOOTSTRAP_ADMIN_USERNAME / KC_BOOTSTRAP_ADMIN_PASSWORD 와 같아야 한다.
 KEYCLOAK_ADMIN_USER="${KEYCLOAK_ADMIN_USER:-admin}"
@@ -249,10 +261,12 @@ Usage:
   ./scripts/runbook_local.sh stack-up [--template=<id>] [--name=<n>] [--namespace=<ns>]
                                       [--cluster=<ctx-name>] [--domain=<d>] [--wait]
   ./scripts/runbook_local.sh stack-status <stack-id> [--wait]
+  ./scripts/runbook_local.sh wire [--stack=<id>]
   ./scripts/runbook_local.sh stack-down [--all|<stack-id>]
   ./scripts/runbook_local.sh pipeline-down
   ./scripts/runbook_local.sh all [--seed] [--kind] [--auth=<keycloak|authentik|none>]
   ./scripts/runbook_local.sh refresh
+  ./scripts/runbook_local.sh gitlab-forward [--down]
   ./scripts/runbook_local.sh kind-up
   ./scripts/runbook_local.sh kind-down
 
@@ -274,12 +288,18 @@ Commands:
                     도구 선택은 템플릿 응답에서 가져오고, 설치는 백엔드 API 가 수행한다
                     자원 계획은 템플릿의 planning_profile 로 백엔드가 계산한다
                     (Lite = local → 8Gi 노드 하나에 들어가는 크기)
-  stack-status <id> 스택 상태 조회. --wait 면 completed/failed 까지 폴링한다
+  stack-status <id> 스택 상태 조회. --wait 면 completed/failed 까지 폴링하고 완료 시 배선한다
+  wire [--stack=id] kind 의 completed 스택을 호스트·노드에 잇는다 — 노드 /etc/hosts 와 내부 CA
+                    (앱 이미지 pull), GitLab 포트포워드 + NULLUS_GITLAB_URL. 화면에서 설치했거나
+                    복구로 되살아난 스택에 쓴다. stack-up --wait 는 자동으로 한다
   stack-down [id]   설치된 스택을 제품 삭제 경로(helm uninstall + CRD 정리)로 삭제
                     인자 없으면 --all. 삭제 후 남은 helm 릴리스를 보고한다
   pipeline-down     CI/CD 파이프라인 전체 삭제 (스택보다 먼저 지워야 한다)
   all               Full lifecycle: up -> smoke -> keep running
   refresh           Rebuild backend + frontend, run pending migrations, restart
+  gitlab-forward    kind 의 GitLab 스택을 찾아 호스트 포트포워드를 띄우고(재접속 루프)
+     [--down]       NULLUS_GITLAB_URL 값을 보여 준다. up/refresh/stack-up --wait 가
+                    자동으로 부르므로 보통은 직접 부를 일이 없다. --down 은 내린다
   kind-up           Create kind K8s cluster only
   kind-down         Delete kind K8s cluster only
 
@@ -389,9 +409,12 @@ run_bg() {
 
 stop_service() {
   local name="$1" port="$2"
-  [[ -f "$PID_FILE" ]] || return 0
-  local line pid
-  line="$(grep -E "^${name}:" "$PID_FILE" | tail -n 1 || true)"
+  local line="" pid
+  # pid 파일이 없어도 포트는 비운다. 다른 체크아웃(워크트리)에서 띄운 API 는 이 트리의 pid 파일에
+  # 없는데, 여기서 돌아가 버리면 새 API 가 "address already in use" 로 바로 죽는다 — 실제로 그랬다.
+  if [[ -f "$PID_FILE" ]]; then
+    line="$(grep -E "^${name}:" "$PID_FILE" | tail -n 1 || true)"
+  fi
   if [[ -n "$line" ]]; then
     pid="${line#*:}"
     if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" >/dev/null 2>&1; then
@@ -415,6 +438,206 @@ install_migrate() {
     echo "[nullus] installing golang-migrate..."
     go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
   fi
+}
+
+# ---------------------------------------------------------------------------
+# GitLab 포트포워드 + API 환경
+# ---------------------------------------------------------------------------
+
+# load_api_env_file 은 API 환경 파일을 현재 셸로 읽는다(export 포함).
+load_api_env_file() {
+  [[ -f "$API_ENV_FILE" ]] || return 0
+  set -a
+  # shellcheck disable=SC1090
+  . "$API_ENV_FILE"
+  set +a
+  echo "[nullus] loaded API env from $API_ENV_FILE"
+}
+
+# gitlab_stacks 는 "컨텍스트<TAB>네임스페이스" 를 한 줄씩 낸다 — kind 클러스터마다
+# GitLab 웹서비스가 있는 네임스페이스. 클러스터가 없거나 닿지 않으면 비어 있다.
+gitlab_stacks() {
+  command -v kind >/dev/null 2>&1 || return 0
+  local cluster ctx ns
+  while IFS= read -r cluster; do
+    [[ -z "$cluster" ]] && continue
+    ctx="kind-${cluster}"
+    while IFS= read -r ns; do
+      [[ -z "$ns" ]] && continue
+      printf '%s\t%s\n' "$ctx" "$ns"
+    done < <(kubectl --context "$ctx" get svc -A \
+      --field-selector "metadata.name=${GITLAB_WEBSERVICE_SVC}" \
+      -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' 2>/dev/null || true)
+  done < <(kind get clusters 2>/dev/null || true)
+}
+
+# gitlab_forward_responds 는 그 포트에서 GitLab 이 응답하는지 본다.
+gitlab_forward_responds() {
+  local code
+  code="$(curl -sS -m 3 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${1}/users/sign_in" 2>/dev/null || echo "000")"
+  [[ "$code" == "200" || "$code" == "302" ]]
+}
+
+# gitlab_forward_port_for 는 그 네임스페이스에 이미 배정된 포트를 돌려준다(없으면 빈 값).
+gitlab_forward_port_for() {
+  [[ -f "$GITLAB_FORWARD_STATE" ]] || return 0
+  awk -v ns="$1" '$2 == ns { print $3; exit }' "$GITLAB_FORWARD_STATE"
+}
+
+# do_gitlab_forward_loop 는 포워드 하나를 끝까지 지킨다(run_bg 가 백그라운드로 띄운다).
+# kubectl port-forward 는 파드가 바뀌거나 연결이 쉬면 끊기므로 돌아올 때마다 다시 잇는다.
+do_gitlab_forward_loop() {
+  local ctx="$1" ns="$2" port="$3"
+  while true; do
+    kubectl --context "$ctx" -n "$ns" port-forward "svc/${GITLAB_WEBSERVICE_SVC}" \
+      "${port}:${GITLAB_WEBSERVICE_PORT}" >/dev/null 2>&1 || true
+    sleep 2
+  done
+}
+
+# gitlab_forward_up 은 네임스페이스 하나의 포워드를 보장하고 포트를 돌려준다.
+#
+# 이미 그 포트에서 GitLab 이 응답하면(런북 밖에서 띄운 루프 포함) 그대로 쓴다 —
+# 단, 응답만으로는 어느 스택의 GitLab 인지 알 수 없으므로 이 네임스페이스에
+# 기록된 포트이거나 GitLab 스택이 하나뿐일 때만(allow_reuse) 그렇게 한다.
+# 다른 것이 잡은 포트는 건너뛰고 다음 포트를 쓴다.
+gitlab_forward_up() {
+  local ctx="$1" ns="$2" port="$3" allow_reuse="${4:-true}" name="gitlab-pf-${ns}"
+  if [[ "$allow_reuse" == "true" ]] && gitlab_forward_responds "$port"; then
+    echo "[nullus] gitlab forward already serving :$port ($ns)" >&2
+    printf '%s\n' "$port"
+    return 0
+  fi
+  while port_is_listening "$port"; do
+    echo "[nullus] :$port is taken by something else; trying $((port + 1))" >&2
+    port=$((port + 1))
+  done
+  stop_service "$name" "$port" >/dev/null 2>&1 || true
+  run_bg "$name" "$PROJECT_ROOT" "./scripts/runbook_local.sh _gitlab-forward-loop '$ctx' '$ns' '$port'" "$port" >&2
+  local i
+  for i in $(seq 1 30); do
+    gitlab_forward_responds "$port" && break
+    sleep 1
+  done
+  if ! gitlab_forward_responds "$port"; then
+    echo "[nullus] gitlab forward on :$port is not answering yet ($ns) — check $LOG_DIR/${name}.log" >&2
+  fi
+  printf '%s\n' "$port"
+}
+
+# gitlab_forwards_ensure 는 모든 GitLab 스택의 포워드를 보장하고 NULLUS_GITLAB_URL
+# 값을 표준 출력으로 낸다. 스택이 없으면 빈 값이다.
+#
+# 네임스페이스마다 포트를 하나씩 배정해 상태 파일에 남긴다. 그래야 refresh 를
+# 거듭해도 같은 스택이 같은 포트를 쓴다.
+gitlab_forwards_ensure() {
+  ensure_dirs
+  local stacks
+  stacks="$(gitlab_stacks)"
+  local total
+  total="$(printf '%s\n' "$stacks" | grep -c . || true)"
+  local ctx ns port recorded allow_reuse next="$GITLAB_FORWARD_BASE_PORT" value="" new_state=""
+  while IFS=$'\t' read -r ctx ns; do
+    [[ -z "$ctx" || -z "$ns" ]] && continue
+    recorded="$(gitlab_forward_port_for "$ns")"
+    port="${recorded:-$next}"
+    allow_reuse="false"
+    [[ -n "$recorded" || "$total" -le 1 ]] && allow_reuse="true"
+    port="$(gitlab_forward_up "$ctx" "$ns" "$port" "$allow_reuse")"
+    new_state="${new_state}${ctx} ${ns} ${port}"$'\n'
+    value="${value:+${value},}${ns}=http://127.0.0.1:${port}"
+    [[ "$port" -ge "$next" ]] && next=$((port + 1))
+  done <<<"$stacks"
+  printf '%s' "$new_state" >"$GITLAB_FORWARD_STATE"
+  printf '%s\n' "$value"
+}
+
+# gitlab_forwards_down 은 런북이 띄운 포워드를 모두 내린다.
+gitlab_forwards_down() {
+  [[ -f "$PID_FILE" ]] || { rm -f "$GITLAB_FORWARD_STATE"; return 0; }
+  local line name
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    name="${line%%:*}"
+    [[ "$name" == gitlab-pf-* ]] || continue
+    stop_service "$name" "$(gitlab_forward_port_for "${name#gitlab-pf-}")"
+  done < <(cat "$PID_FILE")
+  rm -f "$GITLAB_FORWARD_STATE"
+}
+
+# export_api_gitlab_env 는 API 가 쓸 NULLUS_GITLAB_URL 을 정한다.
+#
+# 환경(또는 API 환경 파일)에 이미 있으면 그것을 존중한다. 없으면 GitLab 스택을 찾아
+# 포워드를 띄우고 그 주소를 넘긴다. 스택이 없으면 넣지 않는다 — 클러스터 안 주소
+# 그대로이며, GitLab 스택을 깔면 stack-up --wait 가 다시 정한다.
+export_api_gitlab_env() {
+  if [[ -n "${NULLUS_GITLAB_URL:-}" ]]; then
+    export NULLUS_GITLAB_URL
+    echo "[nullus] NULLUS_GITLAB_URL=$NULLUS_GITLAB_URL (from environment)"
+    return 0
+  fi
+  local value
+  value="$(gitlab_forwards_ensure)"
+  if [[ -n "$value" ]]; then
+    export NULLUS_GITLAB_URL="$value"
+    echo "[nullus] NULLUS_GITLAB_URL=$NULLUS_GITLAB_URL (auto: gitlab port-forward)"
+  else
+    echo "[nullus] no GitLab stack in kind clusters; NULLUS_GITLAB_URL not set (stack-up --wait sets it later)"
+  fi
+}
+
+# start_api 는 API 를 빌드 없이 띄운다. up/refresh/stack-up 이 같은 환경으로 띄워야
+# 어느 경로로 재기동해도 GitLab 주소·백업 설정이 빠지지 않는다.
+start_api() {
+  local health_timeout="${1:-60}"
+  echo "[nullus] starting API server on :$API_PORT..."
+  export ENCRYPTION_KEY
+  export OPENBAO_ADDR
+  export OPENBAO_TOKEN
+  export NULLUS_DATABASE_HOST=localhost
+  export NULLUS_DATABASE_PORT="$POSTGRES_PORT"
+  export NULLUS_SERVER_MODE=development
+  export_api_auth_env
+  load_api_env_file
+  export_api_gitlab_env
+  run_bg "api" "$PROJECT_ROOT" "./bin/api" "$API_PORT"
+
+  echo "[nullus] waiting for API health (up to ${health_timeout}s)..."
+  if wait_for_http "http://localhost:${API_PORT}/health" "$health_timeout" 2; then
+    echo "[nullus] API is healthy"
+  else
+    echo "[nullus] API health check failed after ${health_timeout}s; check $LOG_DIR/api.log"
+    tail -10 "$LOG_DIR/api.log" 2>/dev/null
+    exit 1
+  fi
+}
+
+# restart_api 는 돌고 있는 API 를 같은 바이너리로 다시 띄운다(환경만 다시 정한다).
+restart_api() {
+  # 빌드가 없으면 먼저 만든다. 없는 채로 내리면 API 만 죽고 끝난다 — 다른 체크아웃에서
+  # wire 를 돌렸을 때 실제로 그랬다.
+  if [[ ! -x "$PROJECT_ROOT/bin/api" ]]; then
+    echo "[nullus] bin/api 가 없어 먼저 빌드합니다..."
+    (cd "$PROJECT_ROOT" && go build -o bin/api ./cmd/api)
+  fi
+  stop_service "api" "$API_PORT"
+  start_api 30
+}
+
+do_gitlab_forward() {
+  if [[ "${1:-}" == "--down" ]]; then
+    gitlab_forwards_down
+    echo "[nullus] gitlab forwards stopped"
+    return 0
+  fi
+  local value
+  value="$(gitlab_forwards_ensure)"
+  if [[ -z "$value" ]]; then
+    echo "[nullus] no GitLab stack found in kind clusters"
+    return 0
+  fi
+  echo "[nullus] NULLUS_GITLAB_URL=$value"
+  echo "[nullus] API 가 이 값 없이 떠 있으면 'refresh' 로 다시 띄우세요 (stack-up --wait 는 자동으로 한다)"
 }
 
 do_kind_up() {
@@ -756,24 +979,7 @@ do_up() {
   echo "[nullus] building API server..."
   (cd "$PROJECT_ROOT" && go build -o bin/api ./cmd/api)
 
-  echo "[nullus] starting API server on :$API_PORT..."
-  export ENCRYPTION_KEY
-  export OPENBAO_ADDR
-  export OPENBAO_TOKEN
-  export NULLUS_DATABASE_HOST=localhost
-  export NULLUS_DATABASE_PORT="$POSTGRES_PORT"
-  export NULLUS_SERVER_MODE=development
-  export_api_auth_env
-  run_bg "api" "$PROJECT_ROOT" "./bin/api" "$API_PORT"
-
-  echo "[nullus] waiting for API health (up to 60s)..."
-  if wait_for_http "http://localhost:${API_PORT}/health" 60 2; then
-    echo "[nullus] API is healthy"
-  else
-    echo "[nullus] API health check failed after 60s; check $LOG_DIR/api.log"
-    tail -10 "$LOG_DIR/api.log" 2>/dev/null
-    exit 1
-  fi
+  start_api 60
 
   echo ""
   sync_web_oidc_env
@@ -892,6 +1098,17 @@ do_status() {
 
   if port_is_listening "$AUTHENTIK_PORT"; then
     echo "  authentik: listening on :$AUTHENTIK_PORT"
+  fi
+  if [[ -s "$GITLAB_FORWARD_STATE" ]]; then
+    local fctx fns fport
+    while read -r fctx fns fport; do
+      [[ -z "$fns" ]] && continue
+      if gitlab_forward_responds "$fport"; then
+        echo "  gitlab[$fns]: forwarded on :$fport (NULLUS_GITLAB_URL entry ${fns}=http://127.0.0.1:${fport})"
+      else
+        echo "  gitlab[$fns]: forward on :$fport not answering"
+      fi
+    done <"$GITLAB_FORWARD_STATE"
   fi
   echo ""
 
@@ -1095,6 +1312,9 @@ SLOTS = {
     "log_search":               ("logging",    "search"),
     "trace_layer":              ("logging",    "trace_layer"),
     "agent":                    ("logging",    "trace_exporter"),
+    # 보안 슬롯. 빠지면 템플릿이 고른 Trivy·SonarQube 가 설정에서 사라진다.
+    "image_scanner":            ("security",   "image_scanner"),
+    "sast":                     ("security",   "sast"),
 }
 
 data = json.load(sys.stdin)
@@ -1105,7 +1325,7 @@ if template is None:
     sys.stderr.write("template %s not found\n" % wanted)
     sys.exit(1)
 
-config = {"artifacts": {}, "pipeline": {}, "monitoring": {}, "logging": {}}
+config = {"artifacts": {}, "pipeline": {}, "monitoring": {}, "logging": {}, "security": {}}
 for section, field in SLOTS.values():
     config[section][field] = {"name": "", "version": "", "enabled": False}
 
@@ -1245,7 +1465,115 @@ for c in items or []:
     return 1
   fi
 
-  wire_kind_nodes_for_stack "$namespace" "$domain" "kind-${cluster_name#kind-}"
+  wire_stack_host "$stack_id"
+}
+
+# wire_stack_host 는 설치가 끝난 스택 하나를 호스트·kind 노드에 잇는다.
+#
+# 두 가지다. (1) kind 노드의 /etc/hosts 와 신뢰 저장소 — kubelet 이 registry.<도메인> 을
+# 게이트웨이 ClusterIP 로 풀고 내부 CA 를 믿어야 앱 이미지를 받는다. (2) GitLab 스택이면
+# 호스트 포트포워드 + NULLUS_GITLAB_URL 로 API 를 다시 띄운다.
+#
+# 예전에는 stack-up --wait 만 이 일을 했다 — 화면에서 설치한 스택, --wait 없이 띄운 스택,
+# 복구로 되살아난 스택은 배선이 안 돼 ImagePullBackOff 로 멈췄다. 스택 ID 로 API 에서
+# 네임스페이스·클러스터·접근 도메인을 읽으므로 어느 길로 설치했든 같다(wire 명령).
+wire_stack_host() {
+  local stack_id="$1"
+  [[ -n "$stack_id" ]] || return 1
+  local info namespace cluster_name domain state
+  # 목록 응답을 쓴다 — 단건 조회(/stacks/:id)는 cluster_name 을 싣지 않는다.
+  info="$(curl -sS -m 30 "$(api_base)/api/v1/stacks" 2>/dev/null | STACK_ID="$stack_id" python3 -c '
+import json, os, sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+items = data.get("items") if isinstance(data, dict) else data
+for s in items or []:
+    if s.get("id") == os.environ["STACK_ID"]:
+        cfg = s.get("config") or {}
+        print(s.get("namespace", ""))
+        print(s.get("cluster_name", ""))
+        print(cfg.get("access_domain", ""))
+        print(s.get("state", ""))
+        sys.exit(0)
+sys.exit(1)
+' 2>/dev/null)" || { echo "[nullus] 스택 $stack_id 를 API 목록에서 찾지 못했습니다"; return 1; }
+  namespace="$(sed -n 1p <<< "$info")"
+  cluster_name="$(sed -n 2p <<< "$info")"
+  domain="$(sed -n 3p <<< "$info")"
+  state="$(sed -n 4p <<< "$info")"
+  if [[ "$state" != "completed" ]]; then
+    echo "[nullus] 스택 $stack_id 는 아직 completed 가 아닙니다 (state=$state) — 배선을 건너뜁니다"
+    return 1
+  fi
+  if [[ "$cluster_name" != kind-* ]]; then
+    echo "[nullus] 스택 $stack_id 의 클러스터 $cluster_name 는 kind 가 아닙니다 — 노드 배선은 kind 전용입니다"
+    return 1
+  fi
+  [[ -n "$domain" ]] || domain="${LOCAL_DOMAIN:-nullus.local}"
+
+  wire_kind_nodes_for_stack "$namespace" "$domain" "$cluster_name"
+
+  # 호스트의 API 가 이 스택의 GitLab 에 닿으려면 포트포워드와 NULLUS_GITLAB_URL 이
+  # 필요하다. 스택이 GitLab 을 깔았으면 여기서 포워드를 띄우고 API 를 같은 환경으로
+  # 다시 띄운다 — 환경 변수는 돌고 있는 프로세스에 넣을 수 없다.
+  if gitlab_stacks | awk -v ns="$namespace" '$2 == ns { found=1 } END { exit found ? 0 : 1 }'; then
+    echo ""
+    echo "[nullus] GitLab stack detected in $namespace — wiring host API to it"
+    if [[ -n "${NULLUS_GITLAB_URL:-}" ]]; then
+      echo "[nullus] NULLUS_GITLAB_URL is already set in this shell; leaving it as is"
+    else
+      gitlab_forwards_ensure >/dev/null
+    fi
+    if api_is_up; then
+      restart_api
+    fi
+  fi
+}
+
+# do_wire 는 kind 에 설치된 completed 스택 전부(또는 --stack=<id> 하나)를 배선한다.
+# 화면에서 설치했거나 복구로 되살아난 스택을 위한 명령이다. 다시 돌려도 안전하다.
+do_wire() {
+  ensure_dirs
+  local only=""
+  for arg in "$@"; do
+    case "$arg" in
+      --stack=*) only="${arg#*=}" ;;
+      *) echo "[nullus] unknown option: $arg"; exit 1 ;;
+    esac
+  done
+  if ! api_is_up; then
+    echo "[nullus] API 가 떠 있지 않습니다 (:$API_PORT). 'up' 후 다시 실행하세요."
+    return 1
+  fi
+  local ids
+  if [[ -n "$only" ]]; then
+    ids="$only"
+  else
+    ids="$(curl -sS -m 30 "$(api_base)/api/v1/stacks" 2>/dev/null | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+items = data.get("items") if isinstance(data, dict) else data
+for s in items or []:
+    if s.get("state") == "completed" and str(s.get("cluster_name", "")).startswith("kind-"):
+        print(s["id"])
+' 2>/dev/null)"
+  fi
+  if [[ -z "$ids" ]]; then
+    echo "[nullus] 배선할 completed 스택이 kind 에 없습니다"
+    return 0
+  fi
+  local id rc=0
+  while IFS= read -r id; do
+    [[ -z "$id" ]] && continue
+    echo "[nullus] wiring stack $id"
+    wire_stack_host "$id" || rc=1
+  done <<< "$ids"
+  return $rc
 }
 
 # wire_kind_nodes_for_stack 은 kind 노드가 스택 레지스트리에서 이미지를 받을 수
@@ -1292,7 +1620,13 @@ wire_kind_nodes_for_stack() {
     [[ -z "$node" ]] && continue
     local host
     for host in "gitlab.$domain" "registry.$domain"; do
-      docker exec "$node" sh -c "grep -q ' $host\$' /etc/hosts || echo '$gw_ip $host' >> /etc/hosts" 2>/dev/null || true
+      # 이미 있으면 건너뛰지 않고 갈아 끼운다. 스택을 다시 깔면 게이트웨이
+      # ClusterIP 가 새로 배정되는데, 건너뛰면 옛 주소가 남아 kubelet 이 이미지를
+      # 받지 못한다(ImagePullBackOff) — 설치는 completed 인데 앱이 뜨지 않는다.
+      #
+      # /etc/hosts 는 바인드 마운트라 sed -i 가 "Device or resource busy" 로
+      # 실패한다. 걸러 낸 내용을 같은 파일에 덮어써야 한다.
+      docker exec "$node" sh -c "grep -v ' $host\$' /etc/hosts > /tmp/nullus-hosts && cat /tmp/nullus-hosts > /etc/hosts && rm -f /tmp/nullus-hosts; echo '$gw_ip $host' >> /etc/hosts" 2>/dev/null || true
     done
     [[ -s "$ca_file" ]] || continue
     # 이미 같은 CA 가 들어 있으면 손대지 않는다. containerd 재시작은 그 노드에서
@@ -1347,6 +1681,8 @@ do_stack_status() {
     case "$state" in
       completed)
         echo "[nullus] 설치 완료"
+        # --wait 로 끝까지 본 스택은 배선까지 한다 — stack-up --wait 와 같은 결과.
+        [[ "$wait_install" == "true" ]] && wire_stack_host "$stack_id"
         return 0
         ;;
       failed|rolled_back|cancelled)
@@ -1536,6 +1872,7 @@ do_down() {
   if [[ -f "$PID_FILE" ]]; then
     stop_service "web" "$WEB_PORT"
     stop_service "api" "$API_PORT"
+    gitlab_forwards_down
     rm -f "$PID_FILE"
   fi
 
@@ -1605,24 +1942,7 @@ do_refresh() {
   echo "[nullus] rebuilding API server..."
   (cd "$PROJECT_ROOT" && go build -o bin/api ./cmd/api)
 
-  echo "[nullus] starting API server on :$API_PORT..."
-  export ENCRYPTION_KEY
-  export OPENBAO_ADDR
-  export OPENBAO_TOKEN
-  export NULLUS_DATABASE_HOST=localhost
-  export NULLUS_DATABASE_PORT="$POSTGRES_PORT"
-  export NULLUS_SERVER_MODE=development
-  export_api_auth_env
-  run_bg "api" "$PROJECT_ROOT" "./bin/api" "$API_PORT"
-
-  echo "[nullus] waiting for API health (up to 30s)..."
-  if wait_for_http "http://localhost:${API_PORT}/health" 30 1; then
-    echo "[nullus] API is healthy"
-  else
-    echo "[nullus] API health check failed; check $LOG_DIR/api.log"
-    tail -10 "$LOG_DIR/api.log" 2>/dev/null
-    exit 1
-  fi
+  start_api 30
 
   # 4. Restart frontend
   echo ""
@@ -1679,10 +1999,13 @@ main() {
     purge) do_purge "$@" ;;
     stack-up) do_stack_up "$@" ;;
     stack-status) do_stack_status "$@" ;;
+    wire) do_wire "$@" ;;
     stack-down) do_stack_down "${1:---all}" ;;
     pipeline-down) do_pipeline_down ;;
     all) do_all "$@" ;;
     refresh) do_refresh "$@" ;;
+    gitlab-forward) do_gitlab_forward "$@" ;;
+    _gitlab-forward-loop) do_gitlab_forward_loop "$@" ;;
     kind-up) do_kind_up ;;
     kind-down) do_kind_down ;;
     *) usage; exit 1 ;;

@@ -5,15 +5,19 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
+	"github.com/cloud-nullus/draft/internal/backup/port"
 	"github.com/cloud-nullus/draft/internal/backup/usecase"
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
+	sharedmw "github.com/cloud-nullus/draft/internal/shared/middleware"
 )
 
 // UseCaseFactory 는 스택별 유스케이스를 만든다.
@@ -23,13 +27,25 @@ import (
 type UseCaseFactory interface {
 	Backup(ctx context.Context, stackID string) (*usecase.BackupUseCase, error)
 	Restore(ctx context.Context, stackID string) (*usecase.RestoreUseCase, error)
+	// BackupSet·RestoreSet 은 플랫폼 + 조직의 모든 스택을 한 세트로 뜨고 되돌린다(설계 §6.7).
+	BackupSet(ctx context.Context) (*usecase.BackupSetUseCase, error)
+	RestoreSet(ctx context.Context) (*usecase.RestoreSetUseCase, error)
 }
+
+// SetConfirmPhrase 는 세트 백업의 확인 문구다.
+//
+// 단독 백업은 멈추는 네임스페이스를 재입력받지만, 세트는 조직의 **모든** 스택을 멈추고 어느 스택인지는
+// 서버가 정한다 — 그래서 "전부" 를 뜻하는 고정 문구를 받는다. 스택이 하나도 없는 조직이면 멈추는 것이
+// 없지만, 그 판단은 유스케이스가 스택을 읽은 뒤에야 가능하므로 세트는 항상 확인을 요구한다.
+const SetConfirmPhrase = "all"
 
 type BackupHandler struct {
 	factory   UseCaseFactory
 	verify    *usecase.VerifyUseCase
 	repo      backupReader
 	defaultNS string
+	// orgs 는 헤더로 받은 조직이 실제로 있는지 본다. nil 이면 헤더를 그대로 믿는다.
+	orgs port.OrganizationChecker
 }
 
 type backupReader interface {
@@ -37,18 +53,33 @@ type backupReader interface {
 	GetRun(ctx context.Context, id string) (*domain.BackupRun, error)
 	ListArtifacts(ctx context.Context, backupRunID string) ([]*domain.Artifact, error)
 	GetRestore(ctx context.Context, id string) (*domain.RestoreRun, error)
+	ListRunsBySet(ctx context.Context, setID string) ([]*domain.BackupRun, error)
 }
 
 func NewBackupHandler(f UseCaseFactory, v *usecase.VerifyUseCase, repo backupReader, defaultNS string) *BackupHandler {
 	return &BackupHandler{factory: f, verify: v, repo: repo, defaultNS: defaultNS}
 }
 
+// WithOrganizationChecker 는 X-Org-ID 헤더의 조직 존재 확인을 배선한다.
+//
+// 없는 조직으로 만든 백업은 어떤 화면에도 보이지 않는다 — 목록은 로그인 사용자의
+// 조직으로만 거른다. 문서의 유령 조직(00000000-…-0001)으로 실제로 그랬다.
+func (h *BackupHandler) WithOrganizationChecker(orgs port.OrganizationChecker) *BackupHandler {
+	h.orgs = orgs
+	return h
+}
+
 func (h *BackupHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/backups", h.CreateBackup)
 	g.GET("/backups", h.ListBackups)
+	// 세트 경로는 :id 보다 먼저 둔다 — echo 는 고정 세그먼트를 매개변수보다 우선하지만, 읽는 사람에게도
+	// "sets" 가 백업 ID 가 아님이 보여야 한다.
+	g.POST("/backups/sets", h.CreateBackupSet)
+	g.GET("/backups/sets/:id", h.GetBackupSet)
 	g.GET("/backups/:id", h.GetBackup)
 	g.POST("/backups/:id/verify", h.VerifyBackup)
 	g.POST("/restores", h.CreateRestore)
+	g.POST("/restores/sets", h.CreateRestoreSet)
 	g.GET("/restores/:id", h.GetRestore)
 }
 
@@ -67,8 +98,10 @@ type createBackupRequest struct {
 }
 
 type backupRunResponse struct {
-	ID             string          `json:"id"`
-	OrgID          string          `json:"org_id"`
+	ID    string `json:"id"`
+	OrgID string `json:"org_id"`
+	// SetID 는 이 실행이 속한 백업 세트다. 단독 실행에는 없다.
+	SetID          string          `json:"set_id,omitempty"`
 	StackID        string          `json:"stack_id,omitempty"`
 	Mode           string          `json:"mode"`
 	Trigger        string          `json:"trigger"`
@@ -94,7 +127,7 @@ type artifactBrief struct {
 
 func toResponse(run *domain.BackupRun, arts []*domain.Artifact, withManifest bool) backupRunResponse {
 	res := backupRunResponse{
-		ID: run.ID, OrgID: run.OrgID, StackID: run.StackID,
+		ID: run.ID, OrgID: run.OrgID, SetID: run.SetID, StackID: run.StackID,
 		Mode: string(run.Mode), Trigger: string(run.Trigger), Status: string(run.Status),
 		SchemaVersion: run.SchemaVersion, TotalBytes: run.TotalBytes, Error: run.Error,
 		StartedAt: run.StartedAt, FinishedAt: run.FinishedAt, CreatedAt: run.CreatedAt,
@@ -151,12 +184,17 @@ func (h *BackupHandler) CreateBackup(c echo.Context) error {
 		}
 	}
 
+	// 유스케이스를 만들기 전에 조직부터 본다 — 없는 조직이면 어댑터를 조립할 이유가 없다.
+	orgID, err := h.resolveOrgID(c)
+	if err != nil {
+		return err
+	}
 	uc, err := h.factory.Backup(c.Request().Context(), req.StackID)
 	if err != nil {
 		return err
 	}
 	run, err := uc.Run(c.Request().Context(), usecase.RunBackupRequest{
-		OrgID: resolveOrgID(c), StackID: req.StackID, Namespace: ns,
+		OrgID: orgID, StackID: req.StackID, Namespace: ns,
 		Mode: mode, Trigger: domain.TriggerManual, Scope: scope,
 	})
 	if err != nil {
@@ -170,7 +208,11 @@ func (h *BackupHandler) CreateBackup(c echo.Context) error {
 
 func (h *BackupHandler) ListBackups(c echo.Context) error {
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	runs, err := h.repo.ListRuns(c.Request().Context(), resolveOrgID(c), limit)
+	orgID, err := h.resolveOrgID(c)
+	if err != nil {
+		return err
+	}
+	runs, err := h.repo.ListRuns(c.Request().Context(), orgID, limit)
 	if err != nil {
 		return err
 	}
@@ -235,12 +277,26 @@ func (h *BackupHandler) CreateRestore(c echo.Context) error {
 	if mode == "" {
 		mode = domain.ModeFull
 	}
-	ns := req.Namespace
-	if ns == "" {
-		ns = h.defaultNS
+	backup, err := h.repo.GetRun(c.Request().Context(), req.BackupRunID)
+	if err != nil {
+		return err
 	}
 
-	backup, err := h.repo.GetRun(c.Request().Context(), req.BackupRunID)
+	// 스택 백업을 스택까지 되돌리면 그 네임스페이스에 볼륨·리소스를 풀고, 없으면 만든다. 플랫폼 기본
+	// 네임스페이스로 떨어뜨리면 스택과 무관한 곳에 스택을 풀어 놓는다 — 묻는다.
+	ns := req.Namespace
+	if ns == "" {
+		if backup.StackID != "" && mode != domain.ModePlatformOnly {
+			return &shareddomain.AppError{
+				Code:       "RESTORE_NAMESPACE_REQUIRED",
+				HTTPStatus: http.StatusBadRequest,
+				Message:    "스택을 되돌릴 네임스페이스를 지정하세요",
+				Detail:     backup.StackID,
+			}
+		}
+		ns = h.defaultNS
+	}
+	orgID, err := h.resolveOrgID(c)
 	if err != nil {
 		return err
 	}
@@ -249,7 +305,7 @@ func (h *BackupHandler) CreateRestore(c echo.Context) error {
 		return err
 	}
 	rr, err := uc.Run(c.Request().Context(), usecase.RunRestoreRequest{
-		BackupRunID: req.BackupRunID, OrgID: resolveOrgID(c), Namespace: ns, Mode: mode,
+		BackupRunID: req.BackupRunID, OrgID: orgID, Namespace: ns, Mode: mode,
 	})
 	if err != nil {
 		if rr != nil {
@@ -258,6 +314,141 @@ func (h *BackupHandler) CreateRestore(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusCreated, restoreResponse(rr))
+}
+
+// ---- 백업 세트 (설계 §6.7) ----
+
+type createBackupSetRequest struct {
+	// Confirm 은 SetConfirmPhrase 재입력이다 — 세트는 조직의 모든 스택을 멈춘다.
+	Confirm string `json:"confirm"`
+}
+
+type backupSetResponse struct {
+	SetID  string              `json:"set_id"`
+	Status string              `json:"status"`
+	Runs   []backupRunResponse `json:"runs"`
+	// Failed 는 실행조차 만들지 못한 멤버의 사유다 — 실행이 만들어진 뒤의 실패는 그 실행의 error 에 있다.
+	Failed []string `json:"failed,omitempty"`
+}
+
+func setResponse(setID string, status domain.Status, runs []*domain.BackupRun, failed []string) backupSetResponse {
+	out := backupSetResponse{SetID: setID, Status: string(status), Runs: make([]backupRunResponse, 0, len(runs)), Failed: failed}
+	for _, r := range runs {
+		out.Runs = append(out.Runs, toResponse(r, nil, false))
+	}
+	return out
+}
+
+// CreateBackupSet 은 플랫폼 + 조직의 모든 설치 완료 스택을 한 세트로 뜬다. 동기다 — 단독 백업과 같다.
+func (h *BackupHandler) CreateBackupSet(c echo.Context) error {
+	var req createBackupSetRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "요청 본문을 해석할 수 없습니다")
+	}
+	if strings.TrimSpace(req.Confirm) != SetConfirmPhrase {
+		return &shareddomain.AppError{
+			Code:       "BACKUP_SET_CONFIRM_REQUIRED",
+			HTTPStatus: http.StatusBadRequest,
+			Message:    "전체 백업은 조직의 모든 스택 워크로드를 차례로 멈춥니다. 확인을 위해 \"" + SetConfirmPhrase + "\" 을 입력하세요",
+			Detail:     SetConfirmPhrase,
+		}
+	}
+	orgID, err := h.resolveOrgID(c)
+	if err != nil {
+		return err
+	}
+	uc, err := h.factory.BackupSet(c.Request().Context())
+	if err != nil {
+		return err
+	}
+	res, err := uc.Run(c.Request().Context(), usecase.RunBackupSetRequest{OrgID: orgID, Trigger: domain.TriggerManual})
+	if err != nil {
+		return err
+	}
+	status := http.StatusCreated
+	if res.Status != domain.StatusSucceeded {
+		// 단독 백업이 실패한 실행을 202 로 돌려주는 것과 같다 — 기록은 남았고 결과는 본문에 있다.
+		status = http.StatusAccepted
+	}
+	return c.JSON(status, setResponse(res.SetID, res.Status, res.Runs, res.Failed))
+}
+
+// GetBackupSet 은 세트의 실행들과 파생 상태(domain.SetStatus)를 준다.
+func (h *BackupHandler) GetBackupSet(c echo.Context) error {
+	id := c.Param("id")
+	runs, err := h.repo.ListRunsBySet(c.Request().Context(), id)
+	if err != nil {
+		return err
+	}
+	if len(runs) == 0 {
+		return &shareddomain.AppError{
+			Code: "BACKUP_SET_NOT_FOUND", HTTPStatus: http.StatusNotFound,
+			Message: "백업 세트를 찾을 수 없습니다", Detail: id,
+		}
+	}
+	return c.JSON(http.StatusOK, setResponse(id, domain.SetStatus(runs), runs, nil))
+}
+
+type createRestoreSetRequest struct {
+	SetID string `json:"set_id"`
+	// Confirm 은 세트 ID 재입력이다 — 복구는 플랫폼과 모든 스택의 기존 데이터를 덮어쓴다.
+	Confirm string `json:"confirm"`
+}
+
+type restoreSetResponse struct {
+	SetID    string           `json:"set_id"`
+	Restores []map[string]any `json:"restores"`
+	Failed   []string         `json:"failed,omitempty"`
+	// Skipped 는 산출물이 없어(실패한 백업 멤버) 되돌리지 않은 백업 ID 다.
+	Skipped []string `json:"skipped,omitempty"`
+	Error   string   `json:"error,omitempty"`
+}
+
+// CreateRestoreSet 은 세트를 플랫폼 → 스택 순서로 되돌린다. 멤버 하나라도 실패하면 409 다 — 단독 복구가
+// 실패한 복구 기록을 409 로 돌려주는 것과 같다.
+func (h *BackupHandler) CreateRestoreSet(c echo.Context) error {
+	var req createRestoreSetRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "요청 본문을 해석할 수 없습니다")
+	}
+	if req.SetID == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "set_id 가 필요합니다")
+	}
+	if req.Confirm != req.SetID {
+		return &shareddomain.AppError{
+			Code:       "RESTORE_CONFIRM_REQUIRED",
+			HTTPStatus: http.StatusBadRequest,
+			Message:    "세트 복구는 플랫폼과 모든 스택의 기존 데이터를 덮어씁니다. 확인을 위해 세트 ID 를 다시 입력하세요",
+			Detail:     req.SetID,
+		}
+	}
+	orgID, err := h.resolveOrgID(c)
+	if err != nil {
+		return err
+	}
+	uc, err := h.factory.RestoreSet(c.Request().Context())
+	if err != nil {
+		return err
+	}
+	res, runErr := uc.Run(c.Request().Context(), usecase.RunRestoreSetRequest{SetID: req.SetID, OrgID: orgID})
+	out := restoreSetResponse{SetID: req.SetID, Restores: make([]map[string]any, 0)}
+	if res != nil {
+		out.Failed, out.Skipped = res.Failed, res.Skipped
+		for _, rr := range res.Restores {
+			out.Restores = append(out.Restores, restoreResponse(rr))
+		}
+	}
+	if runErr != nil {
+		if res == nil || len(out.Restores) == 0 {
+			return runErr
+		}
+		out.Error = runErr.Error()
+		return c.JSON(http.StatusConflict, out)
+	}
+	if len(out.Failed) > 0 {
+		return c.JSON(http.StatusConflict, out)
+	}
+	return c.JSON(http.StatusCreated, out)
 }
 
 func (h *BackupHandler) GetRestore(c echo.Context) error {
@@ -283,15 +474,40 @@ func restoreResponse(rr *domain.RestoreRun) map[string]any {
 	}
 }
 
-// resolveOrgID 는 인증 미들웨어가 넣은 조직 식별자를 읽는다.
-func resolveOrgID(c echo.Context) string {
-	if v, ok := c.Get("org_id").(string); ok && v != "" {
-		return v
+// resolveOrgID 는 요청의 조직을 정한다.
+//
+// 순서는 다른 핸들러(스택·관측)와 같다: 인증된 principal → X-Org-ID 헤더 → 시드
+// 기본 조직. 인증이 꺼진 개발 모드에는 principal 도 헤더도 없으므로 기본 조직이
+// 필요하다 — 종전에는 빈 조직으로 UUID 오류를 냈다.
+//
+// 헤더는 호출자가 적는 값이라 존재를 확인한다. 없는 조직으로 만든 백업은 만들어
+// 지되 어떤 화면에도 보이지 않는다(목록은 로그인 사용자의 조직으로만 거른다).
+// 문서의 유령 조직 00000000-…-0001 로 실제로 그랬다. 확인기가 배선되지 않았으면
+// 종전대로 믿는다. 확인 자체가 실패하면 거절도 통과도 아니다 — 통과시키면 유령
+// 조직이 다시 새고, 거절하면 DB 장애가 "조직 없음" 으로 보인다.
+func (h *BackupHandler) resolveOrgID(c echo.Context) (string, error) {
+	if orgID := sharedmw.OrgIDFromEchoContext(c); orgID != "" {
+		return orgID, nil
 	}
-	if v := c.Request().Header.Get("X-Org-Id"); v != "" {
-		return v
+	orgID := strings.TrimSpace(c.Request().Header.Get("X-Org-ID"))
+	if orgID == "" {
+		return shareddomain.DefaultOrgID(), nil
 	}
-	return ""
+	if h.orgs != nil {
+		exists, err := h.orgs.OrganizationExists(c.Request().Context(), orgID)
+		if err != nil {
+			return "", fmt.Errorf("조직 %s 확인 실패: %w", orgID, err)
+		}
+		if !exists {
+			return "", &shareddomain.AppError{
+				Code:       "ORG_NOT_FOUND",
+				HTTPStatus: http.StatusBadRequest,
+				Message:    "X-Org-ID 의 조직이 없습니다. 로그인한 조직의 ID 를 쓰세요 — 다른 조직으로 만든 백업은 화면에 보이지 않습니다",
+				Detail:     orgID,
+			}
+		}
+	}
+	return orgID, nil
 }
 
 // requiresQuiesce 는 고른 대상이 서비스를 멈추게 하는지 본다.

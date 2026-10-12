@@ -5,13 +5,22 @@ import { test, expect } from '@playwright/test'
 // 사용자 환경의 API 에는 백업 라우트가 없고(이전 빌드) 시드 계정도 없다.
 // 그쪽을 갈아끼우는 대신 응답을 고정해 캡처한다 — 환경을 건드리지 않고,
 // 매번 같은 그림이 나온다.
+// 백업 대상은 스택이다. 대화상자가 스택 목록에서 대상을 고른다 — 목록이 없으면 "플랫폼만" 으로 열린다.
+const STACKS = [
+  {
+    id: 'stk_1c208b1cf28f', name: 'nullus-gitlab-argocd-sonarqube',
+    namespace: 'nullus-gitlab-argocd-sonarqube', state: 'completed',
+    template_id: 'gitlab-argocd-sonarqube-v1', cluster_id: 'c1', cluster_name: 'kind-nullus-platform',
+  },
+]
+
 const RUNS = [
   {
-    id: 'b1', mode: 'full', trigger: 'manual', status: 'succeeded',
+    id: 'b1', stack_id: 'stk_1c208b1cf28f', mode: 'full', trigger: 'manual', status: 'succeeded',
     total_bytes: 371533847, quiesce_seconds: 50.3, created_at: '2026-09-03T04:24:04Z',
   },
   {
-    id: 'b2', mode: 'full', trigger: 'schedule', status: 'partial',
+    id: 'b2', stack_id: 'stk_1c208b1cf28f', mode: 'full', trigger: 'schedule', status: 'partial',
     total_bytes: 368268809, quiesce_seconds: 49.4,
     error: 'keycloak_db: pg_dump 실패', created_at: '2026-09-02T14:59:24Z',
   },
@@ -35,6 +44,12 @@ async function openBackupPage(page: import('@playwright/test').Page) {
         },
       },
     }),
+  )
+  await page.route('**/api/v1/stacks?**', (route) =>
+    route.fulfill({ json: { items: STACKS, total: STACKS.length } }),
+  )
+  await page.route('**/api/v1/stacks', (route) =>
+    route.fulfill({ json: { items: STACKS, total: STACKS.length } }),
   )
   await page.route('**/admin/backups**', (route) =>
     route.fulfill({ json: route.request().method() === 'GET' ? { items: RUNS } : RUNS[0] }),

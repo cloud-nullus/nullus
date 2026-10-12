@@ -223,6 +223,7 @@ export function DeveloperDeployPage() {
   const stacks = (stacksData?.items ?? []).map((stack) => ({
     id: stack.id,
     name: stack.name,
+    clusterId: stack.clusterId ?? "",
   }));
   const { data: clustersData } = useClusters();
   const { data: templatesData } = useCicdTemplates();
@@ -245,6 +246,24 @@ export function DeveloperDeployPage() {
         .map((cluster) => ({ id: cluster.id, name: cluster.name })),
     [clustersData],
   );
+  // 스택에 묶인 파이프라인의 앱은 스택의 Argo CD 가 **스택 클러스터**에 올린다.
+  // 다른 클러스터를 고르게 두면 앱은 스택 클러스터에 뜨는데 화면은 고른
+  // 클러스터를 보여 주고, 모니터링 탭은 고른 클러스터를 읽어 비어 보인다 —
+  // 실제로 그랬다. 스택을 고르면 클러스터는 스택의 것으로 고정한다. 스택
+  // 클러스터는 target 타입이 아닐 수 있어 위 목록에 없으므로 전체에서 이름을 찾는다.
+  // 클러스터를 모르는 스택(옛 응답)이면 종전대로 고르게 둔다.
+  const stackClusterId =
+    stacks.find((stack) => stack.id === selectedStackId)?.clusterId ?? "";
+  const clusterOptions = useMemo(() => {
+    if (!stackClusterId) {
+      return clusters;
+    }
+    const known = (clustersData?.items ?? []).find(
+      (cluster) => cluster.id === stackClusterId,
+    );
+    return [{ id: stackClusterId, name: known?.name ?? stackClusterId }];
+  }, [clusters, clustersData, stackClusterId]);
+  const clusterLockedToStack = stackClusterId !== "";
 
   const {
     register,
@@ -335,10 +354,17 @@ export function DeveloperDeployPage() {
   const firstClusterId = clusters[0]?.id ?? "";
   const firstStackId = stacks[0]?.id ?? "";
   useEffect(() => {
-    if (firstClusterId && !form.clusterId) {
+    if (!stackClusterId && firstClusterId && !form.clusterId) {
       setValue("clusterId", firstClusterId, { shouldValidate: true });
     }
-  }, [firstClusterId, form.clusterId, setValue]);
+  }, [firstClusterId, form.clusterId, setValue, stackClusterId]);
+
+  // 스택이 정한 클러스터가 다른 선택(기본값·주소의 clusterId)보다 우선한다.
+  useEffect(() => {
+    if (stackClusterId && form.clusterId !== stackClusterId) {
+      setValue("clusterId", stackClusterId, { shouldValidate: true });
+    }
+  }, [form.clusterId, setValue, stackClusterId]);
 
   useEffect(() => {
     if (firstStackId && !selectedStackId) {
@@ -360,7 +386,7 @@ export function DeveloperDeployPage() {
   const namespaceParam = searchParams.get("namespace") ?? "";
   const appNameParam = searchParams.get("appName") ?? "";
   useEffect(() => {
-    if (clusterIdParam) {
+    if (clusterIdParam && !stackClusterId) {
       setValue("clusterId", clusterIdParam, { shouldValidate: true });
     }
     if (namespaceParam) {
@@ -376,6 +402,7 @@ export function DeveloperDeployPage() {
     namespaceOptions,
     namespaceParam,
     setValue,
+    stackClusterId,
   ]);
 
   const templateIdParam = searchParams.get("template") ?? "";
@@ -1079,6 +1106,7 @@ export function DeveloperDeployPage() {
                           id="deploy-cluster"
                           aria-labelledby="deploy-cluster-label"
                           value={form.clusterId}
+                          disabled={clusterLockedToStack}
                           onChange={(event) => {
                             setField("clusterId", event.target.value);
                             setCreateNewNamespace(false);
@@ -1086,12 +1114,20 @@ export function DeveloperDeployPage() {
                           }}
                           className="w-full"
                         >
-                          {clusters.map((cluster) => (
+                          {clusterOptions.map((cluster) => (
                             <option key={cluster.id} value={cluster.id}>
                               {cluster.name}
                             </option>
                           ))}
                         </Select>
+                        {clusterLockedToStack && (
+                          <p className="mb-0 mt-1.5 text-xs text-[var(--color-text-secondary)]">
+                            {t(
+                              "developerDeployPage.form.clusterLockedToStack",
+                              "Fixed to the cluster the stack is installed on. The stack's Argo CD deploys the app there.",
+                            )}
+                          </p>
+                        )}
                         {errors.clusterId && (
                           <span className="text-xs text-[var(--color-error)]">
                             {errors.clusterId.message}

@@ -129,3 +129,11 @@ func TestBuildReader_ListBuilds_MissingRepoIsEmpty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, builds)
 }
+
+func TestRunResult_SkippedIsNotARun(t *testing.T) {
+	result, building := runResult("completed", "skipped")
+	assert.Equal(t, "SKIPPED", result)
+	assert.False(t, building)
+	result, _ = runResult("completed", "cancelled")
+	assert.Equal(t, "ABORTED", result, "취소는 여전히 중단이다")
+}

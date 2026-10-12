@@ -50,6 +50,9 @@ type updateScanPolicyRequest struct {
 	BlockSeverity        *string `json:"block_severity"`
 	IgnoreUnfixed        *bool   `json:"ignore_unfixed"`
 	OnScannerUnreachable *string `json:"on_scanner_unreachable"`
+	// SASTOnGateFailure 는 선택이다. 이 필드를 모르는 옛 클라이언트가 이미지 스캔 정책만
+	// 바꿀 수 있어야 한다 — 빠지면 저장된 값을 그대로 둔다.
+	SASTOnGateFailure *string `json:"sast_on_gate_failure"`
 }
 
 // UpdateScanPolicy 는 정책을 저장하고 그 스택의 스캔 파이프라인에 싣는다.
@@ -74,6 +77,9 @@ func (h *ScanPolicyHandler) UpdateScanPolicy(c echo.Context) error {
 		BlockSeverity:        domain.Severity(strings.ToUpper(strings.TrimSpace(*req.BlockSeverity))),
 		IgnoreUnfixed:        *req.IgnoreUnfixed,
 		OnScannerUnreachable: domain.UnreachableAction(strings.ToLower(strings.TrimSpace(*req.OnScannerUnreachable))),
+	}
+	if req.SASTOnGateFailure != nil {
+		policy.SASTOnGateFailure = domain.SASTGateAction(strings.ToLower(strings.TrimSpace(*req.SASTOnGateFailure)))
 	}
 
 	actor := middleware.ActorFromContext(c)

@@ -30,6 +30,7 @@ var canonicalToolNameByKey = map[string]string{
 	"storage_backend":    "minio",
 	"authentication":     "openbao",
 	"image_scanner":      "trivy",
+	"sast":               "sonarqube",
 }
 
 // InstalledToolWorkloads 는 스택 설정에서 "이 스택이 클러스터에 설치하는 OSS" 목록을
@@ -82,6 +83,8 @@ func InstalledToolWorkloads(cfg StackConfig) []ToolWorkload {
 		// 이미지 스캐너는 선택 항목이라 고르지 않은 스택에서는 빠진다.
 		// 릴리스명이 곧 파드 이름 접두사다.
 		{workload("image_scanner", cfg.Security.ImageScanner, TrivyReleaseName), cfg.Security.ImageScanner.Enabled},
+		// SAST 도 선택 항목이다. 외부 선택은 스택 안에 서지 않으므로 HasSAST 로 본다.
+		{workload("sast", cfg.Security.SAST, SonarQubeReleaseName), HasSAST(cfg.Security.SAST)},
 	}
 
 	// 소스 저장소도 고른 제품에 따라 파드 접두사가 달라지고(GitLab / Gitea),

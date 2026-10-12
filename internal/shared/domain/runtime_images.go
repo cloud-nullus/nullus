@@ -39,11 +39,39 @@ const (
 	// (internal/cicd/adapter/scaffold/react_app.go)
 	NodeBuilderImage = "node:22-alpine"
 
-	// JenkinsAgentImage / JenkinsDindImage — Jenkins kubernetes 플러그인이
-	// 빌드마다 띄우는 파드. GitLab CI 와 달리 실행기를 차트로 세우지 않는다.
+	// JenkinsAgentImage — Jenkins kubernetes 플러그인이 빌드마다 띄우는 파드.
+	// GitLab CI 와 달리 실행기를 차트로 세우지 않는다.
 	// (internal/cicd/adapter/scaffold/jenkins_renderer.go)
 	JenkinsAgentImage = "docker:27-cli"
-	JenkinsDindImage  = "docker:27-dind"
+
+	// DindImage — 이미지 빌드용 docker 데몬. Jenkins 빌드 파드의 사이드카이자
+	// GitLab build 잡의 서비스다.
+	// (internal/cicd/adapter/scaffold/{jenkins_renderer,renderer}.go)
+	DindImage = "docker:27-dind"
+
+	// GitLabCIBuildImage / GitLabCIDeployImage — 생성된 .gitlab-ci.yml 의 build·deploy 잡.
+	// 쿠버네티스 실행기가 잡마다 이 이미지로 파드를 띄운다.
+	// (internal/cicd/adapter/scaffold/renderer.go)
+	GitLabCIBuildImage  = "docker:27"
+	GitLabCIDeployImage = "alpine:3.20"
+
+	// TrivyCLIImage — 파이프라인 이미지 스캔 단계의 Trivy CLI. 취약점 DB 는 들어 있지 않다 —
+	// client 로 붙어 스택 Trivy 서버에 매칭을 맡긴다. 에어갭 번들은 Trivy 차트가 같은 태그를
+	// 이미 싣는다(images.txt). RuntimeImages 에 넣지 않는 이유다 — 넣으면 생성기가 두 번 싣는다.
+	// 정책 변수와 함께 CI 에 밀린다(port.ScanPolicyVariables) — 올리면 파이프라인 정의를
+	// 다시 쓰지 않아도 다음 실행부터 따라온다.
+	// (internal/cicd/adapter/scaffold/image_scan.go)
+	TrivyCLIImage = "aquasec/trivy:0.74.0"
+
+	// SonarScannerImage — 파이프라인 SAST 단계(GitLab CI·GitHub Actions·Jenkins). 공식
+	// sonarsource/sonar-scanner-cli 는 amd64 빌드만 게시해(Docker Hub 전 태그 실측, 2026-10)
+	// arm64 노드와 에어갭 arm64 번들에서 단계가 서지 않았다 — 플랫폼 독립 스캐너 zip 을 멀티아치
+	// JRE 위에 우리가 굽는다(deploy/images/sonar-scanner, CD 의 build-and-push-sonar-scanner,
+	// 로컬은 scripts/build-sonar-scanner-image.sh). 태그는 Dockerfile 의 스캐너 버전이다
+	// (테스트가 둘을 묶는다). ghcr 패키지는 처음 만들어질 때 private 이므로 public 으로 바꿔야
+	// 익명 pull 이 된다(릴리즈 정책 §7.1).
+	// (internal/cicd/adapter/scaffold/sast.go)
+	SonarScannerImage = "ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389"
 )
 
 // RuntimeImages 는 위 이미지 전부를 돌려준다.
@@ -56,6 +84,9 @@ func RuntimeImages() []string {
 		KubectlImage,
 		NodeBuilderImage,
 		JenkinsAgentImage,
-		JenkinsDindImage,
+		DindImage,
+		GitLabCIBuildImage,
+		GitLabCIDeployImage,
+		SonarScannerImage,
 	}
 }

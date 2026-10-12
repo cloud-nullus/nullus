@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/gitea"
@@ -19,6 +20,8 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/nexus"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registry"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/registrycreds"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/sastcreds"
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/scaffold"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 )
 
@@ -44,6 +47,10 @@ type Options struct {
 	// ExternalRegistryPrefix 는 알 수 없는 레지스트리 도구의 폴백이다.
 	ExternalRegistryPrefix string
 	// GitLabBaseURLOverride 는 클러스터 내부 서비스 DNS 대신 쓸 주소다.
+	//
+	// 주소 하나면 모든 GitLab 스택에 적용된다. "네임스페이스=주소" 를 쉼표로 이어 주면
+	// 스택마다 제 주소를 쓴다(로컬에서 스택이 여럿일 때 포트포워드도 여럿이다). 둘을
+	// 섞으면 항목이 있는 스택은 그 주소, 나머지는 bare 주소다. gitLabBaseURLOverrideFor 참조.
 	//
 	// 기본 경로는 gitlab-webservice-default.{ns}.svc 인데, 이는 API 서버가
 	// 클러스터 안에서 돌 때만 해석된다. 로컬 실행이나 외부 GitLab 을 붙일 때
@@ -186,7 +193,7 @@ func (f *BundleFactory) gitLabBundle(
 		return nil, fmt.Errorf("stack %s 의 네임스페이스를 알 수 없습니다", summary.ID)
 	}
 
-	baseURL := strings.TrimSpace(f.opts.GitLabBaseURLOverride)
+	baseURL := gitLabBaseURLOverrideFor(f.opts.GitLabBaseURLOverride, namespace)
 	if baseURL == "" {
 		baseURL = gitLabBaseURL(namespace)
 	}
@@ -213,12 +220,18 @@ func (f *BundleFactory) gitLabBundle(
 	// 기록되지 않는다.
 	runs := gitlab.NewBuildReader(client, f.opts.GroupPath).
 		WithWebBaseURL(toolWebBaseURL("gitlab", summary.AccessDomain))
+	// 같은 토큰으로 실행도 시작시킨다 — 스택에 묶인 파이프라인의 "배포 실행" 은
+	// 플랫폼이 빌드하지 않고 GitLab CI 에 넘긴다. 이 자리가 비어 있으면 Trigger CI
+	// 단계가 "CI 플랫폼이 없다" 로 끝난다.
+	trigger := gitlab.NewPipelineTrigger(client, f.opts.GroupPath).
+		WithWebBaseURL(toolWebBaseURL("gitlab", summary.AccessDomain))
 
 	bundle := &port.SCMBundle{
 		Provisioner:                  client,
 		Pipeline:                     client,
 		CIBuilds:                     runs,
 		CIArtifacts:                  runs,
+		CITrigger:                    trigger,
 		Registry:                     resolver,
 		Platform:                     port.SCMPlatformGitLab,
 		GroupPath:                    f.opts.GroupPath,
@@ -228,8 +241,11 @@ func (f *BundleFactory) gitLabBundle(
 		AccessDomain:                 summary.AccessDomain,
 		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
 		ImageScannerJavaDBRepository: f.opts.TrivyJavaDBRepository,
+		SASTServerEndpoint:           summary.SASTServerEndpoint,
+		SASTWebURL:                   sastWebURL(summary),
 		GatewayName:                  gatewayNameForStack(summary.Name),
 	}
+	f.attachSASTToken(bundle, summary)
 	// GitLab 스택도 Harbor·Nexus 를 레지스트리로 고를 수 있다. 빠뜨리면 CI 변수가
 	// 등록되지 않아 build 가 docker login 에서 죽는다.
 	f.attachRegistryCredentials(ctx, bundle, resolver, summary)
@@ -259,6 +275,25 @@ func (f *BundleFactory) attachRegistryCredentials(
 	if deleter := f.imageDeleterFor(ctx, resolver, creds, summary); deleter != nil {
 		bundle.Images = deleter
 	}
+}
+
+// sastWebURL 은 스택 SonarQube 의 공개 주소다. SonarQube 가 없으면 비어 있다.
+func sastWebURL(summary *port.StackSummary) string {
+	if strings.TrimSpace(summary.SASTServerEndpoint) == "" {
+		return ""
+	}
+	return toolWebBaseURL("sonarqube", summary.AccessDomain)
+}
+
+// attachSASTToken 은 스택 SonarQube 의 분석 토큰을 푸는 수단을 번들에 붙인다.
+//
+// 토큰은 스택 설치가 OpenBao 에 둔다. 레지스트리 자격증명과 같은 시크릿 저장소에서
+// 읽는다 — 그 저장소가 배선되지 않았거나 SonarQube 가 없으면 붙이지 않는다.
+func (f *BundleFactory) attachSASTToken(bundle *port.SCMBundle, summary *port.StackSummary) {
+	if f.registrySecrets == nil || strings.TrimSpace(summary.SASTServerEndpoint) == "" {
+		return
+	}
+	bundle.SASTToken = sastcreds.New(f.registrySecrets, f.opts.Env, summary.OrgID, summary.ID)
 }
 
 // gitHubBundle 은 외부 GitHub 을 향하는 묶음을 만든다.
@@ -316,13 +351,18 @@ func (f *BundleFactory) gitHubBundle(
 	}
 
 	runs := github.NewBuildReader(client, conn.Owner)
+	// 같은 PAT 로 실행도 시작시킨다(workflow_dispatch). 스택에 묶인 파이프라인의
+	// "배포 실행" 은 플랫폼이 빌드하지 않고 GitHub Actions 에 넘긴다.
+	trigger := github.NewWorkflowTrigger(client, conn.Owner, path.Base(scaffold.GitHubWorkflowPath)).
+		WithWebBaseURL(github.WebBaseURLFor(conn.APIBaseURL))
 
-	return &port.SCMBundle{
+	bundle := &port.SCMBundle{
 		Provisioner: client,
 		Pipeline:    client,
 		// GitHub Actions 실행 이력과 산출물도 같은 PAT 로 organization 아래 리포에서 읽는다.
 		CIBuilds:    runs,
 		CIArtifacts: runs,
+		CITrigger:   trigger,
 		Registry:    resolver,
 		// GHCR 패키지는 같은 PAT 로 지운다(delete:packages 스코프 필요).
 		Images:   client,
@@ -337,8 +377,12 @@ func (f *BundleFactory) gitHubBundle(
 		ClusterID:            summary.ClusterID,
 		AccessDomain:         summary.AccessDomain,
 		ImageScannerEndpoint: summary.ImageScannerEndpoint,
+		SASTServerEndpoint:   summary.SASTServerEndpoint,
+		SASTWebURL:           sastWebURL(summary),
 		GatewayName:          gatewayNameForStack(summary.Name),
-	}, nil
+	}
+	f.attachSASTToken(bundle, summary)
+	return bundle, nil
 }
 
 // giteaBundle 은 스택 안에 설치된 Gitea 를 향하는 묶음을 만든다.
@@ -408,8 +452,11 @@ func (f *BundleFactory) giteaBundle(
 		AccessDomain:                 summary.AccessDomain,
 		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
 		ImageScannerJavaDBRepository: f.opts.TrivyJavaDBRepository,
+		SASTServerEndpoint:           summary.SASTServerEndpoint,
+		SASTWebURL:                   sastWebURL(summary),
 		GatewayName:                  gatewayNameForStack(summary.Name),
 	}
+	f.attachSASTToken(bundle, summary)
 
 	f.attachRegistryCredentials(ctx, bundle, resolver, summary)
 
@@ -444,6 +491,38 @@ func (f *BundleFactory) giteaBundle(
 		}
 	}
 	return bundle, nil
+}
+
+// gitLabBaseURLOverrideFor 는 override 설정에서 namespace 의 GitLab 주소를 고른다.
+//
+// override 는 주소 하나이거나 "네임스페이스=주소" 항목을 쉼표로 이은 목록이다. 항목은
+// 등호 앞에 경로·스킴 문자가 없을 때만 네임스페이스 키로 본다 — 쿼리에 = 가 든
+// 주소를 항목으로 오해하지 않기 위해서다. 그 네임스페이스의 항목이 없으면 bare
+// 주소를, 그것도 없으면 빈 값(클러스터 내부 DNS)을 돌려준다.
+func gitLabBaseURLOverrideFor(override, namespace string) string {
+	override = strings.TrimSpace(override)
+	if override == "" {
+		return ""
+	}
+	namespace = strings.TrimSpace(namespace)
+	bare := ""
+	for _, entry := range strings.Split(override, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		key, value, keyed := strings.Cut(entry, "=")
+		if keyed && !strings.ContainsAny(key, "/:?") {
+			if strings.TrimSpace(key) == namespace {
+				return strings.TrimSpace(value)
+			}
+			continue
+		}
+		if bare == "" {
+			bare = entry
+		}
+	}
+	return bare
 }
 
 // jenkinsBaseURL 은 클러스터 내부 Jenkins 주소다.

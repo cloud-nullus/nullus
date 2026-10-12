@@ -1,8 +1,10 @@
 package domain
 
 import (
+	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // AppType represents the application type for a pipeline.
@@ -13,6 +15,16 @@ const (
 	AppTypeBackend AppType = "backend"
 	AppTypeBatch   AppType = "batch"
 )
+
+// IsValid 는 파이프라인이 받는 세 종류 중 하나인지 본다. pipelines.app_type 이 이 세 값의
+// ENUM 이라 템플릿에 다른 값이 들어가면 그 템플릿으로 만드는 파이프라인이 DB 에서 거부된다.
+func (a AppType) IsValid() bool {
+	switch a {
+	case AppTypeWeb, AppTypeBackend, AppTypeBatch:
+		return true
+	}
+	return false
+}
 
 // PipelineStatus represents the status of a pipeline.
 type PipelineStatus string
@@ -72,20 +84,19 @@ const (
 	ExecutionModeEmergencyDirect = "emergency_direct"
 )
 
-// DelegatesBuildToRunner 는 이미지 빌드를 스택의 CI 러너가 맡는지다.
+// DelegatesBuildToRunner 는 실행을 스택의 CI 러너가 맡는지다.
 //
-// 플랫폼이 직접 빌드하는 경로는 API 서버가 host 에서 돌던 시절에 만들어졌다.
+// 플랫폼이 직접 빌드·적용하는 경로는 API 서버가 host 에서 돌던 시절에 만들어졌다.
 // 지금 API 는 파드 안에서 돌고 그 안에는 도커 데몬이 없다 — 직접 빌드는
-// 성공할 수 없는 경로다. 스택에 묶인 파이프라인의 빌드는 스택의 CI 플랫폼이
+// 성공할 수 없는 경로다. 스택에 묶인 파이프라인의 실행은 스택의 CI 플랫폼이
 // 맡는다(통합모드 설계 3.2: "Nullus API 서버가 정상 실행 과정에서 직접
 // git clone, docker build, kind load, kubectl apply 를 수행하지 않는다").
 //
-// 빌드가 없는 파이프라인은 위임할 것이 없으므로 기존 경로를 그대로 둔다.
+// Dockerfile 경로가 비어 있어도 마찬가지다. 스택에 묶였는데 플랫폼이 매니페스트를
+// 직접 적용하면 CD 도구가 동기화하는 같은 리소스를 서로 덮어쓴다 — API 로
+// Dockerfile 경로 없이 만든 파이프라인이 그 경로로 새고 있었다. 긴급모드만 예외다.
 func (p *Pipeline) DelegatesBuildToRunner() bool {
-	if p == nil {
-		return false
-	}
-	if strings.TrimSpace(p.DockerfilePath) == "" || strings.TrimSpace(p.StackID) == "" {
+	if p == nil || strings.TrimSpace(p.StackID) == "" {
 		return false
 	}
 	return strings.TrimSpace(p.ExecutionMode) != ExecutionModeEmergencyDirect
@@ -103,6 +114,43 @@ type PipelineTemplate struct {
 	DockerContext  string            `json:"docker_context,omitempty"`
 	EnvVars        map[string]string `json:"env_vars,omitempty"`
 	CreatedBy      string            `json:"created_by,omitempty"`
+}
+
+// 열 길이(pipeline_templates.id VARCHAR(100), name VARCHAR(255))와 같다 — VARCHAR 처럼 문자 수로 센다.
+// 여기서 먼저 걸러 DB 오류 대신 어느 필드가 문제인지 말해 준다.
+const (
+	maxTemplateIDLength   = 100
+	maxTemplateNameLength = 255
+)
+
+// Validate 는 템플릿을 저장할 수 있는 모양인지 본다. 어기면 ErrTemplateInvalid 를 감싼다.
+func (t *PipelineTemplate) Validate() error {
+	id := strings.TrimSpace(t.ID)
+	switch {
+	case id == "":
+		return fmt.Errorf("%w: id is required", ErrTemplateInvalid)
+	case utf8.RuneCountInString(id) > maxTemplateIDLength:
+		return fmt.Errorf("%w: id must be at most %d characters", ErrTemplateInvalid, maxTemplateIDLength)
+	}
+	name := strings.TrimSpace(t.Name)
+	switch {
+	case name == "":
+		return fmt.Errorf("%w: name is required", ErrTemplateInvalid)
+	case utf8.RuneCountInString(name) > maxTemplateNameLength:
+		return fmt.Errorf("%w: name must be at most %d characters", ErrTemplateInvalid, maxTemplateNameLength)
+	}
+	if !t.AppType.IsValid() {
+		return fmt.Errorf("%w: app_type must be one of %q, %q, %q", ErrTemplateInvalid, AppTypeWeb, AppTypeBackend, AppTypeBatch)
+	}
+	if len(t.Stages) == 0 {
+		return fmt.Errorf("%w: at least one stage is required", ErrTemplateInvalid)
+	}
+	for _, stage := range t.Stages {
+		if strings.TrimSpace(stage) == "" {
+			return fmt.Errorf("%w: stage names must not be empty", ErrTemplateInvalid)
+		}
+	}
+	return nil
 }
 
 // DeployStep tracks progress of a single resource application.

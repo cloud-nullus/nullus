@@ -84,3 +84,47 @@ func TestMemoryCICDTemplateRepository_GetByID_ReturnsExpectedAppType(t *testing.
 
 	assert.Equal(t, domain.AppTypeBackend, tmpl.AppType)
 }
+
+// Postgres 저장소와 같은 규칙 — 핸들러가 errors.Is 로 404/409 를 가르므로 두 구현이 같은 에러를 내야 한다.
+func TestMemoryCICDTemplateRepository_CreateRejectsDuplicateID(t *testing.T) {
+	repo := NewMemoryCICDTemplateRepository()
+
+	err := repo.Create(context.Background(), &domain.PipelineTemplate{ID: "web-backend-v1", Name: "dup"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrTemplateAlreadyExists)
+
+	tmpl, err := repo.GetByID(context.Background(), "web-backend-v1")
+	require.NoError(t, err)
+	assert.Equal(t, "User Custom Pipeline", tmpl.Name, "duplicate create must not overwrite")
+}
+
+func TestMemoryCICDTemplateRepository_UpdateAndDeleteMissingReturnNotFound(t *testing.T) {
+	repo := NewMemoryCICDTemplateRepository()
+
+	err := repo.Update(context.Background(), &domain.PipelineTemplate{ID: "missing"})
+	assert.ErrorIs(t, err, domain.ErrTemplateNotFound)
+
+	err = repo.Delete(context.Background(), "missing")
+	assert.ErrorIs(t, err, domain.ErrTemplateNotFound)
+
+	_, err = repo.GetByID(context.Background(), "missing")
+	assert.ErrorIs(t, err, domain.ErrTemplateNotFound)
+}
+
+func TestMemoryCICDTemplateRepository_CreateUpdateDeleteRoundTrip(t *testing.T) {
+	repo := NewMemoryCICDTemplateRepository()
+	ctx := context.Background()
+
+	tmpl := &domain.PipelineTemplate{ID: "team-v1", Name: "Team", AppType: domain.AppTypeWeb, Stages: []string{"Build"}}
+	require.NoError(t, repo.Create(ctx, tmpl))
+
+	tmpl.Name = "Team v2"
+	require.NoError(t, repo.Update(ctx, tmpl))
+	got, err := repo.GetByID(ctx, "team-v1")
+	require.NoError(t, err)
+	assert.Equal(t, "Team v2", got.Name)
+
+	require.NoError(t, repo.Delete(ctx, "team-v1"))
+	_, err = repo.GetByID(ctx, "team-v1")
+	assert.ErrorIs(t, err, domain.ErrTemplateNotFound)
+}

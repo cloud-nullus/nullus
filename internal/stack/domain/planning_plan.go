@@ -61,6 +61,7 @@ func plannedSelections(cfg StackConfig) []plannedSelection {
 		{SlotTraceLayer, cfg.Logging.TraceLayer},
 		{SlotTraceExporter, cfg.Logging.TraceExporter},
 		{SlotImageScanner, cfg.Security.ImageScanner},
+		{SlotSAST, cfg.Security.SAST},
 	}
 }
 

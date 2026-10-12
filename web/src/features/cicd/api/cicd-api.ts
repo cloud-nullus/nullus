@@ -13,6 +13,9 @@ import type {
   Pipeline,
   PipelineImageScan,
   PipelineResource,
+  PipelineSASTResult,
+  SASTMetrics,
+  SASTQualityGateStatus,
   VulnerabilityListFilter,
   VulnerabilityListResult,
 } from "../../../types";
@@ -38,6 +41,7 @@ export type {
   Pipeline,
   PipelineImageScan,
   PipelineResource,
+  PipelineSASTResult,
   PipelineStatus,
   VulnerabilityCounts,
   VulnerabilityListFilter,
@@ -74,6 +78,17 @@ export interface DeletePipelineResult {
  * 보고한다. 예전에는 이 값을 화면이 통째로 버려서, 저장소가 비어 있는데도
  * 파이프라인은 "정상" 으로 보였다.
  */
+/** POST /pipelines/:id/refresh-definition 의 결과. */
+export interface RefreshDefinitionResult {
+  /** 다시 쓴 정의의 단계. 비면 번들이 알려 주지 않은 것이다. */
+  stages: string[];
+  warnings: string[];
+  /** CI 가 필요로 하는데 등록되지 못한 변수들. */
+  missingVariables: string[];
+  /** 저장소가 없어 다시 만들고 전체 스캐폴딩을 썼다 — 앱 코드를 다시 밀어야 한다. */
+  repositoryRecreated: boolean;
+}
+
 export interface PipelineProvisioning {
   warnings: string[];
   /** 이미 있던 저장소라 스캐폴딩을 쓰지 않았다 — 리포에 Jenkinsfile 이 없을 수 있다. */
@@ -119,6 +134,8 @@ const queryKeys = {
     ["cicd", "pipelineResources", pipelineId] as const,
   pipelineImageScans: (pipelineId: string, deploymentsUpdatedAt: number) =>
     ["cicd", "pipelineImageScans", pipelineId, deploymentsUpdatedAt] as const,
+  pipelineSASTResults: (pipelineId: string, deploymentsUpdatedAt: number) =>
+    ["cicd", "pipelineSASTResults", pipelineId, deploymentsUpdatedAt] as const,
   // 필터 앞까지가 출처(어느 스캔인가)다. 페이지를 넘길 때 같은 출처의 결과만 잠시 둔다.
   pipelineScanVulnerabilitiesSource: (pipelineId: string, scanId: string) =>
     ["cicd", "pipelineScanVulnerabilities", pipelineId, scanId] as const,
@@ -174,8 +191,105 @@ function mapPipelineImageScan(raw: Record<string, unknown>): PipelineImageScan {
   };
 }
 
+const SAST_QUALITY_GATE_STATUSES: ReadonlySet<string> = new Set([
+  "OK",
+  "ERROR",
+  "NONE",
+]);
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * 분석 결과 한 건을 화면 모델로 옮긴다. 이미지 스캔과 같은 규칙이다.
+ *
+ * - 지표는 숫자일 때만 옮긴다. 없는 지표를 0 으로 채우면 분석 실패가 "문제 0건" 으로 보인다.
+ * - 모르는 gate_result 는 error(분석 실패)로 둔다. pass 로 떨어뜨리면 초록 통과로 보인다.
+ */
+function mapPipelineSASTResult(raw: Record<string, unknown>): PipelineSASTResult {
+  const gate = String(raw.gate_result ?? raw.gateResult ?? "");
+  const qg = String(raw.quality_gate_status ?? raw.qualityGateStatus ?? "");
+  const rawConditions = Array.isArray(raw.conditions) ? raw.conditions : [];
+  const rawMetrics =
+    raw.metrics && typeof raw.metrics === "object"
+      ? (raw.metrics as Record<string, unknown>)
+      : undefined;
+  let metrics: SASTMetrics | undefined;
+  if (rawMetrics) {
+    const picked: SASTMetrics = {
+      bugs: optionalNumber(rawMetrics.bugs),
+      vulnerabilities: optionalNumber(rawMetrics.vulnerabilities),
+      codeSmells: optionalNumber(rawMetrics.code_smells ?? rawMetrics.codeSmells),
+      securityHotspots: optionalNumber(
+        rawMetrics.security_hotspots ?? rawMetrics.securityHotspots,
+      ),
+      coverage: optionalNumber(rawMetrics.coverage),
+      duplicatedLinesDensity: optionalNumber(
+        rawMetrics.duplicated_lines_density ?? rawMetrics.duplicatedLinesDensity,
+      ),
+      ncloc: optionalNumber(rawMetrics.ncloc),
+    };
+    metrics = Object.fromEntries(
+      Object.entries(picked).filter(([, v]) => v !== undefined),
+    ) as SASTMetrics;
+  }
+  return {
+    id: String(raw.id ?? ""),
+    pipelineId: String(raw.pipeline_id ?? raw.pipelineId ?? ""),
+    deploymentId: optionalString(raw.deployment_id ?? raw.deploymentId),
+    projectKey: optionalString(raw.project_key ?? raw.projectKey),
+    qualityGateStatus: SAST_QUALITY_GATE_STATUSES.has(qg)
+      ? (qg as SASTQualityGateStatus)
+      : undefined,
+    gateResult: IMAGE_SCAN_GATE_RESULTS.has(gate)
+      ? (gate as ImageScanGateResult)
+      : "error",
+    conditions: rawConditions.map((c: Record<string, unknown>) => ({
+      metric: String(c.metric ?? ""),
+      comparator: optionalString(c.comparator),
+      threshold: optionalString(c.threshold),
+      actual: optionalString(c.actual),
+      status: String(c.status ?? ""),
+    })),
+    metrics,
+    dashboardUrl: optionalString(raw.dashboard_url ?? raw.dashboardUrl),
+    analyzedAt: String(raw.analyzed_at ?? raw.analyzedAt ?? ""),
+  };
+}
+
 // 테스트에서 매퍼를 직접 검증할 수 있도록 내보낸다. 훅을 거치면 react-query 목까지
 // 끼워야 해서 응답 표기 대응 같은 순수 변환 로직을 확인하기 어렵다.
+// 서버의 템플릿(snake_case)을 화면 모양으로 옮긴다. 목록·생성·수정 응답이 같은 모양이어야
+// 저장 직후 캐시를 갈아 끼울 때 카드가 어긋나지 않는다.
+function toCicdTemplate(t: any): CicdTemplate {
+  return {
+    id: t.id,
+    name: t.name,
+    description: t.description ?? "",
+    appType: (t.app_type ?? "") as CicdTemplate["appType"],
+    stages: t.stages ?? [],
+    createdBy: t.created_by,
+    gitRepoUrl: t.git_repo_url ?? "",
+    dockerfilePath: t.dockerfile_path ?? "",
+    dockerContext: t.docker_context ?? "",
+    envVars: t.env_vars ?? {},
+  };
+}
+
+// 서버는 `app_type` 을 읽는다. camelCase 로 보내면 유형이 빈 값으로 저장돼 그 템플릿으로 만드는
+// 파이프라인이 거부된다. 빌드 설정(git_repo_url 등)은 폼에 없으므로 보내지 않는다 — 서버는 요청에
+// 없는 필드를 저장된 값 그대로 둔다.
+function toCicdTemplateBody(data: CreateCicdTemplateRequest) {
+  return {
+    id: data.id,
+    name: data.name,
+    description: data.description,
+    app_type: data.appType,
+    stages: data.stages,
+  };
+}
+
 export const cicdApiCalls = {
   resolvePipelineMode: (stages: string[] | undefined): Pipeline["mode"] => {
     const normalized = (stages ?? []).map((stage) =>
@@ -206,30 +320,26 @@ export const cicdApiCalls = {
   getTemplates: async () => {
     const raw = await api.get<any[]>("/cicd/templates").then((r) => r.data);
 
-    return (raw ?? []).map((t: any) => ({
-      id: t.id,
-      name: t.name,
-      description: t.description ?? "",
-      appType: (t.app_type ?? "") as CicdTemplate["appType"],
-      stages: t.stages ?? [],
-      createdBy: t.created_by,
-      gitRepoUrl: t.git_repo_url ?? "",
-      dockerfilePath: t.dockerfile_path ?? "",
-      dockerContext: t.docker_context ?? "",
-      envVars: t.env_vars ?? {},
-    })) as CicdTemplate[];
+    return (raw ?? []).map(toCicdTemplate);
   },
 
   createTemplate: (data: CreateCicdTemplateRequest) =>
-    api.post<CicdTemplate>("/cicd/templates", data).then((r) => r.data),
+    api
+      .post<any>("/cicd/templates", toCicdTemplateBody(data))
+      .then((r) => toCicdTemplate(r.data)),
 
   updateTemplate: (data: CreateCicdTemplateRequest) =>
     api
-      .put<CicdTemplate>(`/cicd/templates/${data.id}`, data)
-      .then((r) => r.data),
+      .put<any>(
+        `/cicd/templates/${encodeURIComponent(data.id)}`,
+        toCicdTemplateBody(data),
+      )
+      .then((r) => toCicdTemplate(r.data)),
 
   deleteTemplate: (id: string) =>
-    api.delete<void>(`/cicd/templates/${id}`).then((r) => r.data),
+    api
+      .delete<void>(`/cicd/templates/${encodeURIComponent(id)}`)
+      .then((r) => r.data),
 
   getGoldenPaths: () =>
     api.get<CICDGoldenPath[]>("/cicd/golden-paths").then((r) => r.data),
@@ -296,31 +406,37 @@ export const cicdApiCalls = {
       }
     }
 
-    const items: Pipeline[] = (raw.items ?? []).map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      // 배포된 앱이 열리는 주소. 스택에 접근 도메인이 없으면 비어 있다 —
-      // 서버가 계산해 내려준다(도메인이 바뀌면 저장된 값은 그 순간 거짓이 된다).
-      accessUrl: p.access_url ?? "",
-      mode: cicdApiCalls.resolvePipelineMode(
-        templateStagesMap.get(p.template_id),
-      ),
-      appType: (p.app_type ?? "") as Pipeline["appType"],
-      templateId: p.template_id ?? "",
-      stackId: p.stack_id ?? "",
-      executionMode: p.execution_mode ?? "",
-      gitRepoUrl: p.git_repo_url ?? "",
-      clusterId: p.cluster_id ?? "",
-      clusterName: clusterMap.get(p.cluster_id) ?? "",
-      namespace: p.namespace ?? "default",
-      dockerfilePath: p.dockerfile_path ?? "",
-      dockerContext: p.docker_context ?? "",
-      envVars: p.env_vars ?? {},
-      status: (p.status ?? "pending") as Pipeline["status"],
-      lastDeployedAt: latestDeployByPipeline.get(p.id) ?? null,
-      createdAt: p.created_at ?? "",
-      stages: p.stages ?? [],
-    }));
+    const items: Pipeline[] = (raw.items ?? []).map((p: any) => {
+      // 앱이 실제로 서 있는 클러스터. 서버가 계산해 내려준다 — 스택 파이프라인의
+      // 앱은 스택의 Argo CD 가 스택 클러스터에 올리므로, 그 전에 만든 파이프라인에
+      // 저장된 클러스터(화면에서 고른 값)를 보여 주면 앱이 없는 곳을 가리킨다.
+      const deployClusterId = p.deploy_cluster_id || p.cluster_id || "";
+      return {
+        id: p.id,
+        name: p.name,
+        // 배포된 앱이 열리는 주소. 스택에 접근 도메인이 없으면 비어 있다 —
+        // 서버가 계산해 내려준다(도메인이 바뀌면 저장된 값은 그 순간 거짓이 된다).
+        accessUrl: p.access_url ?? "",
+        mode: cicdApiCalls.resolvePipelineMode(
+          templateStagesMap.get(p.template_id),
+        ),
+        appType: (p.app_type ?? "") as Pipeline["appType"],
+        templateId: p.template_id ?? "",
+        stackId: p.stack_id ?? "",
+        executionMode: p.execution_mode ?? "",
+        gitRepoUrl: p.git_repo_url ?? "",
+        clusterId: deployClusterId,
+        clusterName: clusterMap.get(deployClusterId) ?? "",
+        namespace: p.namespace ?? "default",
+        dockerfilePath: p.dockerfile_path ?? "",
+        dockerContext: p.docker_context ?? "",
+        envVars: p.env_vars ?? {},
+        status: (p.status ?? "pending") as Pipeline["status"],
+        lastDeployedAt: latestDeployByPipeline.get(p.id) ?? null,
+        createdAt: p.created_at ?? "",
+        stages: p.stages ?? [],
+      };
+    });
 
     return { items, total: raw.total ?? items.length };
   },
@@ -361,7 +477,8 @@ export const cicdApiCalls = {
       stackId: raw.stack_id ?? "",
       executionMode: raw.execution_mode ?? "ci_cd",
       gitRepoUrl: raw.git_repo_url ?? "",
-      clusterId: raw.cluster_id ?? "",
+      // 서버가 계산한 배포 클러스터는 응답 최상위에 온다.
+      clusterId: res.deploy_cluster_id || raw.cluster_id || "",
       clusterName: "",
       namespace: raw.namespace ?? "default",
       dockerfilePath: raw.dockerfile_path ?? "",
@@ -372,6 +489,22 @@ export const cicdApiCalls = {
       createdAt: raw.created_at ?? "",
       stages: raw.stages ?? [],
     } as Pipeline & { provisioning: PipelineProvisioning };
+  },
+
+  // 기존 파이프라인의 CI 정의 파일을 플랫폼 기본으로 다시 쓴다. SAST 리포트처럼 정의가 새로
+  // 하는 일을 옛 파이프라인에 붙이는 길이다 — 전에는 파이프라인을 다시 만드는 수밖에 없었다.
+  refreshPipelineDefinition: async (
+    pipelineId: string,
+  ): Promise<RefreshDefinitionResult> => {
+    const res = await api
+      .post<any>(`/cicd/pipelines/${pipelineId}/refresh-definition`)
+      .then((r) => r.data);
+    return {
+      stages: res?.stages ?? [],
+      warnings: res?.warnings ?? [],
+      missingVariables: res?.missing_variables ?? [],
+      repositoryRecreated: !!res?.repository_recreated,
+    };
   },
 
   deployPipeline: async ({
@@ -535,6 +668,20 @@ export const cicdApiCalls = {
 
   mapPipelineImageScan,
 
+  mapPipelineSASTResult,
+
+  // 저장소가 배선되지 않은 서버는 503(SAST_RESULTS_NOT_CONFIGURED)을 준다. 이미지 스캔과 같이
+  // 훅의 오류 상태로 넘기고, 화면은 분석 표시만 뺀다.
+  getPipelineSASTResults: async (pipelineId: string) => {
+    const raw = await api
+      .get<{ items?: Record<string, unknown>[] | null; total?: number }>(
+        `/cicd/pipelines/${pipelineId}/sast-results`,
+      )
+      .then((r) => r.data);
+    const items = (raw?.items ?? []).map((item) => mapPipelineSASTResult(item));
+    return { items, total: raw?.total ?? items.length };
+  },
+
   // 스캔 저장소가 배선되지 않은 서버는 503(IMAGE_SCANS_NOT_CONFIGURED)을 준다.
   // 여기서 삼키지 않고 훅의 오류 상태로 넘긴다 — 화면은 오류를 "스캔 데이터 없음" 으로 그린다.
   getPipelineImageScans: async (pipelineId: string) => {
@@ -628,6 +775,17 @@ export function useDeletePipeline() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["cicd", "pipelines"] });
       void qc.invalidateQueries({ queryKey: ["cicd", "deployments"] });
+    },
+  });
+}
+
+export function useRefreshPipelineDefinition() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: cicdApiCalls.refreshPipelineDefinition,
+    onSuccess: () => {
+      // 단계가 바뀌었을 수 있다 — 목록이 실행 기록을 그 단계로 보여 준다.
+      void qc.invalidateQueries({ queryKey: ["cicd", "pipelines"] });
     },
   });
 }
@@ -737,6 +895,23 @@ export function usePipelineImageScans(
     retry: false,
     // 키가 바뀌는 사이 배지가 깜빡이지 않게 직전 결과를 잠시 둔다. 실행 id 로
     // 이어 붙이므로 다른 파이프라인의 결과가 이 파이프라인 실행에 붙지는 않는다.
+    placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * 파이프라인 실행들의 소스 정적 분석 결과. 이미지 스캔과 같은 이유로 실행 목록이 갱신된
+ * 시각을 키에 넣는다 — 실행 목록 요청이 서버에서 분석 결과를 들인다.
+ */
+export function usePipelineSASTResults(
+  pipelineId: string,
+  deploymentsUpdatedAt: number,
+) {
+  return useQuery({
+    queryKey: queryKeys.pipelineSASTResults(pipelineId, deploymentsUpdatedAt),
+    queryFn: () => cicdApiCalls.getPipelineSASTResults(pipelineId),
+    enabled: !!pipelineId && deploymentsUpdatedAt > 0,
+    retry: false,
     placeholderData: (previous) => previous,
   });
 }

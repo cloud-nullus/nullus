@@ -7,11 +7,13 @@ import (
 	"strings"
 
 	"sigs.k8s.io/yaml"
+
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // ImagePullSecretName 은 앱 네임스페이스에 만드는 pull 자격증명 이름이다.
-// 스캐폴딩된 Deployment 가 이 이름을 참조한다.
-const ImagePullSecretName = "nullus-registry" // #nosec G101 -- Secret 리소스 이름
+// 스캐폴딩된 Deployment 가 이 이름을 참조한다. 백업이 같은 이름을 담아야 하므로 공용 도메인이 갖는다.
+const ImagePullSecretName = shareddomain.AppImagePullSecretName
 
 // ImagePullSecretSpec 은 pull 자격증명 요청이다.
 type ImagePullSecretSpec struct {
@@ -66,7 +68,7 @@ func RenderImagePullSecret(spec ImagePullSecretSpec) (string, error) {
 			"name":      ImagePullSecretName,
 			"namespace": ns,
 			"labels": map[string]any{
-				"app.kubernetes.io/managed-by": "nullus-cicd",
+				shareddomain.AppManagedByLabel: shareddomain.AppManagedByCICD,
 			},
 		},
 		// stringData 를 쓴다 — base64 는 쿠버네티스가 한다.
@@ -97,7 +99,7 @@ func RenderNamespace(name string) (string, error) {
 		"metadata": map[string]any{
 			"name": ns,
 			"labels": map[string]any{
-				"app.kubernetes.io/managed-by": "nullus-cicd",
+				shareddomain.AppManagedByLabel: shareddomain.AppManagedByCICD,
 			},
 		},
 	}

@@ -668,6 +668,34 @@ DB 통합(§1.2 결정 1) 이후에는 두 database 가 한 인스턴스에 있�
 
 통합 전(현재)에는 인스턴스가 둘이라 이 문제가 없다. **통합이 백업 설계에 새 제약을 만드는 유일한 지점이므로 명시한다.**
 
+---
+
+### 6.7 백업 세트 — "플랫폼 전체" 는 실행의 묶음이다 (2026-10-12)
+
+**한 실행(`backup_run`)은 플랫폼 하나 또는 스택 하나만 담는다.** 스택의 리소스·볼륨은 그 스택의 클러스터에서 뜨고(어댑터가 스택별), 금고는 스택마다 따로 있다 — 한 실행에 스택 둘을 넣을 길이 없다. 그래서 스택이 둘 이상인 조직은 "플랫폼 전체" 를 뜰 수단이 없었다: `full` 은 플랫폼 + 스택 **하나**다.
+
+**세트(set)** 가 그 빈칸을 채운다. 세트는 테이블이 아니라 실행들의 공통 꼬리표(`backup_runs.set_id`)다.
+
+| 항목 | 규칙 | 왜 |
+|---|---|---|
+| **계획** (`domain.PlanBackupSet`) | `platform_only` 실행 하나 + 조직의 **설치 완료** 스택마다 `stack_only` 실행 하나(범위 = `shared_resources`·`ns_resources`·`volume` + `openbao_kv`). 전부 같은 `set_id` | 플랫폼 DB·Keycloak 은 한 번만 뜨고, 스택 금고는 스택 데이터이므로 스택 멤버에 붙는다 |
+| 대상 스택 | `state = completed` 이고 네임스페이스가 있는 스택만 | 반쯤 깔린 네임스페이스를 뜨면 복구가 그 반쪽을 되살리고, DB 에만 남은 기록은 어댑터가 닿을 곳이 없다 |
+| 멤버 실패 | 다음 멤버로 계속 간다 | 스택 하나의 장애가 나머지 스택의 백업을 막을 이유가 없다. 실행이 만들어졌으면 그 실행의 `status`·`error` 에, 만들어지지도 못했으면 세트 응답의 `failed` 에 남는다 |
+| **세트 상태** (`domain.SetStatus`) | 모두 `succeeded` → `succeeded` · 모두 `failed` → `failed` · 하나라도 진행 중 → `running` · 그 밖 → `partial` | `partial` 을 두는 이유는 실행과 같다(§7.1) — "일부 스택은 쓸 수 있는 세트" 와 "아무것도 없는 세트" 는 복구 시점에 결정적으로 다르다 |
+| **복구** (`domain.PlanSetRestore`) | 플랫폼 멤버를 `platform_only` 로 먼저, 그 다음 스택 멤버를 ID 순으로 `stack_only` 로. 스택의 네임스페이스는 **매니페스트의 `namespace`** 에서 읽는다 | 스택 복구는 플랫폼 DB 의 스택 기록으로 그 클러스터에 붙는다 — 플랫폼이 먼저 서야 갈 곳을 안다. 그래서 **플랫폼 복구가 실패하면 세트 복구는 거기서 멈춘다**(스택은 건드리지 않는다). 스택 하나의 실패는 다른 스택을 막지 않는다 |
+| 실패한 멤버 | 되돌릴 산출물이 없으므로 **건너뛰고** 응답의 `skipped` 에 남긴다 | 조용히 넘기지 않는다 — 그 스택은 복구되지 않았다 |
+| **스택 금고** | `stack_only` 복구도 스택 금고에 KV 를 import 한다(전에는 `full`·`platform_only` 만) | 금고는 스택 데이터다. 세트 복구의 스택 멤버가 `stack_only` 이므로 이것이 없으면 세트 복구 뒤 도구들이 서로 인증하지 못한다 |
+| **확인 문구** | 백업 세트는 고정 문구 `all`, 세트 복구는 세트 ID 재입력 | 단독 백업은 멈추는 네임스페이스를 받지만, 세트는 **모든** 스택을 멈추고 어느 스택인지는 서버가 정한다. 스택이 없는 조직이면 멈추는 것이 없지만 그 판단은 스택을 읽은 뒤에야 가능하므로 세트는 항상 확인을 받는다 |
+| **스케줄** | `backup.schedule.all_stacks: true` 면 `stack_id`·`namespace`·`mode` 를 무시하고 주기마다 세트를 뜬다 | 스택이 늘어도 설정을 고칠 필요가 없다. 보존 정책은 세트가 `failed` 가 아닐 때 적용한다(단독과 같은 규칙) |
+| **금고 import 결과** | 복구 기록의 `integrity_report.vault_import`(`imported`·`attempts`·`error`). 실패해도 복구는 성공이다 | 로그만으로는 응답에서 "안 돌았다 / 실패했다" 를 가를 수 없다 — §10.2.5 에서 한 멤버가 그렇게 조용히 실패했다. `imported: false` 면 그 스택의 도구들은 금고의 자격증명을 못 찾는다 |
+
+**한계는 적어 둔다.**
+
+- **세트는 "같은 시각" 이 아니라 "같은 묶음" 이다.** 멤버는 **차례로** 뜬다 — 스택 A 의 정지 창이 닫힌 뒤 스택 B 가 멈춘다. 플랫폼 DB 는 세트의 맨 앞에서 뜨므로 그 뒤 스택을 뜨는 동안 생긴 플랫폼 기록(파이프라인 실행 등)은 세트에 없다. 단독 `full` 도 DB 를 먼저 뜨고 볼륨을 뒤에 뜨므로 새로 생긴 틈은 아니다 — 스택 수만큼 길어졌을 뿐이다.
+- **동기 호출이다.** 세트의 소요 시간은 스택 수 × (정지 창 + 전송) 이다. 단독 백업처럼 요청이 끊겨도 각 멤버의 재개와 기록 마무리는 끝까지 가지만, 끊긴 뒤의 멤버는 뜨지 않는다 — 세트는 `partial` 로 남는다. 긴 타임아웃으로 부른다.
+- **세트 복구의 플랫폼 단계는 `full` 복구의 플랫폼 단계와 같다** — 플랫폼 DB 가 백업 시점으로 돌아간다(백업 이력은 보존). 그 뒤에 만든 스택은 DB 에서 사라지고 클러스터에는 남는다 — 단독 `full` 복구와 같은 성질이다.
+- **ID 가 다른 스택을 같은 네임스페이스로 되돌리는 경우는 없다** — 세트 복구는 백업 때의 스택 ID·네임스페이스를 그대로 쓴다. 다른 클러스터로 옮기는 복구는 단독 복구로 멤버마다 한다.
+
 ## 7. 데이터 모델과 API
 
 ### 7.1 테이블
@@ -676,7 +704,8 @@ DB 통합(§1.2 결정 1) 이후에는 두 database 가 한 인스턴스에 있�
 -- backup_runs : 한 번의 백업 실행
 id UUID PK
 org_id UUID NOT NULL
-stack_id UUID                       -- E1 대상 스택. NULL 이면 플랫폼 전용 백업
+stack_id TEXT                       -- E1 대상 스택(stk_*). NULL 이면 플랫폼 전용 백업
+set_id UUID                         -- 백업 세트(§6.7). NULL 이면 단독 실행. FK 없음 — 이력 테이블은 어디도 참조하지 않는다
 trigger VARCHAR(20) NOT NULL        -- manual | schedule
 mode VARCHAR(20) NOT NULL           -- full | platform_only | stack_only
 scope TEXT[] NOT NULL               -- {platform_db, keycloak_db, openbao_kv, ns_resources, volumes}
@@ -722,12 +751,15 @@ started_at / finished_at TIMESTAMPTZ
 | `GET` | `/api/v1/backups` | 이력 조회 |
 | `GET` | `/api/v1/backups/:id` | 상세 + 매니페스트 |
 | `POST` | `/api/v1/backups/:id/verify` | **무결성 검증만** (복원 없이) |
+| `POST` | `/api/v1/backups/sets` | **세트 백업**(§6.7) — 플랫폼 + 조직의 모든 설치 완료 스택. `confirm: "all"`. 응답은 `set_id`·`status`·`runs[]`·`failed[]` |
+| `GET` | `/api/v1/backups/sets/:id` | 세트의 실행들과 파생 상태 |
 | `POST` | `/api/v1/restores` | 복구 실행 — §6.1 0~2단계 선검사 |
+| `POST` | `/api/v1/restores/sets` | **세트 복구**(§6.7) — 플랫폼 → 스택 순. `confirm` = 세트 ID. 멤버 하나라도 실패하면 `409` + `failed[]`, 산출물 없는 멤버는 `skipped[]` |
 | `GET` | `/api/v1/restores/:id` | 진행/검사 결과 |
 | `DELETE` | `/api/v1/backups/:id` | 보존 정책 외 수동 삭제 |
 
 **권한:** 전 경로 조직 관리자 이상, `audit_logs` 기록 필수.
-**확인 절차:** `POST /backups`(정지 창 발생)와 `POST /restores`(파괴적)는 **대상 식별자 재입력**을 요구한다. 백업이 다운타임을 만든다는 사실을 사용자가 모르고 누르면 안 된다.
+**확인 절차:** `POST /backups`(정지 창 발생)와 `POST /restores`(파괴적)는 **대상 식별자 재입력**을 요구한다. 백업이 다운타임을 만든다는 사실을 사용자가 모르고 누르면 안 된다. 세트는 대상이 "조직의 모든 스택" 이라 식별자가 없다 — 백업은 고정 문구 `all`, 복구는 세트 ID 를 받는다(§6.7).
 
 > `verify` 를 둔 이유: **복구 리허설 없이도 "이 백업이 열리기는 하는가"를 상시 확인**할 수 있어야 한다. "백업은 되는데 복원이 안 됐다"에 대한 최소한의 상시 방어선이다.
 
@@ -960,6 +992,85 @@ internal/backup/
 
 같은 이유로 "성공" 표시를 믿지 않는다. Jenkins 가 `SUCCESS` 인데 로그를 보니 `Stage "Build" skipped due to when conditional` 이었던 적이 있다 — HEAD 가 CD 의 `[skip ci]` 커밋이라 아무 일도 하지 않은 성공이었다.
 
+### 10.2.3 제품 삭제 뒤 복구 리허설 (2026-10-12) — **통과. Q16 해소**
+
+§10.2.2 는 네임스페이스를 지우고 되돌렸다 — 클러스터 공용 자원은 그대로였다. #284 뒤로 **제품 기능으로 클러스터의 마지막 스택을 지우면 cert-manager · metrics-server · Gateway API CRD · GatewayClass · 내부 CA 까지 회수**되므로, 그 뒤의 복구는 다른 길이다. 이번 리허설은 그 길을 실제 스택으로 끝까지 갔다: kind-nullus-platform 에 GitLab + Argo CD + SonarQube 스택을 설치 → 파이프라인 생성(CI 가 빌드 · SAST · 배포까지 돈 상태) → 백업(볼륨 포함) → **제품 API 로 삭제**(회수 확인) → full 복구 → 지문 대조. 세 번 돌렸다 — 1차는 결함 ①② 를, 2차는 ③④ 를 드러냈고, 3차가 고친 코드로 끝까지 통과했다.
+
+| | 3차(최종) |
+|---|---|
+| 스택 | GitLab + Argo CD + SonarQube, 파드 42 (워크로드 39 + 설치 Job 3), 릴리스 13 + cert-manager |
+| 산출물 | 11건 · 1.05 GB (볼륨 6 · 네임스페이스 리소스 15 MB · 공용 자원 3.2 MB · 플랫폼 DB · Keycloak DB · 금고 KV) |
+| **정지 창** | **73.7초** (1차 67.5초 · 2차 59.2초) |
+| 삭제 → 회수 완료 | **73초** (204 뒤 비동기. 네임스페이스 · cert-manager · GatewayClass · 라벨 CRD 25 · 내부 CA · metrics-server 모두 사라짐) |
+| **복구 요청** | **94.8초** — CA Secret +4초 → cert-manager Ready +14초 → ClusterIssuer Ready · CRD · metrics-server +25초 → PVC · 볼륨 → 리소스 |
+| 복구 후 기동 | 17분 30초 (06:16:15 → 06:33:45. GitLab webservice 기동과 Argo CD 재동기화가 대부분이다) (39/39 Running, Prometheus · Alertmanager StatefulSet 포함) |
+| **지문 대조** | **16/16 일치** — 내부 CA tls.crt sha `e81ef5ce788344a6` 동일, 접근 도메인 인증서 Secret · Certificate 동일, GatewayClass 라벨 · 라벨 CRD 25 · ClusterIssuer 2 Ready, GitLab 프로젝트 HEAD · 파이프라인 수, Argo CD Application Synced/Healthy · 앱 이미지 태그 |
+
+`integrity_report.shared_components` 는 `{"steps":["installing_cert_manager","installing_metrics_server"]}` — 경고 없음. 복구 순서는 설계대로였다: 네임스페이스 → **CA Secret** → cert-manager 설치 → ClusterIssuer Ready → GatewayClass · Gateway CRD · metrics-server → PVC → 볼륨 → 리소스. CA Secret 이 컨트롤러보다 먼저였기에 부트스트랩은 새 키를 만들지 않고 옛 키를 채택했다 — 그래서 sha 가 같다. 세 번 모두 같았다.
+
+#### 이 리허설이 잡아낸 것 — 결함 4건, 모두 코드와 CI 를 통과한 상태였다
+
+| # | 결함 | 성격 |
+|---|---|---|
+| ① | **000091(#298) 의 `backup_runs.org_id` FK 가 full 복구의 플랫폼 DB 단계를 막음** — 복구는 백업 이력 테이블을 보존한 채 나머지를 `pg_restore --clean` 으로 되돌리는데, `organizations_pkey` 를 지우는 순간 그 FK 가 `cannot drop constraint … depends on` 으로 막는다. #298 머지 뒤의 모든 full 복구가 이 자리에서 죽었다 | 스키마 · 복구 모델 |
+| ② | **스택 삭제가 다른 네임스페이스가 쓰는 ESO CRD · 검증 웹훅을 무조건 걷어냄** — DB 에만 남은 유령 스택(설치 실패 뒤 남은 레코드)을 지우자 살아 있던 스택의 ExternalSecret 이 CRD 와 함께 사라지고, 그 Secret 은 가비지 컬렉터가 거뒀다. 다음 파드 재시작에서 `secret "nullus-postgresql-credentials" not found` | 삭제 · 클러스터 공용 |
+| ③ | **Prometheus · Alertmanager CR 이 덤프에 없음** — 오퍼레이터가 CR 을 읽어 StatefulSet 을 만드는데 StatefulSet 은 ownerReferences 로 덤프에서 빠지고 CR 은 종류에 없었다. 복구는 `succeeded` 인데 두 StatefulSet 이 영영 돌아오지 않았고 워크로드 재개 단계가 `statefulsets … not found` 를 남겼다. ServiceMonitor · PrometheusRule 도 함께 빠져 있었다 | 덤프 범위 |
+| ④ | **접근 도메인 인증서의 `Certificate` 가 덤프에 없음** — Secret 은 되살아나 복구 직후엔 멀쩡하지만 갱신할 주체가 없어 만기(기본 90일)에 게이트웨이 TLS 가 조용히 죽는다. 지문 대조(`kubectl get certificate -A`)가 잡았다 | 덤프 범위 |
+
+①은 000092 로 FK 를 거두고 **"백업 이력 테이블은 플랫폼 테이블을 FK 로 참조하지 않는다"** 를 통합 테스트로 스키마 전체에 대해 지킨다 — 이력은 복구를 가로질러 살아남아야 하는 유일한 테이블이고, 되돌리는 쪽과 묶이면 그 복구를 막는다. 조직 검증은 요청 시점의 애플리케이션 검사가 그대로 한다. pg_restore 가 같은 모양으로 죽으면 어느 이력 테이블의 FK 인지와 조치를 오류에 덧붙인다.
+
+②는 Argo CD CRD · 공용 자원 회수와 같은 원칙으로 고쳤다 — 자기 네임스페이스 밖에 ExternalSecret · SecretStore · ClusterSecretStore 가 하나라도 있으면 CRD · 웹훅을 남긴다(확인하지 못하면 남긴다). 다음 설치는 남은 CRD 를 인수한다(`adoptExistingESOCRDs`).
+
+③④는 §10.2.2 의 ③⑥(ExternalSecret · Application)과 **같은 뿌리**다 — 컨트롤러가 다시 만드는 것의 원본은 덤프에 있어야 한다. `monitoring.coreos.com` 의 CR 8종과 cert-manager 의 `Certificate` · `Issuer` 를 덤프 종류에 넣었다. 3차에서 두 StatefulSet 이 오퍼레이터에 의해 되살아났고(워크로드 재개 단계의 `not found` 는 오퍼레이터가 아직 만들기 전이라 남는 로그다 — 멈추지 않는다) Certificate 는 되살아난 Secret 을 채택해 다시 발급하지 않았다(sha 동일). §11.2 의 근본안("빠진 것을 하나씩 세는 방식으로는 끝을 알 수 없다")은 그대로 유효하다 — 이번에도 둘을 더 셌다.
+
+#### 1차 시도의 교훈
+
+1차 시도는 ②가 망가뜨린 스택 위에서 백업을 떴다. 삭제 직후 파드가 `CreateContainerConfigError` · `Init:0/3` 에 멈춰 있었는데 "정지 창 뒤 재기동" 으로 읽고 넘겼다 — 백업의 네임스페이스 덤프를 열어 보니 ESO 가 만든 자격증명 Secret 과 ExternalSecret · SecretStore 가 **없었다**. 그 백업은 되살려도 같은 자리에서 멈춘다. **백업을 뜨기 전에 스택이 정상인지 본다** — 파드가 전부 Running 인지, `secret … not found` 가 없는지. 그리고 복구가 `succeeded` 가 아니라 **되살아난 것이 동작하는지** 를 본다(§10.2.2 의 교훈과 같다). 산출물은 `mc cat` 으로 받아 `sealer.Unseal` 로 열 수 있다 — 지문이 어긋나면 덤프를 연다.
+
+복구 자체도 ①로 플랫폼 DB 단계에서 실패했지만, 그 앞의 스택 단계 — CA Secret · cert-manager 재설치 · 공용 자원 · PVC · 볼륨 · 리소스 — 는 설계대로 끝나 있었다(내부 CA sha 동일). 플랫폼 DB 를 복원하지 못한 채 스택만 되살아난 상태는 **제품에서 보이지 않는 스택**이다 — ①을 고친 뒤 `platform_only` 복구(0.7초)로 레코드를 되살려 제품 삭제로 정리했다.
+
+#### 범위 밖으로 확인된 것
+
+- **앱 네임스페이스는 백업 범위 밖이었다 → 후속으로 넣었다.** 앱의 Deployment 는 Argo CD 가 Git 에서 되살리지만, Nullus 가 파이프라인을 만들 때 앱 네임스페이스에 둔 이미지 pull Secret(`nullus-registry`)은 어디에도 담기지 않았다 — 2차에서 앱 네임스페이스까지 지운 뒤 복구하자 Deployment 는 돌아왔는데 `FailedToRetrieveImagePullSecret` 로 pull 이 실패했다. 스택 네임스페이스만 잃은 경우(3차)에는 영향이 없다. 후속 PR 이 네임스페이스 덤프에 `app_namespaces`(Application 의 destination 네임스페이스마다 네임스페이스 라벨 + pull Secret)를 더하고, 복구가 스택 리소스보다 먼저 **없을 때만** 만든다 — §10.2.4 가 앱 네임스페이스까지 지운 뒤 복구를 확인했다.
+- **금고 단계가 "금고 경로 27건 복원 실패" 로 남았다 → 결함이었다.** 호스트 제약으로 읽었지만, 백업은 스택 ID 로 스택 금고를 뜨고 복구는 빈 스택 ID 로 전역 주소(`OPENBAO_ADDR`)를 향했다(부록 C 에 적혀 있던 항목). 후속 PR 이 뜬 곳으로 되돌리게 하고, 스택 금고가 뜨는 재개 뒤로 미뤄 응답할 때까지 다시 시도한다(§6.1 8단계). `dangling` 5건은 토큰 회전이 전역 주소로 쓰다 실패해 어디에도 없는 경로다 — 로컬에서만 그렇다.
+- **워크로드 재개 단계의 거짓 경보 → 후속으로 고쳤다.** `statefulsets … not found`(오퍼레이터가 CR 에서 다시 만드는 Prometheus · Alertmanager)와 `object has been modified`(리소스 단계가 세운 replicas 를 재개가 다시 조정) 가 ERROR "수동 조치가 필요합니다" 로 찍혔지만 조치할 것은 없었다. 후속 PR 이 워크로드의 소유자 유무를 매니페스트에 적어(`owner_managed`) 재개가 그것을 건너뛰고, 충돌은 최신 것을 다시 읽어 재시도한다. 남는 ERROR 는 진짜 조치가 필요한 것만이다.
+
+### 10.2.4 앱 네임스페이스까지 잃은 뒤 복구 (2026-10-12) — **통과**
+
+§10.2.3 의 "범위 밖" 두 가지를 고친 뒤 같은 환경에서 다시 돌렸다. 이번에는 **앱 네임스페이스(demo-api)를 통째로 지운 뒤** 제품으로 마지막 스택을 지우고 full 복구했다 — 클러스터를 통째로 잃는 재해에 가장 가깝다.
+
+| | 값 |
+|---|---|
+| 백업 | 11건 · 1.08 GB, 정지 창 61.8초. 덤프에 `app_namespaces` 2건(Namespace demo-api · Secret nullus-registry) |
+| 삭제 → 회수 완료 | 75초 (10:17:39 → 10:18:54) |
+| **복구 요청** | **101.4초** — `shared_components` steps 2 · 경고 없음 |
+| 복구 후 | 16분 (10:21:15 → 10:37:31. GitLab 기동이 대부분이고, 앱 파드는 복구 3분 뒤 Running) (39/39 Running · demo-api 1/1 · Prometheus · Alertmanager StatefulSet 1/1). 앱 네임스페이스가 라벨 `app.kubernetes.io/managed-by=nullus-cicd` 와 함께 돌아왔고 pull Secret sha `e9a4f877cf7cddf1` 동일, Argo CD 가 Deployment 를 되살려 **첫 파드부터 pull 성공** |
+| **지문 대조** | **16/16 일치** |
+| 재개 로그 | `수동 조치가 필요합니다` **0건** (§10.2.3 에서는 매번 4~5건) — Prometheus · Alertmanager 는 "소유자가 다시 만드는 워크로드는 재개하지 않습니다" INFO 로, replicas 충돌은 재시도로 지나갔다 |
+
+앱 네임스페이스가 살아 있을 때는 그 안의 Secret 을 덮지 않는다(없을 때만 만든다) — §10.2.3 3차와 같은 경로다. 옛 백업(`app_namespaces` 없음)은 그대로 복원된다.
+
+#### 이 리허설이 더 잡아낸 것 — 결함 1건
+
+| # | 결함 | 성격 |
+|---|---|---|
+| ⑤ | **full 복구 직후의 플랫폼 질의가 간헐적으로 `cached plan must not change result type (SQLSTATE 0A000)` 으로 죽음** — `pg_restore --clean` 이 테이블을 다시 만드는데 API 의 pgx 연결 풀이 들고 있던 준비된 문장은 옛 테이블을 가리킨다. 이번엔 게이트웨이 주소 재설정의 스택 조회가 그렇게 실패해 `hostAliases 를 손으로 맞춰야 합니다` 로 남았다. 어느 연결이 잡히느냐에 따라 간헐적이라 §10.2.3 의 세 번은 지나갔다 | 복구 모델 · 연결 풀 |
+
+플랫폼 DB 를 되돌린 직후 풀을 비운다(`pgxpool.Pool.Reset`). 간헐적인 결함은 한 번의 통과로 "없다" 고 말할 수 없다 — 리허설을 **반복**해야 드러나는 종류가 있다는 교훈이다(§11.2 에 리허설 반복 횟수를 적어 둘 것).
+
+### 10.2.5 두 스택 세트 리허설 (2026-10-12) — **통과. §6.7 검증**
+
+kind 두 클러스터(플랫폼: GitLab + Argo CD + SonarQube 39 파드 · 개발: gitea-jenkins-argocd-lite 24 파드)에서 **세트 백업 → 두 스택 제품 삭제 → 세트 복구**를 돌렸다. 절차는 로컬 테스트 가이드 §4.11.
+
+| 단계 | 결과 |
+|---|---|
+| 세트 백업 | 201 · 137초 · 실행 3(플랫폼 0.77 MB · lite 336 MB/정지 49.9초 · GitLab 1.07 GB/정지 65.5초) |
+| 제품 삭제 | 두 스택 204 → 72초 뒤 두 클러스터 완전 회수(네임스페이스 · cert-manager · GatewayClass · CRD · 내부 CA · Helm) |
+| 세트 복구 | 201 · 323초 · 복구 3 모두 succeeded · 플랫폼 → lite → GitLab · 스택 멤버마다 cert-manager · metrics-server 재설치 |
+| 지문 | 내부 CA sha 두 클러스터 모두 동일 · CRD 25/6 · 스택 기록 둘 completed · 앱 네임스페이스 + pull Secret 복귀 · 파드 전부 Running(platform 은 1분 뒤) |
+
+**드러난 결함 1건(이 리허설에서 고침).** lite 멤버의 금고 KV import 가 2분 재시도 뒤 실패했는데 복구 응답은 `succeeded` 였다 — 로그에만 남았다. 직접 원인은 로컬 제약(두 스택이 같은 접근 도메인을 써 호스트 API 가 두 금고를 하나로 본다)이지만, 결과가 응답에 없는 것은 제품 결함이다 → `integrity_report.vault_import` 와 import 오류의 원인 표기를 더했다. 금고 import 실패는 복구를 실패로 만들지 않는다 — 데이터는 되돌아왔고, 금고만 다시 채울 수 있다.
+
 ### 10.3 B4-2 에어갭 검증
 
 `airgap/` 절차만으로 백업·복구가 도는지 확인한다. 확인 항목:
@@ -1004,8 +1115,9 @@ internal/backup/
 |---|---|---|
 | **Q12** | **복구를 Helm 릴리스 재적용으로 바꿀지** | ③④⑤⑥ 결함의 공통 뿌리다(§10.2.2). 리소스를 apply 하는 대신 릴리스를 다시 설치하면 **손으로 관리하는 종류 목록이 사라진다.** 선행 조건 둘은 이미 갖췄다 — 차트 버전 기록(매니페스트 `helm_releases`)과 복구 볼륨을 통과시키는 preflight(`backup.nullus.io/restored-from`). 남은 문제는 차트가 자체 생성하는 비밀값인데, 실측해 보니 복원된 DB 를 못 읽게 만드는 것은 Harbor 의 `secretKey` 하나뿐이고 그것은 이미 금고에서 온다(⑦ 수정). **설계 판단이 필요한 규모라 별도 이슈로 뗀다** |
 | **Q13** | **복구 성공 판정에 스모크 검증을 넣을지** | `succeeded` 가 "스택이 동작한다" 를 뜻하지 않는다(§10.2.2). 설계 §6.1 11단계에 스모크가 있으나 **자동 복구 경로에는 없다.** 무엇을 어디까지 확인할지가 정해져야 한다 |
-| **Q14** | **Service ClusterIP 미보존의 영향 범위** | 클러스터 안에서는 DNS 로 해석되어 무해했다. IP 를 박아 둔 외부 배선이 있는 환경에서 재설정이 필요한지는 그런 환경에서 확인해야 한다 |
+| **Q14** | **Service ClusterIP 보존** | 2026-09 리허설 때는 DNS 로 해석되어 무해했으나, 이후 설치가 게이트웨이 ClusterIP 를 러너·Argo CD hostAliases 에 박게 되면서 어긋났다. 이제 덤프가 ClusterIP 를 남기고, 복구는 그 IP 로 되살리되 쓸 수 없으면(다른 클러스터·이미 쓰임) 새 주소로 되살리고 경고한다. 그래도 주소가 바뀌면(다른 클러스터·IP 없는 옛 백업) 복구 끝에 스택 모듈이 러너·Argo CD 의 helm values 에서 그 주소만 바꿔 다시 적용한다(결과는 `integrity_report.gateway_aliases`). kind 노드 `/etc/hosts` 는 로컬 배선이라 제외다 |
 | **Q15** | **RTO 실측** | 371MB 로 잰 50.3초는 **규모의 근거가 아니다.** 수십 GB 에서 다시 재야 §2 의 RTO 4시간이 근거를 갖는다 |
+| **Q16** | **제품 삭제가 회수하는 공용 자원** — **해소** | #284 로 클러스터의 마지막 스택 삭제가 cert-manager · metrics-server · Gateway API · 내부 CA 를 회수하게 됐다. 백업은 그중 **데이터인 것**(설치 표시가 붙은 Gateway CRD · GatewayClass · 내부 CA 의 ClusterIssuer · 인증서 · 키)을 `shared_resources` 로 담고, 복구는 네임스페이스 리소스보다 먼저 **없을 때만** 되살린다(다른 스택이 쓰는 지금의 CA 를 덮지 않는다). **컨트롤러(cert-manager · metrics-server)는 백업이 담지 않는다** — 설치이지 데이터가 아니다. 대신 **복구가 스택 설치기의 같은 단계(`installing_cert_manager` · `installing_metrics_server`)를 스택 ID 없이 불러 다시 세운다**(`stack/usecase.EnsureSharedComponents`, 백업 포트 `SharedComponentsEnsurer`). 설치기는 이미 있으면 다시 쓰므로 다른 스택이 쓰는 클러스터에서도 안전하다. cert-manager 를 못 세우면 복구가 볼륨을 건드리기 전에 멈추고, metrics-server 는 경고로 넘긴다(결과는 `integrity_report.shared_components`). **순서가 핵심이다** — 설치기의 cert-manager 단계는 끝에 내부 CA 를 부트스트랩하는데, 그때 Secret 이 있으면 옛 키를 채택하고 없으면 새 키를 발급한다. 그래서 복구는 CRD 가 필요 없는 **CA Secret 을 컨트롤러보다 먼저**(`ApplySharedSecrets`) 둔다. 전 과정 리허설은 §10.2.3 |
 
 > **기술적 차단 요인은 남아 있지 않다.** Q1·Q9·Q10 은 우회·검증·구현으로 흡수됐고, Q12~Q15 는 이 EPIC 의 완료를 막지 않는다.
 
@@ -1029,7 +1141,7 @@ internal/backup/
 | **B3-2** UI | ✅ 구현 완료 | 관리 → 백업(`/admin/backup`) — 대상 항목별 선택, 정지 창 고지. [사용 가이드](../50_운영/Nullus_백업복구_사용_가이드.md) |
 | **B3-3** 실패 알림 | ⚠️ 구조화 로그까지 | 채널 발송은 #63 에 달렸다 |
 | **B3-4** 운영 런북 | ⚠️ 사용 가이드로 일부 대체 | 재해 시나리오별 런북은 남음 |
-| **B4-1** 복구 리허설 | ✅ **완료** — 축소(§10.2.1, 결함 5건) · 인클러스터(§10.2.1b, 결함 3건) · **실환경 2개 스택**(§10.2.2, 결함 8건). 지문 8/8 · 7/7 일치 | §10 |
+| **B4-1** 복구 리허설 | ✅ **완료** — 축소(§10.2.1, 결함 5건) · 인클러스터(§10.2.1b, 결함 3건) · **실환경 2개 스택**(§10.2.2, 결함 8건) · **제품 삭제 뒤 복구**(§10.2.3, 결함 4건) · **앱 네임스페이스까지 잃은 뒤 복구**(§10.2.4, 결함 1건). 지문 8/8 · 7/7 · 16/16 · 16/16 일치 | §10 |
 | B4-2 에어갭 검증 | 절차 확정 | §10.3 |
 | **B1-5 / B1-6** 볼륨·리소스 | ✅ 구현 완료 | 정지 백업/복원, 리소스 덤프/복원 |
 | **분리 제안** | — | **Keycloak DB 통합**(§1.2 결정 1) · **로그 테이블 보존 정책**(Q4) · **Helm 재적용 복구**(Q12) · **복구 스모크 검증**(Q13) — 이 EPIC 밖 |

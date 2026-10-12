@@ -180,7 +180,9 @@
       "traces": "Traces",
       "traceExporter": "Exporter / Agent",
       "imageScanner": "Image Scanner",
-      "imageScannerHint": "Not installed unless selected. Harbor's built-in scanner can serve instead."
+      "imageScannerHint": "Not installed unless selected. Harbor's built-in scanner can serve instead.",
+      "sast": "Static Analysis (SAST)",
+      "sastHint": "Not installed unless selected. Uses the stack's PostgreSQL and signs in with Keycloak when SSO is on."
     },
     "resourceTotal": {
       "description": "Combined request/limit totals for {{count}} selected OSS"
@@ -360,6 +362,12 @@
       "name": "Name",
       "namePlaceholder": "e.g. Standard Web Backend",
       "description": "Description",
+      "appType": "Application Type",
+      "appTypeOptions": {
+        "web": "Web",
+        "backend": "Backend",
+        "batch": "Batch"
+      },
       "stages": "Capabilities"
     },
     "errors": {
@@ -601,6 +609,14 @@
         "label": "VictoriaMetrics",
         "description": "High-performance time-series database"
       },
+      "trivy": {
+        "label": "Trivy",
+        "description": "Container image vulnerability scanning (server mode)"
+      },
+      "sonarqube": {
+        "label": "SonarQube",
+        "description": "Static source code analysis (Community)"
+      },
       "grafana": {
         "label": "Grafana",
         "description": "Open-source metrics visualization"
@@ -820,6 +836,14 @@
       "irreversible": "This cannot be undone",
       "typeToConfirm": "Type the repository name to confirm: {{path}}",
       "typeToConfirmLabel": "Confirm repository name"
+    },
+    "refreshDefinitionDialog": {
+      "title": "Refresh CI definition",
+      "intro": "Rewrite the CI definition of pipeline \"{{name}}\" with the platform default.",
+      "overwrites": "Overwritten: the stack's pipeline definition file (.gitlab-ci.yml, .github/workflows/nullus-ci.yml or Jenkinsfile) and CI variables such as SONAR_TOKEN. Edits you made to that file are lost.",
+      "keeps": "Left alone: application code, Dockerfile, deploy/ manifests and the Argo CD Application.",
+      "why": "Pipelines created before a stage existed (for example SAST reports) only get it after this refresh.",
+      "confirm": "Refresh definition"
     }
   },
   "cicdListPage": {
@@ -870,6 +894,51 @@
       "dbUpdatedAt": "Vulnerability DB",
       "scannedAt": "Scanned",
       "unknown": "Unknown"
+    },
+    "sast": {
+      "label": "SAST",
+      "title": "Static analysis (SonarQube)",
+      "gate": {
+        "pass": "Quality Gate passed",
+        "warn": "Quality Gate failed (warn)",
+        "block": "Blocked by Quality Gate",
+        "error": "Analysis failed"
+      },
+      "warnHint": "The Quality Gate failed, but the stack policy is set to warn, so the deployment went ahead.",
+      "errorHint": "The analysis could not run (SonarQube unreachable or authentication failed). This is not a code finding.",
+      "failedConditions": "Failed conditions",
+      "failsWhen": "fails when",
+      "metrics": {
+        "vulnerabilities": "Vulnerabilities",
+        "bugs": "Bugs",
+        "securityHotspots": "Security hotspots",
+        "codeSmells": "Code smells",
+        "coverage": "Coverage",
+        "duplications": "Duplications",
+        "ncloc": "Lines of code"
+      },
+      "metricNames": {
+        "new_violations": "New issues",
+        "new_coverage": "Coverage on new code",
+        "new_duplicated_lines_density": "Duplications on new code",
+        "new_security_hotspots_reviewed": "Security hotspots reviewed",
+        "new_reliability_rating": "Reliability rating on new code",
+        "new_security_rating": "Security rating on new code",
+        "new_maintainability_rating": "Maintainability rating on new code"
+      },
+      "metricsUnknown": "Metrics unavailable",
+      "openInSonarQube": "Open in SonarQube",
+      "analyzedAt": "Analyzed"
+    },
+    "refreshDefinition": {
+      "button": "Refresh definition",
+      "busy": "Refreshing…",
+      "doneTitle": "CI definition refreshed",
+      "done": "Stages: {{stages}}. The next run uses the new definition.",
+      "repositoryRecreated": "The repository was missing and has been recreated with a full scaffold — push the application code again.",
+      "missingVariables": "Variables to fill in by hand: {{variables}}",
+      "failedTitle": "CI definition could not be refreshed",
+      "failed": "The CI definition could not be refreshed"
     }
   },
   "cicdHistoryPage": {
@@ -1476,6 +1545,7 @@
     "form": {
       "stackOptional": "Stack",
       "stackRequired": "Stack 선택",
+      "clusterLockedToStack": "Fixed to the cluster the stack is installed on. The stack's Argo CD deploys the app there.",
       "manualInput": "Manual Input",
       "appName": "App Name",
       "imageRegistry": "Image Registry",
@@ -1973,7 +2043,10 @@
       "mode": "Mode",
       "size": "Size",
       "quiesce": "Downtime",
-      "status": "Status"
+      "status": "Status",
+      "target": "Target",
+      "platform": "Platform",
+      "set": "Set"
     },
     "dialog": {
       "title": "Select backup targets",
@@ -1981,7 +2054,15 @@
       "start": "Start backup",
       "nothingSelected": "Select at least one target.",
       "quiesceWarning": "Including volumes stops the workloads while the backup runs.",
-      "confirmLabel": "Type the namespace to confirm"
+      "confirmLabel": "Type the namespace to confirm",
+      "stackLabel": "Backup target",
+      "platformOnly": "Platform only (no stack)",
+      "platformOnlyHint": "Vault, Kubernetes resources and volumes belong to a stack. Pick a stack to include them.",
+      "allStacks": "Everything — platform + all stacks",
+      "allStacksCount": "{{count}} stacks",
+      "allStacksHint": "One run for the platform and one per stack, tied together as a set — every target, every time. Restore a set from the API with its set ID.",
+      "allStacksWarning": "Every stack's workloads stop in turn while its volumes are backed up.",
+      "allConfirmLabel": "Type the word to confirm"
     },
     "target": {
       "platformDb": "Platform DB",
@@ -1992,6 +2073,8 @@
       "openbaoKvDesc": "Tokens and credentials. Without it the tools cannot authenticate to each other",
       "nsResources": "Kubernetes resources",
       "nsResourcesDesc": "Wiring and configuration — Deployments, Secrets, CRDs, Argo CD Applications",
+      "sharedResources": "Shared cluster resources",
+      "sharedResourcesDesc": "What deleting the last stack reclaims — Gateway CRDs, GatewayClass, the internal CA. Restored first, and only when missing",
       "volume": "Volumes",
       "volumeDesc": "Data inside the tools — Git repos, build history, container images. The largest, and the only one that stops the service"
     }

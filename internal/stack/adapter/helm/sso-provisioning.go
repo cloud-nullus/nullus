@@ -184,6 +184,9 @@ func (o *Orchestrator) ssoManagedSecrets() []ManagedSecret {
 		if !ok || strings.TrimSpace(clientID) == "" {
 			continue
 		}
+		if !provisioner.UsesClientSecret(step) {
+			continue // SAML 도구는 client secret 이 없다 — 신뢰는 IdP 서명 인증서로 맺는다
+		}
 		if step == "installing_argocd" {
 			// ArgoCD 는 예외다. 하나의 Secret(argocd-secret)에 admin 비밀번호와
 			// OIDC client secret 이 함께 들어가므로 existingSecret 치환이 성립하지
@@ -295,7 +298,19 @@ func (o *Orchestrator) runSSOProvisioning(ctx context.Context, namespace string)
 	if err != nil {
 		return fmt.Errorf("OpenBao 컨트롤러 자격 생성 실패: %w", err)
 	}
+	return o.provisionSSOClients(ctx, provisioner, prefix, store.GetToken)
+}
 
+// provisionSSOClients 는 설치하는 도구마다 IdP 클라이언트를 등록한다.
+//
+// readSecret 은 OpenBao 에서 client secret 을 읽는다. SAML 도구는 client secret 이
+// 없어 읽지 않는다 — 읽으면 없는 경로에서 SSO 단계 전체가 멈춘다.
+func (o *Orchestrator) provisionSSOClients(
+	ctx context.Context,
+	provisioner port.SSOProvisioner,
+	prefix string,
+	readSecret func(ctx context.Context, path string) (string, error),
+) error {
 	for _, step := range provisioner.ToolSteps() {
 		if !o.isStepEnabled(step) {
 			continue
@@ -305,18 +320,22 @@ func (o *Orchestrator) runSSOProvisioning(ctx context.Context, namespace string)
 			continue
 		}
 
-		secret, err := store.GetToken(ctx, prefix+ssoClientSecretPath(clientID))
-		if err != nil || strings.TrimSpace(secret) == "" {
-			return fmt.Errorf("client secret 을 읽지 못했습니다 (%s): %w", clientID, err)
+		secret := ""
+		if provisioner.UsesClientSecret(step) {
+			var err error
+			secret, err = readSecret(ctx, prefix+ssoClientSecretPath(clientID))
+			if err != nil || strings.TrimSpace(secret) == "" {
+				return fmt.Errorf("client secret 을 읽지 못했습니다 (%s): %w", clientID, err)
+			}
 		}
 
 		if err := provisioner.Provision(ctx, port.SSOClientSpec{
 			StepName:     step,
 			ClientSecret: secret,
 		}); err != nil {
-			return fmt.Errorf("OIDC 클라이언트 등록 실패 (%s): %w", clientID, err)
+			return fmt.Errorf("SSO 클라이언트 등록 실패 (%s): %w", clientID, err)
 		}
-		slog.Info("OIDC 클라이언트 등록 완료", "client_id", clientID, "step", step)
+		slog.Info("SSO 클라이언트 등록 완료", "client_id", clientID, "step", step)
 	}
 	return nil
 }

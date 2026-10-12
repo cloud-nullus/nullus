@@ -219,3 +219,9 @@ func TestGitLabOIDC_EnablesPKCE(t *testing.T) {
 	assert.Contains(t, item.TemplateData["provider"], "pkce: true",
 		"클라이언트가 PKCE 를 요구하는데 안 보내면 콜백이 깨진다")
 }
+
+func (s stubGitLabProvisioner) UsesClientSecret(string) bool { return true }
+
+func (s stubGitLabProvisioner) SAMLSigningCertificate(context.Context) (string, error) {
+	return "", nil
+}

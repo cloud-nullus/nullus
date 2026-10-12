@@ -62,9 +62,15 @@ RUNTIME_IMAGES=(
   "docker.io/bitnamilegacy/kubectl:1.33.4"
   # 생성된 React 앱 Dockerfile 의 빌드 단계
   "node:22-alpine"
-  # Jenkins kubernetes 플러그인이 빌드마다 띄우는 파드
+  # Jenkins kubernetes 플러그인이 빌드마다 띄우는 파드(dind 는 GitLab build 잡 서비스와 같다)
   "docker:27-cli"
   "docker:27-dind"
+  # 생성된 .gitlab-ci.yml 의 build · deploy 잡
+  "docker:27"
+  "alpine:3.20"
+  # 파이프라인 SAST 단계 — 공식 이미지는 amd64 만 내서 우리가 멀티아치로 굽는다
+  # (deploy/images/sonar-scanner). 태그는 Dockerfile 의 스캐너 버전이다.
+  "ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389"
 )
 
 if [[ -t 1 ]]; then

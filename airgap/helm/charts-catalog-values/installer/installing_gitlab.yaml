@@ -55,6 +55,9 @@ global:
     ingress:
         configureCertmanager: false
         enabled: false
+    initialRootPassword:
+        key: password
+        secret: gitlab-initial-root-password
     minio:
         enabled: false
     psql:

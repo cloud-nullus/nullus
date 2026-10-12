@@ -15,10 +15,11 @@
 
 ![백업 목록](../assets/backup/backup-list.png)
 
-표가 말하는 것은 넷이다.
+표가 말하는 것은 다섯이다.
 
 | 열 | 뜻 |
 |---|---|
+| **대상** | 백업한 스택. 스택 없이 플랫폼만 떴으면 `Platform`. **전체** 백업의 실행들은 같은 `세트 xxxxxxxx` 꼬리표를 단다 |
 | **모드** | `full` · `platform_only` · `stack_only` |
 | **크기** | 산출물 총합 |
 | **정지 시간** | 서비스가 실제로 멈춰 있던 시간. 볼륨을 뜨지 않았으면 `—` |
@@ -40,7 +41,7 @@
 
 ![백업 대상 선택](../assets/backup/backup-dialog.png)
 
-다섯 항목은 저장 위치와 뜨는 방법이 다르고, **빠졌을 때 드러나는 시점도 다르다.**
+여섯 항목은 저장 위치와 뜨는 방법이 다르고, **빠졌을 때 드러나는 시점도 다르다.**
 
 | 항목 | 무엇 | 빠지면 |
 |---|---|---|
@@ -48,13 +49,34 @@
 | **Keycloak DB** | 계정과 권한 | 복구 후 로그인할 수 없다 |
 | **금고 (OpenBao)** | 토큰 · 자격증명 | 도구들이 서로 인증하지 못한다 |
 | **K8s 리소스** | 배선 — Deployment · Secret · CRD · Argo CD Application | 복구가 "성공" 인데 스택이 뜨지 않는다 |
+| **클러스터 공용 자원** | 마지막 스택을 지우면 회수되는 것 — 설치 표시가 붙은 Gateway CRD · GatewayClass · 내부 CA(ClusterIssuer · 인증서 · 키) | 스택을 제품에서 지운 뒤 복구하면 Gateway 가 "no matches for kind" 로 죽고, 내부 CA 가 새로 만들어져 인증서 신뢰가 어긋난다 |
 | **볼륨** | OSS 내부 데이터 — Git 저장소 · 빌드 이력 · 이미지 | 도구가 빈 디스크를 보고 재초기화한다 |
 
-**기본은 다섯 개 전부 선택**이다. 완전한 백업이 안전한 선택이므로 아무것도 하지 않아도 그것이 된다.
+먼저 **백업 대상**을 고른다 — **전체**, 스택 하나, 또는 **플랫폼만**. 금고·K8s 리소스·볼륨은 스택에 속하므로 스택을 골라야 담긴다(서버는 스택으로 그 클러스터를 찾는다). 플랫폼만 고르면 DB 두 개만 고를 수 있다.
+
+스택을 고르면 **기본은 여섯 개 전부 선택**이다. 완전한 백업이 안전한 선택이므로 아무것도 하지 않아도 그것이 된다. 첫 스택이 미리 골라져 있다.
+
+### 전체 — 플랫폼 + 모든 스택
+
+한 번의 실행은 플랫폼 하나 또는 스택 하나만 담는다 — 스택의 리소스·볼륨은 그 스택의 클러스터에서 뜨고 금고는 스택마다 있어서다. 그래서 스택이 둘 이상이면 "플랫폼 전체" 는 **세트**로 뜬다: 플랫폼 실행 하나 + 설치가 끝난 스택마다 실행 하나가 같은 세트 ID 로 묶인다. 대상은 고를 수 없다 — 언제나 전부다.
+
+스택이 하나라도 있으면 대상 맨 위에 **전체 — 플랫폼 + 모든 스택**이 보인다. 모든 스택이 차례로 멈추므로 확인 문구는 네임스페이스가 아니라 **`all`** 이다. 끝나면 목록에 실행이 스택 수 + 1 개 생기고, 모두 같은 `세트` 꼬리표를 단다. 멤버 하나가 실패해도 나머지는 계속 뜬다 — 그 실행만 `failed` 로 남고, 세트는 `partial` 이다.
+
+API 로는 아래와 같다. 응답의 `status` 는 세트의 파생 상태(모두 성공 `succeeded` · 섞이면 `partial` · 모두 실패 `failed`)고, `runs` 가 멤버다.
+
+```bash
+curl -sX POST "$NULLUS/api/v1/admin/backups/sets" \
+  -H 'Content-Type: application/json' -H "X-Org-ID: $ORG" \
+  -d '{"confirm":"all"}' | jq '{set_id, status, failed, runs: [.runs[] | {id, stack_id, mode, status, error}]}'
+
+curl -s "$NULLUS/api/v1/admin/backups/sets/$SET_ID" -H "X-Org-ID: $ORG" | jq '{status, runs: [.runs[] | {id, stack_id, status}]}'
+```
+
+> 세트는 **같은 시각**이 아니라 **같은 묶음**이다. 멤버는 차례로 뜨므로 스택 A 가 멈춰 있는 동안 스택 B 는 돌고, 플랫폼 DB 는 맨 앞에서 뜬다. 소요 시간은 스택 수 × (정지 창 + 전송) 이고 요청이 끝날 때까지 붙잡는 동기 호출이다 — 긴 타임아웃으로 부른다.
 
 ### 정지 창
 
-**볼륨을 포함하면 그동안 워크로드가 멈춘다.** 그래서 경고가 뜨고 네임스페이스를 입력해야 시작할 수 있다 — 다운타임이 생긴다는 사실을 모르고 누르면 안 되기 때문이다.
+**볼륨을 포함하면 그동안 워크로드가 멈춘다.** 그래서 경고가 뜨고 고른 스택의 네임스페이스를 입력해야 시작할 수 있다 — 다운타임이 생긴다는 사실을 모르고 누르면 안 되기 때문이다.
 
 볼륨을 빼면 경고가 사라지고 바로 시작된다:
 
@@ -78,10 +100,14 @@
 실행이 끝나면 목록에서 상태를 본다. 그 이상이 필요하면 **무결성 검증**이 있다 — 복원하지 않고 "이 백업이 열리기는 하는가" 만 확인한다.
 
 ```bash
+NULLUS=http://localhost:8090            # API 주소
+ORG=<조직 ID>                            # 로그인한 조직. 로컬 시드는 11111111-1111-1111-1111-111111111111
 BID=<백업 ID>
 curl -sX POST "$NULLUS/api/v1/admin/backups/$BID/verify" \
-  -H "X-Org-Id: $ORG" | jq
+  -H "X-Org-ID: $ORG" | jq
 ```
+
+> `X-Org-ID` 는 화면이 보는 조직이어야 한다. 백업 목록은 로그인 사용자의 조직으로만 거르므로 다른 조직으로 만든 백업은 화면에 나타나지 않는다. 없는 조직을 적으면 `400 ORG_NOT_FOUND` 로 거절된다. 헤더를 빼면 시드 기본 조직으로 처리된다(인증이 켜진 환경에서는 로그인 사용자의 조직이 우선한다).
 
 복구 리허설을 상시로 돌릴 수 없는 상황에서 **최소한의 방어선**이다.
 
@@ -93,9 +119,15 @@ curl -sX POST "$NULLUS/api/v1/admin/backups/$BID/verify" \
 
 ```bash
 curl -sX POST "$NULLUS/api/v1/admin/restores" \
-  -H 'Content-Type: application/json' -H "X-Org-Id: $ORG" \
-  -d "{\"backup_run_id\":\"$BID\",\"namespace\":\"nullus-app\",\"mode\":\"full\",\"confirm\":\"$BID\"}" | jq
+  -H 'Content-Type: application/json' -H "X-Org-ID: $ORG" \
+  -d "{\"backup_run_id\":\"$BID\",\"namespace\":\"<스택 네임스페이스>\",\"mode\":\"full\",\"confirm\":\"$BID\"}" | jq
 ```
+
+스택 백업을 스택까지 되돌리면(`full`·`stack_only`) `namespace` 를 반드시 적는다 — 없으면 `RESTORE_NAMESPACE_REQUIRED` 로 거절된다. 그 네임스페이스가 없으면 복구가 만든다. `full` 은 플랫폼 DB 를 백업 시점으로 되돌리지만 **백업 이력(백업·복구 기록)은 되돌리지 않는다** — 그 뒤의 백업과 이번 복구 기록이 그대로 남는다.
+
+> **앱 네임스페이스.** 앱의 Deployment · Service · HTTPRoute 는 Argo CD 가 Git 에서 되살리지만, Nullus 가 파이프라인을 만들 때 앱 네임스페이스에 둔 이미지 pull Secret(`nullus-registry`)과 네임스페이스 라벨은 Git 에 없다. 스택 백업이 Argo CD Application 의 destination 네임스페이스마다 그 둘을 함께 담고, 복구가 스택 리소스보다 먼저 **없을 때만** 만든다 — 앱 네임스페이스가 살아 있으면 지금 쓰는 자격증명을 덮지 않는다. 앱 네임스페이스까지 잃은 복구에서도 Argo CD 가 앱을 되살리면 바로 pull 이 된다.
+
+> **스택을 제품에서 지운 뒤의 복구.** 클러스터의 마지막 스택을 지우면 Nullus 가 설치한 공용 자원(cert-manager · metrics-server · Gateway API · 내부 CA)까지 회수된다. 복구는 먼저 **cert-manager 와 metrics-server 를 스택 설치기의 같은 단계로 다시 세우고**(이미 있으면 그대로 쓴다), 그 뒤 백업의 **클러스터 공용 자원**으로 Gateway CRD · GatewayClass · 내부 CA 를 되살린다. 내부 CA Secret 은 cert-manager 보다 먼저 두므로 백업 때의 CA 키가 그대로 돌아온다 — 도구들의 신뢰 저장소를 다시 만들 필요가 없다. cert-manager 를 세우지 못하면 복구는 볼륨을 건드리기 전에 `공용 컨트롤러 재설치: cert-manager 를 다시 세우지 못했습니다` 로 멈춘다(차트를 받을 수 있는지 확인한 뒤 다시 실행). metrics-server 실패는 복구를 멈추지 않고 결과(`integrity_report.shared_components.warnings`)에 남는다. 공용 자원은 **없을 때만** 되살린다 — 다른 스택이 쓰는 지금의 CA 를 백업 때의 것으로 덮지 않는다.
 
 ### 복구가 하는 일과 순서
 
@@ -125,7 +157,32 @@ kubectl -n <네임스페이스> get deploy <앱> \
   -o jsonpath='{.spec.template.spec.containers[0].image}'
 ```
 
+복구 응답의 `integrity_report.vault_import` 도 본다 — 스택 금고로 KV 를 되돌린 결과다. `imported: false` 면 도구들이 금고의 자격증명을 못 찾는다(`error` 에 원인).
+
 도구의 데이터까지 대조하려면 Git 커밋 · CI 이력 · 이미지 태그를 백업 전후로 비교한다 — 절차는 [로컬 테스트 가이드 §4.9](./Nullus_백업복구_로컬_테스트_가이드.md) 에 있다.
+
+### 세트 복구
+
+전체 백업(세트)은 세트 ID 로 한 번에 되돌린다. **플랫폼 멤버를 `platform_only` 로 먼저**, 그 다음 스택 멤버를 하나씩 `stack_only` 로 — 스택의 네임스페이스는 백업 매니페스트에서 읽으므로 적지 않는다. 확인은 세트 ID 재입력이다.
+
+```bash
+curl -sX POST "$NULLUS/api/v1/admin/restores/sets" \
+  -H 'Content-Type: application/json' -H "X-Org-ID: $ORG" \
+  -d "{\"set_id\":\"$SET_ID\",\"confirm\":\"$SET_ID\"}" \
+  | jq '{failed, skipped, error, restores: [.restores[] | {id, backup_run_id, mode, status, error}]}'
+```
+
+| 응답 | 뜻 |
+|---|---|
+| `201` | 모든 멤버가 되돌아왔다. `restores` 에 멤버마다 복구 기록 |
+| `409` | 멤버 하나 이상이 실패했다. `failed` 가 어느 멤버·왜인지 말하고, `restores` 에는 실행된 것까지 들어 있다 |
+| `skipped` | 백업이 실패해 산출물이 없는 멤버의 백업 ID. 그 스택은 **복구되지 않았다** |
+
+**플랫폼 복구가 실패하면 거기서 멈춘다** — 스택 복구는 플랫폼 DB 의 스택 기록으로 그 클러스터에 붙으므로 플랫폼이 없으면 갈 곳을 모른다(`error` 에 `플랫폼 복구 실패 — 스택은 되돌리지 않았습니다`). 스택 하나의 실패는 다른 스택을 막지 않는다. 스택 멤버는 `stack_only` 지만 **스택 금고의 KV 는 되돌린다** — 금고는 스택 데이터다.
+
+스택 멤버마다 `integrity_report.vault_import` 를 본다. `imported: false` 면 금고 KV 를 되돌리지 못한 것이고(`error` 에 원인, `attempts` 에 기다린 횟수) **그 스택의 도구들은 금고의 자격증명을 못 찾는다** — 복구 자체는 `succeeded` 로 끝나므로 이 값을 보지 않으면 모른다. 금고가 늦게 떠서 실패했으면 그 멤버만 단독 `stack_only` 복구로 다시 되돌린다.
+
+복구 뒤 확인은 위 **복구 후 확인할 것**을 스택마다 한다.
 
 ---
 
@@ -133,14 +190,17 @@ kubectl -n <네임스페이스> get deploy <앱> \
 
 `backup.schedule.enabled` 로 켠다. 보존은 **일 7 · 주 4 · 월 3** 이되, 어떤 경우에도 **가장 최근 성공본은 지우지 않는다** — 보존 정책이 백업을 0 개로 만들 수 있으면 정책이 아니라 사고다.
 
+스택이 둘 이상이면 `backup.schedule.all_stacks: true` 로 둔다 — `stack_id` · `namespace` · `mode` 를 무시하고 주기마다 **플랫폼 + 그 조직(`org_id`)의 모든 설치 완료 스택**을 한 세트로 뜬다. 스택이 늘어도 설정을 고칠 필요가 없다. 보존은 세트가 `failed` 가 아닐 때 적용한다.
+
 ---
 
 ## 6. 알아 둘 것
 
 - **목적지는 클러스터 밖 S3 호환 오브젝트 스토리지다.** 자격증명은 스택 금고가 아니라 컨트롤 플레인 설정에서만 온다 — 금고에서 조달하면 스택이 죽을 때 백업본이 멀쩡해도 가져올 수 없다.
 - **매니페스트만 암호화하지 않는다.** 키를 잃어도 "무엇이 들어 있고 어떤 키가 필요한가" 는 읽을 수 있어야 하기 때문이다. 그 대가로 비밀값을 한 조각도 담지 않는다.
-- **복구는 Service 의 ClusterIP 를 보존하지 않는다.** 클러스터 안에서는 DNS 로 해석하므로 무해하지만, IP 를 박아 둔 외부 배선이 있으면 다시 설정해야 한다.
+- **복구는 Service 를 백업 때의 ClusterIP 로 되살린다.** 설치가 스택 게이트웨이의 IP 를 러너·Argo CD hostAliases 에 박기 때문이다. 그 IP 를 쓸 수 없으면(다른 클러스터로 복구·이미 쓰임) 새 주소로 되살리고, 복구 끝에 러너·Argo CD 의 hostAliases 를 새 주소로 맞춘다(helm values 를 바꿔 다시 적용하고, OSS 설정 편집으로 스택 설정에 굳은 같은 주소도 바꾼다). 결과는 복구 응답의 `integrity_report.gateway_aliases` 에 있다 — `error` 가 있으면 맞추지 못한 것이니 손으로 맞춘다(Argo CD 는 같은 차트 버전을 저장소에서 다시 받으므로 외부에 닿지 못하는 환경에서는 Argo CD 만 실패할 수 있다). ClusterIP 를 담지 않은 옛 백업으로 복구해도 같다.
 - **차트 버전이 다르면 알린다.** 다른 버전으로 재설치하면 기동 시 스키마가 올라가 백업 시점으로 돌아가지 않는다 — 되돌릴 수 없으므로 미리 확인한다.
+- **백업 요청이 끊겨도 서비스는 되살린다.** 백업은 요청 안에서 동기로 돈다. 정지 창 도중 탭을 닫거나 프록시가 끊으면 백업은 멈추지만, 워크로드 재개와 실행 기록 마무리는 요청과 무관하게 끝까지 간다 — 기록은 `failed`/`partial` 로 닫힌다. 정지 창이 있는 백업은 요청이 끊기지 않을 만큼 긴 타임아웃으로 호출하는 것이 좋다.
 
 ---
 

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -29,16 +30,35 @@ func NewMemoryCompatibilityRepository() *MemoryCompatibilityRepository {
 	return r
 }
 
-// GetAll returns all compatibility matrices.
+// GetAll returns all compatibility matrices in id order, like the Postgres repository.
 func (r *MemoryCompatibilityRepository) GetAll(_ context.Context) ([]*domain.CompatibilityMatrix, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	result := make([]*domain.CompatibilityMatrix, 0, len(r.matrices))
-	for _, m := range r.matrices {
+	sorted := r.sortedMatricesLocked()
+	result := make([]*domain.CompatibilityMatrix, 0, len(sorted))
+	for _, m := range sorted {
 		cp := *m
 		result = append(result, &cp)
 	}
 	return result, nil
+}
+
+// sortedMatricesLocked 는 매트릭스를 id 순서로 돌려준다. 호출자가 읽기 잠금을 쥐고 있어야 한다.
+//
+// Postgres 저장소(ORDER BY id)와 같은 순서여야 한다. 맵 순서로 돌면 같은 요청이
+// 실행마다 다른 매트릭스로 판정된다 — 겹치는 매트릭스의 아키텍처 정보가 다르면
+// 배포 게이트의 통과·차단이 그때그때 갈린다.
+func (r *MemoryCompatibilityRepository) sortedMatricesLocked() []*domain.CompatibilityMatrix {
+	ids := make([]string, 0, len(r.matrices))
+	for id := range r.matrices {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]*domain.CompatibilityMatrix, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, r.matrices[id])
+	}
+	return out
 }
 
 // GetByID returns the compatibility matrix with the given ID.
@@ -54,12 +74,13 @@ func (r *MemoryCompatibilityRepository) GetByID(_ context.Context, id string) (*
 }
 
 // Validate finds the best matching matrix for the given tool map (tool category -> tool name).
-// Returns the first matrix whose tools all match. Returns an error if no match is found.
+// Returns the first matrix in id order whose tools all match — the same choice the
+// Postgres repository makes. Returns an error if no match is found.
 func (r *MemoryCompatibilityRepository) Validate(_ context.Context, tools map[string]string) (*domain.CompatibilityMatrix, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	for _, m := range r.matrices {
+	for _, m := range r.sortedMatricesLocked() {
 		if matchesMatrix(m, tools) {
 			cp := *m
 			return &cp, nil
@@ -174,6 +195,9 @@ const (
 	baselineNexusAppVersion   = domain.NexusAppVersion
 	baselineTrivyHelmVersion  = domain.TrivyChartVersion
 	baselineTrivyAppVersion   = domain.TrivyAppVersion
+	// SonarQube 는 Community 빌드 번호가 실제로 깔리는 앱 버전이다.
+	baselineSonarQubeHelmVersion = domain.SonarQubeChartVersion
+	baselineSonarQubeAppVersion  = domain.SonarQubeAppVersion
 
 	baselineGiteaHelmVersion = domain.GiteaChartVersion
 	baselineGiteaAppVersion  = domain.GiteaAppVersion
@@ -298,6 +322,30 @@ func defaultCompatibilityMatrices() []*domain.CompatibilityMatrix {
 				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
 				"image_scanner":            {Name: "Trivy", HelmVersion: baselineTrivyHelmVersion, AppVersion: baselineTrivyAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+			},
+		},
+		{
+			// gitlab-argocd-v1 에 SonarQube 를 더했다. GitLab 은 000048 이 gitlab-argocd-v1
+			// 에 한 것과 같이 arm64 를 허용한다 — arm64 kind 에서 끝까지 동작한 기록이 있다.
+			// SonarQube Community 이미지는 amd64·arm64 를 함께 낸다.
+			ID:     "gitlab-argocd-sonarqube-v1",
+			Name:   "GitLab + Argo CD + SonarQube",
+			Status: "verified",
+			Kubernetes: domain.KubernetesCompat{
+				Min:         baselineMinK8sPlatform,
+				Max:         "1.35",
+				Recommended: "1.35",
+			},
+			Tools: map[string]domain.ToolVersion{
+				"source_repository":        {Name: "GitLab CE", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"ci_platform":              {Name: "GitLab CI", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"container_registry":       {Name: "GitLab Registry", HelmVersion: baselineGitLabHelmVersion, AppVersion: baselineGitLabAppVersion, MinK8sVersion: baselineMinK8sPlatform, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"storage_backend":          {Name: "MinIO", HelmVersion: baselineMinIOHelmVersion, AppVersion: baselineMinIOAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"cd_tool":                  {Name: "Argo CD", HelmVersion: baselineArgoCDHelmVersion, AppVersion: baselineArgoCDAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_collection":    {Name: "Prometheus", HelmVersion: baselinePrometheusHelmVer, AppVersion: baselinePrometheusAppVer, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"monitoring_visualization": {Name: "Grafana", HelmVersion: baselineGrafanaHelmVersion, AppVersion: baselineGrafanaAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierStable},
+				"image_scanner":            {Name: "Trivy", HelmVersion: baselineTrivyHelmVersion, AppVersion: baselineTrivyAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
+				"sast":                     {Name: "SonarQube", HelmVersion: baselineSonarQubeHelmVersion, AppVersion: baselineSonarQubeAppVersion, MinK8sVersion: baselineMinK8sWorkload, ArchSupport: archMulti, Tier: domain.ToolTierBeta},
 			},
 		},
 		{

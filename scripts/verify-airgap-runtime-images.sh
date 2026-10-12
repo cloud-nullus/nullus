@@ -36,6 +36,7 @@ export KUBECONFIG="$WORK/kubeconfig"
 
 log()  { echo -e "\033[1;34m[검증]\033[0m $*"; }
 ok()   { echo -e "\033[1;32m[ OK ]\033[0m $*"; }
+warn() { echo -e "\033[1;33m[건너뜀]\033[0m $*"; }
 fail() { echo -e "\033[1;31m[실패]\033[0m $*" >&2; exit 1; }
 
 cleanup() {
@@ -68,7 +69,28 @@ FIRST_NODE=$(printf '%s\n' "$NODES" | head -1)
 NODE_ARCH=$(kubectl get node "$FIRST_NODE" -o jsonpath='{.status.nodeInfo.architecture}')
 [[ -n "$NODE_ARCH" ]] || fail "노드 아키텍처를 확인하지 못했다"
 log "노드 아키텍처: linux/$NODE_ARCH"
+
+# 노드 아키텍처 빌드를 아예 게시하지 않는가. 0 = 확실히 없음, 1 = 있거나 알 수 없음.
+# (판정은 airgap/scripts/01-pull-images.sh 의 platform_unavailable 과 같다.)
+# 그런 이미지(amd64 만 내는 sonar-scanner)는 노드 아키텍처로 pull 할 수 없어, 실패로 보면
+# arm64 에서 검증 자체가 돌지 못한다. 번들에는 실릴 수 있다 — crane 은 단일 아키텍처
+# 이미지를 플랫폼과 무관하게 받는다 — 그래도 그 노드에서는 에뮬레이션이 있어야 돈다.
+# 매니페스트를 읽지 못하면 알 수 없음으로 두어 pull 단계에서 실패로 드러나게 한다.
+arch_unavailable() {
+  local out
+  out="$(docker manifest inspect -v "$1" 2>/dev/null | tr -d ' \n\t')" || return 1
+  printf '%s' "$out" | grep -q '"architecture":' || return 1
+  printf '%s' "$out" | grep -q "\"architecture\":\"${NODE_ARCH}\",\"os\":\"linux\"" && return 1
+  return 0
+}
+
+SKIPPED=()
 for img in "${IMAGES[@]}"; do
+  if arch_unavailable "$img"; then
+    warn "$img — linux/$NODE_ARCH 빌드가 없어 반입 검증을 건너뛴다"
+    SKIPPED+=("$img")
+    continue
+  fi
   log "pull $img"
   # 노드 아키텍처를 맞춘다. 멀티아키 이미지를 그대로 save 하면 매니페스트
   # 리스트만 담기고 다른 플랫폼의 레이어가 없어 import 가 깨진다.
@@ -160,4 +182,8 @@ kubectl -n "$NS" logs job/bucket-bootstrap | sed 's/^/       /'
 ok "mc 가 인터넷 없이 버킷 부트스트랩을 수행했다"
 
 echo
-ok "런타임 이미지 ${#IMAGES[@]} 종 에어갭 반입 검증 통과"
+ok "런타임 이미지 $(( ${#IMAGES[@]} - ${#SKIPPED[@]} )) 종 에어갭 반입 검증 통과"
+if [[ ${#SKIPPED[@]} -gt 0 ]]; then
+  warn "linux/$NODE_ARCH 빌드가 없어 건너뛴 이미지 ${#SKIPPED[@]} 종: ${SKIPPED[*]}"
+  warn "  이 아키텍처의 노드에서는 에뮬레이션이 있어야 그 이미지를 쓰는 단계가 돈다"
+fi

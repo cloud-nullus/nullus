@@ -12,6 +12,7 @@ export type BackupComponent =
   | "keycloak_db"
   | "openbao_kv"
   | "ns_resources"
+  | "shared_resources"
   | "volume";
 
 export type BackupMode = "full" | "platform_only" | "stack_only";
@@ -35,6 +36,8 @@ export function requiresQuiesce(scope: BackupComponent[]): boolean {
 
 export interface BackupRun {
   id: string;
+  /** 이 실행이 속한 백업 세트. 단독 실행에는 없다. */
+  set_id?: string;
   stack_id?: string;
   mode: BackupMode;
   trigger: string;
@@ -55,6 +58,26 @@ export interface CreateBackupRequest {
   confirm?: string;
 }
 
+/**
+ * 세트 백업의 확인 문구. 서버(handler.SetConfirmPhrase)와 같아야 한다.
+ *
+ * 단독 백업은 멈추는 네임스페이스를 재입력받지만, 세트는 조직의 **모든** 스택을
+ * 멈추고 어느 스택인지는 서버가 정한다 — "전부" 를 뜻하는 고정 문구를 받는다.
+ */
+export const SET_CONFIRM_PHRASE = "all";
+
+export interface CreateBackupSetRequest {
+  confirm: string;
+}
+
+/** 백업 세트 — 플랫폼 하나 + 스택마다 하나의 실행이 한 set_id 로 묶인다. */
+export interface BackupSetResult {
+  set_id: string;
+  status: BackupStatus;
+  runs: BackupRun[];
+  failed?: string[];
+}
+
 export const backupQueryKeys = {
   runs: () => ["admin", "backups"] as const,
 };
@@ -66,6 +89,8 @@ export const backupApiCalls = {
       .then((r) => r.data.items ?? []),
   createBackup: (body: CreateBackupRequest) =>
     api.post<BackupRun>("/admin/backups", body).then((r) => r.data),
+  createBackupSet: (body: CreateBackupSetRequest) =>
+    api.post<BackupSetResult>("/admin/backups/sets", body).then((r) => r.data),
 };
 
 /**
@@ -96,6 +121,17 @@ export function useCreateBackup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: backupApiCalls.createBackup,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: backupQueryKeys.runs() });
+    },
+  });
+}
+
+/** 플랫폼 + 모든 스택을 한 세트로 뜬다. 끝나면 실행 목록을 다시 읽는다 — 세트의 실행이 여럿 생긴다. */
+export function useCreateBackupSet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: backupApiCalls.createBackupSet,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: backupQueryKeys.runs() });
     },
