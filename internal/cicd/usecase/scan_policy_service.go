@@ -93,13 +93,19 @@ func (s *ScanPolicyService) Update(
 	}
 	// 이 필드를 모르는 옛 클라이언트는 SAST 동작을 보내지 않는다. 빈 값으로 덮으면
 	// 운영자가 경고로 바꿔 둔 게이트가 몰래 차단으로 돌아가므로 저장된 값을 이어받는다.
-	if policy.SASTOnGateFailure == "" {
+	if policy.SASTOnGateFailure == "" || policy.SecretDetection == "" {
 		stored, found, err := s.policies.Get(ctx, id)
 		if err != nil {
 			return nil, err
 		}
 		if found {
-			policy.SASTOnGateFailure = stored.SASTOnGateFailure
+			if policy.SASTOnGateFailure == "" {
+				policy.SASTOnGateFailure = stored.SASTOnGateFailure
+			}
+			// 시크릿 탐지도 같다 — 운영자가 끄거나 경고로 바꾼 것을 옛 클라이언트의 저장이 되돌리면 안 된다.
+			if policy.SecretDetection == "" {
+				policy.SecretDetection = stored.SecretDetection
+			}
 		}
 	}
 	if err := policy.Validate(); err != nil {

@@ -52,6 +52,7 @@ type policyResponse struct {
 		IgnoreUnfixed        bool   `json:"ignore_unfixed"`
 		OnScannerUnreachable string `json:"on_scanner_unreachable"`
 		SASTOnGateFailure    string `json:"sast_on_gate_failure"`
+		SecretDetection      string `json:"secret_detection"`
 	} `json:"policy"`
 	IsDefault bool `json:"is_default"`
 	Pushes    []struct {

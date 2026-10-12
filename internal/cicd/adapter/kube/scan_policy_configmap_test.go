@@ -46,8 +46,10 @@ func TestRenderScanPolicyConfigMap(t *testing.T) {
 		port.ScanOnUnreachableVariable: "block",
 		// 이미지도 정책과 함께 실린다. Jenkins 파드 템플릿은 정적이라 지금은 읽지 않지만,
 		// 같은 ConfigMap 이라 셋 중 어느 CI 도 다른 값을 보지 않는다.
-		port.ScanImageVariable: shareddomain.TrivyCLIImage,
-		port.SASTImageVariable: shareddomain.SonarScannerImage,
+		port.ScanImageVariable:       shareddomain.TrivyCLIImage,
+		port.SASTImageVariable:       shareddomain.SonarScannerImage,
+		port.SecretDetectionVariable: "block",
+		port.SecretScanImageVariable: shareddomain.GitleaksImage,
 	}, doc.Data)
 }
 

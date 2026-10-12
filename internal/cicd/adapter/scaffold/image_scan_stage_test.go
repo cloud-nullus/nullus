@@ -89,7 +89,7 @@ func TestPipelineStageNames_MatchRenderedWithScanner(t *testing.T) {
 	in := scanInput(port.CIPlatformJenkins, testScannerEndpoint)
 	content := renderJenkinsfile(in)
 
-	names := PipelineStageNames(StageOptions{ImageScan: true})
+	names := PipelineStageNamesFor(in)
 	require.Contains(t, names, imageScanStageName)
 	for _, stage := range names {
 		assert.Containsf(t, content, "stage('"+stage+"')",

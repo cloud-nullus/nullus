@@ -88,6 +88,15 @@ func renderJenkinsfile(in Input) string {
 		fmt.Fprintf(&b, "        - configMapRef: {name: %s, optional: true}\n", scanPolicyConfigMap)
 		fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
 	}
+	if opts.SecretScan {
+		// 시크릿 탐지기도 별도 컨테이너다. 정책은 스택 네임스페이스의 ConfigMap 에서 온다.
+		b.WriteString("    - name: gitleaks\n")
+		fmt.Fprintf(&b, "      image: %s\n", defaultSecretScannerImage)
+		b.WriteString("      command: [\"cat\"]\n")
+		b.WriteString("      tty: true\n")
+		b.WriteString("      envFrom:\n")
+		fmt.Fprintf(&b, "        - configMapRef: {name: %s, optional: true}\n", scanPolicyConfigMap)
+	}
 	b.WriteString("    - name: dind\n")
 	fmt.Fprintf(&b, "      image: %s\n", jenkinsDindImage)
 	b.WriteString("      securityContext: {privileged: true}\n")
@@ -116,6 +125,36 @@ func renderJenkinsfile(in Input) string {
 	b.WriteString("  }\n\n")
 
 	b.WriteString("  stages {\n")
+
+	if opts.SecretScan {
+		// SecretScan — 빌드 앞에서 이번 푸시의 커밋에 든 시크릿을 찾는다. 모든 브랜치에서 돈다.
+		// 되커밋(deploy/ 만 바꾸는 것)은 빌드와 같은 이유로 건너뛴다.
+		fmt.Fprintf(&b, "    stage('%s') {\n", secretScanStageName)
+		b.WriteString("      when {\n")
+		b.WriteString("        beforeAgent true\n")
+		b.WriteString("        not { changeset pattern: 'deploy/**' , comparator: 'ANT' }\n")
+		b.WriteString("      }\n")
+		b.WriteString("      environment {\n")
+		// multibranch 가 주입하는 직전 성공 커밋. 첫 빌드면 null 이라 빈 문자열로 — 스크립트가 작업 트리 검사로 떨어진다.
+		fmt.Fprintf(&b, "        %s = \"${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: ''}\"\n", port.SecretScanBaseVariable)
+		b.WriteString("      }\n")
+		b.WriteString("      steps {\n")
+		b.WriteString("        container('gitleaks') {\n")
+		b.WriteString("          sh '''\n")
+		b.WriteString("            set -eu\n")
+		for _, line := range secretScanScriptLines() {
+			fmt.Fprintf(&b, "            %s\n", line)
+		}
+		b.WriteString("          '''\n")
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("      post {\n")
+		b.WriteString("        always {\n")
+		fmt.Fprintf(&b, "          archiveArtifacts artifacts: %q, allowEmptyArchive: true\n", port.SecretScanReportFile)
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("    }\n\n")
+	}
 
 	// build
 	b.WriteString("    stage('Build') {\n")

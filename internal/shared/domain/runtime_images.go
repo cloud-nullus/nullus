@@ -72,6 +72,11 @@ const (
 	// 익명 pull 이 된다(릴리즈 정책 §7.1).
 	// (internal/cicd/adapter/scaffold/sast.go)
 	SonarScannerImage = "ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389"
+
+	// GitleaksImage 는 파이프라인 시크릿 탐지 단계가 쓰는 gitleaks 다(nullus-plan#80). 상류가
+	// amd64·arm64 를 모두 내므로 그대로 쓴다. 태그는 앱 저장소에 넣는 pre-commit 훅의 rev 와
+	// 같아야 한다(scaffold.gitleaksVersionTag 가 여기서 뽑는다) — 로컬과 CI 가 같은 규칙을 봐야 한다.
+	GitleaksImage = "ghcr.io/gitleaks/gitleaks:v8.30.1"
 )
 
 // RuntimeImages 는 위 이미지 전부를 돌려준다.
@@ -88,5 +93,6 @@ func RuntimeImages() []string {
 		GitLabCIBuildImage,
 		GitLabCIDeployImage,
 		SonarScannerImage,
+		GitleaksImage,
 	}
 }
