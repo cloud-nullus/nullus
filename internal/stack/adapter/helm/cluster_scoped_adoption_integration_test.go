@@ -4,6 +4,7 @@ package helm
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -131,4 +132,46 @@ rules: []
 		t.Fatalf("인수되지 않았다: release-namespace=%q (기대: adoption-target-ns)", after.ReleaseNamespace)
 	}
 	t.Logf("인수 확인: %s → %s", before.ReleaseNamespace, after.ReleaseNamespace)
+}
+
+// kube-system 에 남은, 죽은 릴리스 소유 Service 도 실제로 인수되어야 한다(kube-prometheus-stack 의 컨트롤
+// 플레인 Service 와 같은 모양).
+func TestIntegration_NamespacedAdoption_AdoptsKubeSystemService(t *testing.T) {
+	kubeconfig := loadITKubeconfig(t)
+	o := NewOrchestrator(nil, kubeconfig, "adoption-target-ns")
+	ctx := context.Background()
+
+	manifest := `apiVersion: v1
+kind: Service
+metadata:
+  name: ` + itAdoptionTestName + `
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: ` + itAdoptionTestName + `
+    meta.helm.sh/release-namespace: this-namespace-does-not-exist
+spec:
+  clusterIP: None
+  ports:
+  - name: probe
+    port: 9999
+`
+	if err := o.applyManifest(ctx, "kube-system", manifest); err != nil {
+		t.Fatalf("probe Service 생성 실패: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = o.runKubectl(context.Background(), "delete", "service", itAdoptionTestName, "-n", "kube-system", "--ignore-not-found")
+	})
+
+	o.adoptClusterScopedResources(ctx, itAdoptionTestName, "adoption-target-ns")
+
+	out, err := o.runKubectl(ctx, "get", "service", itAdoptionTestName, "-n", "kube-system",
+		"-o", `jsonpath={.metadata.annotations.meta\.helm\.sh/release-namespace}`)
+	if err != nil {
+		t.Fatalf("인수 후 소유권 조회 실패: %v", err)
+	}
+	if got := strings.TrimSpace(string(out)); got != "adoption-target-ns" {
+		t.Fatalf("인수되지 않았다: release-namespace=%q (기대: adoption-target-ns)", got)
+	}
 }
