@@ -14,9 +14,11 @@
 #   SKIP_IMAGES=1 ./pre-build.sh    # 이미지 pull/save 건너뜀 (이미 있을 때)
 #   SKIP_BIN=1    ./pre-build.sh    # 바이너리 다운로드 건너뜀
 #   SKIP_CHARTS=1 ./pre-build.sh    # helm 차트 번들 건너뜀
-#   SKIP_SBOM=1   ./pre-build.sh    # SBOM 생성 건너뜀 (syft 미설치 시 자동 건너뜀)
+#   SKIP_SBOM=1   ./pre-build.sh    # SBOM 생성 건너뜀 (로컬 개발용 — 릴리스 번들에는 쓰지 않는다)
+#   SBOM_REQUIRED=1 ./pre-build.sh  # 릴리스 경로 — syft 부재·SBOM 실패를 중단으로 (CI 는 기본 1)
 #
 # 환경 변수: pull-binaries.sh / package-bundle.sh / generate-sbom.sh 의 ENV 모두 통과
+#   (SBOM_REQUIRED — generate-sbom.sh 의 엄격 모드. 고객에게 나가는 번들은 1 로 만든다, nullus-plan#77)
 #
 # 종료 코드:
 #   0 — 성공
@@ -105,10 +107,11 @@ else
 fi
 
 if [[ "$SKIP_SBOM" != "1" ]]; then
-  hdr "5/6 SBOM 생성 (syft) — bundle/sbom/"
-  bash "${SCRIPTS}/pre/generate-sbom.sh"
+  sbom_strict="${SBOM_REQUIRED:-${CI:+1}}"; sbom_strict="${sbom_strict:-0}"
+  hdr "5/6 SBOM 생성 (syft) — bundle/sbom/  (엄격 SBOM_REQUIRED=${sbom_strict})"
+  SBOM_REQUIRED="$sbom_strict" bash "${SCRIPTS}/pre/generate-sbom.sh"
 else
-  hdr "5/6 SBOM 단계 — SKIP_SBOM=1 건너뜀"
+  hdr "5/6 SBOM 단계 — SKIP_SBOM=1 건너뜀 (릴리스 번들에는 쓰지 않는다)"
 fi
 
 hdr "6/6 마스터 번들 패키징"
