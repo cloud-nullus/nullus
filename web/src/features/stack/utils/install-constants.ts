@@ -150,6 +150,11 @@ export const SECURITY_OPTIONS: Record<string, ToolOption[]> = {
   sast: [
     { id: 'sonarqube', label: 'SonarQube', description: '소스 코드 정적 분석 (Community)' },
   ],
+  // 서드파티 의존성 취약점(SCA). 따로 설치하는 것이 없다 — 파이프라인이 락파일을 스택 Trivy
+  // 서버로 검사한다. 이미지 스캐너를 고르지 않았어도 이것을 고르면 Trivy 서버가 선다.
+  sca: [
+    { id: 'trivy', label: 'Trivy', description: '서드파티 의존성(락파일) 취약점 스캔 — 스택 Trivy 서버' },
+  ],
 }
 
 export const TOOL_OPTIONS_ALL = [

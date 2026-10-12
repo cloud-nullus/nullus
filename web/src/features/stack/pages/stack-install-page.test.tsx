@@ -373,8 +373,12 @@ describe('StackInstallPage', () => {
     // 자동으로 채운 이름은 검증을 거치지 않아 저장 버튼이 꺼져 있다. 사용자처럼 입력한다.
     fireEvent.change(screen.getByLabelText(/Stack Name/i), { target: { value: 'sast-stack' } })
     fireEvent.click(screen.getByRole('button', { name: 'Security' }))
-    fireEvent.click(screen.getByRole('button', { name: /Trivy/ }))
+    // Trivy 는 두 칸에 있다 — 이미지 스캐너, 그리고 서드파티 의존성 취약점(SCA, nullus-plan#79).
+    const trivy = screen.getAllByRole('button', { name: /Trivy/ })
+    expect(trivy).toHaveLength(2)
+    fireEvent.click(trivy[0])
     fireEvent.click(screen.getByRole('button', { name: /SonarQube/ }))
+    fireEvent.click(trivy[1])
     await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }))
 
@@ -382,6 +386,7 @@ describe('StackInstallPage', () => {
     const request = mockSaveDraftMutate.mock.calls[0][0]
     expect(request.security.imageScanner.tool).toBe('trivy')
     expect(request.security.sast.tool).toBe('sonarqube')
+    expect(request.security.sca.tool).toBe('trivy')
   })
 
   // 화면이 만든 게이트웨이가 서버 기본값을 대신한다. 라우트가 빠지면 sonarqube.<도메인> 이

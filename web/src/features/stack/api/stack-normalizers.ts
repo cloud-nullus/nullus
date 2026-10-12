@@ -483,6 +483,7 @@ export function toCreateStackBody(req: CreateStackRequest) {
       security: {
         image_scanner: toBackendTool(sec.imageScanner ?? { tool: '', version: '' }),
         sast: toBackendTool(sec.sast ?? { tool: '', version: '' }),
+        sca: toBackendTool(sec.sca ?? { tool: '', version: '' }),
       },
       resources: {
         developers: req.resources?.developerCount ?? 0,

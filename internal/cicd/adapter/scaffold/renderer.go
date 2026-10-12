@@ -101,6 +101,10 @@ type Input struct {
 	//
 	// 비면 소스 정적 분석 단계를 만들지 않는다 — 이미지 스캔과 같은 이유다.
 	SASTServerEndpoint string
+	// DependencyScanEndpoint 는 의존성 스캔(SCA)이 붙을 스택 Trivy 서버 주소다(#79).
+	//
+	// 비면 의존성 스캔 단계를 만들지 않는다 — 이미지 스캔·SAST 와 같은 이유다.
+	DependencyScanEndpoint string
 }
 
 // 이미지 스캔 단계의 이름. CI 마다 표기가 달라 둘로 나눈다 —
@@ -128,6 +132,9 @@ type StageOptions struct {
 	// SecretScan 은 gitleaks 로 시크릿 유출을 찾는 단계다(#80). 스택 의존이 없어 언제나 켜진다 —
 	// 끄는 것은 정책(NULLUS_SECRET_DETECTION=off)이다.
 	SecretScan bool
+	// DependencyScan 은 락파일로 서드파티 의존성 취약점을 찾는 단계다(#79). 스택에서 의존성 스캔을
+	// 골랐을 때만 — 스택 Trivy 서버가 있어야 한다.
+	DependencyScan bool
 }
 
 // Render 는 앱 프로젝트에 커밋할 파일들을 만든다.
@@ -226,9 +233,10 @@ func renderPipelineFor(in Input) (path, content string) {
 // stageOptionsFor 는 이 입력이 실제로 만들 선택 단계를 정한다.
 func stageOptionsFor(in Input) StageOptions {
 	return StageOptions{
-		ImageScan:  strings.TrimSpace(in.ImageScannerEndpoint) != "",
-		SAST:       strings.TrimSpace(in.SASTServerEndpoint) != "",
-		SecretScan: true,
+		ImageScan:      strings.TrimSpace(in.ImageScannerEndpoint) != "",
+		SAST:           strings.TrimSpace(in.SASTServerEndpoint) != "",
+		SecretScan:     true,
+		DependencyScan: strings.TrimSpace(in.DependencyScanEndpoint) != "",
 	}
 }
 
@@ -290,10 +298,15 @@ func renderGitHubWorkflow(in Input) string {
 	if opts.SecretScan {
 		writeGitHubSecretScanJob(&b)
 	}
+	if opts.DependencyScan {
+		writeGitHubDependencyScanJob(&b, in)
+	}
 	b.WriteString("  build:\n")
-	if opts.SecretScan {
-		// 시크릿이 든 소스로 이미지를 만들어 올리지 않는다 — 빌드가 탐지를 기다린다.
-		fmt.Fprintf(&b, "    needs: %s\n", secretScanStageID)
+	// 시크릿이 든 소스, 취약한 의존성으로 이미지를 만들어 올리지 않는다 — 빌드가 소스 단계를 기다린다.
+	if needs := buildNeeds(opts); len(needs) == 1 {
+		fmt.Fprintf(&b, "    needs: %s\n", needs[0])
+	} else if len(needs) > 1 {
+		fmt.Fprintf(&b, "    needs: [%s]\n", strings.Join(needs, ", "))
 	}
 	b.WriteString("    runs-on: ubuntu-latest\n")
 	b.WriteString("    steps:\n")
@@ -441,6 +454,10 @@ func renderPipeline(in Input) string {
 		// 빌드 앞이다 — 시크릿이 든 소스로 이미지를 만들어 올리지 않는다.
 		fmt.Fprintf(&b, "  - %s\n", secretScanStageID)
 	}
+	if opts.DependencyScan {
+		// 빌드 앞이다 — 소스(락파일)만 보므로 빌드를 기다리지 않고 빨리 실패한다.
+		fmt.Fprintf(&b, "  - %s\n", dependencyScanStageID)
+	}
 	b.WriteString("  - build\n")
 	if opts.SAST {
 		fmt.Fprintf(&b, "  - %s\n", sastStageID)
@@ -459,10 +476,11 @@ func renderPipeline(in Input) string {
 	// DOCKER_TLS_CERTDIR 를 비우지 않으면 dind 가 TLS(2376)로만 열려 2375 연결이 거부된다.
 	b.WriteString("  DOCKER_HOST: tcp://docker:2375\n")
 	b.WriteString("  DOCKER_TLS_CERTDIR: \"\"\n")
-	if opts.ImageScan {
+	if opts.ImageScan || opts.DependencyScan {
 		// 주소는 스택이 정한 값이라 렌더 시점에 박는다. 차단 기준은 적지 않는다 —
 		// 플랫폼이 프로젝트 CI/CD 변수로 푸시하고, 없으면 스크립트가 기본값을 쓴다.
-		fmt.Fprintf(&b, "  %s: %q\n", scanServerVar, in.ImageScannerEndpoint)
+		// 의존성 스캔(#79)도 같은 서버·같은 이미지다 — 둘 중 하나만 골라도 변수가 있어야 한다.
+		fmt.Fprintf(&b, "  %s: %q\n", scanServerVar, trivyServerEndpoint(in))
 		fmt.Fprintf(&b, "  %s: %q\n", scanImageVar, defaultScannerImage)
 	}
 	if opts.SAST {
@@ -479,6 +497,9 @@ func renderPipeline(in Input) string {
 
 	if opts.SecretScan {
 		writeGitLabSecretScanJob(&b)
+	}
+	if opts.DependencyScan {
+		writeGitLabDependencyScanJob(&b, in)
 	}
 
 	b.WriteString("build:\n")
@@ -826,6 +847,9 @@ func PipelineStageNames(opts StageOptions) []string {
 	if opts.SecretScan {
 		names = append(names, secretScanStageName)
 	}
+	if opts.DependencyScan {
+		names = append(names, dependencyScanStageName)
+	}
 	names = append(names, "Build")
 	if opts.SAST {
 		names = append(names, sastStageName)
@@ -897,4 +921,25 @@ func writeGitHubSecretScanJob(b *strings.Builder) {
 	fmt.Fprintf(b, "          name: %s\n", port.SecretScanReportArtifact)
 	fmt.Fprintf(b, "          path: %s\n", port.SecretScanReportFile)
 	b.WriteString("\n")
+}
+
+// buildNeeds 는 GitHub build 잡이 기다릴 소스 단계다 — 시크릿 탐지(#80)·의존성 스캔(#79).
+func buildNeeds(opts StageOptions) []string {
+	var needs []string
+	if opts.SecretScan {
+		needs = append(needs, secretScanStageID)
+	}
+	if opts.DependencyScan {
+		needs = append(needs, dependencyScanStageID)
+	}
+	return needs
+}
+
+// trivyServerEndpoint 는 이미지 스캔·의존성 스캔이 함께 쓰는 스택 Trivy 서버 주소다. 둘은 같은 서버라
+// 값이 같고, 어느 하나만 골랐으면 그 값이다.
+func trivyServerEndpoint(in Input) string {
+	if v := strings.TrimSpace(in.ImageScannerEndpoint); v != "" {
+		return v
+	}
+	return strings.TrimSpace(in.DependencyScanEndpoint)
 }

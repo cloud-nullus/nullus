@@ -139,6 +139,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 			ImageScannerEndpoint:         bundle.ImageScannerEndpoint,
 			ImageScannerJavaDBRepository: bundle.ImageScannerJavaDBRepository,
 			SASTServerEndpoint:           bundle.SASTServerEndpoint,
+			DependencyScanEndpoint:       bundle.DependencyScanEndpoint,
 			SASTToken:                    sastToken,
 			RefreshDefinitionOnly:        input.RefreshDefinitionOnly,
 		})

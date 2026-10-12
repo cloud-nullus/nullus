@@ -202,6 +202,9 @@ export interface SecurityConfig {
   imageScanner: ToolSelection
   // 소스 정적 분석(SonarQube). 이미지 스캐너와 같은 선택 슬롯이다.
   sast: ToolSelection
+  // 서드파티 의존성 취약점 스캔(SCA, nullus-plan#79). 선택지는 Trivy 하나 — 따로 설치하는 것이 없고
+  // 파이프라인이 스택 Trivy 서버에 붙는다. 이것만 골라도 Trivy 서버가 선다.
+  sca: ToolSelection
 }
 
 export interface StackConfigDraft {
@@ -295,6 +298,7 @@ const DEFAULT_DRAFT: StackConfigDraft = {
   security: {
     imageScanner: emptyToolSelection(),
     sast: emptyToolSelection(),
+    sca: emptyToolSelection(),
   },
   resources: {
     developerCount: 10,
@@ -370,6 +374,7 @@ function buildTemplateDraft(templateId: string, overrides?: Partial<StackConfigD
         security: {
           imageScanner: emptyToolSelection(),
           sast: emptyToolSelection(),
+          sca: emptyToolSelection(),
         },
         storage: {
           ...DEFAULT_DRAFT.storage,
@@ -420,6 +425,7 @@ function migrateDraftToolVersions(draft: StackConfigDraft): StackConfigDraft {
     security: {
       imageScanner: normalizeToolSelectionVersion(draft.security.imageScanner),
       sast: normalizeToolSelectionVersion(draft.security.sast),
+      sca: normalizeToolSelectionVersion(draft.security.sca ?? emptyToolSelection()),
     },
   }
 }

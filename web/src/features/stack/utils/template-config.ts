@@ -73,6 +73,7 @@ export const TOOL_SECTIONS: ToolSectionDefinition[] = [
     categories: [
       { category: 'image_scanner', label: 'Image Scanner', options: ['Trivy'] },
       { category: 'sast', label: 'SAST', options: ['SonarQube'] },
+      { category: 'sca', label: 'Dependency Scan (SCA)', options: ['Trivy'] },
     ],
   },
 ]

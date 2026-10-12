@@ -182,7 +182,9 @@
       "imageScanner": "Image Scanner",
       "imageScannerHint": "Not installed unless selected. Harbor's built-in scanner can serve instead.",
       "sast": "Static Analysis (SAST)",
-      "sastHint": "Not installed unless selected. Uses the stack's PostgreSQL and signs in with Keycloak when SSO is on."
+      "sastHint": "Not installed unless selected. Uses the stack's PostgreSQL and signs in with Keycloak when SSO is on.",
+      "sca": "Third-party Dependency Vulnerabilities (SCA)",
+      "scaHint": "Pipelines check the repository's lockfiles against the stack's Trivy server before the build. Selecting it installs the Trivy server even without the image scanner."
     },
     "resourceTotal": {
       "description": "Combined request/limit totals for {{count}} selected OSS"

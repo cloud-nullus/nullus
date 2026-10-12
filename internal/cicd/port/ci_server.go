@@ -125,6 +125,10 @@ const (
 	SecretScanReportArtifact = "secret-scan-report"
 	// SecretScanReportFile 은 리포트 파일 경로다. 비밀값은 --redact 로 가려져 있다.
 	SecretScanReportFile = "gitleaks-report.json"
+	// DependencyScanReportArtifact 는 의존성 스캔 리포트(trivy fs JSON)의 GitHub upload-artifact 묶음 이름이다.
+	DependencyScanReportArtifact = "dependency-scan-report"
+	// DependencyScanReportFile 은 리포트 파일 경로다.
+	DependencyScanReportFile = "dependency-scan-report.json"
 )
 
 // MaxCIArtifactBytes 는 산출물 파일 하나를 읽을 때의 상한이다.

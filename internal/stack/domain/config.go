@@ -105,6 +105,10 @@ type SecurityConfig struct {
 	// 선택 슬롯이다 — 고르지 않으면 설치되지 않고, 그 스택의 파이프라인은 SAST
 	// 단계를 켤 수 없다.
 	SAST ToolSelection `json:"sast,omitempty"`
+	// SCA 는 서드파티 의존성 취약점 스캔이다(nullus-plan#79). 선택지는 Trivy 하나고 따로 설치하는
+	// 것이 없다 — 파이프라인의 의존성 스캔 단계가 스택의 Trivy 서버에 붙는다. 그래서 이것만 골라도
+	// Trivy 서버가 선다(HasTrivyServer). 고르지 않으면 그 스택의 파이프라인에 단계가 없다.
+	SCA ToolSelection `json:"sca,omitempty"`
 }
 
 // LoggingConfig holds tool selections for the logging step.

@@ -61,7 +61,8 @@ func renderJenkinsfile(in Input) string {
 	b.WriteString("      envFrom:\n")
 	b.WriteString("        # ESO 가 OpenBao 에서 동기화한 파이프라인 자격증명이다.\n")
 	fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
-	if opts.ImageScan {
+	// 의존성 스캔(#79)도 같은 trivy 컨테이너를 쓴다.
+	if opts.ImageScan || opts.DependencyScan {
 		// 스캐너는 별도 컨테이너다. builder 에 trivy 를 설치하면 빌드마다
 		// 내려받게 되고, 이미지에 굽자니 빌더가 스캐너 버전에 묶인다.
 		b.WriteString("    - name: scanner\n")
@@ -154,6 +155,11 @@ func renderJenkinsfile(in Input) string {
 		b.WriteString("        }\n")
 		b.WriteString("      }\n")
 		b.WriteString("    }\n\n")
+	}
+
+	if opts.DependencyScan {
+		// DependencyScan — 소스의 락파일로 의존성 취약점을 찾는다. 빌드 앞이다.
+		writeJenkinsDependencyScanStage(&b, in)
 	}
 
 	// build

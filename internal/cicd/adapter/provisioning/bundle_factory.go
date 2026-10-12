@@ -242,6 +242,7 @@ func (f *BundleFactory) gitLabBundle(
 		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
 		ImageScannerJavaDBRepository: f.opts.TrivyJavaDBRepository,
 		SASTServerEndpoint:           summary.SASTServerEndpoint,
+		DependencyScanEndpoint:       summary.DependencyScanEndpoint,
 		SASTWebURL:                   sastWebURL(summary),
 		GatewayName:                  gatewayNameForStack(summary.Name),
 	}
@@ -372,14 +373,15 @@ func (f *BundleFactory) gitHubBundle(
 		GroupPath:       conn.Owner,
 		RepoAccessToken: token,
 		// Argo CD 는 여전히 클러스터 안에 있다.
-		CDNamespace:          strings.TrimSpace(summary.Namespace),
-		CDApplications:       kube.NewArgoApplicationDeleter(),
-		ClusterID:            summary.ClusterID,
-		AccessDomain:         summary.AccessDomain,
-		ImageScannerEndpoint: summary.ImageScannerEndpoint,
-		SASTServerEndpoint:   summary.SASTServerEndpoint,
-		SASTWebURL:           sastWebURL(summary),
-		GatewayName:          gatewayNameForStack(summary.Name),
+		CDNamespace:            strings.TrimSpace(summary.Namespace),
+		CDApplications:         kube.NewArgoApplicationDeleter(),
+		ClusterID:              summary.ClusterID,
+		AccessDomain:           summary.AccessDomain,
+		ImageScannerEndpoint:   summary.ImageScannerEndpoint,
+		SASTServerEndpoint:     summary.SASTServerEndpoint,
+		DependencyScanEndpoint: summary.DependencyScanEndpoint,
+		SASTWebURL:             sastWebURL(summary),
+		GatewayName:            gatewayNameForStack(summary.Name),
 	}
 	f.attachSASTToken(bundle, summary)
 	return bundle, nil
@@ -453,6 +455,7 @@ func (f *BundleFactory) giteaBundle(
 		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
 		ImageScannerJavaDBRepository: f.opts.TrivyJavaDBRepository,
 		SASTServerEndpoint:           summary.SASTServerEndpoint,
+		DependencyScanEndpoint:       summary.DependencyScanEndpoint,
 		SASTWebURL:                   sastWebURL(summary),
 		GatewayName:                  gatewayNameForStack(summary.Name),
 	}

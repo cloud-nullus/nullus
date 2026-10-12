@@ -182,7 +182,9 @@
       "imageScanner": "이미지 스캐너",
       "imageScannerHint": "고르지 않으면 설치되지 않습니다. 컨테이너 레지스트리가 Harbor 면 내장 스캐너로 대신할 수 있습니다.",
       "sast": "정적 분석 (SAST)",
-      "sastHint": "고르지 않으면 설치되지 않습니다. 스택의 PostgreSQL 을 함께 쓰고, SSO 를 켜면 Keycloak 으로 로그인합니다."
+      "sastHint": "고르지 않으면 설치되지 않습니다. 스택의 PostgreSQL 을 함께 쓰고, SSO 를 켜면 Keycloak 으로 로그인합니다.",
+      "sca": "서드파티 의존성 취약점 (SCA)",
+      "scaHint": "파이프라인이 빌드 전에 저장소의 락파일(package-lock.json · go.sum 등)을 스택 Trivy 서버로 검사합니다. 이미지 스캐너를 고르지 않아도 이것을 고르면 Trivy 서버가 설치됩니다."
     },
     "resourceTotal": {
       "description": "선택한 OSS {{count}}개의 적용값(request/limit) 총합"

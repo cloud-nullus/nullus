@@ -106,6 +106,7 @@ export function buildInstallOverridesFromTemplate(template: StackTemplate): Part
     security: {
       imageScanner: { tool: '', version: '' },
       sast: { tool: '', version: '' },
+      sca: { tool: '', version: '' },
     },
   }
 
@@ -168,6 +169,9 @@ export function buildInstallOverridesFromTemplate(template: StackTemplate): Part
         break
       case 'sast':
         apply('security', 'sast', tool.name, tool.app_version)
+        break
+      case 'sca':
+        apply('security', 'sca', tool.name, tool.app_version)
         break
       default:
         break

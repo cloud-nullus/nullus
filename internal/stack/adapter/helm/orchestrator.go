@@ -496,8 +496,11 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 			// 이미지 스캐너는 선택이다. 고르지 않은 스택에 서면 아무도 고르지
 			// 않은 워크로드가 뜬다 — 레지스트리가 Harbor 면 내장 스캐너로
 			// 대신할 수 있어 고르지 않는 편이 정상인 구성도 있다.
+			//
+			// 의존성 스캔(SCA)만 골라도 선다 — 파이프라인의 trivy fs 가 이 서버에 client 로 붙는다.
+			// 둘 다 골라도 서버는 하나다.
 			"installing_trivy": func(cfg domain.StackConfig) bool {
-				return isImageScannerSelection(cfg.Security.ImageScanner)
+				return domain.HasTrivyServer(cfg)
 			},
 			// SonarQube 도 선택이다. 무거운 도구라(JVM 셋) 고르지 않은 스택에 서면
 			// 자원만 먹는다. 외부 SonarQube 는 스택 안에 세우지 않는다.

@@ -82,7 +82,7 @@ esac
 	}
 	require.NoError(t, os.WriteFile(filepath.Join(bin, "curl"), []byte(curl), 0o755))
 
-	cmd := exec.Command("sh", "-c", "set -eux\n"+strings.Join(sastScriptLines("api"), "\n"))
+	cmd := exec.Command("bash", "-c", "set -euxo pipefail\n"+strings.Join(sastScriptLines("api"), "\n"))
 	cmd.Dir = work
 	cmd.Env = []string{
 		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
