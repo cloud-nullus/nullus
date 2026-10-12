@@ -34,6 +34,8 @@ func seedBackupWithComponents(t *testing.T, mode domain.Mode, sharedApplyErr err
 	kv := &fakeKV{tr: tr}
 	scaler := &fakeScaler{tr: tr, workloads: []domain.Workload{
 		{Kind: "Deployment", Namespace: "nullus", Name: "gitlab", Replicas: 2},
+		// 오퍼레이터가 CR 에서 만드는 것 — 정지는 하되 복구의 재개는 건너뛴다.
+		{Kind: "StatefulSet", Namespace: "nullus", Name: "prometheus-kps", Replicas: 1, OwnerManaged: true},
 	}}
 	archiver := &fakeArchiver{tr: tr, pvcs: []domain.VolumeSpec{{Name: "data-gitlab", SizeBytes: 100}}}
 	targets := DBTargets{
@@ -436,4 +438,23 @@ func TestRunRestore_platform_only_는_컨트롤러를_건드리지_않는다(t *
 	require.NoError(t, err)
 	assert.Equal(t, -1, tr.indexOf("components.ensure"))
 	assert.Equal(t, -1, tr.indexOf("shared.secrets"))
+}
+
+// ── 재개 ───────────────────────────────────────────────────────────────
+
+// 오퍼레이터가 CR 을 읽어 만드는 StatefulSet(Prometheus·Alertmanager)은 덤프에 없고(ownerReferences)
+// 복구 뒤 오퍼레이터가 CR 에서 다시 만든다. 재개가 그것을 조정하려 들면 아직 없어서 "수동 조치가
+// 필요합니다" 를 남긴다 — 거짓 경보다. 2026-10-12 리허설 세 번 모두 그랬다.
+func TestRunRestore_소유자_관리_워크로드는_재개하지_않는다(t *testing.T) {
+	uc, tr, _, _, _, scaler, backupID := seedBackup(t, domain.ModeFull)
+	scaler.scaled = nil // 백업의 정지·재개는 지우고 복구의 재개만 본다
+
+	_, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull})
+	require.NoError(t, err)
+
+	assert.NotEqual(t, -1, tr.indexOf("scale.up:gitlab"), "보통 워크로드는 재개한다")
+	assert.Equal(t, -1, tr.indexOf("scale.up:prometheus-kps"), "오퍼레이터가 다시 만든다 — 재개가 건드리지 않는다")
+	for _, s := range scaler.scaled {
+		assert.NotContains(t, s, "prometheus-kps")
+	}
 }

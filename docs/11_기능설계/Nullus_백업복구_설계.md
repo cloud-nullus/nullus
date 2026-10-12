@@ -999,9 +999,9 @@ internal/backup/
 
 #### 범위 밖으로 확인된 것
 
-- **앱 네임스페이스는 백업 범위 밖이다.** 앱의 Deployment 는 Argo CD 가 Git 에서 되살리지만, Nullus 가 파이프라인을 만들 때 앱 네임스페이스에 둔 이미지 pull Secret(`nullus-registry`)은 어디에도 담기지 않는다 — 2차에서 앱 네임스페이스까지 지운 뒤 복구하자 Deployment 는 돌아왔는데 `FailedToRetrieveImagePullSecret` 로 pull 이 실패했다. 스택 네임스페이스만 잃은 경우(3차)에는 영향이 없다. 앱 네임스페이스까지 잃으면 pull Secret 을 다시 만들어야 한다(GitLab deploy token `read_registry` → `kubectl create secret docker-registry nullus-registry`). 백업 범위에 넣을지는 Q12 와 같이 "복구가 설치기를 얼마나 부를지" 의 결정이다.
+- **앱 네임스페이스는 백업 범위 밖이었다 → 후속으로 넣었다.** 앱의 Deployment 는 Argo CD 가 Git 에서 되살리지만, Nullus 가 파이프라인을 만들 때 앱 네임스페이스에 둔 이미지 pull Secret(`nullus-registry`)은 어디에도 담기지 않았다 — 2차에서 앱 네임스페이스까지 지운 뒤 복구하자 Deployment 는 돌아왔는데 `FailedToRetrieveImagePullSecret` 로 pull 이 실패했다. 스택 네임스페이스만 잃은 경우(3차)에는 영향이 없다. 후속 PR 이 네임스페이스 덤프에 `app_namespaces`(Application 의 destination 네임스페이스마다 네임스페이스 라벨 + pull Secret)를 더하고, 복구가 스택 리소스보다 먼저 **없을 때만** 만든다 — §10.2.4 가 앱 네임스페이스까지 지운 뒤 복구를 확인했다.
 - **금고 단계는 로컬 제약으로 실패한다.** 호스트에서 도는 API 는 플랫폼 OpenBao 에 닿지 못해 "금고 경로 27건 복원 실패" + `dangling` 5건이 남는다(로컬 테스트 가이드 §4.10). 복구 상태는 `succeeded` 다.
-- **워크로드 재개 단계의 `object has been modified`** (minio · prometheus-operator Deployment) — 리소스 단계가 이미 replicas 를 세운 뒤 재개가 같은 것을 다시 조정하다 충돌한 것이다. 워크로드는 떠 있다. 재시도 한 번으로 잠재울 수 있는 로그다(§11.2 후보).
+- **워크로드 재개 단계의 거짓 경보 → 후속으로 고쳤다.** `statefulsets … not found`(오퍼레이터가 CR 에서 다시 만드는 Prometheus · Alertmanager)와 `object has been modified`(리소스 단계가 세운 replicas 를 재개가 다시 조정) 가 ERROR "수동 조치가 필요합니다" 로 찍혔지만 조치할 것은 없었다. 후속 PR 이 워크로드의 소유자 유무를 매니페스트에 적어(`owner_managed`) 재개가 그것을 건너뛰고, 충돌은 최신 것을 다시 읽어 재시도한다. 남는 ERROR 는 진짜 조치가 필요한 것만이다.
 
 ### 10.3 B4-2 에어갭 검증
 

@@ -367,6 +367,13 @@ func (uc *RestoreUseCase) resumeWorkloads(ctx context.Context, m domain.Manifest
 	// 역순 재개 — 의존 대상이 먼저 뜬다.
 	for i := len(m.Workloads) - 1; i >= 0; i-- {
 		w := m.Workloads[i]
+		if w.OwnerManaged {
+			// 오퍼레이터가 CR 에서 다시 만드는 것(Prometheus·Alertmanager StatefulSet). 덤프가 담지
+			// 않았으므로 지금은 없거나 오퍼레이터가 막 만드는 중이다 — 조정하려 들면 "not found" 를
+			// 수동 조치 경보로 남긴다. 오퍼레이터가 CR 의 replicas 로 세운다.
+			uc.d.Logger.Info("소유자가 다시 만드는 워크로드는 재개하지 않습니다", "kind", w.Kind, "name", w.Name)
+			continue
+		}
 		t := domain.QuiesceTarget{
 			Kind: w.Kind, Namespace: w.Namespace, Name: w.Name,
 			OriginalReplicas: w.OriginalReplicas,
