@@ -720,7 +720,8 @@ func (uc *DeleteStack) bestEffortUninstall(ctx context.Context, kubeconfig []byt
 		return
 	}
 
-	for _, releaseName := range stackHelmReleaseNames {
+	// CRD 만 담은 릴리스는 그 CRD 를 쓰는 릴리스를 다 지운 뒤에 지운다(domain.HelmReleaseNamesInUninstallOrder).
+	for _, releaseName := range domain.HelmReleaseNamesInUninstallOrder() {
 		namespaces := uninstallNamespacesForRelease(namespace, releaseName)
 		if _, shared := domain.InstallMarkerValuePath(releaseName); shared {
 			if !namespaceReclaimable {
@@ -733,7 +734,41 @@ func (uc *DeleteStack) bestEffortUninstall(ctx context.Context, kubeconfig []byt
 			if err := installer.Uninstall(ctx, releaseName, targetNamespace); err != nil {
 				slog.Warn("helm uninstall failed during stack delete", "release", releaseName, "namespace", targetNamespace, "error", err)
 				uc.emit(ctx, stackID, "deleting_release", "warn", fmt.Sprintf("release %s uninstall warning in %s: %v", releaseName, targetNamespace, err))
+				continue
 			}
+			if releaseName == domain.KubePrometheusStackReleaseName {
+				uc.bestEffortDeletePrometheusKubeletService(ctx, kubeconfig, stackID)
+			}
+		}
+	}
+}
+
+// prometheusKubeletServiceNamespace 는 Prometheus Operator 가 kubelet 을 긁으려고 만드는 Service 의 자리다.
+// 차트 기본값(prometheusOperator.kubeletService.namespace)이다.
+const prometheusKubeletServiceNamespace = "kube-system"
+
+// prometheusKubeletServiceName 은 그 Service 의 이름이다 — 차트 기본값 "<fullname>-kubelet" 이고 fullname 은
+// 릴리스 이름이다.
+var prometheusKubeletServiceName = domain.KubePrometheusStackReleaseName + "-kubelet"
+
+// bestEffortDeletePrometheusKubeletService 는 Prometheus Operator 가 kube-system 에 스스로 만든 kubelet
+// Service 와 그 Endpoints·EndpointSlice 를 지운다.
+//
+// 릴리스가 소유하지 않아 helm uninstall 로는 사라지지 않는다. 이 스택의 kube-prometheus-stack 을 방금
+// 지웠을 때만 부른다 — 이름이 이 릴리스에서 나오므로 그때는 이 스택 것이다. 라벨(managed-by=
+// prometheus-operator)로 훑지 않는다 — 고객이 따로 둔 Operator 의 kubelet Service 도 같은 라벨을 단다.
+func (uc *DeleteStack) bestEffortDeletePrometheusKubeletService(ctx context.Context, kubeconfig []byte, stackID string) {
+	commands := [][]string{
+		{"delete", "-n", prometheusKubeletServiceNamespace,
+			"service/" + prometheusKubeletServiceName, "endpoints/" + prometheusKubeletServiceName, "--ignore-not-found"},
+		{"delete", "endpointslices.discovery.k8s.io", "-n", prometheusKubeletServiceNamespace,
+			"-l", "kubernetes.io/service-name=" + prometheusKubeletServiceName, "--ignore-not-found"},
+	}
+	for _, args := range commands {
+		if out, err := uc.runKubectl(ctx, kubeconfig, args...); err != nil {
+			slog.Warn("prometheus kubelet service cleanup failed during stack delete", "error", err, "output", strings.TrimSpace(out))
+			uc.emit(ctx, stackID, "deleting_release", "warn",
+				fmt.Sprintf("%s/%s cleanup warning: %v", prometheusKubeletServiceNamespace, prometheusKubeletServiceName, err))
 		}
 	}
 }

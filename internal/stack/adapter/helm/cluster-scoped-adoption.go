@@ -33,6 +33,23 @@ var clusterScopedAdoptKinds = []string{
 	"apiservice",
 }
 
+// foreignNamespaceAdoptTarget 은 스택 네임스페이스 밖에 놓이는 네임스페이스 리소스다.
+type foreignNamespaceAdoptTarget struct {
+	Kind      string
+	Namespace string
+}
+
+// foreignNamespaceAdoptTargets 는 cluster-scoped 와 같은 이유로 인수가 필요한, 스택 네임스페이스 밖의
+// 네임스페이스 리소스다. 네임스페이스를 회수해도 함께 사라지지 않는다.
+//
+// kube-prometheus-stack 은 컨트롤 플레인을 긁는 Service(coredns·kube-controller-manager·kube-etcd·
+// kube-proxy·kube-scheduler)를 kube-system 에 만든다. 2026-10-12 — 옛 스택 삭제가 그 릴리스를 지우지
+// 못해 이것들이 남았고, 재설치가 installing_prometheus 에서 "kube-prometheus-stack-coredns ... cannot
+// be imported into the current release" 로 실패했다(삭제 쪽 원인은 domain.HelmReleaseNamesInUninstallOrder).
+var foreignNamespaceAdoptTargets = []foreignNamespaceAdoptTarget{
+	{Kind: "service", Namespace: "kube-system"},
+}
+
 // clusterScopedOwner 는 리소스 하나의 Helm 소유권 정보다.
 type clusterScopedOwner struct {
 	Name             string
@@ -130,12 +147,18 @@ func (o *Orchestrator) clusterScopedOwnerOf(ctx context.Context, kind, name stri
 
 // listClusterScopedOwners 는 한 종류의 cluster-scoped 리소스 소유권을 조회한다.
 func (o *Orchestrator) listClusterScopedOwners(ctx context.Context, kind string) ([]clusterScopedOwner, error) {
-	out, err := o.runKubectl(ctx, "get", kind,
+	return o.listOwners(ctx, kind)
+}
+
+// listOwners 는 한 종류의 리소스 소유권을 조회한다. scope 는 "-n <네임스페이스>" 같은 범위 인자다.
+func (o *Orchestrator) listOwners(ctx context.Context, kind string, scope ...string) ([]clusterScopedOwner, error) {
+	args := append([]string{"get", kind}, scope...)
+	out, err := o.runKubectl(ctx, append(args,
 		"--no-headers",
 		"-o", `custom-columns=NAME:.metadata.name,`+
 			`REL:.metadata.annotations.meta\.helm\.sh/release-name,`+
 			`NS:.metadata.annotations.meta\.helm\.sh/release-namespace`,
-	)
+	)...)
 	if err != nil {
 		return nil, err
 	}
@@ -158,45 +181,63 @@ func (o *Orchestrator) adoptClusterScopedResources(ctx context.Context, releaseN
 	}
 
 	for _, kind := range clusterScopedAdoptKinds {
-		owners, err := o.listClusterScopedOwners(ctx, kind)
-		if err != nil {
-			// 클러스터에 없는 종류(apiservice 등)일 수 있다.
+		o.adoptOwnedResources(ctx, kind, releaseName, namespace)
+	}
+	for _, target := range foreignNamespaceAdoptTargets {
+		if target.Namespace == namespace {
+			continue // 스택이 그 자리에 깔렸으면 Helm 이 스스로 판단한다
+		}
+		o.adoptOwnedResources(ctx, target.Kind, releaseName, namespace, "-n", target.Namespace)
+	}
+}
+
+// adoptOwnedResources 는 한 종류의 리소스 가운데 같은 이름의 죽은 릴리스가 남긴 것을 인수한다.
+// scope 는 네임스페이스 리소스일 때의 "-n <네임스페이스>" 다.
+func (o *Orchestrator) adoptOwnedResources(ctx context.Context, kind, releaseName, namespace string, scope ...string) {
+	owners, err := o.listOwners(ctx, kind, scope...)
+	if err != nil {
+		// 클러스터에 없는 종류(apiservice 등)일 수 있다.
+		return
+	}
+
+	for _, owner := range owners {
+		if owner.ReleaseName != releaseName || owner.ReleaseNamespace == namespace {
 			continue
 		}
 
-		for _, owner := range owners {
-			if owner.ReleaseName != releaseName || owner.ReleaseNamespace == namespace {
-				continue
+		alive := releaseAliveInNamespace(ctx, o, owner.ReleaseName, owner.ReleaseNamespace)
+		if !shouldAdoptClusterScopedResource(owner, releaseName, namespace, alive) {
+			if alive {
+				slog.Warn("cluster-scoped 리소스를 인수하지 않습니다 — 다른 네임스페이스의 릴리스가 아직 살아 있습니다",
+					"kind", kind, "name", owner.Name, "scope", strings.Join(scope, " "),
+					"owner_namespace", owner.ReleaseNamespace, "target_namespace", namespace)
 			}
-
-			alive := releaseAliveInNamespace(ctx, o, owner.ReleaseName, owner.ReleaseNamespace)
-			if !shouldAdoptClusterScopedResource(owner, releaseName, namespace, alive) {
-				if alive {
-					slog.Warn("cluster-scoped 리소스를 인수하지 않습니다 — 다른 네임스페이스의 릴리스가 아직 살아 있습니다",
-						"kind", kind, "name", owner.Name,
-						"owner_namespace", owner.ReleaseNamespace, "target_namespace", namespace)
-				}
-				continue
-			}
-
-			if err := o.patchClusterScopedOwnership(ctx, kind, owner.Name, releaseName, namespace); err != nil {
-				slog.Warn("cluster-scoped 리소스 소유권 인수 실패",
-					"kind", kind, "name", owner.Name, "error", err)
-				continue
-			}
-			slog.Info("cluster-scoped 리소스 소유권을 현재 릴리스로 인수했습니다",
-				"kind", kind, "name", owner.Name,
-				"from_namespace", owner.ReleaseNamespace, "to_namespace", namespace)
+			continue
 		}
+
+		if err := o.patchOwnership(ctx, kind, owner.Name, releaseName, namespace, scope...); err != nil {
+			slog.Warn("cluster-scoped 리소스 소유권 인수 실패",
+				"kind", kind, "name", owner.Name, "scope", strings.Join(scope, " "), "error", err)
+			continue
+		}
+		slog.Info("cluster-scoped 리소스 소유권을 현재 릴리스로 인수했습니다",
+			"kind", kind, "name", owner.Name, "scope", strings.Join(scope, " "),
+			"from_namespace", owner.ReleaseNamespace, "to_namespace", namespace)
 	}
 }
 
 // patchClusterScopedOwnership 는 Helm 소유권 주석/라벨을 현재 릴리스로 덮어쓴다.
 func (o *Orchestrator) patchClusterScopedOwnership(ctx context.Context, kind, name, releaseName, namespace string) error {
+	return o.patchOwnership(ctx, kind, name, releaseName, namespace)
+}
+
+// patchOwnership 은 patchClusterScopedOwnership 에 범위 인자(-n <네임스페이스>)를 더한 것이다.
+func (o *Orchestrator) patchOwnership(ctx context.Context, kind, name, releaseName, namespace string, scope ...string) error {
 	patch := fmt.Sprintf(
 		`{"metadata":{"labels":{"app.kubernetes.io/managed-by":"Helm"},`+
 			`"annotations":{"meta.helm.sh/release-name":%q,"meta.helm.sh/release-namespace":%q}}}`,
 		releaseName, namespace)
-	_, err := o.runKubectl(ctx, "patch", kind, name, "--type=merge", "-p", patch)
+	args := append([]string{"patch", kind, name}, scope...)
+	_, err := o.runKubectl(ctx, append(args, "--type=merge", "-p", patch)...)
 	return err
 }
