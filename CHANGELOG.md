@@ -174,6 +174,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   **아직 아닌 것**: **실환경 리허설이 남았다** — 실제 OSS 데이터(GitLab 커밋 · Harbor digest · Jenkins 빌드) · OpenBao 금고 · RTO/정지 창 실측 · 다중 노드. 축소 리허설은 *메커니즘*을 검증했지 *규모와 도구별 정합성*을 검증하지 않았고, **그것이 끝나야 B4-1 완료다.** 알림은 구조화 로그까지이고 채널 발송은 #63 에 달렸다. UI(B3-2)와 운영 런북(B3-4)도 남아 있다.
 
+### Changed
+
+- **낡은 가이드 세 편을 지금 코드와 대조해 맞췼다** (`docs/guides/cicd-pipeline-kind-deploy-guide.md`, `docs/20_개발가이드/Nullus_템플릿_추가_가이드.md`, `docs/20_개발가이드/Nullus_CLI_사용_가이드.md`): CI/CD kind 배포 가이드의 파이프라인 생성·배포 요청 본문(`git_repo` → `git_repo_url`, 응답 `.pipeline.id`, `deploy` 는 `version` · `deployed_by` · `manifest_types`)과 템플릿 목록을 현재 핸들러와 시드 기준으로 고치고, 스택 통합(`stack_integrated`)과 플랫폼 직접 배포(`emergency_direct`)의 차이를 적었다. 템플릿 추가 가이드에 `planning_profile` · CI/CD 템플릿의 선택 필드(`git_repo_url` 등)를 더하고, 호환성 매트릭스 API 가 등록돼 화면에서도 만들 수 있다는 사실로 고쳤다(404 라는 옛 안내 삭제). CLI 가이드에 **구현 현황 표**를 두어 지금 동작하는 것(`version` · `stack ls`)과 설계만 있는 것을 가르고, `pipeline deploy` 는 스택 통합 파이프라인에 "배포" 명령이 없다는 현재 모델로 다시 적었다. 로컬 E2E 가이드 부록 C 의 마지막 제약(낡은 문서)을 지웠다.
+
 ### Fixed
 
 - **GitLab 초기 root 비밀번호가 금고·연결 정보와 다른 것이던 것** (`internal/stack/adapter/helm/values.go`, `internal/stack/domain/connection.go`): 설치는 금고 값(`artifacts/gitlab/root-password`)을 ESO 로 `gitlab-initial-root-password` 에 프로비저닝했지만 GitLab 차트 values 가 그것을 참조하지 않아, 차트가 `gitlab-gitlab-initial-root-password` 에 임의 비밀번호를 만들었다 — 금고의 값·백업·연결 정보 안내가 가리키는 것과 실제 root 비밀번호가 달랐다(실측: 두 Secret 의 값이 다르고 로그인되는 것은 차트 것). 이제 차트의 `global.initialRootPassword` 가 프로비저닝된 Secret 을 읽고, 연결 정보 안내도 같은 이름을 쓴다(값의 단일 출처는 domain). **이 변경 전에 설치한 스택은 차트가 만든 `gitlab-gitlab-initial-root-password` 가 실제 비밀번호다.** 에어갭 설치 values 와 이미지 목록을 함께 갱신했다.
