@@ -31,6 +31,10 @@ func (c *captureStreamer) Subscribe(_ string) <-chan port.LogEntry {
 
 func (c *captureStreamer) Unsubscribe(_ string, _ <-chan port.LogEntry) {}
 
+func (c *captureStreamer) Tail(_ context.Context, _ string, _ int) ([]port.LogEntry, error) {
+	return nil, nil
+}
+
 func (c *captureStreamer) ClearHistory(deploymentID string) {
 	c.clearedHistoryID = append(c.clearedHistoryID, deploymentID)
 }

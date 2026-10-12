@@ -143,6 +143,10 @@ func (s *fakeStreamer) Subscribe(_ string) <-chan port.LogEntry {
 
 func (s *fakeStreamer) Unsubscribe(_ string, _ <-chan port.LogEntry) {}
 
+func (s *fakeStreamer) Tail(_ context.Context, _ string, _ int) ([]port.LogEntry, error) {
+	return nil, nil
+}
+
 func (s *fakeStreamer) steps() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
