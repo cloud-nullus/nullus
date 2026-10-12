@@ -193,6 +193,8 @@ func (m *mockDeploymentRepository) ListByPipelineID(_ context.Context, pipelineI
 	return result, nil
 }
 
+func (m *mockDeploymentRepository) Delete(context.Context, string) error { return nil }
+
 func (m *mockDeploymentRepository) Update(_ context.Context, _ *domain.Deployment) error { return nil }
 
 type noopKubeconfigProvider struct{}

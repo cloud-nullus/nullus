@@ -164,6 +164,14 @@ func (r *MemoryDeploymentRepository) Update(_ context.Context, d *domain.Deploym
 	return nil
 }
 
+// Delete 는 기록 하나를 지운다. 없으면 오류가 아니다.
+func (r *MemoryDeploymentRepository) Delete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.deployments, id)
+	return nil
+}
+
 func clonePipeline(p *domain.Pipeline) *domain.Pipeline {
 	if p == nil {
 		return nil

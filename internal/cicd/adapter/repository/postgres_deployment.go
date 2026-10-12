@@ -161,3 +161,13 @@ func marshalSteps(steps []domain.DeployStep) ([]byte, error) {
 	}
 	return raw, nil
 }
+
+// Delete 는 기록 하나를 지운다. 없으면 오류가 아니다 — 동기화가 실행이 아닌 것(SKIPPED 파이프라인)을
+// 예전에 실패로 남긴 기록을 거둘 때 쓴다.
+func (r *PostgresDeploymentRepository) Delete(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM pipeline_deployments WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("delete deployment %s: %w", id, err)
+	}
+	return nil
+}
