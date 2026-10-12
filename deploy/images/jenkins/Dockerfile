@@ -15,8 +15,28 @@
 # 빌드:
 #   docker build -t ghcr.io/cloud-nullus/draft/nullus-jenkins:<태그> deploy/images/jenkins
 # =============================================================================
-ARG JENKINS_VERSION=2.568.2
+ARG JENKINS_VERSION=2.568.3
 FROM jenkins/jenkins:${JENKINS_VERSION}-jdk21
+
+# 베이스 이미지의 Debian 패키지는 태그가 찍힌 날에 멈춰 있다 — 2026-10-12 기준선에서 perl 계열
+# CRITICAL 4건의 수정판(deb13u1)이 이미 나와 있었는데 베이스에 없었다. 빌드마다 보안 업데이트를
+# 받아 넣는다. 릴리즈 스캔 게이트(릴리즈 정책 §7.4)는 수정판 있는 CRITICAL 이 있으면 릴리즈를 막는다.
+USER root
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# 베이스 이미지가 넣는 git-lfs 는 옛 Go 로 빌드된 채 멈춰 있다(2.568.3 의 3.7.1 — Go 1.25.3, 표준 라이브러리
+# CRITICAL 1건). 상류 최신판으로 바꿔 넣는다 — 버전을 올릴 때는 이미지를 빌드해 trivy 로 확인한다.
+ARG GIT_LFS_VERSION=3.8.0
+RUN ARCH="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://github.com/git-lfs/git-lfs/releases/download/v${GIT_LFS_VERSION}/git-lfs-linux-${ARCH}-v${GIT_LFS_VERSION}.tar.gz" \
+       | tar -xz -C /tmp \
+    && install -m 0755 "/tmp/git-lfs-${GIT_LFS_VERSION}/git-lfs" /usr/local/bin/git-lfs \
+    && rm -rf /tmp/git-lfs-* \
+    && git-lfs version
+USER jenkins
 
 # 플러그인 목록의 단일 출처다. 여기와 차트 values 가 갈라지면 차트가 런타임에
 # 다시 받으려 하므로, values 는 installPlugins 를 끄고 이 목록만 신뢰한다.

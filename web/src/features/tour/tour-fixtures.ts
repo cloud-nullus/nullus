@@ -57,7 +57,7 @@ export const TOUR_STACKS = {
           container_registry: { name: 'Harbor', version: '2.11.0', enabled: true },
         },
         pipeline: {
-          ci_platform: { name: 'Jenkins', version: '2.568.2', enabled: true },
+          ci_platform: { name: 'Jenkins', version: '2.568.3', enabled: true },
           cd_tool: { name: 'Argo CD', version: 'v2.13.3', enabled: true },
         },
       },
@@ -94,7 +94,7 @@ export const TOUR_TEMPLATES = [
       '8Gi 노드 하나에 올라가는 최소 구성입니다. Gitea·Jenkins·Harbor·Argo CD 만 세우고 오브젝트 스토리지와 모니터링은 뺐습니다. 로컬 검증이나 소규모 PoC 에 맞습니다.',
     tools: [
       { category: 'source_repository', name: 'Gitea', helm_version: '12.7.0', app_version: '1.27.0' },
-      { category: 'ci_platform', name: 'Jenkins', helm_version: '5.9.54', app_version: '2.568.2' },
+      { category: 'ci_platform', name: 'Jenkins', helm_version: '5.9.54', app_version: '2.568.3' },
       { category: 'container_registry', name: 'Harbor', helm_version: '1.15.0', app_version: '2.11.0' },
       { category: 'cd_tool', name: 'Argo CD', helm_version: '7.7.16', app_version: 'v2.13.3' },
     ],
@@ -167,7 +167,7 @@ export const TOUR_STACK_MONITORING = {
   installed_resources: [],
   oss_statuses: [
     { key: 'gitea', name: 'Gitea', version: '1.27.0', enabled: true, status: 'running', pod_count: 1, ready_pods: 1, pods: [{ name: 'gitea-6f7c9d8b4-mn2xq', phase: 'Running', ready: true, restart_count: 0, node_name: 'tour-worker-1', cpu_request_millicores: 100, cpu_limit_millicores: 200, cpu_usage_millicores: 24, memory_request_mib: 256, memory_limit_mib: 512, memory_usage_mib: 180, status: 'running' }] },
-    { key: 'jenkins', name: 'Jenkins', version: '2.568.2', enabled: true, status: 'running', pod_count: 1, ready_pods: 1, pods: [{ name: 'jenkins-0', phase: 'Running', ready: true, restart_count: 0, node_name: 'tour-worker-2', cpu_request_millicores: 100, cpu_limit_millicores: 200, cpu_usage_millicores: 24, memory_request_mib: 256, memory_limit_mib: 1024, memory_usage_mib: 410, status: 'running' }] },
+    { key: 'jenkins', name: 'Jenkins', version: '2.568.3', enabled: true, status: 'running', pod_count: 1, ready_pods: 1, pods: [{ name: 'jenkins-0', phase: 'Running', ready: true, restart_count: 0, node_name: 'tour-worker-2', cpu_request_millicores: 100, cpu_limit_millicores: 200, cpu_usage_millicores: 24, memory_request_mib: 256, memory_limit_mib: 1024, memory_usage_mib: 410, status: 'running' }] },
     { key: 'harbor', name: 'Harbor', version: '2.11.0', enabled: true, status: 'running', pod_count: 3, ready_pods: 3, pods: [{ name: 'harbor-core-7d9f8c6b5-pl4mk', phase: 'Running', ready: true, restart_count: 0, node_name: 'tour-worker-1', cpu_request_millicores: 100, cpu_limit_millicores: 200, cpu_usage_millicores: 24, memory_request_mib: 256, memory_limit_mib: 1024, memory_usage_mib: 190, status: 'running' }, { name: 'harbor-registry-58c7d94f6-qq7rt', phase: 'Running', ready: true, restart_count: 0, node_name: 'tour-worker-2', cpu_request_millicores: 100, cpu_limit_millicores: 200, cpu_usage_millicores: 24, memory_request_mib: 256, memory_limit_mib: 1024, memory_usage_mib: 120, status: 'running' }, { name: 'harbor-database-0', phase: 'Running', ready: true, restart_count: 0, node_name: 'tour-worker-1', cpu_request_millicores: 100, cpu_limit_millicores: 200, cpu_usage_millicores: 24, memory_request_mib: 256, memory_limit_mib: 1024, memory_usage_mib: 240, status: 'running' }] },
     { key: 'argocd', name: 'Argo CD', version: 'v2.13.3', enabled: true, status: 'running', pod_count: 3, ready_pods: 3, pods: [{ name: 'argo-cd-argocd-application-controller-0', phase: 'Running', ready: true, restart_count: 0, node_name: 'tour-worker-1', cpu_request_millicores: 100, cpu_limit_millicores: 200, cpu_usage_millicores: 24, memory_request_mib: 123, memory_limit_mib: 512, memory_usage_mib: 210, status: 'running' }, { name: 'argo-cd-argocd-repo-server-6b5c8d7f9-xk2ld', phase: 'Running', ready: true, restart_count: 0, node_name: 'tour-worker-2', cpu_request_millicores: 100, cpu_limit_millicores: 200, cpu_usage_millicores: 24, memory_request_mib: 102, memory_limit_mib: 512, memory_usage_mib: 150, status: 'running' }, { name: 'argo-cd-argocd-server-79d6f4b8c5-tt9wz', phase: 'Running', ready: true, restart_count: 0, node_name: 'tour-worker-1', cpu_request_millicores: 100, cpu_limit_millicores: 200, cpu_usage_millicores: 24, memory_request_mib: 102, memory_limit_mib: 512, memory_usage_mib: 130, status: 'running' }] },
   ],
