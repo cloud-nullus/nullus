@@ -176,6 +176,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **복구의 금고(OpenBao KV) 가져오기가 빈 스택 ID 로 전역 금고를 향하던 것** (`internal/backup/usecase/run_restore.go`, 백업복구 설계 §6.1 8단계): 백업은 스택 ID 로 **스택 금고**를 뜨는데(`KV.Export`) 복구는 빈 스택 ID 로 `KV.Import` 를 불러 전역 주소(`OPENBAO_ADDR`)로 갔다 — 인클러스터면 다른 금고에 쓰고, 호스트에서는 닿지 못해 네 번의 리허설 모두 "금고 경로 27건 복원 실패" 로 남았다. 이제 뜬 곳으로 되돌린다. 스택을 되돌리는 복구에서는 금고 파드가 워크로드 재개 뒤에 뜨므로 재개 뒤로 미루고 응답할 때까지 기다려 다시 시도한다(기본 2분·10초 간격). 스택을 건드리지 않는 복구(`platform_only`)는 금고가 이미 떠 있어 바로 한다. 참조 정합성 검사는 원래 스택 금고를 봤으므로 이제 import 와 같은 금고를 본다.
+
 - **앱 네임스페이스를 잃은 뒤 복구하면 앱이 ImagePullBackOff 로 멈추던 것** (`internal/backup/adapter/kube/resource_dumper.go`, `internal/shared/domain/app_namespace.go`, 백업복구 설계 §10.2.3): 앱의 Deployment 는 Argo CD 가 Git 에서 되살리지만, Nullus 가 파이프라인을 만들 때 앱 네임스페이스에 둔 이미지 pull Secret(`nullus-registry`)과 네임스페이스 라벨은 Git 에도 백업에도 없었다 — 클러스터를 통째로 잃거나 앱 네임스페이스까지 지운 뒤 복구하면 Deployment 는 돌아오는데 `FailedToRetrieveImagePullSecret` 로 pull 이 실패했다(2026-10-12 리허설 2차 실측). 이제 네임스페이스 덤프가 Argo CD Application 의 destination 네임스페이스마다 네임스페이스(라벨 포함)와 pull Secret 을 `app_namespaces` 로 담고, 복구가 스택 리소스보다 먼저 **없을 때만** 만든다 — 앱 네임스페이스가 살아 있으면 지금 쓰는 자격증명을 덮지 않는다. 이름은 CI/CD 와 백업이 함께 보도록 공용 도메인으로 옮겼다. 옛 덤프(`app_namespaces` 없음)도 그대로 복원된다.
 
 - **full 복구 직후의 플랫폼 질의가 간헐적으로 `cached plan must not change result type (SQLSTATE 0A000)` 으로 죽던 것** (`internal/backup/{port,usecase/run_restore.go,wiring.go}`): `pg_restore --clean` 이 테이블을 지우고 다시 만드는데, API 의 pgx 연결 풀이 들고 있던 준비된 문장은 옛 테이블을 가리킨다. 복원 직후 그 연결을 잡은 첫 질의가 죽는다 — 2026-10-12 리허설 4차에서 게이트웨이 주소 재설정의 스택 조회가 그렇게 실패해 `hostAliases 를 손으로 맞춰야 합니다` 로 남았다(어느 연결이 잡히느냐에 따라 간헐적이라 앞선 세 번은 지나갔다). 플랫폼 DB 를 되돌린 직후 풀을 비운다(`pgxpool.Pool.Reset`) — 이후 질의는 새 연결로 간다.
