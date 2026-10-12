@@ -121,6 +121,10 @@ func renderPreCommitConfig() string {
 //
 // 비어 있는 채로 넣는 이유: 파일이 있어야 사용자가 "어디에 적는지" 를 찾지 않는다. 기본값은
 // 아무것도 허용하지 않는다 — 배포 매니페스트 경로를 미리 풀어 두면 그 안의 진짜 Secret 이 가려진다.
+//
+// allowlist 표는 **주석으로** 둔다. gitleaks v8.30 은 검사 항목(paths·regexes 등)이 없는 allowlist 를
+// 설정 오류로 거부한다 — 2026-10-12 실측에서 비어 있는 [allowlist] 때문에 모든 앱의 첫 파이프라인이
+// secret-scan 에서 막혔다.
 func renderGitleaksConfig() string {
 	var b strings.Builder
 	b.WriteString("# Nullus 가 생성했습니다 — gitleaks 설정. CI 의 secret-scan 단계와 pre-commit 훅이 함께 읽습니다.\n")
@@ -130,8 +134,10 @@ func renderGitleaksConfig() string {
 	b.WriteString("# 특정 한 건만 넘기려면 .gitleaksignore 에 리포트의 Fingerprint 한 줄을 적는 쪽이 좁습니다.\n")
 	b.WriteString("[extend]\n")
 	b.WriteString("useDefault = true\n\n")
-	b.WriteString("[allowlist]\n")
-	b.WriteString("description = \"이 앱의 오탐 — 경로·정규식. 비밀값이 아닌 것만 적으세요\"\n")
+	b.WriteString("# 오탐을 적을 때 아래 블록의 주석을 풀고 paths 나 regexes 를 하나 이상 채웁니다.\n")
+	b.WriteString("# 항목이 하나도 없는 [allowlist] 는 gitleaks 가 설정 오류로 거부합니다.\n")
+	b.WriteString("# [allowlist]\n")
+	b.WriteString("# description = \"이 앱의 오탐 — 경로·정규식. 비밀값이 아닌 것만 적으세요\"\n")
 	b.WriteString("# paths = [\n")
 	b.WriteString("#   '''src/fixtures/sample-keys\\.json$''',\n")
 	b.WriteString("# ]\n")

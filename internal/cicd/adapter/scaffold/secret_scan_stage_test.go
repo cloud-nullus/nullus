@@ -133,7 +133,7 @@ func runSecretScanScript(t *testing.T, scannerExit int, env map[string]string, w
 		}
 		env[port.SecretScanBaseVariable] = strings.TrimSpace(string(out))
 	}
-	cmd := exec.Command("sh", "-c", "set -eu\n"+strings.Join(secretScanScriptLines(), "\n"))
+	cmd := exec.Command("bash", "-c", "set -euo pipefail\n"+strings.Join(secretScanScriptLines(), "\n"))
 	cmd.Dir = dir
 	cmd.Env = []string{
 		"PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH"),
@@ -202,4 +202,41 @@ func TestSecretScanScript_ScannerFailureFollowsUnreachablePolicy(t *testing.T) {
 	assert.Equal(t, 0, code)
 	code, _ = runSecretScanScript(t, 1, map[string]string{port.SecretDetectionVariable: "warn"}, false)
 	assert.Equal(t, 1, code)
+}
+
+// gitleaks v8.30 은 검사 항목(commits·paths·regexes·stopwords)이 하나도 없는 allowlist 를 설정 오류로
+// 거부한다("[[allowlists]] must contain at least one check"). 2026-10-12 실측 — 스캐폴딩한 비어 있는
+// [allowlist] 때문에 모든 앱의 첫 파이프라인이 secret-scan 에서 "스캐너 장애" 로 막혔다. 주석이 아닌
+// allowlist 표에는 검사 항목이 있어야 한다.
+func TestRenderGitleaksConfig_HasNoEmptyAllowlist(t *testing.T) {
+	assertNoEmptyGitleaksAllowlist(t, renderGitleaksConfig())
+}
+
+func assertNoEmptyGitleaksAllowlist(t *testing.T, config string) {
+	t.Helper()
+	inAllowlist, header, checks := false, "", 0
+	flush := func() {
+		if inAllowlist && checks == 0 {
+			t.Errorf("%s 에 검사 항목이 없다 — gitleaks 가 설정을 거부한다:\n%s", header, config)
+		}
+	}
+	for _, raw := range strings.Split(config, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") {
+			flush()
+			header = line
+			inAllowlist = line == "[allowlist]" || line == "[[allowlists]]" || strings.HasSuffix(line, ".allowlist]")
+			checks = 0
+			continue
+		}
+		key := strings.TrimSpace(strings.SplitN(line, "=", 2)[0])
+		switch key {
+		case "commits", "paths", "regexes", "stopwords":
+			checks++
+		}
+	}
+	flush()
 }
