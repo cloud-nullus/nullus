@@ -176,6 +176,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **로컬 런북의 kind 노드 배선이 `stack-up --wait` 에서만 되던 것** (`scripts/runbook_local.sh`): 노드 `/etc/hosts`(registry.<도메인> → 게이트웨이 ClusterIP)와 내부 CA 신뢰, GitLab 포트포워드 + `NULLUS_GITLAB_URL` 은 `stack-up --wait` 의 끝에서만 했다 — 화면에서 설치한 스택, `--wait` 없이 띄운 스택, 복구로 되살아난 스택은 배선이 안 돼 앱이 `ImagePullBackOff` 로 멈췄다. 배선을 스택 ID 기준 함수(`wire_stack_host`)로 빼 `stack-status <id> --wait` 가 완료 시 같이 하고, 새 명령 `wire [--stack=<id>]` 가 kind 의 completed 스택 전부(또는 하나)를 다시 잇는다. 몇 번 돌려도 안전하다.
+
 - **앱 네임스페이스를 잃은 뒤 복구하면 앱이 ImagePullBackOff 로 멈추던 것** (`internal/backup/adapter/kube/resource_dumper.go`, `internal/shared/domain/app_namespace.go`, 백업복구 설계 §10.2.3): 앱의 Deployment 는 Argo CD 가 Git 에서 되살리지만, Nullus 가 파이프라인을 만들 때 앱 네임스페이스에 둔 이미지 pull Secret(`nullus-registry`)과 네임스페이스 라벨은 Git 에도 백업에도 없었다 — 클러스터를 통째로 잃거나 앱 네임스페이스까지 지운 뒤 복구하면 Deployment 는 돌아오는데 `FailedToRetrieveImagePullSecret` 로 pull 이 실패했다(2026-10-12 리허설 2차 실측). 이제 네임스페이스 덤프가 Argo CD Application 의 destination 네임스페이스마다 네임스페이스(라벨 포함)와 pull Secret 을 `app_namespaces` 로 담고, 복구가 스택 리소스보다 먼저 **없을 때만** 만든다 — 앱 네임스페이스가 살아 있으면 지금 쓰는 자격증명을 덮지 않는다. 이름은 CI/CD 와 백업이 함께 보도록 공용 도메인으로 옮겼다. 옛 덤프(`app_namespaces` 없음)도 그대로 복원된다.
 
 - **full 복구 직후의 플랫폼 질의가 간헐적으로 `cached plan must not change result type (SQLSTATE 0A000)` 으로 죽던 것** (`internal/backup/{port,usecase/run_restore.go,wiring.go}`): `pg_restore --clean` 이 테이블을 지우고 다시 만드는데, API 의 pgx 연결 풀이 들고 있던 준비된 문장은 옛 테이블을 가리킨다. 복원 직후 그 연결을 잡은 첫 질의가 죽는다 — 2026-10-12 리허설 4차에서 게이트웨이 주소 재설정의 스택 조회가 그렇게 실패해 `hostAliases 를 손으로 맞춰야 합니다` 로 남았다(어느 연결이 잡히느냐에 따라 간헐적이라 앞선 세 번은 지나갔다). 플랫폼 DB 를 되돌린 직후 풀을 비운다(`pgxpool.Pool.Reset`) — 이후 질의는 새 연결로 간다.
