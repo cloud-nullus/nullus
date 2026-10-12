@@ -450,3 +450,8 @@ func (f *fakeSharedComponents) EnsureSharedComponents(_ context.Context, _ []byt
 	}
 	return []string{"installing_cert_manager", "installing_metrics_server"}, f.warnings, nil
 }
+
+// fakeResetter 는 DB 연결 풀 재설정 대역이다(pgxpool.Pool.Reset).
+type fakeResetter struct{ tr *trace }
+
+func (f *fakeResetter) Reset() { f.tr.add("db.reset") }

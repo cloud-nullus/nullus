@@ -272,6 +272,9 @@ func (m *Module) Restore(ctx context.Context, stackID string) (*usecase.RestoreU
 		deps.SharedComponents = m.deps.SharedComponents
 	}
 	deps.GatewayAliases = m.deps.GatewayAliases
+	if m.deps.Pool != nil {
+		deps.Connections = m.deps.Pool // pgxpool.Pool.Reset
+	}
 	return usecase.NewRestoreUseCase(deps), nil
 }
 

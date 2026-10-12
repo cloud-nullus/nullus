@@ -162,6 +162,16 @@ type SharedResourceDumper interface {
 	ApplySharedSecrets(ctx context.Context, in io.Reader) error
 }
 
+// ConnectionResetter 는 플랫폼 DB 연결 풀을 비운다(pgxpool.Pool.Reset).
+//
+// pg_restore --clean 은 테이블을 지우고 다시 만든다. 풀의 연결이 들고 있던 준비된 문장은 옛 테이블을
+// 가리켜, 복원 직후 첫 질의가 "cached plan must not change result type (SQLSTATE 0A000)" 으로 죽는다 —
+// 어느 연결이 잡히느냐에 따라 간헐적이다(2026-10-12 리허설 4차의 게이트웨이 주소 재설정). 플랫폼 DB 를
+// 되돌린 직후 부른다.
+type ConnectionResetter interface {
+	Reset()
+}
+
 // SharedComponentsEnsurer 는 클러스터 공용 컨트롤러(cert-manager·metrics-server)를 없으면 세운다 —
 // 스택 모듈의 설치기가 구현한다. 클러스터의 마지막 스택을 지우면 컨트롤러까지 회수되는데, 컨트롤러는
 // 설치물이라 백업이 담지 않는다. 복구가 공용 자원(ClusterIssuer·Certificate)을 되살리기 전에 부른다.
