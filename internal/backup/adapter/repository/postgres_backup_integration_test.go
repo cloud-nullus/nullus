@@ -375,3 +375,46 @@ func applyMigrationRange(ctx context.Context, pool *pgxpool.Pool, from, to strin
 	}
 	return nil
 }
+
+// 백업 세트(000093) — 세트 ID 가 왕복하고, 세트 조회는 그 세트의 실행만 만든 순서로 준다.
+// 단독 실행(set_id NULL)은 빈 문자열로 읽힌다 — 기존 행 전부가 그렇다.
+func TestPostgresBackupRepository_백업_세트_왕복(t *testing.T) {
+	pool, cleanup := setupBackupPostgres(t)
+	t.Cleanup(cleanup)
+
+	repo := NewPostgresBackupRepository(pool)
+	ctx := context.Background()
+	setID := "3f1c9a7e-5d2b-4c8e-9a1f-0b2c3d4e5f60"
+
+	platform := domain.NewBackupRun(seededOrg, domain.ModePlatformOnly, domain.TriggerManual,
+		domain.ModeComponents(domain.ModePlatformOnly))
+	platform.SetID = setID
+	require.NoError(t, repo.CreateRun(ctx, platform))
+
+	stack := domain.NewBackupRun(seededOrg, domain.ModeStackOnly, domain.TriggerManual,
+		domain.ModeComponents(domain.ModeStackOnly))
+	stack.StackID = realisticStackID
+	stack.SetID = setID
+	require.NoError(t, repo.CreateRun(ctx, stack))
+
+	alone := newRun(seededOrg)
+	require.NoError(t, repo.CreateRun(ctx, alone))
+
+	got, err := repo.GetRun(ctx, stack.ID)
+	require.NoError(t, err)
+	assert.Equal(t, setID, got.SetID, "세트 ID 왕복")
+
+	gotAlone, err := repo.GetRun(ctx, alone.ID)
+	require.NoError(t, err)
+	assert.Empty(t, gotAlone.SetID, "단독 실행은 세트가 없다")
+
+	members, err := repo.ListRunsBySet(ctx, setID)
+	require.NoError(t, err)
+	require.Len(t, members, 2, "세트의 실행만")
+	assert.Equal(t, platform.ID, members[0].ID, "플랫폼이 먼저 — 만든 순서")
+	assert.Equal(t, stack.ID, members[1].ID)
+
+	none, err := repo.ListRunsBySet(ctx, "00000000-0000-0000-0000-000000000000")
+	require.NoError(t, err)
+	assert.Empty(t, none)
+}

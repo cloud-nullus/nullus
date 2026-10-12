@@ -692,9 +692,11 @@ func main() {
 		RotationPausing:  rotationScheduler,
 		GatewayAliases:   gatewayAliasRepinUC,
 		SharedComponents: ensureSharedComponentsUC,
-		EncryptionKey:    []byte(os.Getenv("ENCRYPTION_KEY")),
-		PlatformVersion:  platformVersion,
-		Logger:           slog.Default(),
+		// 백업 세트가 "조직의 모든 스택" 을 스택 모듈의 저장소로 읽는다(bridge).
+		Stacks:          backupbridge.NewStackLister(pgStackRepo),
+		EncryptionKey:   []byte(os.Getenv("ENCRYPTION_KEY")),
+		PlatformVersion: platformVersion,
+		Logger:          slog.Default(),
 	})
 	if err != nil {
 		slog.Error("백업 모듈 조립 실패", "error", err)
@@ -710,18 +712,27 @@ func main() {
 		backupHandler.RegisterRoutes(admin)
 
 		if sc := cfg.Backup.Schedule; sc.Enabled {
-			go backupscheduler.New(
-				mustBackupUseCase(rotationCtx, backupModule, sc.StackID),
-				backupModule.Retention,
-				backupscheduler.Config{
-					Interval:  sc.Interval,
-					OrgID:     sc.OrgID,
-					StackID:   sc.StackID,
-					Namespace: sc.Namespace,
-					Mode:      backupdomain.Mode(sc.Mode),
-					Logger:    slog.Default(),
-				},
-			).Start(rotationCtx)
+			// all_stacks 면 단독 유스케이스 대신 세트를 돈다 — 플랫폼 + 조직의 모든 스택.
+			var single *backupusecase.BackupUseCase
+			if !sc.AllStacks {
+				single = mustBackupUseCase(rotationCtx, backupModule, sc.StackID)
+			}
+			sched := backupscheduler.New(single, backupModule.Retention, backupscheduler.Config{
+				Interval:  sc.Interval,
+				OrgID:     sc.OrgID,
+				StackID:   sc.StackID,
+				Namespace: sc.Namespace,
+				Mode:      backupdomain.Mode(sc.Mode),
+				Logger:    slog.Default(),
+			})
+			if sc.AllStacks {
+				if set, err := backupModule.BackupSet(rotationCtx); err != nil {
+					slog.Error("스케줄 세트 백업 유스케이스를 만들 수 없습니다 — 주기 백업이 돌지 않습니다", "error", err)
+				} else {
+					sched.WithBackupSet(set)
+				}
+			}
+			go sched.Start(rotationCtx)
 		}
 	}
 

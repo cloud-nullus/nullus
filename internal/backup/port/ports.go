@@ -20,6 +20,8 @@ type BackupRepository interface {
 	UpdateRun(ctx context.Context, run *domain.BackupRun) error
 	GetRun(ctx context.Context, id string) (*domain.BackupRun, error)
 	ListRuns(ctx context.Context, orgID string, limit int) ([]*domain.BackupRun, error)
+	// ListRunsBySet 은 한 백업 세트의 실행들이다(domain.PlanBackupSet). 순서는 생성순.
+	ListRunsBySet(ctx context.Context, setID string) ([]*domain.BackupRun, error)
 	ListSummaries(ctx context.Context, orgID string) ([]domain.RunSummary, error)
 
 	AddArtifact(ctx context.Context, a *domain.Artifact) error
@@ -29,6 +31,14 @@ type BackupRepository interface {
 	CreateRestore(ctx context.Context, run *domain.RestoreRun) error
 	UpdateRestore(ctx context.Context, run *domain.RestoreRun) error
 	GetRestore(ctx context.Context, id string) (*domain.RestoreRun, error)
+}
+
+// StackLister 는 조직의 설치 완료된 스택을 알려 준다(스택 모듈이 구현해 cmd/api 가 잇는다).
+//
+// 백업 세트가 "플랫폼 + 모든 스택" 을 뜰 때 어느 스택이 있는지 물을 곳이다. 스택 테이블은 스택
+// 모듈의 것이므로 여기서 직접 읽지 않는다.
+type StackLister interface {
+	ListCompletedStacks(ctx context.Context, orgID string) ([]domain.StackRef, error)
 }
 
 // OrganizationChecker 는 조직이 실제로 있는지 본다.

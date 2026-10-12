@@ -2045,7 +2045,8 @@
       "quiesce": "Downtime",
       "status": "Status",
       "target": "Target",
-      "platform": "Platform"
+      "platform": "Platform",
+      "set": "Set"
     },
     "dialog": {
       "title": "Select backup targets",
@@ -2056,7 +2057,12 @@
       "confirmLabel": "Type the namespace to confirm",
       "stackLabel": "Backup target",
       "platformOnly": "Platform only (no stack)",
-      "platformOnlyHint": "Vault, Kubernetes resources and volumes belong to a stack. Pick a stack to include them."
+      "platformOnlyHint": "Vault, Kubernetes resources and volumes belong to a stack. Pick a stack to include them.",
+      "allStacks": "Everything — platform + all stacks",
+      "allStacksCount": "{{count}} stacks",
+      "allStacksHint": "One run for the platform and one per stack, tied together as a set — every target, every time. Restore a set from the API with its set ID.",
+      "allStacksWarning": "Every stack's workloads stop in turn while its volumes are backed up.",
+      "allConfirmLabel": "Type the word to confirm"
     },
     "target": {
       "platformDb": "Platform DB",

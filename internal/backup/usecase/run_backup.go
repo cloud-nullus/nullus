@@ -81,6 +81,8 @@ type RunBackupRequest struct {
 	// 골랐다면 그것이 모드보다 우선한다. 모드는 "보통 이만큼" 이라는 preset 이고,
 	// 실제로 무엇을 뜰지는 Scope 가 정한다 (RequiresQuiesce 도 Scope 를 본다).
 	Scope []domain.Component
+	// SetID 가 있으면 이 실행은 백업 세트의 멤버다(domain.PlanBackupSet).
+	SetID string
 }
 
 func (uc *BackupUseCase) Run(ctx context.Context, req RunBackupRequest) (*domain.BackupRun, error) {
@@ -99,6 +101,7 @@ func (uc *BackupUseCase) Run(ctx context.Context, req RunBackupRequest) (*domain
 		scope = domain.ModeComponents(req.Mode)
 	}
 	run := domain.NewBackupRun(req.OrgID, req.Mode, trigger, scope)
+	run.SetID = req.SetID
 	run.StackID = req.StackID
 
 	needsStack := req.Mode != domain.ModePlatformOnly
@@ -152,6 +155,8 @@ func detached(ctx context.Context, timeout time.Duration) (context.Context, cont
 }
 
 type executeResult struct {
+	// namespace 는 매니페스트에 남긴다 — 세트 복구가 스택을 어디로 되돌릴지 여기서 읽는다.
+	namespace string
 	results   map[domain.Component]error
 	artifacts []domain.Artifact
 	plan      domain.QuiescePlan
@@ -163,7 +168,7 @@ type executeResult struct {
 }
 
 func (uc *BackupUseCase) execute(ctx context.Context, req RunBackupRequest, run *domain.BackupRun) (*executeResult, error) {
-	out := &executeResult{results: map[domain.Component]error{}}
+	out := &executeResult{results: map[domain.Component]error{}, namespace: req.Namespace}
 
 	// 스키마 버전은 복구 시 정합성 판단의 기준이다 (§6.2).
 	if st, err := uc.d.Dumper.SchemaState(ctx, uc.d.Targets.Platform); err == nil {
@@ -476,6 +481,7 @@ func (uc *BackupUseCase) inScope(run *domain.BackupRun, c domain.Component) bool
 func (uc *BackupUseCase) finish(ctx context.Context, run *domain.BackupRun, res *executeResult) {
 	if res != nil {
 		m := domain.BuildManifest(run, domain.ManifestInput{
+			Namespace:          res.namespace,
 			PlatformVersion:    uc.d.PlatformVersion,
 			PGServerVersion:    res.pgServer,
 			PGDumpVersion:      res.pgClient,

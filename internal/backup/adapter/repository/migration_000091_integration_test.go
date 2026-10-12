@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cloud-nullus/draft/internal/backup/domain"
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
@@ -23,25 +22,28 @@ func TestMigration000091_고아_백업을_기본_조직으로_옮기고_FK를_�
 	pool, cleanup := startBackupPostgres(t)
 	t.Cleanup(cleanup)
 	ctx := context.Background()
-	repo := NewPostgresBackupRepository(pool)
 	const ghost = "00000000-0000-0000-0000-000000000001"
+
+	// 저장소 코드는 최신 스키마(000093 의 set_id 등)를 전제하므로 옛 스키마에는 쓸 수 없다 —
+	// 이 테스트는 마이그레이션의 동작을 보는 것이니 그 시점의 컬럼만으로 SQL 을 직접 친다.
+	const insert = `INSERT INTO backup_runs (org_id, trigger, mode, scope, status)
+		VALUES ($1, 'manual', 'platform_only', '{platform_db,keycloak_db}', 'pending') RETURNING id::text`
 
 	// FK 가 없던 시절: 유령 조직의 백업이 그냥 들어간다.
 	require.NoError(t, applyMigrationRange(ctx, pool, "", "000091_"))
-	orphan := domain.NewBackupRun(ghost, domain.ModePlatformOnly, domain.TriggerManual,
-		domain.ModeComponents(domain.ModePlatformOnly))
-	require.NoError(t, repo.CreateRun(ctx, orphan), "FK 이전에는 들어가야 한다")
+	var orphanID string
+	require.NoError(t, pool.QueryRow(ctx, insert, ghost).Scan(&orphanID), "FK 이전에는 들어가야 한다")
 
 	// 000092 가 FK 를 다시 거두므로(복구가 막혀서 — 그 파일의 주석) FK 가 있던 창만 본다.
 	require.NoError(t, applyMigrationRange(ctx, pool, "000091_", "000092_"))
 
-	got, err := repo.GetRun(ctx, orphan.ID)
-	require.NoError(t, err)
-	assert.Equal(t, shareddomain.SeededDefaultOrgID, got.OrgID, "고아 행은 시드 조직으로 옮겨진다")
+	var orgID string
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT org_id::text FROM backup_runs WHERE id::text = $1`, orphanID).Scan(&orgID))
+	assert.Equal(t, shareddomain.SeededDefaultOrgID, orgID, "고아 행은 시드 조직으로 옮겨진다")
 
-	again := domain.NewBackupRun(ghost, domain.ModePlatformOnly, domain.TriggerManual,
-		domain.ModeComponents(domain.ModePlatformOnly))
-	err = repo.CreateRun(ctx, again)
+	var againID string
+	err := pool.QueryRow(ctx, insert, ghost).Scan(&againID)
 	require.Error(t, err, "이제 없는 조직으로는 만들 수 없다")
 	assert.Contains(t, err.Error(), "backup_runs_org_id_fkey")
 }

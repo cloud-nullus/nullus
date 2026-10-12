@@ -2045,7 +2045,8 @@
       "quiesce": "정지 시간",
       "status": "상태",
       "target": "대상",
-      "platform": "플랫폼"
+      "platform": "플랫폼",
+      "set": "세트"
     },
     "dialog": {
       "title": "백업 대상 선택",
@@ -2056,7 +2057,12 @@
       "confirmLabel": "확인을 위해 네임스페이스를 입력하세요",
       "stackLabel": "백업 대상",
       "platformOnly": "플랫폼만 (스택 없음)",
-      "platformOnlyHint": "금고·Kubernetes 리소스·볼륨은 스택에 속합니다. 담으려면 스택을 고르세요."
+      "platformOnlyHint": "금고·Kubernetes 리소스·볼륨은 스택에 속합니다. 담으려면 스택을 고르세요.",
+      "allStacks": "전체 — 플랫폼 + 모든 스택",
+      "allStacksCount": "스택 {{count}}개",
+      "allStacksHint": "플랫폼 하나, 스택마다 하나의 실행을 한 세트로 묶어 뜹니다 — 대상은 언제나 전부입니다. 세트 복구는 API 에서 세트 ID 로 합니다.",
+      "allStacksWarning": "스택마다 볼륨을 뜨는 동안 그 스택의 워크로드가 차례로 멈춥니다.",
+      "allConfirmLabel": "확인을 위해 아래 단어를 입력하세요"
     },
     "target": {
       "platformDb": "플랫폼 DB",

@@ -210,13 +210,18 @@ func (uc *RestoreUseCase) run(ctx context.Context, req RunRestoreRequest, rr *do
 	}
 
 	// ── 8b. 스택 금고 KV import. 금고 파드가 뜬 뒤라 기다려 다시 시도한다 ──
-	if touchPlatform && deferVault {
-		uc.restoreStackVault(ctx, backup, arts)
+	//
+	// touchPlatform 과 무관하다 — 스택 금고는 스택 데이터다. 세트 복구가 스택을 stack_only 로 되돌릴 때도
+	// 금고는 돌아와야 한다(볼륨이 담겼으면 이미 그 안에 있고, 없으면 이것이 유일한 길이다).
+	var vaultImport *domain.VaultImportOutcome
+	if deferVault {
+		vaultImport = uc.restoreStackVault(ctx, backup, arts)
 	}
 
 	// ── 9. 참조 정합성. 경고하되 중단하지 않는다 ──
 	rr.IntegrityReport = uc.checkIntegrity(ctx, req, backup)
 	rr.IntegrityReport.SharedComponents = sharedComponents
+	rr.IntegrityReport.VaultImport = vaultImport
 
 	// ── 10. 게이트웨이 주소. 워크로드를 띄운 뒤 지금 주소로 hostAliases 를 맞춘다 ──
 	//
@@ -400,7 +405,10 @@ const (
 // restoreStackVault 는 스택 금고로 KV 를 되돌린다 — 워크로드 재개 직후라 금고가 아직 안 떠 있을 수
 // 있어 기다려 다시 시도한다. 상한을 넘기면 오류로 남긴다(치명적이지 않다 — 볼륨이 되돌아왔으면 금고의
 // 데이터는 이미 그 안에 있고, 없으면 참조 정합성 검사가 드러낸다).
-func (uc *RestoreUseCase) restoreStackVault(ctx context.Context, backup *domain.BackupRun, arts []*domain.Artifact) {
+//
+// 결과는 복구 기록(integrity_report.vault_import)에 남는다. 로그만으로는 응답에서 "안 돌았다" 와 "실패했다"
+// 를 가를 수 없다. 백업에 금고 산출물이 없으면 nil 이다.
+func (uc *RestoreUseCase) restoreStackVault(ctx context.Context, backup *domain.BackupRun, arts []*domain.Artifact) *domain.VaultImportOutcome {
 	wait, retry := uc.d.KVImportWait, uc.d.KVImportRetry
 	if wait <= 0 {
 		wait = defaultKVImportWait
@@ -408,20 +416,24 @@ func (uc *RestoreUseCase) restoreStackVault(ctx context.Context, backup *domain.
 	if retry <= 0 {
 		retry = defaultKVImportRetry
 	}
+	var outcome *domain.VaultImportOutcome
 	for _, a := range arts {
 		if a.Component != domain.ComponentOpenBaoKV {
 			continue
 		}
+		outcome = &domain.VaultImportOutcome{}
 		deadline := time.Now().Add(wait)
 		var err error
 		for attempt := 1; ; attempt++ {
+			outcome.Attempts = attempt
 			err = uc.pullStream(ctx, a, func(r io.Reader) error {
 				return uc.d.KV.Import(ctx, backup.StackID, r)
 			})
 			if err == nil || ctx.Err() != nil || time.Now().After(deadline) {
 				break
 			}
-			uc.d.Logger.Info("스택 금고가 아직 응답하지 않아 KV import 를 다시 시도합니다",
+			// 금고가 아직 안 떴을 수도, 권한·주소 문제일 수도 있다 — 원인은 오류에 있다.
+			uc.d.Logger.Info("스택 금고 KV import 실패 — 다시 시도합니다",
 				"stack_id", backup.StackID, "attempt", attempt, "error", err)
 			select {
 			case <-ctx.Done():
@@ -432,13 +444,17 @@ func (uc *RestoreUseCase) restoreStackVault(ctx context.Context, backup *domain.
 			break
 		}
 		if err != nil {
-			uc.d.Logger.Error("금고 복원 실패 — 참조 정합성 검사에서 드러납니다", "stack_id", backup.StackID, "error", err)
+			outcome.Error = err.Error()
+			uc.d.Logger.Error("금고 복원 실패 — integrity_report.vault_import 에 남습니다. 그 스택의 도구들은 금고의 자격증명을 못 찾는다",
+				"stack_id", backup.StackID, "attempts", outcome.Attempts, "error", err)
 			continue
 		}
+		outcome.Imported = true
 		// 성공도 남긴다 — 네 번의 리허설에서 이 단계는 실패 로그로만 보였다. 조용히 지나가면
 		// "안 돌았다" 와 구별할 수 없다.
-		uc.d.Logger.Info("스택 금고 KV 를 되돌렸습니다", "stack_id", backup.StackID)
+		uc.d.Logger.Info("스택 금고 KV 를 되돌렸습니다", "stack_id", backup.StackID, "attempts", outcome.Attempts)
 	}
+	return outcome
 }
 
 func (uc *RestoreUseCase) resumeWorkloads(ctx context.Context, m domain.Manifest) {

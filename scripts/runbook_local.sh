@@ -409,9 +409,12 @@ run_bg() {
 
 stop_service() {
   local name="$1" port="$2"
-  [[ -f "$PID_FILE" ]] || return 0
-  local line pid
-  line="$(grep -E "^${name}:" "$PID_FILE" | tail -n 1 || true)"
+  local line="" pid
+  # pid 파일이 없어도 포트는 비운다. 다른 체크아웃(워크트리)에서 띄운 API 는 이 트리의 pid 파일에
+  # 없는데, 여기서 돌아가 버리면 새 API 가 "address already in use" 로 바로 죽는다 — 실제로 그랬다.
+  if [[ -f "$PID_FILE" ]]; then
+    line="$(grep -E "^${name}:" "$PID_FILE" | tail -n 1 || true)"
+  fi
   if [[ -n "$line" ]]; then
     pid="${line#*:}"
     if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" >/dev/null 2>&1; then

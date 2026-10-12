@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { backupQueryKeys, requiresQuiesce } from './backup-api'
+import { SET_CONFIRM_PHRASE, backupQueryKeys, requiresQuiesce } from './backup-api'
 
 describe('requiresQuiesce', () => {
   it('should say a backup stops the service only when volumes are included', () => {
@@ -27,5 +27,13 @@ describe('useBackupRuns 설정', () => {
 describe('backupQueryKeys', () => {
   it('should key the run list so a new backup invalidates it', () => {
     expect(backupQueryKeys.runs()).toEqual(['admin', 'backups'])
+  })
+})
+
+describe('SET_CONFIRM_PHRASE', () => {
+  it('should match the server phrase for a whole-platform backup', () => {
+    // 서버(handler.SetConfirmPhrase)가 같은 문구를 요구한다. 어긋나면 화면이 통과시킨
+    // 입력을 서버가 BACKUP_SET_CONFIRM_REQUIRED 로 거절한다.
+    expect(SET_CONFIRM_PHRASE).toBe('all')
   })
 })

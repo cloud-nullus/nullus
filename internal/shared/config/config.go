@@ -72,6 +72,9 @@ type BackupScheduleConfig struct {
 	StackID   string        `mapstructure:"stack_id"`
 	Namespace string        `mapstructure:"namespace"`
 	Mode      string        `mapstructure:"mode"`
+	// AllStacks 가 참이면 stack_id·namespace·mode 를 무시하고 플랫폼 + 조직(org_id)의 모든 설치 완료
+	// 스택을 한 세트로 뜬다(백업복구 설계 §6.7). 스택이 늘어도 설정을 고칠 필요가 없다.
+	AllStacks bool `mapstructure:"all_stacks"`
 }
 
 type BackupRetentionConfig struct {

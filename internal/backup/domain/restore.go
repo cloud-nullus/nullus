@@ -105,6 +105,18 @@ type IntegrityReport struct {
 	// SharedComponents 는 공용 자원을 되살리기 전에 cert-manager·metrics-server 를 다시 세운 결과다.
 	// 스택을 되돌리지 않았거나 설치기가 배선되지 않았으면 없다.
 	SharedComponents *SharedComponentsOutcome `json:"shared_components,omitempty"`
+	// VaultImport 는 스택 금고로 KV 를 되돌린 결과다. 스택을 되돌리지 않았거나 백업에 금고 산출물이 없으면
+	// 없다. 실패해도 복구는 성공이다 — 데이터는 되돌아왔고, 금고만 손으로(또는 다시 복구해서) 채울 수 있다.
+	VaultImport *VaultImportOutcome `json:"vault_import,omitempty"`
+}
+
+// VaultImportOutcome 은 스택 금고 KV import 결과다. 로그로만 남기면 "안 돌았다" 와 "실패했다" 와
+// "성공했다" 를 응답에서 가를 수 없다 — 2026-10-12 두 스택 리허설에서 한 스택의 import 가 끝내 실패했는데
+// 복구 응답은 succeeded 였다. Error 가 있으면 그 스택의 도구들은 금고의 자격증명을 못 찾는다.
+type VaultImportOutcome struct {
+	Imported bool   `json:"imported"`
+	Attempts int    `json:"attempts,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 // SharedComponentsOutcome 은 공용 컨트롤러 재설치 결과다. Steps 는 끝까지 돌린 설치 단계, Warnings 는

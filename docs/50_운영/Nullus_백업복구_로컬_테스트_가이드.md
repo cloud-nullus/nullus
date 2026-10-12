@@ -531,6 +531,70 @@ helm list -A                                               # 비어 있음
 
 > **삭제 직후 재시작 중인 파드의 `CreateContainerConfigError` 를 "곧 풀린다" 로 넘기지 말 것.** 2026-10-12 1차 시도는 유령 스택 레코드를 지운 것이 살아 있던 스택의 ESO CRD 를 걷어내(그 뒤 고쳤다 — CHANGELOG) 자격증명 Secret 이 사라진 상태에서 백업을 떴다. 파드가 `secret "…-credentials" not found` 로 멈춰 있으면 **백업을 뜨기 전에** 원인을 본다 — 그 상태의 백업은 되살려도 같은 자리에서 멈춘다.
 
+### 4.11 백업 세트 — 플랫폼 + 모든 스택을 한 번에
+
+한 실행은 플랫폼 하나 또는 스택 하나만 담는다. 스택이 둘 이상인 조직의 "플랫폼 전체" 는 **세트**다 — 플랫폼 `platform_only` 실행 하나 + 설치 완료 스택마다 `stack_only`(+ 금고) 실행 하나가 같은 `set_id` 로 묶인다(설계 §6.7). 이 절은 스택 둘로 **세트 백업 → 두 스택 제품 삭제 → 세트 복구**를 돌린다. 스택 둘은 클러스터가 달라도 된다 — 멤버마다 자기 클러스터의 어댑터를 조립한다(로컬에서는 kind 두 개: `nullus-platform` 의 GitLab 스택과 `nullus-develop` 의 lite 스택).
+
+```bash
+# 세트 백업 — 모든 스택이 차례로 멈추므로 확인 문구는 네임스페이스가 아니라 "all" 이다
+curl -sX POST localhost:8090/api/v1/admin/backups/sets \
+  -H 'Content-Type: application/json' -H "X-Org-ID: $ORG" \
+  -d '{"confirm":"all"}' | tee /tmp/nullus-set.json \
+  | jq '{set_id, status, failed, runs: [.runs[] | {id, stack_id, mode, status, quiesce_seconds, total_bytes, error}]}'
+SET_ID=$(jq -r .set_id /tmp/nullus-set.json)
+
+# 세트 조회 — 실행 목록(GET /admin/backups)에도 같은 set_id 가 붙어 있다
+curl -s localhost:8090/api/v1/admin/backups/sets/$SET_ID -H "X-Org-ID: $ORG" | jq '{status, n: (.runs | length)}'
+```
+
+확인할 것: `runs` 가 **스택 수 + 1** 개이고 첫 실행이 `platform_only`(스택 없음), 나머지가 스택마다 `stack_only` 다. 각 스택 실행의 매니페스트에 `namespace` 가 있다(`GET /admin/backups/<id> | jq .manifest.namespace`) — 세트 복구가 이것으로 어디로 되돌릴지 정한다. `confirm` 을 빼거나 네임스페이스를 적으면 `BACKUP_SET_CONFIRM_REQUIRED` 다.
+
+**두 스택을 제품으로 지운다**(§4.10 의 회수 조건 — 앱 HTTPRoute·유령 레코드 — 를 클러스터마다 맞춘 뒤):
+
+```bash
+for id in $STACK_A $STACK_B; do
+  curl -s -o /dev/null -w "$id %{http_code}\n" -X DELETE -H "X-Org-ID: $ORG" localhost:8090/api/v1/stacks/$id
+done
+# 클러스터마다 회수가 끝났는지 — 네임스페이스·cert-manager 가 NotFound
+```
+
+**세트 복구** — 플랫폼 멤버를 먼저 `platform_only` 로, 그 다음 스택 멤버를 `stack_only` 로 되돌린다. 네임스페이스는 적지 않는다(매니페스트에서 읽는다). 확인은 세트 ID 재입력이다:
+
+```bash
+curl -sX POST localhost:8090/api/v1/admin/restores/sets \
+  -H 'Content-Type: application/json' -H "X-Org-ID: $ORG" \
+  -d "{\"set_id\":\"$SET_ID\",\"confirm\":\"$SET_ID\"}" | tee /tmp/nullus-set-restore.json \
+  | jq '{failed, skipped, error, restores: [.restores[] | {id, backup_run_id, mode, status, error}]}'
+```
+
+| 볼 것 | 기대 |
+|---|---|
+| HTTP | `201`. 멤버 하나라도 실패하면 `409` 와 `failed` |
+| `restores` | 스택 수 + 1 개. 첫 번째가 `platform_only`, 나머지가 `stack_only`, 모두 `succeeded` |
+| `skipped` | 비어 있다(백업이 실패한 멤버가 있었다면 그 백업 ID — 그 스택은 복구되지 않았다) |
+| 스택 기록 | `GET /api/v1/stacks` 에 두 스택이 `completed` 로 돌아왔다(플랫폼 DB 가 백업 시점으로) |
+| 클러스터마다 | 네임스페이스·파드·cert-manager·GatewayClass 가 돌아왔고 **내부 CA sha 가 백업 전과 같다**(§4.10 의 지문) |
+| 스택 금고 | `stack_only` 멤버도 금고 KV 를 되돌린다 — 로그에 `스택 금고 KV import` 가 스택마다 있다 |
+
+플랫폼 복구가 실패하면 응답은 `409` 에 `error: 플랫폼 복구 실패 — 스택은 되돌리지 않았습니다` 고 스택은 건드리지 않는다 — 스택 복구는 플랫폼 DB 의 스택 기록으로 클러스터를 찾으므로 플랫폼이 없으면 갈 곳을 모른다.
+
+> 세트는 "같은 시각" 이 아니라 "같은 묶음" 이다. 멤버는 차례로 뜨고, 소요 시간은 스택 수 × (정지 창 + 전송) 이다. 두 번째 kind 클러스터가 CPU 에 쪼이면 lite 템플릿(`gitea-jenkins-argocd-lite-v1`)을 쓴다.
+
+#### 실측 (2026-10-12) — 통과
+
+kind 두 클러스터: `nullus-platform` 의 GitLab + Argo CD + SonarQube(39 파드, 앱 네임스페이스 `demo-api`) · `nullus-develop` 의 gitea-jenkins-argocd-lite(24 파드).
+
+| 단계 | 결과 |
+|---|---|
+| 세트 백업 | `201`, **137초**, 실행 3 — 플랫폼 0.77 MB · lite 336 MB(정지 49.9초) · GitLab 1.07 GB(정지 65.5초). 스택 실행 매니페스트에 `namespace` 있음 |
+| 제품 삭제 | 두 스택 `204` → **72초** 뒤 두 클러스터 모두 네임스페이스 · cert-manager · GatewayClass · CRD(25 / 6) · 내부 CA · Helm 릴리스 전부 회수(앱 네임스페이스는 Argo CD automated sync 를 끈 뒤 미리 지움) |
+| 세트 복구 | `201`, **323초**, 복구 3 모두 `succeeded`, 플랫폼 먼저. 스택 멤버 둘 다 `shared_components.steps = [installing_cert_manager, installing_metrics_server]`, `warnings` 없음 |
+| 지문 | 내부 CA sha 두 클러스터 모두 백업 전과 동일 · CRD 25 / 6 · GatewayClass · ClusterIssuer · Helm 릴리스 전부 복귀 · 스택 기록 둘 `completed` · `demo-api` 네임스페이스와 `nullus-registry` Secret 복귀 · Application 의 automated sync 복귀 |
+| 파드 | develop 24 Running 즉시. platform 39 Running 은 복구 끝 1분 뒤(직후엔 Init · CrashLoopBackOff 몇 개 — GitLab 기동 순서) |
+
+**드러난 것 — lite 멤버의 금고 KV import 가 끝내 실패했는데 응답은 `succeeded` 였다.** 2분(9회) 재시도 뒤 "금고 경로 25 건을 복원하지 못했습니다" 로 끝났고 로그에만 남았다. 원인은 로컬 제약이다 — 두 스택이 같은 접근 도메인 `nullus.local` 을 쓰고 호스트의 443(`nds-gw-443` → 플랫폼 노드포트)이 플랫폼 클러스터 하나로만 가므로, **호스트에서 도는 API 는 두 스택의 금고를 모두 GitLab 스택 금고로 본다**(lite 설치가 쓴 자격증명도 거기에 쓰였고 export 도 거기서 떴다). 복구 시점에 GitLab 스택의 게이트웨이가 아직 안 떠 있어 거절됐고, 2분 뒤 GitLab 멤버의 import 는 성공했다. 운영에서는 스택마다 접근 도메인이 다르므로 생기지 않는다. 그래도 제품은 둘을 고쳤다 — import 오류가 **원인**을 함께 남기고(`(원인: …)` — 경로 목록만으로는 "안 떴다 / 권한 없다 / 다른 금고다" 를 가를 수 없다), 결과가 복구 기록의 **`integrity_report.vault_import`**(`imported` · `attempts` · `error`)에 남는다. 세트 복구 뒤에는 멤버마다 이 값을 본다 — `imported: false` 면 그 스택의 도구들은 금고의 자격증명을 못 찾는다. 로컬에서 두 스택을 제대로 가르려면 접근 도메인을 다르게 주고(`stack-up --domain=`) 호스트 라우팅을 따로 둬야 한다.
+
+`dangling` 8 건은 세 멤버가 똑같다 — 토큰 소스 경로 중 처음부터 어느 금고에도 없던 것(§4.10 의 같은 로컬 제약).
 
 ---
 

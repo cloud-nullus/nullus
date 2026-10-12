@@ -17,6 +17,7 @@ import { useStacks } from "../../stack/api/stack-api";
 import {
   useBackupRuns,
   useCreateBackup,
+  useCreateBackupSet,
   type BackupRun,
   type BackupStatus,
 } from "../api/backup-api";
@@ -52,6 +53,7 @@ export function BackupPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const { data: runs = [] } = useBackupRuns();
   const createBackup = useCreateBackup();
+  const createBackupSet = useCreateBackupSet();
   const { data: stackList } = useStacks();
 
   // 백업할 수 있는 스택. 스택 클러스터의 리소스·볼륨·금고는 스택 ID 가 있어야 서버가
@@ -129,6 +131,15 @@ export function BackupPage() {
                   {run.stack_id
                     ? (stackNames.get(run.stack_id) ?? run.stack_id)
                     : t("backupPage.table.platform", "Platform")}
+                  {/* 세트의 실행은 같은 꼬리표를 단다 — 어느 실행들이 한 번의 "전체" 인지 한눈에 보인다. */}
+                  {run.set_id && (
+                    <Badge
+                      className="ml-2 bg-[color-mix(in_srgb,_var(--color-text-secondary)_15%,_transparent)] text-[var(--color-text-secondary)]"
+                      title={run.set_id}
+                    >
+                      {t("backupPage.table.set", "Set")} {run.set_id.slice(0, 8)}
+                    </Badge>
+                  )}
                 </td>
                 <td className="p-3">{run.mode}</td>
                 <td className="p-3">{formatBytes(run.total_bytes)}</td>
@@ -159,8 +170,16 @@ export function BackupPage() {
           open
           onClose={() => setDialogOpen(false)}
           stacks={stacks}
-          submitting={createBackup.isPending}
-          onSubmit={({ stackId, namespace, scope, confirm }) => {
+          submitting={createBackup.isPending || createBackupSet.isPending}
+          onSubmit={({ all, stackId, namespace, scope, confirm }) => {
+            if (all) {
+              // 플랫폼 + 모든 스택을 한 세트로. 어느 스택인지는 서버가 정한다.
+              createBackupSet.mutate(
+                { confirm: confirm ?? "" },
+                { onSuccess: () => setDialogOpen(false) },
+              );
+              return;
+            }
             createBackup.mutate(
               {
                 mode: stackId ? "full" : "platform_only",

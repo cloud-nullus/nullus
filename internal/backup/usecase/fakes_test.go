@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"sort"
 	"sync"
 	"testing"
 
@@ -93,6 +94,28 @@ func (f *fakeRepo) GetRun(_ context.Context, id string) (*domain.BackupRun, erro
 }
 func (f *fakeRepo) ListRuns(context.Context, string, int) ([]*domain.BackupRun, error) {
 	return nil, nil
+}
+func (f *fakeRepo) ListRunsBySet(_ context.Context, setID string) ([]*domain.BackupRun, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []*domain.BackupRun
+	for _, r := range f.runs {
+		if r.SetID == setID {
+			out = append(out, r)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+// fakeStackLister 는 조직의 완료된 스택 목록 대역이다.
+type fakeStackLister struct {
+	stacks []domain.StackRef
+	err    error
+}
+
+func (f *fakeStackLister) ListCompletedStacks(context.Context, string) ([]domain.StackRef, error) {
+	return f.stacks, f.err
 }
 func (f *fakeRepo) ListSummaries(context.Context, string) ([]domain.RunSummary, error) {
 	return f.summaries, nil

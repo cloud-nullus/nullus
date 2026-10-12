@@ -16,9 +16,17 @@ import (
 	"github.com/cloud-nullus/draft/internal/backup/usecase"
 )
 
+// SetRunner 는 세트 백업 유스케이스다(usecase.BackupSetUseCase). 인터페이스인 것은 테스트가 가로채기
+// 위해서다 — 세트 유스케이스는 스택 목록과 스택별 어댑터가 있어야 돈다.
+type SetRunner interface {
+	Run(ctx context.Context, req usecase.RunBackupSetRequest) (*usecase.BackupSetResult, error)
+}
+
 type BackupScheduler struct {
 	backup    *usecase.BackupUseCase
 	retention *usecase.RetentionUseCase
+	// set 이 있으면 주기마다 단독 백업 대신 세트(플랫폼 + 조직의 모든 스택)를 뜬다(schedule.all_stacks).
+	set SetRunner
 
 	interval    time.Duration
 	iterTimeout time.Duration
@@ -67,12 +75,29 @@ func New(backup *usecase.BackupUseCase, retention *usecase.RetentionUseCase, cfg
 	}
 }
 
+// WithBackupSet 은 주기 백업을 세트로 바꾼다. nil 이면 바뀌지 않는다.
+func (s *BackupScheduler) WithBackupSet(set SetRunner) *BackupScheduler {
+	if set != nil {
+		s.set = set
+	}
+	return s
+}
+
+// configured 는 돌릴 것이 있는지다 — 단독 유스케이스든 세트든.
+func (s *BackupScheduler) configured() bool {
+	return s.backup != nil || s.set != nil
+}
+
 func (s *BackupScheduler) Start(ctx context.Context) {
-	if s.backup == nil {
+	if !s.configured() {
 		s.logger.Info("백업 스케줄러가 구성되지 않아 시작하지 않습니다")
 		return
 	}
-	s.logger.Info("백업 스케줄러 시작", "interval", s.interval, "mode", s.mode)
+	if s.set != nil {
+		s.logger.Info("백업 스케줄러 시작 — 플랫폼 + 모든 스택을 한 세트로", "interval", s.interval)
+	} else {
+		s.logger.Info("백업 스케줄러 시작", "interval", s.interval, "mode", s.mode)
+	}
 
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
@@ -98,20 +123,33 @@ func (s *BackupScheduler) tick(parent context.Context) {
 	ctx, cancel := context.WithTimeout(parent, s.iterTimeout)
 	defer cancel()
 
-	run, err := s.backup.Run(ctx, usecase.RunBackupRequest{
-		OrgID: s.orgID, StackID: s.stackID, Namespace: s.namespace,
-		Mode: s.mode, Trigger: domain.TriggerSchedule,
-	})
-	if err != nil {
-		// 알림은 유스케이스가 이미 보냈다 (§9 F10). 여기서는 로그만 남긴다.
-		s.logger.Error("주기 백업 실패", "error", err)
-		return
+	var status domain.Status
+	if s.set != nil {
+		res, err := s.set.Run(ctx, usecase.RunBackupSetRequest{OrgID: s.orgID, Trigger: domain.TriggerSchedule})
+		if err != nil {
+			s.logger.Error("주기 세트 백업 실패", "error", err)
+			return
+		}
+		s.logger.Info("주기 세트 백업 완료", "set_id", res.SetID, "status", res.Status,
+			"runs", len(res.Runs), "failed", len(res.Failed))
+		status = res.Status
+	} else {
+		run, err := s.backup.Run(ctx, usecase.RunBackupRequest{
+			OrgID: s.orgID, StackID: s.stackID, Namespace: s.namespace,
+			Mode: s.mode, Trigger: domain.TriggerSchedule,
+		})
+		if err != nil {
+			// 알림은 유스케이스가 이미 보냈다 (§9 F10). 여기서는 로그만 남긴다.
+			s.logger.Error("주기 백업 실패", "error", err)
+			return
+		}
+		s.logger.Info("주기 백업 완료", "run_id", run.ID, "status", run.Status, "bytes", run.TotalBytes)
+		status = run.Status
 	}
-	s.logger.Info("주기 백업 완료", "run_id", run.ID, "status", run.Status, "bytes", run.TotalBytes)
 
 	// 보존 정책은 백업이 성공한 뒤에만 적용한다. 실패한 주기에 옛 백업을
 	// 지우면 남은 것이 하나도 없는 상태로 갈 수 있다.
-	if run.Status == domain.StatusFailed || s.retention == nil {
+	if status == domain.StatusFailed || s.retention == nil {
 		return
 	}
 	deleted, err := s.retention.Apply(ctx, s.orgID)
