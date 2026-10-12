@@ -611,6 +611,12 @@ start_api() {
 
 # restart_api 는 돌고 있는 API 를 같은 바이너리로 다시 띄운다(환경만 다시 정한다).
 restart_api() {
+  # 빌드가 없으면 먼저 만든다. 없는 채로 내리면 API 만 죽고 끝난다 — 다른 체크아웃에서
+  # wire 를 돌렸을 때 실제로 그랬다.
+  if [[ ! -x "$PROJECT_ROOT/bin/api" ]]; then
+    echo "[nullus] bin/api 가 없어 먼저 빌드합니다..."
+    (cd "$PROJECT_ROOT" && go build -o bin/api ./cmd/api)
+  fi
   stop_service "api" "$API_PORT"
   start_api 30
 }
@@ -1472,18 +1478,24 @@ wire_stack_host() {
   local stack_id="$1"
   [[ -n "$stack_id" ]] || return 1
   local info namespace cluster_name domain state
-  info="$(curl -sS -m 30 "$(api_base)/api/v1/stacks/$stack_id" 2>/dev/null | python3 -c '
-import json, sys
+  # 목록 응답을 쓴다 — 단건 조회(/stacks/:id)는 cluster_name 을 싣지 않는다.
+  info="$(curl -sS -m 30 "$(api_base)/api/v1/stacks" 2>/dev/null | STACK_ID="$stack_id" python3 -c '
+import json, os, sys
 try:
-    s = json.load(sys.stdin)
+    data = json.load(sys.stdin)
 except Exception:
     sys.exit(1)
-cfg = s.get("config") or {}
-print(s.get("namespace", ""))
-print(s.get("cluster_name", ""))
-print(cfg.get("access_domain", ""))
-print(s.get("state", ""))
-' 2>/dev/null)" || { echo "[nullus] 스택 $stack_id 를 API 에서 읽지 못했습니다"; return 1; }
+items = data.get("items") if isinstance(data, dict) else data
+for s in items or []:
+    if s.get("id") == os.environ["STACK_ID"]:
+        cfg = s.get("config") or {}
+        print(s.get("namespace", ""))
+        print(s.get("cluster_name", ""))
+        print(cfg.get("access_domain", ""))
+        print(s.get("state", ""))
+        sys.exit(0)
+sys.exit(1)
+' 2>/dev/null)" || { echo "[nullus] 스택 $stack_id 를 API 목록에서 찾지 못했습니다"; return 1; }
   namespace="$(sed -n 1p <<< "$info")"
   cluster_name="$(sed -n 2p <<< "$info")"
   domain="$(sed -n 3p <<< "$info")"
@@ -1520,6 +1532,7 @@ print(s.get("state", ""))
 # do_wire 는 kind 에 설치된 completed 스택 전부(또는 --stack=<id> 하나)를 배선한다.
 # 화면에서 설치했거나 복구로 되살아난 스택을 위한 명령이다. 다시 돌려도 안전하다.
 do_wire() {
+  ensure_dirs
   local only=""
   for arg in "$@"; do
     case "$arg" in
