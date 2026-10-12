@@ -115,9 +115,9 @@ func TestRenderGitHubWorkflow_DeployWaitsForSAST(t *testing.T) {
 
 // 화면과 실행 기록이 쓰는 단계 이름. 렌더러와 같은 판단이어야 한다.
 func TestPipelineStageNames_IncludesSAST(t *testing.T) {
-	assert.Equal(t, []string{"Build", sastStageName, "Deploy"},
+	assert.Equal(t, []string{secretScanStageName, "Build", sastStageName, "Deploy"},
 		PipelineStageNamesFor(sastInput(port.CIPlatformGitLabCI, testSASTEndpoint, "")))
-	assert.Equal(t, []string{"Build", sastStageName, imageScanStageName, "Deploy"},
+	assert.Equal(t, []string{secretScanStageName, "Build", sastStageName, imageScanStageName, "Deploy"},
 		PipelineStageNamesFor(sastInput(port.CIPlatformGitLabCI, testSASTEndpoint, testScannerEndpoint)))
 }
 

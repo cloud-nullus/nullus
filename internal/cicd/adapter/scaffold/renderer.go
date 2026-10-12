@@ -125,6 +125,9 @@ type StageOptions struct {
 	ImageScan bool
 	// SAST 는 스택 SonarQube 로 소스를 분석하는 단계다(#64).
 	SAST bool
+	// SecretScan 은 gitleaks 로 시크릿 유출을 찾는 단계다(#80). 스택 의존이 없어 언제나 켜진다 —
+	// 끄는 것은 정책(NULLUS_SECRET_DETECTION=off)이다.
+	SecretScan bool
 }
 
 // Render 는 앱 프로젝트에 커밋할 파일들을 만든다.
@@ -178,6 +181,10 @@ func Render(in Input) ([]port.CommitFile, error) {
 		{Path: "README.md", Content: renderReadme(in.Platform, app, namespace, in.ImageTarget)},
 		{Path: "deploy/deployment.yaml", Content: renderDeployment(app, namespace, in.ImageTarget.Repository, appPort, replicas, in.StackID, in.TemplateID)},
 		{Path: "deploy/service.yaml", Content: renderService(app, namespace, appPort, in.StackID, in.TemplateID)},
+		// 시크릿 탐지의 "유출 전" 절반 — 개발자 로컬 훅과 오탐 allowlist. 정의 갱신은 이 둘을 덮어쓰지
+		// 않는다(allowlist 는 사용자가 다듬는다).
+		{Path: PreCommitConfigPath, Content: renderPreCommitConfig()},
+		{Path: GitleaksConfigPath, Content: renderGitleaksConfig()},
 	}
 
 	// 웹 앱이면 실제로 도는 소스를 함께 넣는다. 자리만 잡아 두면 배포는
@@ -219,8 +226,9 @@ func renderPipelineFor(in Input) (path, content string) {
 // stageOptionsFor 는 이 입력이 실제로 만들 선택 단계를 정한다.
 func stageOptionsFor(in Input) StageOptions {
 	return StageOptions{
-		ImageScan: strings.TrimSpace(in.ImageScannerEndpoint) != "",
-		SAST:      strings.TrimSpace(in.SASTServerEndpoint) != "",
+		ImageScan:  strings.TrimSpace(in.ImageScannerEndpoint) != "",
+		SAST:       strings.TrimSpace(in.SASTServerEndpoint) != "",
+		SecretScan: true,
 	}
 }
 
@@ -279,7 +287,14 @@ func renderGitHubWorkflow(in Input) string {
 
 	b.WriteString("jobs:\n")
 
+	if opts.SecretScan {
+		writeGitHubSecretScanJob(&b)
+	}
 	b.WriteString("  build:\n")
+	if opts.SecretScan {
+		// 시크릿이 든 소스로 이미지를 만들어 올리지 않는다 — 빌드가 탐지를 기다린다.
+		fmt.Fprintf(&b, "    needs: %s\n", secretScanStageID)
+	}
 	b.WriteString("    runs-on: ubuntu-latest\n")
 	b.WriteString("    steps:\n")
 	b.WriteString("      - uses: actions/checkout@v4\n")
@@ -421,7 +436,12 @@ func renderPipeline(in Input) string {
 	b.WriteString("# build: 이미지를 만들어 레지스트리에 올립니다.\n")
 	b.WriteString("# deploy: deploy/ 의 이미지 태그를 갱신해 커밋합니다. 배포는 Argo CD 가 합니다.\n\n")
 
-	b.WriteString("stages:\n  - build\n")
+	b.WriteString("stages:\n")
+	if opts.SecretScan {
+		// 빌드 앞이다 — 시크릿이 든 소스로 이미지를 만들어 올리지 않는다.
+		fmt.Fprintf(&b, "  - %s\n", secretScanStageID)
+	}
+	b.WriteString("  - build\n")
 	if opts.SAST {
 		fmt.Fprintf(&b, "  - %s\n", sastStageID)
 	}
@@ -450,7 +470,16 @@ func renderPipeline(in Input) string {
 		fmt.Fprintf(&b, "  %s: %q\n", port.SASTServerVariable, in.SASTServerEndpoint)
 		fmt.Fprintf(&b, "  %s: %q\n", port.SASTImageVariable, defaultSASTScannerImage)
 	}
+	if opts.SecretScan {
+		// 이미지만 적는다. 정책(차단·경고·끄기)은 플랫폼이 프로젝트 CI/CD 변수로 싣고, 프로젝트
+		// 변수가 이 전역 변수보다 앞서므로 플랫폼이 이미지를 올리면 다음 실행부터 따라온다.
+		fmt.Fprintf(&b, "  %s: %q\n", port.SecretScanImageVariable, defaultSecretScannerImage)
+	}
 	b.WriteString("\n")
+
+	if opts.SecretScan {
+		writeGitLabSecretScanJob(&b)
+	}
 
 	b.WriteString("build:\n")
 	b.WriteString("  stage: build\n")
@@ -736,6 +765,11 @@ func renderReadme(platform port.SCMPlatform, app, namespace string, target *port
 		b.WriteString("`" + DeployTokenVar + "` 변수에 `write_repository` 스코프 토큰을 등록하세요.\n\n")
 	}
 
+	b.WriteString("## 시크릿 탐지\n\n")
+	b.WriteString("CI 의 `" + secretScanStageID + "` 단계가 이번 푸시의 커밋에서 자격증명·토큰·키를 찾습니다(gitleaks). 찾으면 기본은 빌드 전에 **차단**이고, 동작(차단·경고·끄기)은 스택의 스캔 정책이 정합니다.\n")
+	b.WriteString("시크릿은 **푸시되는 순간 유출**입니다 — 탐지되면 커밋을 지우지 말고 그 자격증명을 즉시 폐기·회전하세요. 오탐은 `" + GitleaksConfigPath + "` 의 allowlist 나 `.gitleaksignore` 의 Fingerprint 로 다룹니다.\n\n")
+	b.WriteString("유출 **전에** 잡으려면 로컬 훅을 켜세요(같은 gitleaks, 같은 규칙):\n\n")
+	b.WriteString("```bash\npipx install pre-commit   # 또는 brew install pre-commit\npre-commit install\n```\n\n")
 	b.WriteString("---\n\n")
 	b.WriteString("이 파일은 Nullus 가 생성했습니다. 프로비저닝이 다시 실행되면 덮어써집니다.\n")
 	return b.String()
@@ -788,7 +822,11 @@ spec:
 // GitLab 판과 Jenkins 판이 같은 단계를 만든다. 이름 표기만 다르므로(소문자 대
 // 대문자) 여기서는 표시용 표기를 쓴다.
 func PipelineStageNames(opts StageOptions) []string {
-	names := []string{"Build"}
+	names := make([]string, 0, 5)
+	if opts.SecretScan {
+		names = append(names, secretScanStageName)
+	}
+	names = append(names, "Build")
 	if opts.SAST {
 		names = append(names, sastStageName)
 	}
@@ -804,4 +842,59 @@ func PipelineStageNames(opts StageOptions) []string {
 // 선언과 실제가 어긋나고, 어긋나면 화면이 돌지도 않은 단계를 보여준다.
 func PipelineStageNamesFor(in Input) []string {
 	return PipelineStageNames(stageOptionsFor(in))
+}
+
+// writeGitLabSecretScanJob 은 빌드 앞에 서는 시크릿 탐지 잡이다. 모든 브랜치에서 돈다 — 기능 브랜치의
+// 유출도 유출이다(SAST 는 CE 의 브랜치 분석 한계로 기본 브랜치만 본다).
+func writeGitLabSecretScanJob(b *strings.Builder) {
+	fmt.Fprintf(b, "%s:\n", secretScanStageID)
+	fmt.Fprintf(b, "  stage: %s\n", secretScanStageID)
+	// 스캐너 이미지의 entrypoint(gitleaks)가 잡 스크립트를 가로채지 않게 비운다.
+	b.WriteString("  image:\n")
+	fmt.Fprintf(b, "    name: $%s\n", port.SecretScanImageVariable)
+	b.WriteString("    entrypoint: [\"\"]\n")
+	b.WriteString("  needs: []\n")
+	b.WriteString("  variables:\n")
+	// 범위 시작점은 이번 푸시 직전 커밋이다. 얕은 클론이면 그 커밋이 없어 작업 트리 검사로 떨어진다 —
+	// 전체 이력을 받아 신규 커밋만 본다.
+	b.WriteString("    GIT_DEPTH: \"0\"\n")
+	fmt.Fprintf(b, "    %s: $CI_COMMIT_BEFORE_SHA\n", port.SecretScanBaseVariable)
+	b.WriteString("  script:\n")
+	writeScriptLines(b, secretScanScriptLines())
+	// 리포트는 걸려도 남긴다 — 무엇에 걸렸는지는 실패한 실행에서 봐야 한다. 비밀값은 가려져 있다.
+	b.WriteString("  artifacts:\n")
+	b.WriteString("    when: always\n")
+	fmt.Fprintf(b, "    paths:\n      - %s\n", port.SecretScanReportFile)
+	b.WriteString("\n")
+}
+
+// writeGitHubSecretScanJob 은 GitHub Actions 판이다. build 가 needs 로 기다린다.
+func writeGitHubSecretScanJob(b *strings.Builder) {
+	fmt.Fprintf(b, "  %s:\n", secretScanStageID)
+	b.WriteString("    runs-on: ubuntu-latest\n")
+	b.WriteString("    env:\n")
+	// 범위 시작점. 첫 푸시·수동 실행이면 비거나 0000… 이라 스크립트가 작업 트리 검사로 떨어진다.
+	fmt.Fprintf(b, "      %s: ${{ github.event.before }}\n", port.SecretScanBaseVariable)
+	for _, v := range secretScanPolicyVariableNames {
+		fmt.Fprintf(b, "      %s: ${{ vars.%s }}\n", v, v)
+	}
+	b.WriteString("    container:\n")
+	fmt.Fprintf(b, "      image: %s\n", githubImageExpression(port.SecretScanImageVariable, defaultSecretScannerImage))
+	// gitleaks 이미지는 비루트로 돈다. 그대로면 actions/checkout 이 러너 소유의 작업 디렉터리에 쓰다 죽는다.
+	b.WriteString("      options: --user root\n")
+	b.WriteString("    steps:\n")
+	b.WriteString("      - uses: actions/checkout@v4\n")
+	b.WriteString("        with:\n          fetch-depth: 0\n")
+	b.WriteString("      - name: Detect secrets\n")
+	b.WriteString("        run: |\n")
+	for _, line := range secretScanScriptLines() {
+		fmt.Fprintf(b, "          %s\n", line)
+	}
+	b.WriteString("      - name: Upload report\n")
+	b.WriteString("        if: always()\n")
+	b.WriteString("        uses: actions/upload-artifact@v4\n")
+	b.WriteString("        with:\n")
+	fmt.Fprintf(b, "          name: %s\n", port.SecretScanReportArtifact)
+	fmt.Fprintf(b, "          path: %s\n", port.SecretScanReportFile)
+	b.WriteString("\n")
 }

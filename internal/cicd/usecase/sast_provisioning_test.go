@@ -26,7 +26,7 @@ func TestProvisionAppProject_SASTStageAndTokenOnGitLab(t *testing.T) {
 	out, err := NewProvisionAppProject(scm, pipe, res).Execute(context.Background(), in)
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"Build", "SAST", "Deploy"}, out.Stages)
+	assert.Equal(t, []string{"SecretScan", "Build", "SAST", "Deploy"}, out.Stages)
 	v, ok := pipe.vars[port.SASTTokenVariable]
 	require.True(t, ok, "토큰 변수가 없으면 분석이 인증에서 실패해 모든 배포가 막힌다")
 	assert.Equal(t, testSASTToken, v.Value)

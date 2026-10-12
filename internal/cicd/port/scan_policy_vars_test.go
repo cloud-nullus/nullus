@@ -35,5 +35,8 @@ func TestScanPolicyVariables(t *testing.T) {
 		// 변수보다 앞서고, GitHub 워크플로는 vars 를 먼저 본다.
 		ScanImageVariable: shareddomain.TrivyCLIImage,
 		SASTImageVariable: shareddomain.SonarScannerImage,
+		// 시크릿 탐지(#80)도 정책과 이미지를 같은 길로 민다. 비어 있으면 차단이다.
+		SecretDetectionVariable: "block",
+		SecretScanImageVariable: shareddomain.GitleaksImage,
 	}, got)
 }

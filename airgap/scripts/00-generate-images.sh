@@ -71,6 +71,8 @@ RUNTIME_IMAGES=(
   # 파이프라인 SAST 단계 — 공식 이미지는 amd64 만 내서 우리가 멀티아치로 굽는다
   # (deploy/images/sonar-scanner). 태그는 Dockerfile 의 스캐너 버전이다.
   "ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389"
+  # 파이프라인 시크릿 탐지 단계(gitleaks) — nullus-plan#80
+  "ghcr.io/gitleaks/gitleaks:v8.30.1"
 )
 
 if [[ -t 1 ]]; then

@@ -53,6 +53,8 @@ type updateScanPolicyRequest struct {
 	// SASTOnGateFailure 는 선택이다. 이 필드를 모르는 옛 클라이언트가 이미지 스캔 정책만
 	// 바꿀 수 있어야 한다 — 빠지면 저장된 값을 그대로 둔다.
 	SASTOnGateFailure *string `json:"sast_on_gate_failure"`
+	// SecretDetection 도 선택이다 — block·warn·off. 빠지면 저장된 값을 그대로 둔다.
+	SecretDetection *string `json:"secret_detection"`
 }
 
 // UpdateScanPolicy 는 정책을 저장하고 그 스택의 스캔 파이프라인에 싣는다.
@@ -80,6 +82,9 @@ func (h *ScanPolicyHandler) UpdateScanPolicy(c echo.Context) error {
 	}
 	if req.SASTOnGateFailure != nil {
 		policy.SASTOnGateFailure = domain.SASTGateAction(strings.ToLower(strings.TrimSpace(*req.SASTOnGateFailure)))
+	}
+	if req.SecretDetection != nil {
+		policy.SecretDetection = domain.SecretDetectionAction(strings.ToLower(strings.TrimSpace(*req.SecretDetection)))
 	}
 
 	actor := middleware.ActorFromContext(c)

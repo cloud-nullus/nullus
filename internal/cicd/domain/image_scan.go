@@ -40,6 +40,9 @@ type ScanPolicy struct {
 	// SASTOnGateFailure 는 소스 정적 분석의 Quality Gate 가 실패했을 때의 동작이다.
 	// 비어 있으면 차단이다(이 필드를 모르는 옛 클라이언트·저장 행).
 	SASTOnGateFailure SASTGateAction `json:"sast_on_gate_failure"`
+	// SecretDetection 은 시크릿 탐지 단계가 시크릿을 찾았을 때의 동작이다(block·warn·off).
+	// 비어 있으면 차단이다.
+	SecretDetection SecretDetectionAction `json:"secret_detection"`
 }
 
 // DefaultScanPolicy 는 기본 차단 기준이다 (설계 §6).
@@ -53,6 +56,7 @@ func DefaultScanPolicy() ScanPolicy {
 		IgnoreUnfixed:        true,
 		OnScannerUnreachable: UnreachableBlock,
 		SASTOnGateFailure:    SASTGateBlock,
+		SecretDetection:      SecretDetectionBlock,
 	}
 }
 

@@ -39,6 +39,14 @@ const (
 	SASTImageVariable = "NULLUS_SONAR_SCANNER_IMAGE"
 	// SASTOnGateFailureVariable 이 "warn" 이면 Quality Gate 가 실패해도 단계를 통과시킨다.
 	SASTOnGateFailureVariable = "NULLUS_SAST_ON_GATE_FAILURE"
+	// SecretDetectionVariable 은 시크릿 탐지 단계의 동작이다 — block(기본)·warn·off (nullus-plan#80).
+	SecretDetectionVariable = "NULLUS_SECRET_DETECTION"
+	// SecretScanImageVariable 은 CI 잡이 쓸 gitleaks 이미지다. ScanImageVariable 과 같다.
+	SecretScanImageVariable = "NULLUS_GITLEAKS_IMAGE"
+	// SecretScanBaseVariable 은 이번 푸시 직전 커밋이다 — 탐지 범위(신규 커밋만)의 시작점. CI 마다
+	// 이름이 달라(CI_COMMIT_BEFORE_SHA · github.event.before · GIT_PREVIOUS_SUCCESSFUL_COMMIT) 렌더러가
+	// 이 이름으로 옮겨 적는다. 플랫폼이 푸시하는 변수가 아니다.
+	SecretScanBaseVariable = "NULLUS_SCAN_BASE"
 )
 
 // ScanPolicyVariables 는 정책을 CI 가 읽는 변수로 옮긴다.
@@ -57,5 +65,7 @@ func ScanPolicyVariables(p domain.ScanPolicy) []ProjectVariable {
 		// 워크플로는 vars 를 먼저 본다. Jenkins 파드 템플릿은 정적이라 정의 갱신이 답이다.
 		{Key: ScanImageVariable, Value: shareddomain.TrivyCLIImage},
 		{Key: SASTImageVariable, Value: shareddomain.SonarScannerImage},
+		{Key: SecretDetectionVariable, Value: string(p.SecretDetectionOrDefault())},
+		{Key: SecretScanImageVariable, Value: shareddomain.GitleaksImage},
 	}
 }
