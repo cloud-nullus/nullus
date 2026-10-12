@@ -369,6 +369,7 @@ SBOM·provenance 도 없었습니다(nullus-plan#77). 에어갭 번들의 SBOM �
 | SBOM 형식 | **SPDX 2.3 JSON**(syft `spdx-json`). CycloneDX 는 `SBOM_FORMAT=cyclonedx-json` 으로 선택 | 에어갭 번들이 이미 쓰던 기본값이고, GitHub attestation 과 대부분의 수요 측 도구가 받는다. 릴리즈 이미지와 번들이 **같은 형식**이어야 고객에게 한 종류만 설명한다 |
 | 릴리즈 이미지 SBOM | 빌드 직후 **푸시된 digest** 를 syft 로 떠서 `actions/attest-sbom` 으로 서명·저장(GitHub + ghcr referrer), Release 자산으로도 첨부 | buildx 의 inline `sbom:` 은 이미지 index 에 `unknown/unknown` 플랫폼 manifest 를 더해 **kind load 가 다루지 못한다** — 그래서 `sbom: false` 였다. attestation 은 digest 를 가리키는 **별도 문서**라 index 가 그대로다. 로컬 검증 경로와 증적이 둘 다 산다 |
 | provenance | buildx `provenance: false` 유지. **`actions/attest-build-provenance`(SLSA, Sigstore 서명)** 를 네 이미지 모두에 | 같은 이유(index 불변). GitHub OIDC 로 서명되므로 키 관리가 없다 |
+| attestation 실패 | Sigstore(Rekor) 시간 초과에 **한 번 재시도**. 두 번 다 실패하면 잡 실패 → `gh run rerun --failed` | 2026-10-12 첫 실운영 런에서 Rekor 시간 초과 하나가 이미지는 올라간 채 스캔·배포를 건너뛰게 했다. 그래도 증적 없는 릴리즈가 조용히 나가게는 하지 않는다 |
 | 이미지 서명 | **cosign 을 따로 도입하지 않는다.** attestation 이 Sigstore 로 서명되어 digest 에 묶이므로 "이 digest 가 이 저장소의 이 커밋에서 이 워크플로로 빌드됐다" 가 이미 검증된다 | 서명 도구를 하나 더 들이면 키·검증 절차가 둘이 된다. 필요가 생기면(정책 엔진이 cosign 서명만 받는 등) 그때 재검토 |
 | 취약점 스캔 | `scan-images` 잡이 네 이미지를 Trivy 로 스캔. 리포트(CRITICAL·HIGH, **수정판 있는 것만**)는 매 런 JSON + code scanning(SARIF) | 수정판이 없는 취약점은 우리가 할 수 있는 일이 없다 — 보고에 섞이면 신호가 묻힌다 |
 | 게이트 | **릴리즈 태그 런에서 수정판 있는 CRITICAL 이 하나라도 있으면 실패** → 차트·Release·배포 중단. `main` 푸시는 보고만 | main 을 막으면 개발이 서고, 막지 않으면 다음 릴리즈 전에 무엇을 고쳐야 하는지 매 머지마다 보인다. 태그는 "고객에게 나가는 것" 이라 막는다 |
