@@ -292,7 +292,12 @@ const (
 	ArgoCDAdminSecret   = "argocd-initial-admin-secret" // #nosec G101 -- Secret 리소스 이름
 	ArgoCDAdminUser     = "admin"
 	ArgoCDAdminPassKey  = "password"
-	GitLabRootSecret    = "gitlab-gitlab-initial-root-password" // #nosec G101 -- Secret 리소스 이름
+	// GitLabRootSecret 은 설치가 금고 값(artifacts/gitlab/root-password)으로 ESO 프로비저닝하는
+	// Secret 이다. 차트의 global.initialRootPassword 가 이것을 참조하므로 실제 root 비밀번호다.
+	// 차트가 스스로 만드는 gitlab-gitlab-initial-root-password 는 참조하지 않는다 — 참조하지 않으면
+	// 차트가 임의 비밀번호를 거기 만들어, 금고·연결 정보·백업이 전부 가짜를 가리켰다(2026-10-12 실측).
+	// 이 변경 전에 설치한 스택은 차트가 만든 그 Secret 이 실제 비밀번호다.
+	GitLabRootSecret    = "gitlab-initial-root-password" // #nosec G101 -- Secret 리소스 이름
 	GitLabRootUser      = "root"
 	GitLabRootPassKey   = "password"
 	GrafanaAdminUser    = "admin"

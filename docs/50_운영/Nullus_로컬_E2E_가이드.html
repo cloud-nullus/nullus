@@ -611,7 +611,7 @@ kubectl --context $CTX -n $NS get secret argocd-initial-admin-secret \
 <span class="c"># SonarQube — 관리자 admin. 일반 사용자는 로그인 화면의 Keycloak 버튼으로 들어간다</span>
 kubectl --context $CTX -n $NS get secret nullus-sonarqube-credentials \
   -o jsonpath='{.data.admin-password}' | base64 -d; echo</code></pre></div>
-    <div class="callout"><b>연결 정보 창과 Secret 이름이 다를 수 있다</b>화면의 연결 정보는 <code>gitlab-gitlab-initial-root-password</code>를 가리키지만, 설치기는 GitLab 비밀번호를 <code>gitlab-initial-root-password</code>로 만든다. 앞의 것이 없으면 위 명령을 쓴다.</div>
+    <div class="callout"><b>Secret 이름</b>연결 정보 창과 설치기가 같은 <code>gitlab-initial-root-password</code>(금고 값을 ESO 가 프로비저닝)를 가리키고, GitLab 차트가 이것을 초기 root 비밀번호로 읽는다. <b>이 변경 전에 설치한 스택</b>은 차트가 스스로 만든 <code>gitlab-gitlab-initial-root-password</code>가 실제 비밀번호다 — 로그인이 안 되면 그쪽을 읽는다.</div>
     <p class="check-title">확인</p>
     <ul class="check">
       <li><code>https://gitlab.nullus.local</code>에 root로 로그인된다</li>
@@ -1087,7 +1087,6 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
   <div class="step-body">
     <p>가이드를 쓰며 코드에서 확인한 것들이다. 위 단계의 우회책은 모두 이것 때문에 생겼다.</p>
     <ol class="issues">
-      <li><b>연결 정보의 GitLab 비밀번호 Secret 이름이 설치기와 다르다.</b><span class="ref">internal/stack/domain/connection.go:266 ↔ adapter/helm/secret-provisioning.go:72</span></li>
       <li><b>노드 배선은 <code>stack-up --wait</code>에서만 한다.</b> <code>stack-up</code>이 템플릿의 보안 슬롯(Trivy·SonarQube)을 빠뜨리던 것은 SonarQube 설치 변경에서 고쳤다.<span class="ref">scripts/runbook_local.sh:1251</span></li>
       <li><b>배포 되커밋(<code>[skip ci]</code>)이 실행 기록에 실패로 남는다.</b> GitLab 은 그 커밋의 파이프라인을 <code>skipped</code> 로 만드는데, 동기화가 이를 중단(ABORTED)으로 읽어 화면에 실패로 보인다.<span class="ref">internal/cicd/adapter/gitlab/build_reader.go:166</span></li>
       <li><b>OpenBao KV 가져오기가 빈 stackID로 불려 전역 OpenBao를 향한다.</b> 스택 금고는 볼륨 복구로 돌아온다.<span class="ref">internal/backup/usecase/run_restore.go:254</span></li>

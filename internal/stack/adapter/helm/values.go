@@ -482,6 +482,13 @@ func DefaultValues(stepName string) map[string]any {
 			},
 			"global": map[string]any{
 				"edition": "ce",
+				// 초기 root 비밀번호는 프로비저닝된 Secret 에서 읽는다. 이것이 없으면 차트가
+				// gitlab-gitlab-initial-root-password 에 임의 비밀번호를 만들어, 금고의 값·연결
+				// 정보 안내·백업이 가리키는 것과 실제 비밀번호가 달라진다.
+				"initialRootPassword": map[string]any{
+					"secret": ProvisionedGitLabRootSecret,
+					"key":    domain.GitLabRootPassKey,
+				},
 				"minio": map[string]any{
 					"enabled": false,
 				},
