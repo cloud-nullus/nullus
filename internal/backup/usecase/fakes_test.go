@@ -229,6 +229,10 @@ type fakeKV struct {
 	tr      *trace
 	missing map[string]bool
 	expErr  error
+	// importFails 는 처음 N 번의 Import 를 실패시킨다(금고가 아직 안 뜬 상황).
+	importFails    int
+	importAttempts int
+	importedStack  string
 }
 
 func (f *fakeKV) Export(_ context.Context, _ string, out io.Writer) (port.KVExportResult, error) {
@@ -239,8 +243,14 @@ func (f *fakeKV) Export(_ context.Context, _ string, out io.Writer) (port.KVExpo
 	n, _ := out.Write([]byte(`{"paths":{}}`))
 	return port.KVExportResult{PathCount: 3, Bytes: int64(n)}, nil
 }
-func (f *fakeKV) Import(_ context.Context, _ string, in io.Reader) error {
+func (f *fakeKV) Import(_ context.Context, stackID string, in io.Reader) error {
 	_, _ = io.ReadAll(in)
+	f.importAttempts++
+	if f.importAttempts <= f.importFails {
+		f.tr.add("kv.import.failed")
+		return errors.New("connection refused — 금고가 아직 뜨지 않았다")
+	}
+	f.importedStack = stackID
 	f.tr.add("kv.import")
 	return nil
 }

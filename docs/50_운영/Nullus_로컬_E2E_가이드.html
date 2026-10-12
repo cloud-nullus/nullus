@@ -573,7 +573,7 @@ echo "export STACK_ID=$STACK_ID" &gt;&gt; ~/.nullus-e2e.env      <span class="c"
     <p class="why">기본값은 이름·네임스페이스 <code>nullus-gitlab-argocd-sonarqube</code>, 도메인 <code>nullus.local</code>, 클러스터 <code>kind-nullus-platform</code>이다. 다른 터미널에서 파드가 뜨는 것을 본다.</p>
     <div class="code"><div class="code-head"><span>다른 터미널</span><button class="copy" type="button">복사</button></div><pre><code>source ~/.nullus-e2e.env
 kubectl --context $CTX -n $NS get pods -w</code></pre></div>
-    <div class="callout warn"><b>60분에서 기다림이 끊기면</b><code>--wait</code>는 60분까지만 기다린다. 끊겼으면 <code>./scripts/runbook_local.sh stack-status $STACK_ID --wait</code>로 이어서 기다리고, 완료 뒤 <a href="#ax-a">부록 A</a>의 "노드 배선" 명령을 직접 돌린다. 끊기면 노드 배선이 실행되지 않기 때문이다.</div>
+    <div class="callout warn"><b>60분에서 기다림이 끊기면</b><code>--wait</code>는 60분까지만 기다린다. 끊겼으면 <code>./scripts/runbook_local.sh stack-status $STACK_ID --wait</code>로 이어서 기다린다 — 완료되면 노드 배선과 GitLab 포트포워드까지 같이 한다. 화면에서 설치했거나 복구로 되살아난 스택처럼 런북이 끝을 보지 못한 스택은 <code>./scripts/runbook_local.sh wire</code>(또는 <code>wire --stack=$STACK_ID</code>)로 같은 배선을 한다. 몇 번 돌려도 안전하다.</div>
     <div class="callout"><b>SonarQube 없이 가볍게 하려면</b><code>--template=gitlab-argocd-v1</code>로 깔고 환경 파일의 <code>NS</code>를 <code>nullus-gitlab-argocd</code>로 바꾼다. 5단계의 SonarQube 줄과 <a href="#ax-b">부록 B</a>는 건너뛴다.</div>
     <p class="check-title">확인</p>
     <ul class="check">
@@ -1011,7 +1011,7 @@ curl -s "$API/api/v1/cicd/deployments?pipeline_id=$PIPELINE_ID" \
         <tr><td>복구 뒤 앱 이미지가 <code>:bootstrap</code></td><td>Argo CD가 아직 조정하지 않았다</td><td><code>argocd.argoproj.io/refresh=hard</code> 주석을 단다(14단계)</td></tr>
       </tbody>
     </table></div>
-    <p><b>노드 배선</b> — <code>stack-up --wait</code>가 하는 일을 손으로 한다.</p>
+    <p><b>노드 배선</b> — <code>stack-up --wait</code>·<code>stack-status --wait</code>·<code>wire</code>가 하는 일을 손으로 한다. 보통은 <code>./scripts/runbook_local.sh wire</code> 한 줄로 끝난다.</p>
     <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>GW_IP=$(kubectl --context $CTX -n $NS get svc -l gateway.envoyproxy.io/owning-gateway-name \
   -o jsonpath='{.items[0].spec.clusterIP}')
 CA_NS=$(kubectl --context $CTX get secret -A \
@@ -1087,9 +1087,7 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
   <div class="step-body">
     <p>가이드를 쓰며 코드에서 확인한 것들이다. 위 단계의 우회책은 모두 이것 때문에 생겼다.</p>
     <ol class="issues">
-      <li><b>노드 배선은 <code>stack-up --wait</code>에서만 한다.</b> <code>stack-up</code>이 템플릿의 보안 슬롯(Trivy·SonarQube)을 빠뜨리던 것은 SonarQube 설치 변경에서 고쳤다.<span class="ref">scripts/runbook_local.sh:1251</span></li>
       <li><b>배포 되커밋(<code>[skip ci]</code>)이 실행 기록에 실패로 남는다.</b> GitLab 은 그 커밋의 파이프라인을 <code>skipped</code> 로 만드는데, 동기화가 이를 중단(ABORTED)으로 읽어 화면에 실패로 보인다.<span class="ref">internal/cicd/adapter/gitlab/build_reader.go:166</span></li>
-      <li><b>OpenBao KV 가져오기가 빈 stackID로 불려 전역 OpenBao를 향한다.</b> 스택 금고는 볼륨 복구로 돌아온다.<span class="ref">internal/backup/usecase/run_restore.go:254</span></li>
       <li><b>낡은 문서.</b> CI/CD kind 배포 가이드의 요청 본문, 템플릿 추가 가이드의 API 설명, CLI 가이드의 <code>pipeline deploy</code>는 지금 코드와 맞지 않는다.<span class="ref">docs/guides/cicd-pipeline-kind-deploy-guide.md · docs/20_개발가이드/Nullus_템플릿_추가_가이드.md · Nullus_CLI_사용_가이드.md</span></li>
     </ol>
   </div>

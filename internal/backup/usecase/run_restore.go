@@ -46,6 +46,10 @@ type RestoreDeps struct {
 	// Connections 는 플랫폼 DB 를 되돌린 직후 연결 풀을 비운다 — 옛 테이블을 가리키는 준비된 문장이
 	// 다음 질의를 0A000 으로 죽인다. 없으면 건너뛴다(테스트·풀 없는 구성).
 	Connections port.ConnectionResetter
+	// KVImportWait / KVImportRetry 는 스택 금고 KV import 를 기다리는 상한과 재시도 간격이다. 금고는
+	// 워크로드 재개 뒤 뜨는 데 시간이 걸린다. 0 이면 기본값(2분 / 10초).
+	KVImportWait  time.Duration
+	KVImportRetry time.Duration
 	// GatewayAliases 는 복구 뒤 러너·Argo CD hostAliases 를 게이트웨이의 지금 주소로 맞춘다.
 	// 없으면 건너뛴다.
 	GatewayAliases port.GatewayAliasRepinner
@@ -185,8 +189,14 @@ func (uc *RestoreUseCase) run(ctx context.Context, req RunRestoreRequest, rr *do
 	}
 
 	// ── 6~7. 플랫폼: DB → 금고 ──
+	//
+	// 금고(KV)는 **뜬 곳으로** 되돌린다 — 백업이 스택 ID 로 스택 금고를 떴으면 복구도 그 금고다. 빈
+	// 스택 ID 로 부르면 전역 주소(OPENBAO_ADDR)로 가서 다른 금고에 쓰거나(인클러스터) 닿지 못한다
+	// (호스트). 스택 금고는 워크로드가 다시 뜬 뒤에야 있으므로(§6.1 8단계) 스택을 되돌리는 복구에서는
+	// 재개 뒤로 미룬다. 스택을 건드리지 않는 복구(platform_only)는 금고가 이미 떠 있다 — 바로 한다.
+	deferVault := touchStack && strings.TrimSpace(backup.StackID) != ""
 	if touchPlatform {
-		if err := uc.restorePlatform(ctx, arts); err != nil {
+		if err := uc.restorePlatform(ctx, backup, arts, !deferVault); err != nil {
 			return err
 		}
 	}
@@ -197,6 +207,11 @@ func (uc *RestoreUseCase) run(ctx context.Context, req RunRestoreRequest, rr *do
 	// 새 인스턴스가 되는 순간 복원은 무의미해진다 (§9 F4).
 	if touchStack {
 		uc.resumeWorkloads(ctx, manifest)
+	}
+
+	// ── 8b. 스택 금고 KV import. 금고 파드가 뜬 뒤라 기다려 다시 시도한다 ──
+	if touchPlatform && deferVault {
+		uc.restoreStackVault(ctx, backup, arts)
 	}
 
 	// ── 9. 참조 정합성. 경고하되 중단하지 않는다 ──
@@ -337,7 +352,8 @@ func (uc *RestoreUseCase) restoreStackData(ctx context.Context, req RunRestoreRe
 	return outcome, nil
 }
 
-func (uc *RestoreUseCase) restorePlatform(ctx context.Context, arts []*domain.Artifact) error {
+// restorePlatform 은 플랫폼 DB · Keycloak DB · (withVault 면) 금고를 되돌린다.
+func (uc *RestoreUseCase) restorePlatform(ctx context.Context, backup *domain.BackupRun, arts []*domain.Artifact, withVault bool) error {
 	for _, a := range arts {
 		switch a.Component {
 		case domain.ComponentPlatformDB:
@@ -361,14 +377,68 @@ func (uc *RestoreUseCase) restorePlatform(ctx context.Context, arts []*domain.Ar
 				uc.d.Logger.Error("Keycloak DB 복원 실패 — 포털 ID/PW 경로로 진입해야 합니다", "error", err)
 			}
 		case domain.ComponentOpenBaoKV:
+			if !withVault {
+				continue // 스택 금고는 워크로드 재개 뒤(restoreStackVault)
+			}
 			if err := uc.pullStream(ctx, a, func(r io.Reader) error {
-				return uc.d.KV.Import(ctx, "", r)
+				return uc.d.KV.Import(ctx, backup.StackID, r)
 			}); err != nil {
 				uc.d.Logger.Error("금고 복원 실패 — 참조 정합성 검사에서 드러납니다", "error", err)
+			} else {
+				uc.d.Logger.Info("금고 KV 를 되돌렸습니다", "stack_id", backup.StackID)
 			}
 		}
 	}
 	return nil
+}
+
+const (
+	defaultKVImportWait  = 2 * time.Minute
+	defaultKVImportRetry = 10 * time.Second
+)
+
+// restoreStackVault 는 스택 금고로 KV 를 되돌린다 — 워크로드 재개 직후라 금고가 아직 안 떠 있을 수
+// 있어 기다려 다시 시도한다. 상한을 넘기면 오류로 남긴다(치명적이지 않다 — 볼륨이 되돌아왔으면 금고의
+// 데이터는 이미 그 안에 있고, 없으면 참조 정합성 검사가 드러낸다).
+func (uc *RestoreUseCase) restoreStackVault(ctx context.Context, backup *domain.BackupRun, arts []*domain.Artifact) {
+	wait, retry := uc.d.KVImportWait, uc.d.KVImportRetry
+	if wait <= 0 {
+		wait = defaultKVImportWait
+	}
+	if retry <= 0 {
+		retry = defaultKVImportRetry
+	}
+	for _, a := range arts {
+		if a.Component != domain.ComponentOpenBaoKV {
+			continue
+		}
+		deadline := time.Now().Add(wait)
+		var err error
+		for attempt := 1; ; attempt++ {
+			err = uc.pullStream(ctx, a, func(r io.Reader) error {
+				return uc.d.KV.Import(ctx, backup.StackID, r)
+			})
+			if err == nil || ctx.Err() != nil || time.Now().After(deadline) {
+				break
+			}
+			uc.d.Logger.Info("스택 금고가 아직 응답하지 않아 KV import 를 다시 시도합니다",
+				"stack_id", backup.StackID, "attempt", attempt, "error", err)
+			select {
+			case <-ctx.Done():
+				err = ctx.Err()
+			case <-time.After(retry):
+				continue
+			}
+			break
+		}
+		if err != nil {
+			uc.d.Logger.Error("금고 복원 실패 — 참조 정합성 검사에서 드러납니다", "stack_id", backup.StackID, "error", err)
+			continue
+		}
+		// 성공도 남긴다 — 네 번의 리허설에서 이 단계는 실패 로그로만 보였다. 조용히 지나가면
+		// "안 돌았다" 와 구별할 수 없다.
+		uc.d.Logger.Info("스택 금고 KV 를 되돌렸습니다", "stack_id", backup.StackID)
+	}
 }
 
 func (uc *RestoreUseCase) resumeWorkloads(ctx context.Context, m domain.Manifest) {

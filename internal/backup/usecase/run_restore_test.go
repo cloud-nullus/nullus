@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -487,4 +488,46 @@ func TestRunRestore_stack_only_는_연결_풀을_건드리지_않는다(t *testi
 	_, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeStackOnly})
 	require.NoError(t, err)
 	assert.Equal(t, -1, tr.indexOf("db.reset"), "DB 를 되돌리지 않았으면 비울 이유가 없다")
+}
+
+// ── 금고(OpenBao KV) ───────────────────────────────────────────────────
+
+// 백업은 스택의 금고를 뜬다(KV.Export 에 스택 ID). 복구는 같은 금고로 되돌려야 한다 — 빈 스택 ID 로
+// 부르면 전역 주소(OPENBAO_ADDR)로 가서 다른 금고에 쓰거나(인클러스터) 닿지 못한다(호스트). 그리고
+// 스택 금고는 볼륨이 되돌아와 워크로드가 다시 뜬 뒤에야 있다 — 설계 §6.1 8단계 "금고 기동 → unseal →
+// KV import". 2026-10-12 리허설 네 번 모두 "금고 경로 27건 복원 실패" 가 이것이었다.
+func TestRunRestore_금고는_스택_금고로_워크로드가_뜬_뒤에_되돌린다(t *testing.T) {
+	uc, tr, _, _, kv, _, backupID := seedBackup(t, domain.ModeFull)
+
+	_, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull})
+	require.NoError(t, err)
+
+	assert.Equal(t, "stack-1", kv.importedStack, "뜬 곳(스택 금고)으로 되돌린다")
+	imp := tr.indexOf("kv.import")
+	require.GreaterOrEqual(t, imp, 0)
+	assert.Less(t, tr.indexOf("scale.up:gitlab"), imp, "금고 파드가 뜬 뒤다")
+	assert.Less(t, tr.indexOf("db.restore:platform_db"), imp, "플랫폼 DB 는 그 전에 끝난다")
+}
+
+// 금고가 뜨는 데는 시간이 걸린다. 첫 시도가 거절돼도 기다려 다시 한다.
+func TestRunRestore_금고가_아직_안_떴으면_기다려_다시_시도한다(t *testing.T) {
+	uc, tr, _, _, kv, _, backupID := seedBackup(t, domain.ModeFull)
+	kv.importFails = 2
+	uc.d.KVImportRetry = time.Millisecond
+
+	_, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull})
+	require.NoError(t, err)
+	assert.Equal(t, 3, kv.importAttempts, "실패 2번 뒤 성공")
+	assert.NotEqual(t, -1, tr.indexOf("kv.import"))
+}
+
+// platform_only 는 스택 워크로드를 건드리지 않는다 — 금고는 이미 떠 있으니 바로 되돌린다.
+func TestRunRestore_platform_only_도_스택_금고로_되돌린다(t *testing.T) {
+	uc, tr, _, _, kv, _, backupID := seedBackup(t, domain.ModeFull)
+
+	_, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Mode: domain.ModePlatformOnly})
+	require.NoError(t, err)
+	assert.Equal(t, "stack-1", kv.importedStack)
+	assert.NotEqual(t, -1, tr.indexOf("kv.import"))
+	assert.Equal(t, -1, tr.indexOf("scale.up:gitlab"))
 }
