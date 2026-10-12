@@ -128,7 +128,7 @@ curl -s -X POST http://localhost:8090/api/v1/admin/clusters/<cluster-id>/verify 
 | `web-backend-v1` | User Custom Pipeline | backend | Build → Deploy |
 | `batch-job-v1` | Batch Job Pipeline | batch | Build → Deploy |
 
-> `stages` 는 카드에 보이는 단계 라벨이자 **스택 없이 만든 파이프라인**의 단계 기본값이다. 스택에 붙여 만든 파이프라인은 저장소 프로비저닝이 CI 정의에서 단계(SecretScan · Build · SAST · ImageScan · Deploy 등)를 정한다 — 템플릿의 `stages` 와 다를 수 있다.
+> `stages` 는 카드에 보이는 단계 라벨이자 **스택 없이 만든 파이프라인**의 단계 기본값이다. 스택에 붙여 만든 파이프라인은 저장소 프로비저닝이 CI 정의에서 단계(SecretScan · DependencyScan · Build · SAST · ImageScan · Deploy 등)를 정한다 — 템플릿의 `stages` 와 다를 수 있다.
 
 ### 2-3. 템플릿 선택
 
@@ -263,7 +263,7 @@ curl -s "$API/api/v1/cicd/deployments?pipeline_id=$PIPELINE_ID" | jq '.items[] |
 ### UI
 
 1. **CI/CD List** (`/cicd/list`): 파이프라인이 Active 로 보인다
-2. 파이프라인의 **History**: 실행마다 상태(running · success · failed)와 단계가 보인다. 맨 앞 `SecretScan` 은 이번 푸시의 커밋에서 시크릿을 찾는 단계라 걸리면 빌드 전에 멈춘다(정책 `secret_detection` 으로 경고·끄기). SonarQube 가 있는 스택이면 SAST 판정도 붙는다
+2. 파이프라인의 **History**: 실행마다 상태(running · success · failed)와 단계가 보인다. 맨 앞 `SecretScan` 은 이번 푸시의 커밋에서 시크릿을 찾는 단계라 걸리면 빌드 전에 멈춘다(정책 `secret_detection` 으로 경고·끄기). 스택에서 서드파티 의존성 취약점(SCA)을 골랐으면 `DependencyScan` 이 이어서 락파일의 의존성을 스택 Trivy 서버로 검사한다(차단 기준은 이미지 스캔과 같은 스택 정책). SonarQube 가 있는 스택이면 SAST 판정도 붙는다
 
 ### API
 

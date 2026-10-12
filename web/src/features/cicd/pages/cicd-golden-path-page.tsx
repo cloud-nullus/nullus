@@ -65,6 +65,7 @@ export function goldenPathToStackOverrides(tools: CICDTool[]) {
   const security = {
     imageScanner: { tool: '', version: '' },
     sast: { tool: '', version: '' },
+    sca: { tool: '', version: '' },
   }
 
   for (const tool of tools) {
@@ -103,6 +104,9 @@ export function goldenPathToStackOverrides(tools: CICDTool[]) {
         break
       case 'sast':
         security.sast = { tool: toolId, version }
+        break
+      case 'sca':
+        security.sca = { tool: toolId, version }
         break
     }
   }

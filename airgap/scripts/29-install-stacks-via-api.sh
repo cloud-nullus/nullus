@@ -141,6 +141,7 @@ SLOTS = {
     # 보안 슬롯. 빠지면 템플릿이 고른 Trivy·SonarQube 가 설정에서 사라진다.
     "image_scanner":            ("security",   "image_scanner"),
     "sast":                     ("security",   "sast"),
+    "sca":                      ("security",   "sca"),
 }
 
 data = json.load(sys.stdin)

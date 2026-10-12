@@ -44,6 +44,11 @@ type StackSummary struct {
 	// SASTServerEndpoint 는 스택 SonarQube 의 클러스터 내 주소다(http://host:port).
 	// SonarQube 를 고르지 않았거나 외부 SonarQube 를 쓰는 스택에서는 비어 있다.
 	SASTServerEndpoint string `json:"sast_server_endpoint"`
+
+	// DependencyScanEndpoint 는 의존성 스캔(SCA)이 붙을 스택 Trivy 서버 주소다(nullus-plan#79).
+	// 의존성 스캔을 고르지 않은 스택에서는 비어 있다 — 이미지 스캐너와 같은 서버라 값이 같을 수 있지만,
+	// 둘은 따로 고르는 단계라 칸도 따로 둔다.
+	DependencyScanEndpoint string `json:"dependency_scan_endpoint"`
 }
 
 // StackReader provides read-only access to Stack context data.

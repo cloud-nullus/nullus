@@ -95,6 +95,7 @@ describe('배포 요청 본문', () => {
     expect(body.config.security).toEqual({
       image_scanner: { name: 'trivy', version: '0.74.0', enabled: true },
       sast: { name: 'sonarqube', version: '26.9.0.129388', enabled: true },
+      sca: { name: '', version: '', enabled: false },
     })
   })
 

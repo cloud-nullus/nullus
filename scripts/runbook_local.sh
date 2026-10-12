@@ -258,7 +258,7 @@ Usage:
 
   ./scripts/runbook_local.sh down [--kind] [--auth=<keycloak|authentik|none>] [--volumes]
   ./scripts/runbook_local.sh purge [--keep-kind] [--keep-volumes]
-  ./scripts/runbook_local.sh stack-up [--template=<id>] [--name=<n>] [--namespace=<ns>]
+  ./scripts/runbook_local.sh stack-up [--template=<id>] [--name=<n>] [--namespace=<ns>] [--security=sca,image_scanner,sast]
                                       [--cluster=<ctx-name>] [--domain=<d>] [--wait]
   ./scripts/runbook_local.sh stack-status <stack-id> [--wait]
   ./scripts/runbook_local.sh wire [--stack=<id>]
@@ -1297,7 +1297,7 @@ stack_create_payload() {
   local template_id="$1" stack_name="$2" cluster_id="$3" namespace="$4" domain="$5"
   curl -sS -m 30 "$(api_base)/api/v1/stacks/templates" 2>/dev/null | \
   TEMPLATE_ID="$template_id" STACK_NAME="$stack_name" CLUSTER_ID="$cluster_id" \
-  STACK_NAMESPACE="$namespace" ACCESS_DOMAIN="$domain" python3 -c '
+  STACK_NAMESPACE="$namespace" ACCESS_DOMAIN="$domain" EXTRA_SECURITY="${STACK_EXTRA_SECURITY:-}" python3 -c '
 import json, os, sys
 
 SLOTS = {
@@ -1315,6 +1315,8 @@ SLOTS = {
     # 보안 슬롯. 빠지면 템플릿이 고른 Trivy·SonarQube 가 설정에서 사라진다.
     "image_scanner":            ("security",   "image_scanner"),
     "sast":                     ("security",   "sast"),
+    # 서드파티 의존성 취약점(SCA) — 스택 Trivy 서버에 붙는다(nullus-plan#79).
+    "sca":                      ("security",   "sca"),
 }
 
 data = json.load(sys.stdin)
@@ -1342,6 +1344,18 @@ for tool in template.get("tools") or []:
 
 config["access_domain"] = os.environ["ACCESS_DOMAIN"]
 config["authentication"] = {"provider": "openbao"}
+
+# --security=sca,image_scanner,sast : 템플릿에 없는 보안 도구를 더한다(마법사의 Security 탭과 같다).
+_security_defaults = {
+    "image_scanner": {"name": "Trivy", "version": "0.74.0"},
+    "sca": {"name": "Trivy", "version": "0.74.0"},
+    "sast": {"name": "SonarQube", "version": "26.9.0.129388"},
+}
+for _key in [k.strip() for k in os.environ.get("EXTRA_SECURITY", "").split(",") if k.strip()]:
+    if _key not in _security_defaults:
+        sys.stderr.write("unknown --security tool %s (image_scanner|sca|sast)\n" % _key)
+        sys.exit(1)
+    config["security"][_key] = dict(_security_defaults[_key], enabled=True)
 
 # storage 는 부분만 채우면 검증에서 400 이 난다 — integrated-create 는
 # database/object_storage 가 둘 다 mode=create 이어야 하고, create 모드는
@@ -1388,6 +1402,8 @@ do_stack_up() {
       --namespace=*) namespace="${arg#*=}" ;;
       --cluster=*)  cluster_name="${arg#*=}" ;;
       --domain=*)   domain="${arg#*=}" ;;
+      # 템플릿에 없는 보안 도구를 더한다 — 예: --security=sca (마법사 Security 탭과 같은 선택)
+      --security=*) export STACK_EXTRA_SECURITY="${arg#*=}" ;;
       --wait)       wait_install="true" ;;
       *) echo "[nullus] unknown option: $arg"; exit 1 ;;
     esac

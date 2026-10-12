@@ -47,6 +47,8 @@ type ProvisionAppProjectInput struct {
 	ImageScannerEndpoint string
 	// ImageScannerJavaDBRepository 는 에어갭 CI 잡이 Java DB 를 받을 내부 미러다. 비면 업스트림.
 	ImageScannerJavaDBRepository string
+	// DependencyScanEndpoint 는 의존성 스캔(SCA)이 붙을 스택 Trivy 서버 주소다. 비면 단계를 만들지 않는다.
+	DependencyScanEndpoint string
 	// SASTServerEndpoint 는 스택 SonarQube 주소다. 비면 소스 정적 분석 단계를 만들지 않는다.
 	SASTServerEndpoint string
 	// SASTToken 은 CI 가 분석에 쓸 토큰이다. 스택 설치가 발급해 OpenBao 에 둔 값이다.
@@ -250,6 +252,7 @@ func (uc *ProvisionAppProject) Execute(
 		ImageScannerEndpoint:         input.ImageScannerEndpoint,
 		ImageScannerJavaDBRepository: input.ImageScannerJavaDBRepository,
 		SASTServerEndpoint:           input.SASTServerEndpoint,
+		DependencyScanEndpoint:       input.DependencyScanEndpoint,
 	}
 	files, err := scaffold.Render(scaffoldInput)
 	if err != nil {

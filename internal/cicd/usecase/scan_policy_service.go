@@ -202,6 +202,13 @@ func (s *ScanPolicyService) publish(
 // sastStageKey 는 소스 정적 분석 단계다. 이 단계도 스택 정책 변수를 읽는다.
 var sastStageKey = port.StageKey("SAST")
 
+// secretScanStageKey · dependencyScanStageKey 도 스택 정책 변수를 읽는다 — 시크릿 탐지는
+// NULLUS_SECRET_DETECTION(#80), 의존성 스캔은 이미지 스캔과 같은 차단 심각도(#79).
+var (
+	secretScanStageKey     = port.StageKey("SecretScan")
+	dependencyScanStageKey = port.StageKey("DependencyScan")
+)
+
 // readsScanPolicy 는 파이프라인이 스택 정책 변수를 읽는 단계(이미지 스캔·소스 정적
 // 분석)를 가졌는지 본다. 단계 기록이 없는 옛 파이프라인은 없는 것으로 본다 — 스캔
 // 단계가 생긴 뒤(#254)에 만든 파이프라인은 모두 단계를 기록한다.
@@ -210,7 +217,8 @@ func readsScanPolicy(p *domain.Pipeline) bool {
 		return false
 	}
 	for _, s := range p.Stages {
-		if key := port.StageKey(s); key == imageScanStageKey || key == sastStageKey {
+		switch port.StageKey(s) {
+		case imageScanStageKey, sastStageKey, secretScanStageKey, dependencyScanStageKey:
 			return true
 		}
 	}

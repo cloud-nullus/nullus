@@ -629,12 +629,16 @@ export function StackInstallPage() {
     },
     // 보안 도구도 설치 목록에 넣어야 게이트웨이 라우트·자원 계획·매니페스트에 잡힌다. 빠지면
     // 화면이 만든 게이트웨이가 서버 기본값을 대신해 sonarqube.<도메인> 이 열리지 않는다.
+    // Trivy 서버는 이미지 스캐너와 의존성 스캔(SCA)이 함께 쓴다 — 둘 중 하나만 골라도 서고, 둘 다
+    // 골라도 하나다. 설치 목록·자원 계획에는 이 한 줄로 잡는다(백엔드 TrivyServerSelection 과 같다).
     {
       slot: 'security.imageScanner',
-      category: 'Security > Image Scanner',
-      toolKey: draft.security.imageScanner.tool,
-      toolLabel: toolLabel(draft.security.imageScanner.tool, noneLabel),
-      toolVersion: draft.security.imageScanner.version,
+      category: draft.security.imageScanner.tool
+        ? 'Security > Image Scanner'
+        : 'Security > Dependency Scan (Trivy server)',
+      toolKey: draft.security.imageScanner.tool || draft.security.sca?.tool || '',
+      toolLabel: toolLabel(draft.security.imageScanner.tool || draft.security.sca?.tool || '', noneLabel),
+      toolVersion: draft.security.imageScanner.version || draft.security.sca?.version || '',
     },
     {
       slot: 'security.sast',
@@ -2874,6 +2878,19 @@ export function StackInstallPage() {
                   {t(
                     'stackInstall.labels.sastHint',
                     "Not installed unless selected. Uses the stack's PostgreSQL and signs in with Keycloak when SSO is on.",
+                  )}
+                </p>
+                <ToolSelector
+                  label={t('stackInstall.labels.sca', 'Third-party Dependency Vulnerabilities (SCA)')}
+                  options={SECURITY_OPTIONS.sca}
+                  slot="sca"
+                  value={draft.security.sca ?? { tool: '', version: '' }}
+                  onChange={(v) => setTool('security', 'sca', v)}
+                />
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  {t(
+                    'stackInstall.labels.scaHint',
+                    "Pipelines check the repository's lockfiles against the stack's Trivy server before the build. Selecting it installs the Trivy server even without the image scanner.",
                   )}
                 </p>
               </>
