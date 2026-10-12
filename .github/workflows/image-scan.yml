@@ -1,0 +1,146 @@
+# 제품 이미지 주기 재스캔 (nullus-plan#77 — PRD "CVE 발견 시 24시간 이내 패치" 의 탐지 채널).
+#
+# cd.yml 의 스캔은 **빌드 시점**의 취약점만 본다. 취약점 DB 는 매일 바뀌므로, 마지막 릴리즈의
+# 이미지를 그대로 두어도 새 CVE 가 붙는다. 이 워크플로가 매주 마지막 릴리즈 태그의 API·Web 이미지와
+# 스택이 쓰는 Jenkins·SonarScanner 이미지를 다시 스캔하고, 수정 가능한 CRITICAL 이 있으면 실패해
+# 알린다 — 그 시각이 "탐지 시각" 이고, 24시간 패치 시계는 거기서 시작한다(릴리즈 정책 §7.4).
+name: Image Scan (weekly)
+
+on:
+  schedule:
+    - cron: '0 21 * * 0'   # 매주 월요일 06:00 KST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve released image tags
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.tags.outputs.release }}
+      jenkins: ${{ steps.tags.outputs.jenkins }}
+      sonar: ${{ steps.tags.outputs.sonar }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tags
+        id: tags
+        run: |
+          set -euo pipefail
+          # 마지막 릴리즈 태그 — 이미지 태그는 v 접두사를 뗀 값이다(cd.yml 의 metadata-action).
+          release="$(git tag --list 'v*' --sort=-v:refname | head -1)"
+          [ -n "$release" ] || { echo "릴리즈 태그가 없습니다"; exit 1; }
+          echo "release=${release#v}" >> "$GITHUB_OUTPUT"
+          # Jenkins·SonarScanner 는 릴리즈 버전이 아니라 Dockerfile 의 ARG 가 태그다(릴리즈 정책 §7.1).
+          jenkins="$(grep -E '^ARG JENKINS_VERSION=' deploy/images/jenkins/Dockerfile | cut -d= -f2)"
+          sonar="$(grep -E '^ARG SONAR_SCANNER_VERSION=' deploy/images/sonar-scanner/Dockerfile | cut -d= -f2)"
+          [ -n "$jenkins" ] && [ -n "$sonar" ] || { echo "Dockerfile 의 버전 ARG 를 찾지 못했습니다"; exit 1; }
+          echo "jenkins=$jenkins" >> "$GITHUB_OUTPUT"
+          echo "sonar=$sonar" >> "$GITHUB_OUTPUT"
+          echo "release=${release#v} jenkins=$jenkins sonar=$sonar"
+
+  scan:
+    name: Scan released images (Trivy)
+    needs: [resolve]
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: nullus-api
+            tag: ${{ needs.resolve.outputs.release }}
+          - name: nullus-web
+            tag: ${{ needs.resolve.outputs.release }}
+          - name: nullus-jenkins
+            tag: ${{ needs.resolve.outputs.jenkins }}
+          - name: nullus-sonar-scanner
+            tag: ${{ needs.resolve.outputs.sonar }}
+    env:
+      IMAGE_REF: ghcr.io/${{ github.repository }}/${{ matrix.name }}:${{ matrix.tag }}
+      TRIVY_IGNOREFILE: .trivyignore.yaml
+    steps:
+      - name: Checkout repository (.trivyignore.yaml)
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Vulnerability report (CRITICAL·HIGH, fixable) — JSON
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_REF }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: json
+          output: trivy-${{ matrix.name }}.json
+          exit-code: '0'
+
+      - name: Vulnerability report — SARIF
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_REF }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-${{ matrix.name }}.sarif
+          exit-code: '0'
+          skip-setup-trivy: true
+
+      - name: Upload SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
+        with:
+          sarif_file: trivy-${{ matrix.name }}.sarif
+          category: trivy-weekly-${{ matrix.name }}
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-weekly-${{ matrix.name }}.json
+          path: trivy-${{ matrix.name }}.json
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          python3 - "trivy-${{ matrix.name }}.json" "${{ env.IMAGE_REF }}" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          crit, high = [], 0
+          for r in d.get('Results') or []:
+              for v in r.get('Vulnerabilities') or []:
+                  if v['Severity'] == 'CRITICAL':
+                      crit.append(f"`{v['PkgName']}` {v['VulnerabilityID']} → {v.get('FixedVersion') or '?'}")
+                  elif v['Severity'] == 'HIGH':
+                      high += 1
+          print(f"### `{sys.argv[2]}` — CRITICAL {len(crit)} · HIGH {high} (수정판 있는 것만)")
+          for line in sorted(set(crit)):
+              print(f"- {line}")
+          print()
+          PY
+
+      # 실패 = 탐지. 24시간 패치 시계가 여기서 시작한다 — 핫픽스 절차는 릴리즈 정책 §9.4 · §7.4.
+      - name: Gate — fixable CRITICAL must be 0
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_REF }}
+          scanners: vuln
+          severity: CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: '1'
+          skip-setup-trivy: true

@@ -2,7 +2,8 @@
 
 Nullus Platform(`cloud-nullus/nullus`)의 GitHub Release · CHANGELOG · 버전(SemVer) 관리 규칙을 정의합니다.
 
-- 초안: 2026-07-25 / 개정: 2026-07-26 (v2) / 2026-07-28 (v2.1) / 2026-08-07 (v2.2) / 2026-08-31 (v2.3)
+- 초안: 2026-07-25 / 개정: 2026-07-26 (v2) / 2026-07-28 (v2.1) / 2026-08-07 (v2.2) / 2026-08-31 (v2.3) / 2026-10-12 (v2.4)
+- v2.4 개정 사유: PRD 1.3 과 기능목록이 *"제공하는 컨테이너 이미지는 Trivy 스캔 완료, CVE 24시간 내 패치"* 를 완료 기준으로 약속하고 있었지만 저장소에 스캔 설정은 0건이었습니다(nullus-plan#77). 릴리즈 파이프라인에 **SBOM · provenance attestation · Trivy 스캔 게이트**를 넣고(§7.4 신설), 그 약속을 지킬 수 있는 운영 정의로 바꿔 적었습니다. §1 산출물 표 · §7.3 잡 표 · §9.0 게이트 · §13 과제도 함께 갱신.
 - 상태: **적용 중** — 태그 3건(`v0.3.0-alpha`·`v0.4.0-alpha`·`v0.4.1`)을 이 문서 기준으로 발행했습니다. 남은 과제는 §13에 있습니다.
 - v2.3 개정 사유: `cd.yml`에 `create-release` 잡이 들어오면서 **§9.1의 9·10단계(Release 수동 생성·prerelease 체크)가 자동화**됐는데, 절차는 사람이 하는 것으로 남아 있었습니다. 그대로 따르면 자동 생성본과 충돌합니다. 실제 릴리즈에서 어긋난 지점(`v0.4.1`의 compare 링크·`Chart.yaml` 누락, 접미사를 떼면서 생긴 `0.4` 롤링 태그)도 함께 반영합니다.
 - v2.2 개정 사유: `v0.3.0-alpha`를 실제로 릴리즈하고 실 클러스터에 배포해 보니, 문서대로 밟았는데도 산출물이 설치되지 않았습니다. 원인을 §7.1(패키지 가시성)과 §9.1의 실 클러스터 검증(v2.3 이후 D-9)에 반영했습니다.
@@ -37,13 +38,16 @@ v1은 "이렇게 운영 중"이라고 서술했으나, 실제로는 **태그·Re
 
 ## 1. GitHub Release를 관리하는 이유
 
-Nullus는 릴리즈마다 아래 3가지 산출물이 함께 나갑니다.
+Nullus는 릴리즈마다 아래 산출물이 함께 나갑니다 — 설치물 3종과 그 **증적**(v2.4, §7.4).
 
 | 산출물 | 경로 |
 |---|---|
 | API 이미지 | `ghcr.io/cloud-nullus/nullus/nullus-api` |
 | Web 이미지 | `ghcr.io/cloud-nullus/nullus/nullus-web` |
 | Helm 차트 | `oci://ghcr.io/cloud-nullus/charts/nullus` (§7.2로 신설) |
+| SBOM (SPDX 2.3 JSON) | Release 자산 `sbom-<이미지>.spdx.json` 4종 + 이미지 digest 에 붙은 attestation (§7.4) |
+| 취약점 리포트 (Trivy) | Release 자산 `trivy-<이미지>.json` 4종 + `SHA256SUMS` (§7.4) |
+| 빌드 provenance (SLSA) | 이미지 digest 에 붙은 GitHub attestation — `gh attestation verify` 로 확인 (§7.4) |
 
 > **세 산출물은 모두 ghcr 패키지 가시성이 `public`이어야 합니다.** 저장소가 public이어도 패키지는 **기본 private으로 생성**되며, private이면 위 경로는 익명 pull이 되지 않아 사실상 산출물이 아닙니다. 전환은 REST API로 불가능하고 `https://github.com/orgs/cloud-nullus/packages` 아래 **패키지별 Settings → Danger Zone**에서만 됩니다 — 저장소 Settings의 "Make … private"과 혼동하면 저장소 자체를 비공개로 만들게 되니 주의하십시오. 확인은 §9.1 D-9에서 합니다.
 >
@@ -330,12 +334,14 @@ v2.2까지 이 문서는 이미지와 차트 게시만 자동으로 서술하고
 
 | 잡 | 하는 일 | 조건 | 선행 |
 |---|---|---|---|
-| `build-and-push-api` | API 이미지 빌드·푸시 (amd64/arm64) | 태그·`main`·`phase1` | — |
-| `build-and-push-web` | Web 이미지 빌드·푸시 (amd64/arm64) | 태그·`main`·`phase1` | — |
-| `build-and-push-jenkins` | Jenkins 이미지 (§7.1 — 릴리즈 버전 아님) | 태그·`main`·`phase1` | — |
-| `publish-chart` | 차트 package·push, `--version`/`--app-version`을 **태그에서 주입** | **태그만** | — |
-| `create-release` | GitHub Release 생성, 본문·prerelease 자동 판정 (§5) | **태그만** | api·web·chart |
-| `deploy-zadara` | Zadara Cloud 배포 (`environment: zadara`) | 태그·`main`·수동 | api·web |
+| `build-and-push-api` | API 이미지 빌드·푸시 (amd64/arm64) + SBOM·provenance attestation (§7.4) | 태그·`main`·`phase1` | — |
+| `build-and-push-web` | Web 이미지 빌드·푸시 (amd64/arm64) + SBOM·provenance attestation | 태그·`main`·`phase1` | — |
+| `build-and-push-jenkins` | Jenkins 이미지 (§7.1 — 릴리즈 버전 아님) + SBOM·provenance attestation | 태그·`main`·`phase1` | — |
+| `build-and-push-sonar-scanner` | SonarScanner 이미지 (§7.1) + SBOM·provenance attestation | 태그·`main`·`phase1` | — |
+| `scan-images` | 네 이미지 Trivy 스캔 — 리포트는 늘, **게이트(수정판 있는 CRITICAL 0)는 태그에서만** (§7.4) | 태그·`main`·`phase1` | 이미지 4종 |
+| `publish-chart` | 차트 package·push, `--version`/`--app-version`을 **태그에서 주입** | **태그만** | scan |
+| `create-release` | GitHub Release 생성, 본문·prerelease 자동 판정 (§5), SBOM·리포트 자산 첨부 | **태그만** | api·web·chart·scan |
+| `deploy-zadara` | Zadara Cloud 배포 (`environment: zadara`) | 태그·`main`·수동 | api·web·scan |
 
 읽는 방법 세 가지.
 
@@ -346,6 +352,60 @@ v2.2까지 이 문서는 이미지와 차트 게시만 자동으로 서술하고
 3. **같은 커밋에 브랜치 push와 태그 push가 잇따르면** `concurrency` 설정이 앞선 브랜치 런을
    접고 태그 런을 남깁니다(태그 런이 하는 일이 상위 집합이라서). 릴리즈 PR을 머지하고 곧바로
    태그를 밀면 반드시 일어나는 일이며, 접힌 런은 실패가 아닙니다.
+4. **`scan-images`가 태그 런에서 실패하면 차트·Release·배포가 모두 멈춥니다** (v2.4). 이미지는
+   이미 ghcr 에 올라가 있지만 Release 가 없으므로 "릴리즈" 는 나가지 않은 것입니다 — §7.4.
+
+### 7.4 공급망 증적 — SBOM · provenance · 취약점 스캔 (v2.4 신설)
+
+**왜.** PRD 1.3(§비기능/보안)과 기능목록은 *"제공하는 컨테이너 이미지는 Trivy 스캔 완료, CVE 24시간 내 패치"*
+를 완료 기준으로 적어 두었는데, 2026-08-30 저장소 확인 시점에 스캔 설정은 **0건**이었고 릴리즈 이미지의
+SBOM·provenance 도 없었습니다(nullus-plan#77). 에어갭 번들의 SBOM 은 있었지만 syft 가 없으면 **조용히 빠진 채
+빌드가 초록불**이었습니다. v2.4 는 그 간극을 `cd.yml` 로 닫고, 약속을 지킬 수 있는 문장으로 고쳐 적습니다.
+
+**결정.**
+
+| 항목 | 결정 | 왜 |
+|---|---|---|
+| SBOM 형식 | **SPDX 2.3 JSON**(syft `spdx-json`). CycloneDX 는 `SBOM_FORMAT=cyclonedx-json` 으로 선택 | 에어갭 번들이 이미 쓰던 기본값이고, GitHub attestation 과 대부분의 수요 측 도구가 받는다. 릴리즈 이미지와 번들이 **같은 형식**이어야 고객에게 한 종류만 설명한다 |
+| 릴리즈 이미지 SBOM | 빌드 직후 **푸시된 digest** 를 syft 로 떠서 `actions/attest-sbom` 으로 서명·저장(GitHub + ghcr referrer), Release 자산으로도 첨부 | buildx 의 inline `sbom:` 은 이미지 index 에 `unknown/unknown` 플랫폼 manifest 를 더해 **kind load 가 다루지 못한다** — 그래서 `sbom: false` 였다. attestation 은 digest 를 가리키는 **별도 문서**라 index 가 그대로다. 로컬 검증 경로와 증적이 둘 다 산다 |
+| provenance | buildx `provenance: false` 유지. **`actions/attest-build-provenance`(SLSA, Sigstore 서명)** 를 네 이미지 모두에 | 같은 이유(index 불변). GitHub OIDC 로 서명되므로 키 관리가 없다 |
+| 이미지 서명 | **cosign 을 따로 도입하지 않는다.** attestation 이 Sigstore 로 서명되어 digest 에 묶이므로 "이 digest 가 이 저장소의 이 커밋에서 이 워크플로로 빌드됐다" 가 이미 검증된다 | 서명 도구를 하나 더 들이면 키·검증 절차가 둘이 된다. 필요가 생기면(정책 엔진이 cosign 서명만 받는 등) 그때 재검토 |
+| 취약점 스캔 | `scan-images` 잡이 네 이미지를 Trivy 로 스캔. 리포트(CRITICAL·HIGH, **수정판 있는 것만**)는 매 런 JSON + code scanning(SARIF) | 수정판이 없는 취약점은 우리가 할 수 있는 일이 없다 — 보고에 섞이면 신호가 묻힌다 |
+| 게이트 | **릴리즈 태그 런에서 수정판 있는 CRITICAL 이 하나라도 있으면 실패** → 차트·Release·배포 중단. `main` 푸시는 보고만 | main 을 막으면 개발이 서고, 막지 않으면 다음 릴리즈 전에 무엇을 고쳐야 하는지 매 머지마다 보인다. 태그는 "고객에게 나가는 것" 이라 막는다 |
+| 예외 | `.trivyignore.yaml` — **만료일(`expired_at`)과 사유 필수**. 만료가 지나면 Trivy 가 다시 보고한다 | 영구 예외는 가림 장치다. Phase 3 운영 규칙 *"CI 가림 장치는 기한을 정해 제거한다"* 와 같은 문제 |
+| 배포 방법 | ① Release 자산(`sbom-*.spdx.json` · `trivy-*.json` · `SHA256SUMS`) ② ghcr attestation(`gh attestation verify`) ③ 에어갭 번들 `bundle/sbom/`(`SBOM_REQUIRED=1` 로 빌드) | ①은 누구나 받아 제출할 수 있고, ②는 digest 에 묶여 위변조를 가르고, ③은 폐쇄망 고객에게 함께 들어간다 |
+| `generate-sbom.sh` | `SBOM_REQUIRED=1`(CI 기본) 이면 syft 부재·SBOM 하나의 실패도 **빌드 중단** | 조용한 skip 제거. 번들이 초록불인 채 SBOM 만 빠지는 일이 실제로 있었다 |
+
+검증:
+
+```bash
+# provenance·SBOM attestation — 이 digest 가 cloud-nullus 의 cd.yml 에서 빌드됐고 SBOM 이 붙어 있는가
+gh attestation verify oci://ghcr.io/cloud-nullus/nullus/nullus-api:<version> --owner cloud-nullus
+gh attestation verify oci://ghcr.io/cloud-nullus/nullus/nullus-web:<version> --owner cloud-nullus
+# Release 자산 — 체크섬
+sha256sum -c SHA256SUMS
+```
+
+**스캔 범위.** 네 이미지(API · Web · Jenkins · SonarScanner)의 **amd64 변형**을 digest 로 스캔합니다. OS 패키지와
+Go/npm 의존성은 아치와 무관하므로 arm64 변형의 결과는 같습니다 — 아치별 바이너리만 다릅니다. 스택이 설치하는
+OSS(GitLab·Harbor 등)는 이 절의 대상이 아닙니다(그쪽은 컨테이너 이미지 스캔 설계 §12.4 의 주기 스캔).
+
+**"CVE 24시간 내 패치" 의 운영 정의.** 문장만 있고 누가 언제 무엇을 하는지가 없어서 지킬 수 없는 약속이었습니다.
+
+| 항목 | 정의 |
+|---|---|
+| 탐지 채널 | ① `scan-images`(모든 CD 런) ② **주간 재스캔** `.github/workflows/image-scan.yml`(매주 월 06:00 KST, 마지막 릴리즈 태그의 API·Web + Dockerfile 버전의 Jenkins·SonarScanner) ③ code scanning 알림 |
+| 탐지 시각 | 수정판 있는 CRITICAL 을 **처음 보고한 런의 시각** — 주간 재스캔이 실패하면 그 런이다 |
+| 판정 주체 | 릴리즈 담당(§9.3). 리포트의 `FixedVersion` 을 보고 의존성·베이스 이미지·동봉 바이너리 중 어디를 올릴지 정한다 |
+| 기한 | **CRITICAL(수정판 있음): 탐지 후 24시간 이내 패치 릴리즈**(§9.4 핫픽스 절차). **HIGH: 다음 정기 릴리즈**(늦어도 7일). 수정판 없음: 대상 아님(`--ignore-unfixed`) — 수정판이 나오면 그 시각부터 |
+| 못 지킬 때 | `.trivyignore.yaml` 에 **만료일 + 사유**를 적고 CHANGELOG `Security` 에 남긴다. 만료일은 다음 정기 릴리즈를 넘기지 않는다 |
+
+> **2026-10-12 기준선** (`main` 의 그날 빌드, 수정판 있는 것만): `nullus-web` CRITICAL 0 · HIGH 3, `nullus-sonar-scanner`
+> 0 · 0, **`nullus-api` CRITICAL 11 · HIGH 150**, **`nullus-jenkins` CRITICAL 13 · HIGH 109**. API 의 CRITICAL 은
+> 자체 바이너리의 `github.com/jackc/pgx/v5` 5.8.0(→ 5.9.0) · `google.golang.org/grpc` 1.72.2(→ 1.79.3) 와, 이미지에
+> **동봉한 `helm`·`kubectl`·`migrate` 바이너리**의 옛 Go 표준 라이브러리(각각 Go 1.22.7 · 1.22.2 · 1.23.1 로 빌드된 배포판)
+> 입니다 — 우리 코드가 아니라 받아 넣은 바이너리가 CRITICAL 의 대부분입니다. Jenkins 는 Debian 13 베이스의 perl
+> 패키지(deb13u1 수정판)입니다. **이 상태로 태그를 밀면 게이트가 막습니다** — 다음 릴리즈 전에 §13-15 를 닫아야 합니다.
 
 ---
 
@@ -420,6 +480,9 @@ web:
 
 1. `ci.yml`(backend/frontend/E2E)이 대상 커밋에서 **성공**했을 것.
 2. `Lint Review`의 `📋 PR Convention Check`·`📝 CHANGELOG Check`가 릴리즈 PR에서 통과했을 것.
+3. **대상 커밋의 `main` CD 런에서 `scan-images` 요약에 수정판 있는 CRITICAL 이 0 일 것** (v2.4, §7.4).
+   이것만은 사람이 미리 보지 않아도 **태그 런이 강제**합니다 — 하나라도 있으면 차트·Release·배포가 멈추고
+   이미지만 올라간 채 남습니다. 미리 보면 태그를 다시 밀 일이 없습니다.
 
 > **`ci.yml`은 2026-08-31 기준 `active`입니다** — v2.2까지 적혀 있던 "`disabled_manually`라
 > 릴리즈 담당이 로컬에서 돌리고 결과를 PR 본문에 붙인다"는 대체 절차는 더 이상 필요 없습니다.
@@ -646,4 +709,6 @@ A. 해당 시점 커밋을 특정하기 어렵고 이미지도 남아 있지 않
 | 10 | ~~§9.1 step 11(설치 검증)을 **실 클러스터 서버 사이드**로 명시~~ | §9.1 | **완료 (2026-08-07, v2.2)** — step 11을 가시성 확인 + 익명 `helm pull` + `--dry-run=server` + 실제 설치 4단계로 구체화. v0.3.0-alpha 릴리즈 후 Zadara PoC 클러스터에 `--dry-run=server`를 돌려서야 차트 결함 2건(사설 CA 시크릿 필수 마운트, `bitnami/postgresql` 이미지 소멸)이 드러났다. 로컬 `helm template`은 둘 다 통과시킨다 — step 11이 로컬 렌더로 충족된다고 읽히면 같은 유형을 계속 놓친다 |
 | 11 | ~~§7.2 `publish-chart`가 `--version`/`--app-version`을 함께 주입하는 문제~~ | §7.2, §8.2 | **완료 (2026-08-31, v2.3)** — 잡을 고치는 대신 규칙을 코드에 맞췄다. `publish-chart`가 태그를 두 값에 모두 넣는 것은 "차트와 앱이 같은 버전으로 함께 나간다"는 전제에서 옳고, 어긋나는 것은 §8.2의 "차트만 바뀌면 `version`만 올린다" 쪽이다. §8.2에 **차트 전용 패치는 태그로 게시하지 않는다**를 명시했다 — 태그로 게시하면 존재하지 않는 `appVersion`이 찍혀 `ImagePullBackOff`가 된다 |
 | 12 | 릴리즈 절단 시 compare 링크·`Chart.yaml` 누락 | §9.1 A-4·A-5 | **열림** — `v0.4.1` 발행 시 둘 다 빠졌다. `CHANGELOG.md` 하단은 아직 `[unreleased]: …/compare/v0.4.0-alpha...HEAD`이고 `[0.4.1]` 줄이 없으며, `Chart.yaml`은 `version: 0.4.0` / `appVersion: "0.4.0-alpha"`다. **게시된 산출물에는 영향이 없다**(차트 버전은 태그에서 주입) — 저장소 기준값만 어긋난 상태라 후속 PR로 채우면 된다. 절차 쪽 방어는 v2.3에서 §9.1 D-10으로 넣었고, 자동 검사로 올리려면 `check_changelog.py`에 "릴리즈 섹션이 있으면 같은 버전의 compare 링크도 있어야 한다"를 더하는 방법이 있다 |
+| 14 | ~~릴리즈 이미지 SBOM · provenance · 취약점 스캔 게이트~~ | §7.4 | **완료 (2026-10-12, v2.4, nullus-plan#77)** — `cd.yml` 에 SBOM(syft, SPDX)·provenance attestation·`scan-images`(Trivy, 태그 게이트)·Release 자산 첨부, `image-scan.yml` 주간 재스캔, `generate-sbom.sh` 엄격 모드 |
+| 15 | 기준선 CRITICAL 수정 — API(`pgx` 5.9.0 · `grpc` 1.79.3 · 동봉 `helm`/`kubectl`/`migrate` 최신판) · Jenkins(Debian perl deb13u1 — 베이스 갱신 또는 빌드 시 `apt-get upgrade`) | §7.4 | **열림 (2026-10-12)** — 이것을 닫기 전에 태그를 밀면 `scan-images` 게이트가 막는다. 첫 "24시간 패치" 연습이기도 하다 |
 | 13 | `/health`가 버전을 하드코딩한다 | §8, §12 Q3 | **열림** — `cmd/api/main.go`의 `/health`가 `"version": "0.1.0-alpha"`를 고정 응답한다. §8의 "코드에 하드코딩하지 않는다"에 정면으로 어긋나고, `pkg/nullusclient`의 버전 스큐 검사가 이 필드를 읽으므로 **검사가 어떤 스큐도 잡지 못한다**. `ldflags`로 태그를 주입하고(§12 Q3) `MinServerVersion`을 실제 하한으로 올리는 코드 변경이 필요하다 |

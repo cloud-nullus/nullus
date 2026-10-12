@@ -746,7 +746,7 @@ Keycloak Role "developer" → GitLab Reporter + Argo CD Read-only + Grafana View
 | 보안 | Kubeconfig | AES-256 암호화 저장, 메모리에서 복호화 |
 | 보안 | 민감 정보 | Kubernetes Secret 저장 |
 | 보안 | RBAC | ServiceAccount 최소 권한 원칙, Namespace 격리 |
-| 보안 | 이미지 스캔 | Trivy 스캔 완료, CVE 24시간 내 패치 |
+| 보안 | 이미지 스캔 | 릴리즈마다 Trivy 스캔 — 수정판 있는 CRITICAL 0 이 릴리즈 게이트, SBOM·provenance attestation 동봉, CRITICAL 은 탐지 후 24시간 내 패치 릴리즈 (릴리즈 정책 §7.4) |
 | 확장성 | 동시 설치 | 최대 10개 파이프라인 동시 설치 |
 | 확장성 | 팀 규모 | 최대 500명 개발자 (Phase 1) |
 | 신뢰성 | 가동시간 | 웹 UI 99.0% (베타 기간) |

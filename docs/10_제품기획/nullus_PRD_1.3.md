@@ -600,9 +600,9 @@ Nullus는 3개 Phase로 나뉘어 개발된다. 본 PRD는 **Phase 1**을 중점
 - **RBAC**:
     - Nullus가 생성하는 ServiceAccount는 최소 권한 원칙
     - Namespace 격리 지원
-- **취약점 스캔**:
-    - 제공하는 컨테이너 이미지는 Trivy 스캔 완료
-    - CVE 발견 시 24시간 이내 패치
+- **취약점 스캔** (운영 정의는 릴리즈 정책 §7.4):
+    - 제공하는 컨테이너 이미지는 릴리즈마다 Trivy 스캔을 거친다 — **수정판이 있는 CRITICAL 취약점이 0 이어야 릴리즈된다**(CD 게이트). SBOM(SPDX 2.3)과 빌드 provenance 를 attestation 과 Release 자산으로 함께 제공한다
+    - 수정판이 있는 CRITICAL CVE 는 탐지(릴리즈 스캔·주간 재스캔) 후 **24시간 이내 패치 릴리즈**, HIGH 는 다음 정기 릴리즈. 지킬 수 없으면 만료일을 둔 예외로 기록한다
 
 #### OpenBao-first 시크릿 관리 원칙 (신규)
 

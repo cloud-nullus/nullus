@@ -27,6 +27,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write       # attestation 서명(Sigstore) — nullus-plan#77
+      attestations: write   # GitHub attestation 저장
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     name: Build & Push API Image
     runs-on: ubuntu-latest
     steps:
@@ -60,6 +64,7 @@ jobs:
             type=sha,prefix=,format=short
 
       - name: Build and push API image (linux/amd64,linux/arm64)
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -72,10 +77,44 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # ── 공급망 증적 (nullus-plan#77) ─────────────────────────────────────────
+      # SBOM·provenance 는 buildx 의 inline attestation(`sbom:`/`provenance:`)으로 만들지 않는다 —
+      # inline 은 이미지 index 에 unknown/unknown 플랫폼 manifest 를 더해 kind load 가 다루지
+      # 못한다(nullus-jenkins 잡의 주석). GitHub artifact attestation 은 **이미지 digest 를 가리키는
+      # 서명 문서**를 레지스트리의 referrer 와 GitHub 에 따로 두므로 index 가 그대로다 — 로컬 검증
+      # 경로와 증적이 둘 다 산다. 검증: gh attestation verify oci://<이미지> --owner cloud-nullus
+      - name: Generate SBOM (SPDX JSON, syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}/nullus-api@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-nullus-api.spdx.json
+          artifact-name: sbom-nullus-api.spdx.json
+          upload-release-assets: false
+
+      - name: Attest build provenance (SLSA)
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-api
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest SBOM
+        uses: actions/attest-sbom@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-api
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom-nullus-api.spdx.json
+          push-to-registry: true
+
   build-and-push-jenkins:
     permissions:
       contents: read
       packages: write
+      id-token: write       # attestation 서명(Sigstore) — nullus-plan#77
+      attestations: write   # GitHub attestation 저장
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     name: Build & Push Jenkins Image
     runs-on: ubuntu-latest
     steps:
@@ -109,6 +148,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Jenkins image (linux/amd64,linux/arm64)
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: ./deploy/images/jenkins
@@ -116,12 +156,43 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           # attestation manifest 가 붙으면 manifest list 가 되어 kind load 가
-          # 다루지 못한다(로컬 검증 경로가 막힌다).
+          # 다루지 못한다(로컬 검증 경로가 막힌다). SBOM·provenance 는 아래
+          # "공급망 증적" 단계가 GitHub attestation 으로 따로 만든다.
           provenance: false
           sbom: false
           tags: ghcr.io/${{ github.repository }}/nullus-jenkins:${{ steps.ver.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # ── 공급망 증적 (nullus-plan#77) ─────────────────────────────────────────
+      # SBOM·provenance 는 buildx 의 inline attestation(`sbom:`/`provenance:`)으로 만들지 않는다 —
+      # inline 은 이미지 index 에 unknown/unknown 플랫폼 manifest 를 더해 kind load 가 다루지
+      # 못한다(nullus-jenkins 잡의 주석). GitHub artifact attestation 은 **이미지 digest 를 가리키는
+      # 서명 문서**를 레지스트리의 referrer 와 GitHub 에 따로 두므로 index 가 그대로다 — 로컬 검증
+      # 경로와 증적이 둘 다 산다. 검증: gh attestation verify oci://<이미지> --owner cloud-nullus
+      - name: Generate SBOM (SPDX JSON, syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}/nullus-jenkins@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-nullus-jenkins.spdx.json
+          artifact-name: sbom-nullus-jenkins.spdx.json
+          upload-release-assets: false
+
+      - name: Attest build provenance (SLSA)
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-jenkins
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest SBOM
+        uses: actions/attest-sbom@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-jenkins
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom-nullus-jenkins.spdx.json
+          push-to-registry: true
 
   # 파이프라인 SAST 단계의 스캐너. 공식 sonarsource/sonar-scanner-cli 는 amd64 만 내서
   # arm64 노드·에어갭 arm64 번들에서 단계가 서지 않는다 — 플랫폼 독립 zip 을 멀티아치
@@ -131,6 +202,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write       # attestation 서명(Sigstore) — nullus-plan#77
+      attestations: write   # GitHub attestation 저장
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     name: Build & Push SonarScanner Image
     runs-on: ubuntu-latest
     steps:
@@ -160,6 +235,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Build and push SonarScanner image (linux/amd64,linux/arm64)
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: ./deploy/images/sonar-scanner
@@ -173,10 +249,44 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # ── 공급망 증적 (nullus-plan#77) ─────────────────────────────────────────
+      # SBOM·provenance 는 buildx 의 inline attestation(`sbom:`/`provenance:`)으로 만들지 않는다 —
+      # inline 은 이미지 index 에 unknown/unknown 플랫폼 manifest 를 더해 kind load 가 다루지
+      # 못한다(nullus-jenkins 잡의 주석). GitHub artifact attestation 은 **이미지 digest 를 가리키는
+      # 서명 문서**를 레지스트리의 referrer 와 GitHub 에 따로 두므로 index 가 그대로다 — 로컬 검증
+      # 경로와 증적이 둘 다 산다. 검증: gh attestation verify oci://<이미지> --owner cloud-nullus
+      - name: Generate SBOM (SPDX JSON, syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}/nullus-sonar-scanner@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-nullus-sonar-scanner.spdx.json
+          artifact-name: sbom-nullus-sonar-scanner.spdx.json
+          upload-release-assets: false
+
+      - name: Attest build provenance (SLSA)
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-sonar-scanner
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest SBOM
+        uses: actions/attest-sbom@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-sonar-scanner
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom-nullus-sonar-scanner.spdx.json
+          push-to-registry: true
+
   build-and-push-web:
     permissions:
       contents: read
       packages: write
+      id-token: write       # attestation 서명(Sigstore) — nullus-plan#77
+      attestations: write   # GitHub attestation 저장
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     name: Build & Push Web Image
     runs-on: ubuntu-latest
     steps:
@@ -210,6 +320,7 @@ jobs:
             type=sha,prefix=,format=short
 
       - name: Build and push Web image (linux/amd64,linux/arm64)
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: ./web
@@ -228,6 +339,147 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # ── 공급망 증적 (nullus-plan#77) ─────────────────────────────────────────
+      # SBOM·provenance 는 buildx 의 inline attestation(`sbom:`/`provenance:`)으로 만들지 않는다 —
+      # inline 은 이미지 index 에 unknown/unknown 플랫폼 manifest 를 더해 kind load 가 다루지
+      # 못한다(nullus-jenkins 잡의 주석). GitHub artifact attestation 은 **이미지 digest 를 가리키는
+      # 서명 문서**를 레지스트리의 referrer 와 GitHub 에 따로 두므로 index 가 그대로다 — 로컬 검증
+      # 경로와 증적이 둘 다 산다. 검증: gh attestation verify oci://<이미지> --owner cloud-nullus
+      - name: Generate SBOM (SPDX JSON, syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}/nullus-web@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-nullus-web.spdx.json
+          artifact-name: sbom-nullus-web.spdx.json
+          upload-release-assets: false
+
+      - name: Attest build provenance (SLSA)
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-web
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest SBOM
+        uses: actions/attest-sbom@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/nullus-web
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom-nullus-web.spdx.json
+          push-to-registry: true
+
+  # 제품 이미지 취약점 스캔 (nullus-plan#77 — PRD "제공하는 컨테이너 이미지는 Trivy 스캔 완료").
+  #
+  # 네 이미지를 방금 푸시한 digest 로 스캔한다. 리포트(CRITICAL·HIGH, 수정판 있는 것만)는 JSON 으로
+  # 남기고 code scanning(SARIF)에도 올린다. **게이트는 릴리즈 태그에서만** 선다 — 수정 가능한 CRITICAL
+  # 이 하나라도 있으면 차트 게시·Release·배포가 멈춘다(이미지는 이미 올라갔다 — 고쳐서 패치 태그를
+  # 다시 민다, 릴리즈 정책 §7.4). main 푸시에서는 보고만 한다 — 그래야 main 이 막히지 않고도
+  # 다음 릴리즈 전에 무엇을 고쳐야 하는지 보인다. 예외는 .trivyignore.yaml 에 만료일과 함께 적는다.
+  scan-images:
+    permissions:
+      contents: read
+      packages: read
+      security-events: write   # SARIF 업로드(code scanning)
+    name: Scan images (Trivy)
+    needs: [build-and-push-api, build-and-push-web, build-and-push-jenkins, build-and-push-sonar-scanner]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: nullus-api
+            digest: ${{ needs.build-and-push-api.outputs.digest }}
+          - name: nullus-web
+            digest: ${{ needs.build-and-push-web.outputs.digest }}
+          - name: nullus-jenkins
+            digest: ${{ needs.build-and-push-jenkins.outputs.digest }}
+          - name: nullus-sonar-scanner
+            digest: ${{ needs.build-and-push-sonar-scanner.outputs.digest }}
+    env:
+      IMAGE_REF: ghcr.io/${{ github.repository }}/${{ matrix.name }}@${{ matrix.digest }}
+      TRIVY_IGNOREFILE: .trivyignore.yaml
+    steps:
+      - name: Checkout repository (.trivyignore.yaml)
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 리포트를 먼저 남긴다 — 게이트가 실패해도 무엇에 걸렸는지 산출물로 남아야 한다.
+      - name: Vulnerability report (CRITICAL·HIGH, fixable) — JSON
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_REF }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: json
+          output: trivy-${{ matrix.name }}.json
+          exit-code: '0'
+
+      - name: Vulnerability report — SARIF
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_REF }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-${{ matrix.name }}.sarif
+          exit-code: '0'
+          skip-setup-trivy: true
+
+      - name: Upload SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        # code scanning 이 꺼져 있어도 스캔 자체는 성공이다 — 리포트는 아래 산출물로 남는다.
+        continue-on-error: true
+        with:
+          sarif_file: trivy-${{ matrix.name }}.sarif
+          category: trivy-${{ matrix.name }}
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-${{ matrix.name }}.json
+          path: trivy-${{ matrix.name }}.json
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          python3 - "trivy-${{ matrix.name }}.json" "${{ matrix.name }}" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          crit, high = [], 0
+          for r in d.get('Results') or []:
+              for v in r.get('Vulnerabilities') or []:
+                  if v['Severity'] == 'CRITICAL':
+                      crit.append(f"`{v['PkgName']}` {v['VulnerabilityID']} → {v.get('FixedVersion') or '?'}")
+                  elif v['Severity'] == 'HIGH':
+                      high += 1
+          print(f"### {sys.argv[2]} — CRITICAL {len(crit)} · HIGH {high} (수정판 있는 것만)")
+          for line in sorted(set(crit)):
+              print(f"- {line}")
+          print()
+          PY
+
+      # 게이트 — 릴리즈 태그에서만 실패한다. 이미 올라간 이미지를 되돌리지는 못하지만 Release·
+      # 차트·배포가 이 잡을 기다리므로 "릴리즈" 는 나가지 않는다.
+      - name: Release gate — fixable CRITICAL must be 0
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_REF }}
+          scanners: vuln
+          severity: CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+          skip-setup-trivy: true
+
   # 태그 push 시에만 Helm 차트를 ghcr OCI 레지스트리에 게시한다 (릴리즈 정책 §7.2).
   # 이미지와 동일한 레지스트리·인증을 쓰므로 별도 gh-pages 운영이 필요 없다.
   publish-chart:
@@ -236,6 +488,8 @@ jobs:
       packages: write
     name: Package & Push Helm Chart
     if: startsWith(github.ref, 'refs/tags/v')
+    # 스캔 게이트 뒤에 선다 — 수정 가능한 CRITICAL 이 있는 릴리즈는 차트도 나가지 않는다.
+    needs: [scan-images]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -267,7 +521,7 @@ jobs:
       contents: write   # 릴리즈 생성에만 필요하다
     name: Create GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-and-push-api, build-and-push-web, publish-chart]
+    needs: [build-and-push-api, build-and-push-web, publish-chart, scan-images]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -275,6 +529,27 @@ jobs:
         with:
           # 직전 태그를 찾아 compare 링크를 만들려면 태그 이력이 필요하다.
           fetch-depth: 0
+
+      # 공급망 증적을 Release 자산으로 싣는다 — SBOM(SPDX JSON) 4종 · Trivy 리포트 4종 · 체크섬.
+      # 레지스트리의 attestation 은 gh 가 있어야 읽지만, Release 의 파일은 누구나 받아 제출할 수 있다.
+      - name: Download SBOMs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sbom-*
+          path: supply-chain
+          merge-multiple: true
+      - name: Download Trivy reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: trivy-*
+          path: supply-chain
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          set -euo pipefail
+          cd supply-chain
+          ls -1
+          sha256sum -- * > SHA256SUMS
 
       - name: Extract release notes and prerelease flag
         id: notes
@@ -314,7 +589,15 @@ jobs:
               f'| API 이미지 | `ghcr.io/cloud-nullus/nullus/nullus-api:{version}` |',
               f'| Web 이미지 | `ghcr.io/cloud-nullus/nullus/nullus-web:{version}` |',
               f'| Helm 차트 | `oci://ghcr.io/cloud-nullus/charts/nullus` `{version}` |',
+              '| SBOM (SPDX 2.3 JSON) | 이 Release 의 `sbom-*.spdx.json` — API · Web · Jenkins · SonarScanner 이미지 |',
+              '| 취약점 리포트 (Trivy, CRITICAL·HIGH 수정판 있는 것) | 이 Release 의 `trivy-*.json`, 체크섬 `SHA256SUMS` |',
               '',
+              '### 증적 검증\n',
+              '이미지마다 SLSA provenance 와 SBOM 이 GitHub attestation(Sigstore 서명)으로 붙어 있다. 수정 가능한 CRITICAL 취약점이 0 인 것을 확인하고 나간 릴리즈다(릴리즈 정책 §7.4).\n',
+              '```bash',
+              f'gh attestation verify oci://ghcr.io/cloud-nullus/nullus/nullus-api:{version} --owner cloud-nullus',
+              f'gh attestation verify oci://ghcr.io/cloud-nullus/nullus/nullus-web:{version} --owner cloud-nullus',
+              '```\n',
               '### 문서\n',
               f'- [CHANGELOG]({repo}/blob/{tag}/CHANGELOG.md) — 전체 변경 이력',
               f'- [릴리즈 정책]({repo}/blob/{tag}/docs/20_개발가이드/Nullus_릴리즈%20정책.md)',
@@ -350,6 +633,7 @@ jobs:
         with:
           body_path: release_notes.md
           prerelease: ${{ steps.notes.outputs.prerelease == 'true' }}
+          files: supply-chain/*
 
       # CHANGELOG 에 해당 섹션이 없을 때만. body_path 와 generate_release_notes 를
       # 한 스텝에서 조건부로 섞으면 빈 경로가 넘어가 실패하므로 스텝을 나눈다.
@@ -359,6 +643,7 @@ jobs:
         with:
           generate_release_notes: true
           prerelease: ${{ steps.notes.outputs.prerelease == 'true' }}
+          files: supply-chain/*
 
   # Zadara Cloud 배포. 외부에서 열린 포트가 22/tcp 뿐이라 bastion 을 경유한다.
   # environment 를 지정해 실배포 직전에 승인 게이트를 걸 수 있게 한다.
@@ -368,7 +653,8 @@ jobs:
     name: Deploy to Zadara Cloud
     # main 머지 시 개발/검증용 자동 배포, v* 태그 push 시 운영/릴리즈 배포, workflow_dispatch 수동 배포
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-    needs: [build-and-push-api, build-and-push-web]
+    # 스캔 뒤에 배포한다 — 태그 런은 게이트에 막히고, main 런은 리포트가 먼저 남는다.
+    needs: [build-and-push-api, build-and-push-web, scan-images]
     environment: zadara
     runs-on: ubuntu-latest
     steps:
