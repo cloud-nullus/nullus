@@ -384,6 +384,8 @@ func (uc *RestoreUseCase) restorePlatform(ctx context.Context, backup *domain.Ba
 				return uc.d.KV.Import(ctx, backup.StackID, r)
 			}); err != nil {
 				uc.d.Logger.Error("금고 복원 실패 — 참조 정합성 검사에서 드러납니다", "error", err)
+			} else {
+				uc.d.Logger.Info("금고 KV 를 되돌렸습니다", "stack_id", backup.StackID)
 			}
 		}
 	}
@@ -431,7 +433,11 @@ func (uc *RestoreUseCase) restoreStackVault(ctx context.Context, backup *domain.
 		}
 		if err != nil {
 			uc.d.Logger.Error("금고 복원 실패 — 참조 정합성 검사에서 드러납니다", "stack_id", backup.StackID, "error", err)
+			continue
 		}
+		// 성공도 남긴다 — 네 번의 리허설에서 이 단계는 실패 로그로만 보였다. 조용히 지나가면
+		// "안 돌았다" 와 구별할 수 없다.
+		uc.d.Logger.Info("스택 금고 KV 를 되돌렸습니다", "stack_id", backup.StackID)
 	}
 }
 
