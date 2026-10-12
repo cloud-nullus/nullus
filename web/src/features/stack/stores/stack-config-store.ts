@@ -59,7 +59,7 @@ export const TOOL_VERSION_CATALOG: Record<string, ToolVersionCatalogEntry> = {
   // Jenkins 차트는 임의로 내릴 수 없다 — Gitea multibranch 스캔에 쓰는 gitea
   // 플러그인이 Jenkins 2.528.3 이상을 요구한다.
   // (백엔드 단일 출처: internal/stack/domain/connection.go)
-  jenkins: { appVersion: '2.568.2', chartVersion: '5.9.54' },
+  jenkins: { appVersion: '2.568.3', chartVersion: '5.9.54' },
   flux: { appVersion: 'v2.3.0', chartVersion: '2.13.0' },
   spinnaker: { appVersion: '1.33.0', chartVersion: '2.32.1' },
   thanos: { appVersion: '0.36.1', chartVersion: '15.7.1' },

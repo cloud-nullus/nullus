@@ -3,7 +3,7 @@
 # Regenerate whenever chart deps or app versions change.
 # Format : <registry>/<repo>:<tag>, one per line. Blank / "#" lines ignored.
 # CI     : MODE=check ./00-generate-images.sh blocks drift.
-# installer-values-sha256: edea09e158b7e4e9a1498f225cab957fc67242ae43166c6d544198ec1d28e9c8
+# installer-values-sha256: e5b46daae63f0843da47a599f6e84816e9ff403be9f9b0d7f9f5fdda74120b17
 
 # --- Nullus app + chart dependency images (rendered from chart) ---
 busybox:1.37
@@ -31,9 +31,9 @@ docker.io/envoyproxy/gateway:v1.4.3
 docker.io/envoyproxy/ratelimit:bb4dae24
 docker.io/grafana/grafana:11.5.1
 docker.io/hashicorp/vault-k8s:1.7.2
-docker.io/jenkins/jenkins:2.568.2-jdk21
+docker.io/jenkins/jenkins:2.568.3-jdk21
 docker.io/kiwigrid/k8s-sidecar:2.10.1
-ghcr.io/cloud-nullus/nullus/nullus-jenkins:2.568.2
+ghcr.io/cloud-nullus/nullus/nullus-jenkins:2.568.3
 ghcr.io/dasomel/goharbor/harbor-core:v2.15.0-build.32
 ghcr.io/dasomel/goharbor/harbor-db:v2.15.0-build.32
 ghcr.io/dasomel/goharbor/harbor-jobservice:v2.15.0-build.32
@@ -96,7 +96,7 @@ sonatype/nexus3:3.64.0
 kindest/node:v1.30.0
 registry:2
 openbao/openbao:2.5.5
-ghcr.io/cloud-nullus/nullus/nullus-jenkins:2.568.2
+ghcr.io/cloud-nullus/nullus/nullus-jenkins:2.568.3
 
 # --- Runtime manifest images (built by Go code, not by helm) ---
 # Source of truth: internal/shared/domain/runtime_images.go

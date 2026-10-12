@@ -90,7 +90,7 @@ const mockTemplates = [
     planningProfile: 'local',
     toolDetails: [
       { category: 'source_repository', name: 'Gitea', helm_version: '', app_version: '1.27.0' },
-      { category: 'ci_platform', name: 'Jenkins', helm_version: '', app_version: '2.568.2' },
+      { category: 'ci_platform', name: 'Jenkins', helm_version: '', app_version: '2.568.3' },
       { category: 'cd_tool', name: 'Argo CD', helm_version: '', app_version: 'v2.13.3' },
     ],
   },

@@ -14,7 +14,7 @@ func liteStackConfig() StackConfig {
 			ContainerRegistry: ToolSelection{Name: "Harbor", Version: "2.11.0", Enabled: true},
 		},
 		Pipeline: PipelineConfig{
-			CIPlatform: ToolSelection{Name: "Jenkins", Version: "2.568.2", Enabled: true},
+			CIPlatform: ToolSelection{Name: "Jenkins", Version: "2.568.3", Enabled: true},
 			CDTool:     ToolSelection{Name: "Argo CD", Version: "v2.13.3", Enabled: true},
 		},
 	}

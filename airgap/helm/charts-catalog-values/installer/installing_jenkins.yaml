@@ -37,7 +37,7 @@ controller:
         pullPolicy: IfNotPresent
         registry: ghcr.io
         repository: cloud-nullus/nullus/nullus-jenkins
-        tag: 2.568.2
+        tag: 2.568.3
     installPlugins: false
     jenkinsUrl: http://jenkins.nullus.internal
     servicePort: 8080

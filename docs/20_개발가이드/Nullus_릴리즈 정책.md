@@ -405,7 +405,13 @@ OSS(GitLab·Harbor 등)는 이 절의 대상이 아닙니다(그쪽은 컨테이
 > 자체 바이너리의 `github.com/jackc/pgx/v5` 5.8.0(→ 5.9.0) · `google.golang.org/grpc` 1.72.2(→ 1.79.3) 와, 이미지에
 > **동봉한 `helm`·`kubectl`·`migrate` 바이너리**의 옛 Go 표준 라이브러리(각각 Go 1.22.7 · 1.22.2 · 1.23.1 로 빌드된 배포판)
 > 입니다 — 우리 코드가 아니라 받아 넣은 바이너리가 CRITICAL 의 대부분입니다. Jenkins 는 Debian 13 베이스의 perl
-> 패키지(deb13u1 수정판)입니다. **이 상태로 태그를 밀면 게이트가 막습니다** — 다음 릴리즈 전에 §13-15 를 닫아야 합니다.
+> 패키지(deb13u1 수정판)입니다.
+>
+> **같은 날 닫았습니다(§13-15).** API: `pgx` 5.11.0 · `grpc` 1.84.0, 빌더 `golang:1.26.9-alpine`, 런타임 `apk upgrade`,
+> 동봉 바이너리 `helm` v3.22.0 · `kubectl` v1.34.12 · `migrate` v4.20.1 → **CRITICAL 0 · HIGH 25**(전부 동봉 바이너리의
+> 상류 빌드). Jenkins: 베이스 `2.568.3-jdk21` + 빌드 시 `apt-get upgrade` + `git-lfs` 3.8.0 → **CRITICAL 0 · HIGH 13**.
+> 동봉 바이너리를 올릴 때는 이미지를 빌드해 `trivy image --severity CRITICAL --ignore-unfixed` 가 비어 있는지 본다 —
+> 받아 넣는 바이너리는 우리가 빌드하지 않으므로 상류가 새 Go 로 다시 굽기 전에는 HIGH 가 남는다.
 
 ---
 
@@ -710,5 +716,5 @@ A. 해당 시점 커밋을 특정하기 어렵고 이미지도 남아 있지 않
 | 11 | ~~§7.2 `publish-chart`가 `--version`/`--app-version`을 함께 주입하는 문제~~ | §7.2, §8.2 | **완료 (2026-08-31, v2.3)** — 잡을 고치는 대신 규칙을 코드에 맞췄다. `publish-chart`가 태그를 두 값에 모두 넣는 것은 "차트와 앱이 같은 버전으로 함께 나간다"는 전제에서 옳고, 어긋나는 것은 §8.2의 "차트만 바뀌면 `version`만 올린다" 쪽이다. §8.2에 **차트 전용 패치는 태그로 게시하지 않는다**를 명시했다 — 태그로 게시하면 존재하지 않는 `appVersion`이 찍혀 `ImagePullBackOff`가 된다 |
 | 12 | 릴리즈 절단 시 compare 링크·`Chart.yaml` 누락 | §9.1 A-4·A-5 | **열림** — `v0.4.1` 발행 시 둘 다 빠졌다. `CHANGELOG.md` 하단은 아직 `[unreleased]: …/compare/v0.4.0-alpha...HEAD`이고 `[0.4.1]` 줄이 없으며, `Chart.yaml`은 `version: 0.4.0` / `appVersion: "0.4.0-alpha"`다. **게시된 산출물에는 영향이 없다**(차트 버전은 태그에서 주입) — 저장소 기준값만 어긋난 상태라 후속 PR로 채우면 된다. 절차 쪽 방어는 v2.3에서 §9.1 D-10으로 넣었고, 자동 검사로 올리려면 `check_changelog.py`에 "릴리즈 섹션이 있으면 같은 버전의 compare 링크도 있어야 한다"를 더하는 방법이 있다 |
 | 14 | ~~릴리즈 이미지 SBOM · provenance · 취약점 스캔 게이트~~ | §7.4 | **완료 (2026-10-12, v2.4, nullus-plan#77)** — `cd.yml` 에 SBOM(syft, SPDX)·provenance attestation·`scan-images`(Trivy, 태그 게이트)·Release 자산 첨부, `image-scan.yml` 주간 재스캔, `generate-sbom.sh` 엄격 모드 |
-| 15 | 기준선 CRITICAL 수정 — API(`pgx` 5.9.0 · `grpc` 1.79.3 · 동봉 `helm`/`kubectl`/`migrate` 최신판) · Jenkins(Debian perl deb13u1 — 베이스 갱신 또는 빌드 시 `apt-get upgrade`) | §7.4 | **열림 (2026-10-12)** — 이것을 닫기 전에 태그를 밀면 `scan-images` 게이트가 막는다. 첫 "24시간 패치" 연습이기도 하다 |
+| 15 | ~~기준선 CRITICAL 수정 — API(`pgx` · `grpc` · 동봉 `helm`/`kubectl`/`migrate`) · Jenkins(Debian perl · `git-lfs`)~~ | §7.4 | **완료 (2026-10-12)** — 같은 날 닫았다. API CRITICAL 11 → 0, Jenkins 13 → 0 (§7.4 기준선 각주). 시드 템플릿의 Jenkins `app_version` 은 마이그레이션 000094 가 올린다 |
 | 13 | `/health`가 버전을 하드코딩한다 | §8, §12 Q3 | **열림** — `cmd/api/main.go`의 `/health`가 `"version": "0.1.0-alpha"`를 고정 응답한다. §8의 "코드에 하드코딩하지 않는다"에 정면으로 어긋나고, `pkg/nullusclient`의 버전 스큐 검사가 이 필드를 읽으므로 **검사가 어떤 스큐도 잡지 못한다**. `ldflags`로 태그를 주입하고(§12 Q3) `MinServerVersion`을 실제 하한으로 올리는 코드 변경이 필요하다 |

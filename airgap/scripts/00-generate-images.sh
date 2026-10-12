@@ -41,7 +41,7 @@ INFRA_IMAGES=(
   # Jenkins: 플러그인을 구운 자체 이미지라 helm render 로는 잡히지 않는다.
   # 스택 설치가 values 로 지정한다(internal/stack/adapter/helm/values.go 의
   # jenkinsImage* 상수). 빼면 인터넷 없는 설치에서 Jenkins 가 뜨지 않는다.
-  "ghcr.io/cloud-nullus/nullus/nullus-jenkins:2.568.2"
+  "ghcr.io/cloud-nullus/nullus/nullus-jenkins:2.568.3"
 )
 
 # RUNTIME_IMAGES: Go 코드가 **런타임에 만드는 매니페스트**가 참조하는 이미지.

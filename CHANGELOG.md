@@ -468,6 +468,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   결과: 게이트 대상 117 건 중 109 통과 · 0 실패 · 8 skip.
 
+### Security
+
+- **제품 이미지의 수정판 있는 CRITICAL 취약점을 0 으로 내렸다 — 릴리즈 스캔 게이트(릴리즈 정책 §7.4)의 2026-10-12 기준선 수정** (`Dockerfile`, `deploy/images/jenkins/Dockerfile`, `go.mod`, `db/migrations/000094`, nullus-plan#77): 게이트를 세운 날의 측정에서 `nullus-api` 에 CRITICAL 11 · HIGH 150, `nullus-jenkins` 에 CRITICAL 13 · HIGH 109 가 있었다 — 이 상태로 태그를 밀면 Release 가 나가지 않는다. **API**: 자체 바이너리의 `github.com/jackc/pgx/v5` 5.8.0 → 5.11.0 · `google.golang.org/grpc` 1.72.2 → 1.84.0(CRITICAL), `labstack/echo/v4` 4.15.3 · `golang.org/x/net` 0.60.0 · `oras-go/v2` 2.6.2 · `containerd` 1.7.33 · `spdystream` 0.5.1(HIGH), 빌더를 `golang:1.26.9-alpine` 으로 고정하고 런타임 `apk upgrade`(libssl·libcrypto). 이미지에 **동봉하는 바이너리**가 CRITICAL 의 대부분이었다 — `helm` v3.16.4 → v3.22.0(3 계열 최신, 4 는 CLI 가 바뀐다) · `kubectl` v1.30.0 → v1.34.12(kind·검증 클러스터 1.35 와 ±1) · `migrate` v4.18.1 → v4.20.1. 결과 CRITICAL 0 · HIGH 25(전부 동봉 바이너리의 상류 빌드 — 표준 라이브러리·x/net 등, 다음 상류 릴리즈에서 따라온다). **Jenkins**: 베이스 `2.568.2` → `2.568.3-jdk21`(같은 LTS 줄), 빌드마다 `apt-get upgrade`(Debian perl deb13u1 — 베이스 태그에 수정판이 없었다), 베이스가 넣는 `git-lfs` 3.7.1(Go 1.25.3) 을 상류 3.8.0 으로 교체. 결과 CRITICAL 0 · HIGH 13. Jenkins 태그는 코드 상수(`jenkinsImageTag` · `JenkinsAppVersion`) · 에어갭 이미지 목록 · 빌드 스크립트 · 화면 기본값과 묶여 있어 함께 올렸고, 시드된 템플릿·호환성 행의 `app_version` 은 과거 마이그레이션을 고치지 않고 **000094** 가 2.568.3 으로 옮긴다(down 은 되돌린다). 네 변경 모두 로컬에서 이미지를 빌드해 Trivy(v0.75)로 확인했다. 의존성 상향 뒤 단위·통합 테스트 전부 통과.
+
 ## [0.5.0] - 2026-08-31
 
 ### Added

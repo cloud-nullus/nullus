@@ -24,7 +24,7 @@ const (
 	// CI 는 ghcr.io/<repo>/<이미지> 로 push 한다(cd.yml). 경로가 어긋나면 게시된
 	// 이미지를 아무도 받지 못한다.
 	jenkinsImageRepository = "cloud-nullus/nullus/nullus-jenkins"
-	jenkinsImageTag        = "2.568.2"
+	jenkinsImageTag        = "2.568.3"
 )
 
 func DefaultValues(stepName string) map[string]any {

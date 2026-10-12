@@ -222,10 +222,10 @@ const (
 
 	// Jenkins 차트 버전은 자유롭게 내릴 수 없다. Gitea multibranch 스캔에 쓰는
 	// jenkinsci/gitea 플러그인이 Jenkins 2.528.3 이상을 요구하므로, appVersion 이
-	// 그 하한을 넘는 차트여야 한다. 5.9.54 → 2.568.2 로 요건을 만족한다.
+	// 그 하한을 넘는 차트여야 한다. 5.9.54 → 2.568.3 로 요건을 만족한다.
 	// (고정: TestJenkinsAppVersion_SatisfiesGiteaPluginMinimum)
 	JenkinsChartVersion = "5.9.54"
-	JenkinsAppVersion   = "2.568.2"
+	JenkinsAppVersion   = "2.568.3"
 	// JenkinsGiteaPluginMinAppVersion 은 gitea 플러그인이 요구하는 Jenkins 하한이다.
 	JenkinsGiteaPluginMinAppVersion = "2.528.3"
 
@@ -289,9 +289,9 @@ func OTelCollectorOTLPHTTPEndpoint(namespace string) string {
 // 차트마다 이름 규칙이 다르다 — Argo CD 는 Deployment/Service 에는 릴리스
 // 접두사를 붙이지만 Secret 에는 붙이지 않는다.
 const (
-	ArgoCDAdminSecret   = "argocd-initial-admin-secret" // #nosec G101 -- Secret 리소스 이름
-	ArgoCDAdminUser     = "admin"
-	ArgoCDAdminPassKey  = "password"
+	ArgoCDAdminSecret  = "argocd-initial-admin-secret" // #nosec G101 -- Secret 리소스 이름
+	ArgoCDAdminUser    = "admin"
+	ArgoCDAdminPassKey = "password"
 	// GitLabRootSecret 은 설치가 금고 값(artifacts/gitlab/root-password)으로 ESO 프로비저닝하는
 	// Secret 이다. 차트의 global.initialRootPassword 가 이것을 참조하므로 실제 root 비밀번호다.
 	// 차트가 스스로 만드는 gitlab-gitlab-initial-root-password 는 참조하지 않는다 — 참조하지 않으면
