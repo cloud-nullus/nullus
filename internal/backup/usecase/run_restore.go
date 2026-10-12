@@ -43,6 +43,9 @@ type RestoreDeps struct {
 	SharedComponents port.SharedComponentsEnsurer
 	// Namespaces 는 복구할 네임스페이스를 만든다. 없으면 이미 있다고 보고 건너뛴다.
 	Namespaces port.NamespaceEnsurer
+	// Connections 는 플랫폼 DB 를 되돌린 직후 연결 풀을 비운다 — 옛 테이블을 가리키는 준비된 문장이
+	// 다음 질의를 0A000 으로 죽인다. 없으면 건너뛴다(테스트·풀 없는 구성).
+	Connections port.ConnectionResetter
 	// GatewayAliases 는 복구 뒤 러너·Argo CD hostAliases 를 게이트웨이의 지금 주소로 맞춘다.
 	// 없으면 건너뛴다.
 	GatewayAliases port.GatewayAliasRepinner
@@ -344,6 +347,11 @@ func (uc *RestoreUseCase) restorePlatform(ctx context.Context, arts []*domain.Ar
 			}); err != nil {
 				return fmt.Errorf("플랫폼 DB 복원: %w", err)
 			}
+			// 테이블이 새로 만들어졌다 — 풀이 들고 있던 준비된 문장은 옛것을 가리킨다. 이 뒤의
+			// 질의(토큰 참조 검사·스택 조회·복구 기록 갱신)가 새 연결을 쓰게 비운다.
+			if uc.d.Connections != nil {
+				uc.d.Connections.Reset()
+			}
 		case domain.ComponentKeycloakDB:
 			// Keycloak 실패는 치명적이지 않다 (§6.3). users.password_hash
 			// 경로가 살아 있으면 관리자는 포털 ID/PW 로 들어갈 수 있다.
@@ -367,6 +375,13 @@ func (uc *RestoreUseCase) resumeWorkloads(ctx context.Context, m domain.Manifest
 	// 역순 재개 — 의존 대상이 먼저 뜬다.
 	for i := len(m.Workloads) - 1; i >= 0; i-- {
 		w := m.Workloads[i]
+		if w.OwnerManaged {
+			// 오퍼레이터가 CR 에서 다시 만드는 것(Prometheus·Alertmanager StatefulSet). 덤프가 담지
+			// 않았으므로 지금은 없거나 오퍼레이터가 막 만드는 중이다 — 조정하려 들면 "not found" 를
+			// 수동 조치 경보로 남긴다. 오퍼레이터가 CR 의 replicas 로 세운다.
+			uc.d.Logger.Info("소유자가 다시 만드는 워크로드는 재개하지 않습니다", "kind", w.Kind, "name", w.Name)
+			continue
+		}
 		t := domain.QuiesceTarget{
 			Kind: w.Kind, Namespace: w.Namespace, Name: w.Name,
 			OriginalReplicas: w.OriginalReplicas,

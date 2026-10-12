@@ -10,9 +10,11 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/backup/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // ResourceDumper 는 네임스페이스 리소스와 Helm 릴리스를 뜬다 (D1).
@@ -302,9 +304,18 @@ func (d *ResourceDumper) Dump(ctx context.Context, namespace string, out io.Writ
 		return 0, err
 	}
 
+	// 앱 네임스페이스 — Argo CD Application 의 destination 이 가리키는 곳. 네임스페이스와 pull Secret 만.
+	appNamespaces, err := d.dumpAppNamespaces(ctx, appNamespacesOf(cleaned, namespace))
+	if err != nil {
+		return 0, err
+	}
+
 	doc := map[string]any{}
 	if len(clusterScoped) > 0 {
 		doc["cluster_scoped"] = json.RawMessage(clusterScoped)
+	}
+	if len(appNamespaces) > 0 {
+		doc["app_namespaces"] = json.RawMessage(appNamespaces)
 	}
 	doc["namespaced"] = json.RawMessage(cleaned)
 
@@ -315,6 +326,90 @@ func (d *ResourceDumper) Dump(ctx context.Context, namespace string, out io.Writ
 	counter := &countingWriter{w: out}
 	_, err = counter.Write(payload)
 	return counter.n, err
+}
+
+// appNamespacesOf 는 네임스페이스 덤프에서 Argo CD Application 의 destination 네임스페이스를 뽑는다.
+//
+// 앱 네임스페이스는 스택 네임스페이스 밖이라 네임스페이스 덤프에 없다. 어느 네임스페이스가 이 스택의
+// 앱인지는 Application 이 말한다 — 라벨(nullus-cicd)로 클러스터 전체를 훑으면 다른 스택의 앱까지
+// 섞인다. 스택 네임스페이스 자신과 빈 값은 뺀다.
+func appNamespacesOf(namespaced []byte, stackNamespace string) []string {
+	var list struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(namespaced, &list); err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, item := range list.Items {
+		if item["kind"] != "Application" {
+			continue
+		}
+		spec, _ := item["spec"].(map[string]any)
+		dest, _ := spec["destination"].(map[string]any)
+		ns, _ := dest["namespace"].(string)
+		ns = strings.TrimSpace(ns)
+		if ns == "" || ns == stackNamespace || seen[ns] {
+			continue
+		}
+		seen[ns] = true
+		out = append(out, ns)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// dumpAppNamespaces 는 앱 네임스페이스 자체(라벨 포함)와 그 안의 이미지 pull Secret 을 뜬다.
+//
+// 앱의 나머지(Deployment·Service·HTTPRoute)는 Argo CD 가 Git 에서 되살리므로 담지 않는다. 이 둘은
+// Nullus 가 파이프라인을 만들 때 직접 만든 것이라 Git 에 없다 — 앱 네임스페이스를 잃으면 Deployment 는
+// 돌아와도 FailedToRetrieveImagePullSecret 로 pull 이 실패한다(2026-10-12 리허설 실측). 네임스페이스나
+// Secret 이 없으면(사용자가 지웠거나 다른 레지스트리) 그냥 뺀다.
+func (d *ResourceDumper) dumpAppNamespaces(ctx context.Context, names []string) ([]byte, error) {
+	var items []map[string]any
+	for _, ns := range names {
+		for _, args := range [][]string{
+			{"get", "namespace", ns, "-o", "json", "--ignore-not-found"},
+			{"get", "secret", shareddomain.AppImagePullSecretName, "-n", ns, "-o", "json", "--ignore-not-found"},
+		} {
+			var buf bytes.Buffer
+			if err := d.run(ctx, nil, &buf, args...); err != nil {
+				return nil, fmt.Errorf("앱 네임스페이스 %s 조회: %w", ns, err)
+			}
+			if bytes.TrimSpace(buf.Bytes()) == nil || len(bytes.TrimSpace(buf.Bytes())) == 0 {
+				continue
+			}
+			got, err := objectsOf(buf.Bytes())
+			if err != nil {
+				return nil, fmt.Errorf("앱 네임스페이스 %s 해석: %w", ns, err)
+			}
+			items = append(items, got...)
+		}
+	}
+	if len(items) == 0 {
+		return nil, nil
+	}
+	cleaned, err := sanitizeItems(items)
+	if err != nil {
+		return nil, err
+	}
+	if len(cleaned) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(listOf(cleaned))
+}
+
+// objectsOf 는 kubectl get 의 출력(객체 하나 또는 List)을 항목 목록으로 푼다.
+func objectsOf(raw []byte) ([]map[string]any, error) {
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, err
+	}
+	if obj["kind"] == "List" {
+		return itemsOf(raw)
+	}
+	return []map[string]any{obj}, nil
 }
 
 // sanitize 는 서버가 관리하는 필드를 걷어낸다.
@@ -409,11 +504,21 @@ func (d *ResourceDumper) Apply(ctx context.Context, namespace string, in io.Read
 
 	var doc struct {
 		ClusterScoped json.RawMessage `json:"cluster_scoped"`
+		AppNamespaces json.RawMessage `json:"app_namespaces"`
 		Namespaced    json.RawMessage `json:"namespaced"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil || len(doc.Namespaced) == 0 {
 		// 옛 형식(단일 목록)도 받아 준다 — 이전 백업본을 복원할 수 있어야 한다.
 		return d.applyNamespaced(ctx, namespace, raw)
+	}
+
+	// 앱 네임스페이스와 pull Secret 은 **없을 때만** 만든다. 앱 네임스페이스가 살아 있으면(스택
+	// 네임스페이스만 잃은 경우) 그 안의 Secret 이 지금 쓰는 자격증명이다 — 백업 때의 것으로 덮지
+	// 않는다. 스택 리소스보다 먼저다: Argo CD 가 동기화할 때 Secret 이 있어야 첫 파드부터 pull 이 된다.
+	if len(doc.AppNamespaces) > 0 {
+		if err := d.applyAppNamespaces(ctx, doc.AppNamespaces); err != nil {
+			return fmt.Errorf("앱 네임스페이스 복원: %w", err)
+		}
 	}
 
 	if len(doc.ClusterScoped) > 0 {
@@ -429,6 +534,34 @@ func (d *ResourceDumper) Apply(ctx context.Context, namespace string, in io.Read
 		}
 	}
 	return d.applyNamespaced(ctx, namespace, doc.Namespaced)
+}
+
+// applyAppNamespaces 는 앱 네임스페이스(라벨 포함)와 그 안의 pull Secret 을 없을 때만 만든다.
+func (d *ResourceDumper) applyAppNamespaces(ctx context.Context, payload []byte) error {
+	items, err := itemsOf(payload)
+	if err != nil {
+		return err
+	}
+	// 네임스페이스가 먼저 — 그 안의 Secret 이 뒤.
+	for _, pass := range []bool{true, false} {
+		for _, item := range items {
+			isNS := item["kind"] == "Namespace"
+			if isNS != pass {
+				continue
+			}
+			ns := ""
+			if !isNS {
+				ns = itemNamespace(item)
+				if ns == "" {
+					return fmt.Errorf("앱 네임스페이스 %s/%s 의 네임스페이스를 알 수 없습니다", item["kind"], itemName(item))
+				}
+			}
+			if err := d.createIfMissing(ctx, ns, item); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // applyNamespaced 는 네임스페이스 리소스를 되돌린다. Service 는 백업 때의 ClusterIP 로 먼저 세운다.

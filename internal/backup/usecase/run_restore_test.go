@@ -34,6 +34,8 @@ func seedBackupWithComponents(t *testing.T, mode domain.Mode, sharedApplyErr err
 	kv := &fakeKV{tr: tr}
 	scaler := &fakeScaler{tr: tr, workloads: []domain.Workload{
 		{Kind: "Deployment", Namespace: "nullus", Name: "gitlab", Replicas: 2},
+		// 오퍼레이터가 CR 에서 만드는 것 — 정지는 하되 복구의 재개는 건너뛴다.
+		{Kind: "StatefulSet", Namespace: "nullus", Name: "prometheus-kps", Replicas: 1, OwnerManaged: true},
 	}}
 	archiver := &fakeArchiver{tr: tr, pvcs: []domain.VolumeSpec{{Name: "data-gitlab", SizeBytes: 100}}}
 	targets := DBTargets{
@@ -60,6 +62,7 @@ func seedBackupWithComponents(t *testing.T, mode domain.Mode, sharedApplyErr err
 		Resources: &fakeResources{tr: tr}, Shared: &fakeShared{tr: tr, applyErr: sharedApplyErr},
 		SharedComponents: sharedComponents,
 		Namespaces:       &fakeNamespaces{tr: tr},
+		Connections:      &fakeResetter{tr: tr},
 		Sealer:           fakeSealer{}, Store: store,
 		Targets: targets,
 		TokenSources: &fakeTokenLister{refs: []port.TokenSourceRef{
@@ -436,4 +439,52 @@ func TestRunRestore_platform_only_는_컨트롤러를_건드리지_않는다(t *
 	require.NoError(t, err)
 	assert.Equal(t, -1, tr.indexOf("components.ensure"))
 	assert.Equal(t, -1, tr.indexOf("shared.secrets"))
+}
+
+// ── 재개 ───────────────────────────────────────────────────────────────
+
+// 오퍼레이터가 CR 을 읽어 만드는 StatefulSet(Prometheus·Alertmanager)은 덤프에 없고(ownerReferences)
+// 복구 뒤 오퍼레이터가 CR 에서 다시 만든다. 재개가 그것을 조정하려 들면 아직 없어서 "수동 조치가
+// 필요합니다" 를 남긴다 — 거짓 경보다. 2026-10-12 리허설 세 번 모두 그랬다.
+func TestRunRestore_소유자_관리_워크로드는_재개하지_않는다(t *testing.T) {
+	uc, tr, _, _, _, scaler, backupID := seedBackup(t, domain.ModeFull)
+	scaler.scaled = nil // 백업의 정지·재개는 지우고 복구의 재개만 본다
+
+	_, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull})
+	require.NoError(t, err)
+
+	assert.NotEqual(t, -1, tr.indexOf("scale.up:gitlab"), "보통 워크로드는 재개한다")
+	assert.Equal(t, -1, tr.indexOf("scale.up:prometheus-kps"), "오퍼레이터가 다시 만든다 — 재개가 건드리지 않는다")
+	for _, s := range scaler.scaled {
+		assert.NotContains(t, s, "prometheus-kps")
+	}
+}
+
+// ── DB 연결 풀 ─────────────────────────────────────────────────────────
+
+// pg_restore --clean 은 테이블을 지우고 다시 만든다. 그 사이 API 의 연결 풀이 들고 있던 준비된
+// 문장(prepared statement)은 옛 테이블을 가리켜, 복원 직후 첫 질의가 "cached plan must not change
+// result type (SQLSTATE 0A000)" 으로 죽는다 — 2026-10-12 리허설 4차에서 게이트웨이 주소 재설정이
+// 그렇게 실패했다(어느 연결이 잡히느냐에 따라 간헐적이다). DB 를 되돌린 직후 풀을 비운다.
+func TestRunRestore_플랫폼_DB_를_되돌린_뒤_연결_풀을_비운다(t *testing.T) {
+	uc, tr, _, _, _, _, backupID := seedBackup(t, domain.ModeFull)
+	uc.d.GatewayAliases = &fakeGatewayAliases{tr: tr, ip: "10.96.0.9"}
+
+	_, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull})
+	require.NoError(t, err)
+
+	db := tr.indexOf("db.restore:platform_db")
+	reset := tr.indexOf("db.reset")
+	repin := tr.indexOf("gateway.repin")
+	require.GreaterOrEqual(t, db, 0)
+	require.GreaterOrEqual(t, reset, 0, "DB 를 되돌린 뒤 풀을 비워야 한다")
+	assert.Less(t, db, reset, "되돌린 직후")
+	assert.Less(t, reset, repin, "그 뒤의 DB 질의(스택 조회)가 새 연결을 쓴다")
+}
+
+func TestRunRestore_stack_only_는_연결_풀을_건드리지_않는다(t *testing.T) {
+	uc, tr, _, _, _, _, backupID := seedBackup(t, domain.ModeFull)
+	_, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeStackOnly})
+	require.NoError(t, err)
+	assert.Equal(t, -1, tr.indexOf("db.reset"), "DB 를 되돌리지 않았으면 비울 이유가 없다")
 }

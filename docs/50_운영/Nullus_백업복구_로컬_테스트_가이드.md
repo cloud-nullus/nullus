@@ -490,7 +490,7 @@ curl -s -H "X-Org-ID: $ORG" localhost:8090/api/v1/stacks | jq -r '.items[] | "\(
 kubectl get httproute,gateway -A
 ```
 
-앱 네임스페이스의 HTTPRoute 는 Argo CD 의 automated sync 가 되살리므로, 먼저 동기화를 끄고 지운다(백업은 이미 떠 두었으니 복구가 automated 설정을 그대로 돌려놓는다):
+앱 네임스페이스의 HTTPRoute 는 Argo CD 의 automated sync 가 되살리므로, 먼저 동기화를 끄고 지운다(백업은 이미 떠 두었으니 복구가 automated 설정을 그대로 돌려놓는다). 앱 네임스페이스를 통째로 지워도 된다 — 백업이 네임스페이스와 pull Secret(`nullus-registry`)을 `app_namespaces` 로 담고 복구가 없을 때만 다시 만든다. 복구 뒤 `kubectl -n <앱 네임스페이스> get secret nullus-registry` 가 보여야 한다:
 
 ```bash
 kubectl -n <네임스페이스> patch applications.argoproj.io <앱> --type merge \

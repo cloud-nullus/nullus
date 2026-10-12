@@ -52,3 +52,16 @@ func TestQuiescePlan_IsEmpty(t *testing.T) {
 	assert.True(t, NewQuiescePlan([]Workload{{Name: "a", Replicas: 0}}).IsEmpty())
 	assert.False(t, NewQuiescePlan([]Workload{{Name: "a", Replicas: 1}}).IsEmpty())
 }
+
+// 오퍼레이터가 CR 을 읽어 만드는 StatefulSet(Prometheus·Alertmanager)은 ownerReferences 가 있다.
+// 정지는 똑같이 멈추되(쓰기를 끊어야 한다), 그 표시는 재개까지 따라가야 한다 — 복구 뒤에는
+// 오퍼레이터가 CR 에서 다시 만들므로 재개가 그것을 찾지 못해 "수동 조치" 경보를 내면 거짓이다.
+func TestNewQuiescePlan_소유자_관리_표시를_유지한다(t *testing.T) {
+	plan := NewQuiescePlan([]Workload{
+		{Kind: "StatefulSet", Namespace: "nullus", Name: "prometheus-kps", Replicas: 1, OwnerManaged: true},
+		{Kind: "Deployment", Namespace: "nullus", Name: "gitlab", Replicas: 2},
+	})
+	require.Len(t, plan.Targets, 2)
+	assert.True(t, plan.Targets[0].OwnerManaged)
+	assert.False(t, plan.Targets[1].OwnerManaged)
+}

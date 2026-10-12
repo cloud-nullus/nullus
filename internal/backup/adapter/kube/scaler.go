@@ -9,6 +9,7 @@ import (
 	"time"
 
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -42,6 +43,7 @@ func (s *WorkloadScaler) List(ctx context.Context, namespace string) ([]domain.W
 		}
 		out = append(out, domain.Workload{
 			Kind: "Deployment", Namespace: d.Namespace, Name: d.Name, Replicas: replicas,
+			OwnerManaged: len(d.OwnerReferences) > 0,
 		})
 	}
 
@@ -56,30 +58,49 @@ func (s *WorkloadScaler) List(ctx context.Context, namespace string) ([]domain.W
 		}
 		out = append(out, domain.Workload{
 			Kind: "StatefulSet", Namespace: st.Namespace, Name: st.Name, Replicas: replicas,
+			OwnerManaged: len(st.OwnerReferences) > 0,
 		})
 	}
 	return out, nil
 }
 
-func (s *WorkloadScaler) Scale(ctx context.Context, t domain.QuiesceTarget, replicas int32) error {
-	scale, err := s.getScale(ctx, t)
-	if err != nil {
-		return err
-	}
-	scale.Spec.Replicas = replicas
+// scaleConflictRetries 는 "the object has been modified" 를 다시 읽어 재시도하는 횟수다.
+//
+// 복구의 리소스 단계가 replicas 를 세운 직후 재개가 같은 객체를 조정하면 resourceVersion 이 어긋나
+// 충돌한다 — 지나가는 충돌이지 수동 조치가 필요한 실패가 아니다(2026-10-12 리허설의 minio·
+// prometheus-operator). 최신 것을 다시 읽으면 바로 지나간다.
+const scaleConflictRetries = 3
 
+func (s *WorkloadScaler) Scale(ctx context.Context, t domain.QuiesceTarget, replicas int32) error {
 	switch t.Kind {
-	case "Deployment":
-		_, err = s.client.AppsV1().Deployments(t.Namespace).UpdateScale(ctx, t.Name, scale, metav1.UpdateOptions{})
-	case "StatefulSet":
-		_, err = s.client.AppsV1().StatefulSets(t.Namespace).UpdateScale(ctx, t.Name, scale, metav1.UpdateOptions{})
+	case "Deployment", "StatefulSet":
 	default:
 		return fmt.Errorf("지원하지 않는 워크로드 종류: %s", t.Kind)
 	}
-	if err != nil {
-		return fmt.Errorf("%s/%s 를 %d 로 조정: %w", t.Kind, t.Name, replicas, err)
+
+	var err error
+	for attempt := 0; attempt <= scaleConflictRetries; attempt++ {
+		var scale *autoscalingv1.Scale
+		scale, err = s.getScale(ctx, t)
+		if err != nil {
+			return err
+		}
+		scale.Spec.Replicas = replicas
+
+		switch t.Kind {
+		case "Deployment":
+			_, err = s.client.AppsV1().Deployments(t.Namespace).UpdateScale(ctx, t.Name, scale, metav1.UpdateOptions{})
+		case "StatefulSet":
+			_, err = s.client.AppsV1().StatefulSets(t.Namespace).UpdateScale(ctx, t.Name, scale, metav1.UpdateOptions{})
+		}
+		if err == nil {
+			return nil
+		}
+		if !apierrors.IsConflict(err) || ctx.Err() != nil {
+			break
+		}
 	}
-	return nil
+	return fmt.Errorf("%s/%s 를 %d 로 조정: %w", t.Kind, t.Name, replicas, err)
 }
 
 func (s *WorkloadScaler) getScale(ctx context.Context, t domain.QuiesceTarget) (*autoscalingv1.Scale, error) {

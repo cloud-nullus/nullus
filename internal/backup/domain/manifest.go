@@ -21,6 +21,8 @@ type WorkloadSpec struct {
 	Name      string `json:"name"`
 	// OriginalReplicas 는 복원의 필수 입력이다 (설계 §3.4 3단계).
 	OriginalReplicas int32 `json:"original_replicas"`
+	// OwnerManaged 가 참이면 복구의 재개가 건너뛴다 — 오퍼레이터가 CR 에서 다시 만드는 것이다.
+	OwnerManaged bool `json:"owner_managed,omitempty"`
 }
 
 type QuiesceWindow struct {
@@ -135,6 +137,7 @@ func BuildManifest(run *BackupRun, in ManifestInput) Manifest {
 			Namespace:        t.Namespace,
 			Name:             t.Name,
 			OriginalReplicas: t.OriginalReplicas,
+			OwnerManaged:     t.OwnerManaged,
 		})
 	}
 
