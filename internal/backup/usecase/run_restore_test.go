@@ -515,10 +515,40 @@ func TestRunRestore_금고가_아직_안_떴으면_기다려_다시_시도한다
 	kv.importFails = 2
 	uc.d.KVImportRetry = time.Millisecond
 
-	_, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull})
+	rr, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeFull})
 	require.NoError(t, err)
 	assert.Equal(t, 3, kv.importAttempts, "실패 2번 뒤 성공")
 	assert.NotEqual(t, -1, tr.indexOf("kv.import"))
+	require.NotNil(t, rr.IntegrityReport.VaultImport, "금고 import 결과가 응답에 남는다")
+	assert.True(t, rr.IntegrityReport.VaultImport.Imported)
+	assert.Equal(t, 3, rr.IntegrityReport.VaultImport.Attempts)
+	assert.Empty(t, rr.IntegrityReport.VaultImport.Error)
+}
+
+// 끝내 실패하면 복구는 성공이되 결과에 남는다 — 2026-10-12 두 스택 리허설에서 한 스택의 import 가 25 경로
+// 실패로 끝났는데 응답은 succeeded 뿐이라 로그를 뒤져야 알 수 있었다. 그 스택의 도구들은 금고의 자격증명을
+// 못 찾는다.
+func TestRunRestore_금고_import_가_끝내_실패하면_결과에_남긴다(t *testing.T) {
+	uc, _, _, _, kv, _, backupID := seedBackup(t, domain.ModeFull)
+	kv.importFails = 1000
+	uc.d.KVImportWait = 5 * time.Millisecond
+	uc.d.KVImportRetry = time.Millisecond
+
+	rr, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Namespace: "nullus", Mode: domain.ModeStackOnly})
+	require.NoError(t, err, "금고 import 실패는 복구를 실패로 만들지 않는다 — 데이터는 되돌아왔다")
+	assert.Equal(t, domain.StatusSucceeded, rr.Status)
+	require.NotNil(t, rr.IntegrityReport.VaultImport)
+	assert.False(t, rr.IntegrityReport.VaultImport.Imported)
+	assert.Contains(t, rr.IntegrityReport.VaultImport.Error, "connection refused", "원인이 응답에 있다")
+	assert.GreaterOrEqual(t, rr.IntegrityReport.VaultImport.Attempts, 2, "기다려 다시 시도한 뒤의 실패다")
+}
+
+// 플랫폼만 되돌리거나 백업에 금고 산출물이 없으면 결과도 없다 — 없는 단계를 "성공" 으로 적지 않는다.
+func TestRunRestore_금고를_건드리지_않으면_vault_import_결과가_없다(t *testing.T) {
+	uc, _, _, _, _, _, backupID := seedBackup(t, domain.ModePlatformOnly)
+	rr, err := uc.Run(context.Background(), RunRestoreRequest{BackupRunID: backupID, Mode: domain.ModePlatformOnly})
+	require.NoError(t, err)
+	assert.Nil(t, rr.IntegrityReport.VaultImport)
 }
 
 // platform_only 는 스택 워크로드를 건드리지 않는다 — 금고는 이미 떠 있으니 바로 되돌린다.

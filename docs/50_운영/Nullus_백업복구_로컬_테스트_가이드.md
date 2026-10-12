@@ -580,6 +580,22 @@ curl -sX POST localhost:8090/api/v1/admin/restores/sets \
 
 > 세트는 "같은 시각" 이 아니라 "같은 묶음" 이다. 멤버는 차례로 뜨고, 소요 시간은 스택 수 × (정지 창 + 전송) 이다. 두 번째 kind 클러스터가 CPU 에 쪼이면 lite 템플릿(`gitea-jenkins-argocd-lite-v1`)을 쓴다.
 
+#### 실측 (2026-10-12) — 통과
+
+kind 두 클러스터: `nullus-platform` 의 GitLab + Argo CD + SonarQube(39 파드, 앱 네임스페이스 `demo-api`) · `nullus-develop` 의 gitea-jenkins-argocd-lite(24 파드).
+
+| 단계 | 결과 |
+|---|---|
+| 세트 백업 | `201`, **137초**, 실행 3 — 플랫폼 0.77 MB · lite 336 MB(정지 49.9초) · GitLab 1.07 GB(정지 65.5초). 스택 실행 매니페스트에 `namespace` 있음 |
+| 제품 삭제 | 두 스택 `204` → **72초** 뒤 두 클러스터 모두 네임스페이스 · cert-manager · GatewayClass · CRD(25 / 6) · 내부 CA · Helm 릴리스 전부 회수(앱 네임스페이스는 Argo CD automated sync 를 끈 뒤 미리 지움) |
+| 세트 복구 | `201`, **323초**, 복구 3 모두 `succeeded`, 플랫폼 먼저. 스택 멤버 둘 다 `shared_components.steps = [installing_cert_manager, installing_metrics_server]`, `warnings` 없음 |
+| 지문 | 내부 CA sha 두 클러스터 모두 백업 전과 동일 · CRD 25 / 6 · GatewayClass · ClusterIssuer · Helm 릴리스 전부 복귀 · 스택 기록 둘 `completed` · `demo-api` 네임스페이스와 `nullus-registry` Secret 복귀 · Application 의 automated sync 복귀 |
+| 파드 | develop 24 Running 즉시. platform 39 Running 은 복구 끝 1분 뒤(직후엔 Init · CrashLoopBackOff 몇 개 — GitLab 기동 순서) |
+
+**드러난 것 — lite 멤버의 금고 KV import 가 끝내 실패했는데 응답은 `succeeded` 였다.** 2분(9회) 재시도 뒤 "금고 경로 25 건을 복원하지 못했습니다" 로 끝났고 로그에만 남았다. 원인은 로컬 제약이다 — 두 스택이 같은 접근 도메인 `nullus.local` 을 쓰고 호스트의 443(`nds-gw-443` → 플랫폼 노드포트)이 플랫폼 클러스터 하나로만 가므로, **호스트에서 도는 API 는 두 스택의 금고를 모두 GitLab 스택 금고로 본다**(lite 설치가 쓴 자격증명도 거기에 쓰였고 export 도 거기서 떴다). 복구 시점에 GitLab 스택의 게이트웨이가 아직 안 떠 있어 거절됐고, 2분 뒤 GitLab 멤버의 import 는 성공했다. 운영에서는 스택마다 접근 도메인이 다르므로 생기지 않는다. 그래도 제품은 둘을 고쳤다 — import 오류가 **원인**을 함께 남기고(`(원인: …)` — 경로 목록만으로는 "안 떴다 / 권한 없다 / 다른 금고다" 를 가를 수 없다), 결과가 복구 기록의 **`integrity_report.vault_import`**(`imported` · `attempts` · `error`)에 남는다. 세트 복구 뒤에는 멤버마다 이 값을 본다 — `imported: false` 면 그 스택의 도구들은 금고의 자격증명을 못 찾는다. 로컬에서 두 스택을 제대로 가르려면 접근 도메인을 다르게 주고(`stack-up --domain=`) 호스트 라우팅을 따로 둬야 한다.
+
+`dangling` 8 건은 세 멤버가 똑같다 — 토큰 소스 경로 중 처음부터 어느 금고에도 없던 것(§4.10 의 같은 로컬 제약).
+
 ---
 
 ## 5. 걸리기 쉬운 곳

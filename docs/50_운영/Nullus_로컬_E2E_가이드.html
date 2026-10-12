@@ -831,7 +831,7 @@ docker compose -f docker-compose.dev.yaml exec minio mc ls --recursive local/nul
   -H 'Content-Type: application/json' -H "X-Org-Id: $ORG" \
   -d '{"confirm":"all"}' | tee ~/nullus-backup-set.json | jq '{set_id, status, failed}'
 SET_ID=$(jq -r .set_id ~/nullus-backup-set.json); echo "export SET_ID=$SET_ID" &gt;&gt; ~/.nullus-e2e.env</code></pre></div>
-      <p>복구는 <code>POST /admin/restores/sets</code>에 <code>{"set_id":…,"confirm":…}</code>(확인 = 세트 ID)로 — 플랫폼을 먼저, 스택을 하나씩 되돌린다. 절차와 확인 항목은 <a href="./Nullus_백업복구_로컬_테스트_가이드.md">백업복구 로컬 테스트 가이드</a> §4.11.</p></div>
+      <p>복구는 <code>POST /admin/restores/sets</code>에 <code>{"set_id":…,"confirm":…}</code>(확인 = 세트 ID)로 — 플랫폼을 먼저, 스택을 하나씩 되돌린다. 절차와 확인 항목은 <a href="./Nullus_백업복구_로컬_테스트_가이드.md">백업복구 로컬 테스트 가이드</a> §4.11(2026-10-12 kind 두 클러스터 실측 통과 — 백업 137초, 복구 323초). 복구 뒤 멤버마다 <code>integrity_report.vault_import</code>를 본다.</p></div>
     <div class="callout warn"><b>화면(관리 → 백업)으로는 스택 백업이 안 된다</b>화면이 네임스페이스를 <code>nullus-app</code>으로 고정하고 스택 ID를 보내지 않아, 볼륨·리소스를 고르면 실패한 채 "running"에 머문다. 기존 문서 예시의 <code>X-Org-Id: 0000…0001</code>도 쓰지 않는 조직이라 목록에 안 보인다. 위처럼 <code>1111…</code>을 쓴다.</div>
     <p class="check-title">확인</p>
     <ul class="check">

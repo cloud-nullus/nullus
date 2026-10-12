@@ -157,6 +157,8 @@ kubectl -n <네임스페이스> get deploy <앱> \
   -o jsonpath='{.spec.template.spec.containers[0].image}'
 ```
 
+복구 응답의 `integrity_report.vault_import` 도 본다 — 스택 금고로 KV 를 되돌린 결과다. `imported: false` 면 도구들이 금고의 자격증명을 못 찾는다(`error` 에 원인).
+
 도구의 데이터까지 대조하려면 Git 커밋 · CI 이력 · 이미지 태그를 백업 전후로 비교한다 — 절차는 [로컬 테스트 가이드 §4.9](./Nullus_백업복구_로컬_테스트_가이드.md) 에 있다.
 
 ### 세트 복구
@@ -177,6 +179,8 @@ curl -sX POST "$NULLUS/api/v1/admin/restores/sets" \
 | `skipped` | 백업이 실패해 산출물이 없는 멤버의 백업 ID. 그 스택은 **복구되지 않았다** |
 
 **플랫폼 복구가 실패하면 거기서 멈춘다** — 스택 복구는 플랫폼 DB 의 스택 기록으로 그 클러스터에 붙으므로 플랫폼이 없으면 갈 곳을 모른다(`error` 에 `플랫폼 복구 실패 — 스택은 되돌리지 않았습니다`). 스택 하나의 실패는 다른 스택을 막지 않는다. 스택 멤버는 `stack_only` 지만 **스택 금고의 KV 는 되돌린다** — 금고는 스택 데이터다.
+
+스택 멤버마다 `integrity_report.vault_import` 를 본다. `imported: false` 면 금고 KV 를 되돌리지 못한 것이고(`error` 에 원인, `attempts` 에 기다린 횟수) **그 스택의 도구들은 금고의 자격증명을 못 찾는다** — 복구 자체는 `succeeded` 로 끝나므로 이 값을 보지 않으면 모른다. 금고가 늦게 떠서 실패했으면 그 멤버만 단독 `stack_only` 복구로 다시 되돌린다.
 
 복구 뒤 확인은 위 **복구 후 확인할 것**을 스택마다 한다.
 
