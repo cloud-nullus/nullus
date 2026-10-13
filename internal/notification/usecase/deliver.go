@@ -20,6 +20,8 @@ const (
 	maxRetryWait = 10 * time.Second
 	// attemptTimeout 은 한 번 보내는 데 쓰는 시간이다(SMTP 연결 · TLS · 전송 포함).
 	attemptTimeout = 20 * time.Second
+	// recordTimeout 은 발송 이력 한 줄을 쓰는 시간이다. 생산자의 ctx 가 끝나도 이력은 남긴다.
+	recordTimeout = 5 * time.Second
 )
 
 // Deliverer 는 채널 하나로 메시지를 보내고(일시적 실패는 재시도) 결과를 발송 이력에 남긴다.
@@ -48,7 +50,11 @@ func (d *Deliverer) Deliver(ctx context.Context, ch *domain.Channel, msg domain.
 	}
 	result.CreatedAt = d.now()
 	if d.deliveries != nil {
-		if recErr := d.deliveries.Record(ctx, result); recErr != nil {
+		// 보내는 데 시간을 다 쓴 생산자의 ctx 로 쓰면 이력이 사라진다 — 무엇이 실패했는지가 가장
+		// 필요한 순간이다. 취소와 무관한 짧은 시간으로 쓴다.
+		recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recordTimeout)
+		defer cancel()
+		if recErr := d.deliveries.Record(recCtx, result); recErr != nil {
 			slog.Warn("알림 발송 이력 기록 실패", "channel_id", ch.ID, "event", msg.Event, "error", recErr)
 		}
 	}
@@ -56,6 +62,10 @@ func (d *Deliverer) Deliver(ctx context.Context, ch *domain.Channel, msg domain.
 }
 
 func (d *Deliverer) send(ctx context.Context, ch *domain.Channel, msg domain.Message, result *domain.Delivery) error {
+	if ch.SecretUnreadable {
+		result.Attempts = 1
+		return fmt.Errorf("저장된 비밀을 풀 수 없습니다 — ENCRYPTION_KEY 가 바뀌었는지 확인하고 채널의 비밀을 다시 입력하세요")
+	}
 	sender, ok := d.senders[ch.Type]
 	if !ok || sender == nil {
 		result.Attempts = 1

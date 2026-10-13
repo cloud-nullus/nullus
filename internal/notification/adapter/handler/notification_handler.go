@@ -47,10 +47,12 @@ type channelResponse struct {
 	Settings   domain.Settings `json:"settings"`
 	SecretSet  bool            `json:"secret_set"`
 	SecretHint string          `json:"secret_hint,omitempty"`
-	Events     []string        `json:"events"`
-	Active     bool            `json:"active"`
-	CreatedAt  time.Time       `json:"created_at"`
-	UpdatedAt  time.Time       `json:"updated_at"`
+	// SecretUnreadable 은 저장된 비밀을 풀지 못했다는 뜻이다(ENCRYPTION_KEY 교체). 다시 입력해야 한다.
+	SecretUnreadable bool      `json:"secret_unreadable,omitempty"`
+	Events           []string  `json:"events"`
+	Active           bool      `json:"active"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 func toChannelResponse(ch *domain.Channel) channelResponse {
@@ -64,7 +66,8 @@ func toChannelResponse(ch *domain.Channel) channelResponse {
 	}
 	return channelResponse{
 		ID: ch.ID, Name: ch.Name, Type: string(ch.Type), Settings: settings,
-		SecretSet: ch.Secret != "", SecretHint: ch.SecretHint(), Events: events, Active: ch.Active,
+		SecretSet: ch.Secret != "", SecretHint: ch.SecretHint(), SecretUnreadable: ch.SecretUnreadable,
+		Events: events, Active: ch.Active,
 		CreatedAt: ch.CreatedAt, UpdatedAt: ch.UpdatedAt,
 	}
 }

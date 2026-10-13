@@ -89,7 +89,10 @@ type fakeDeliveryRepo struct {
 	deliveries []*domain.Delivery
 }
 
-func (r *fakeDeliveryRepo) Record(_ context.Context, d *domain.Delivery) error {
+func (r *fakeDeliveryRepo) Record(ctx context.Context, d *domain.Delivery) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	copied := *d
@@ -115,6 +118,8 @@ type fakeSender struct {
 	sent   []sentMessage
 	errs   []error
 	called int
+	// block 이 있으면 닫힐 때까지(또는 ctx 가 끝날 때까지) 기다린다 — 느린 채널.
+	block chan struct{}
 }
 
 type sentMessage struct {
@@ -122,7 +127,14 @@ type sentMessage struct {
 	Message   domain.Message
 }
 
-func (s *fakeSender) Send(_ context.Context, ch *domain.Channel, msg domain.Message) error {
+func (s *fakeSender) Send(ctx context.Context, ch *domain.Channel, msg domain.Message) error {
+	if s.block != nil {
+		select {
+		case <-s.block:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.called++

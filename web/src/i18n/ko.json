@@ -2200,7 +2200,9 @@
       "events": "받을 이벤트",
       "active": "켜기",
       "secretKeep": "저장됨({{hint}}). 비워 두면 그대로 둡니다.",
-      "secretKeepNoHint": "저장됨. 비워 두면 그대로 둡니다."
-    }
+      "secretKeepNoHint": "저장됨. 비워 두면 그대로 둡니다.",
+      "passwordAgain": "서버나 계정을 바꿨으니 비밀번호를 다시 입력하세요."
+    },
+    "secretUnreadable": "저장된 비밀을 읽을 수 없습니다(ENCRYPTION_KEY 가 바뀌었나요?). 편집에서 다시 입력하세요."
   }
 }

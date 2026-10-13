@@ -81,6 +81,9 @@ type Channel struct {
 	Active    bool
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	// SecretUnreadable 은 저장된 비밀을 풀지 못했다는 뜻이다(ENCRYPTION_KEY 교체 등). 저장하지 않는
+	// 상태다 — 저장소가 읽을 때 정한다. 이 채널은 보내지 못하고, 비밀을 다시 입력해야 고쳐진다.
+	SecretUnreadable bool
 }
 
 // Validate 는 채널을 저장할 수 있는지 보고, 정규화한다(이벤트 중복 제거, 기본 포트, 다른 종류 설정 제거).
@@ -208,7 +211,8 @@ func (c *Channel) validateEmail() error {
 	} else if s.SMTPPort < 1 || s.SMTPPort > 65535 {
 		return invalid("smtp_port", "포트는 1~65535 입니다")
 	}
-	if _, err := mail.ParseAddress(s.From); err != nil {
+	// mail.ParseAddress 는 주석 안의 CR/LF 를 받아들인다 — 헤더 끼워 넣기를 여기서 막는다.
+	if _, err := mail.ParseAddress(s.From); err != nil || hasLineBreak(s.From) {
 		return invalid("from", "보내는 주소가 메일 주소가 아닙니다")
 	}
 	if len(s.To) == 0 {
@@ -218,8 +222,8 @@ func (c *Channel) validateEmail() error {
 		return invalid("to", "받는 주소는 %d개까지입니다", maxRecipients)
 	}
 	for _, to := range s.To {
-		if _, err := mail.ParseAddress(to); err != nil {
-			return invalid("to", "메일 주소가 아닙니다: %s", to)
+		if _, err := mail.ParseAddress(to); err != nil || hasLineBreak(to) {
+			return invalid("to", "메일 주소가 아닙니다: %s", strings.NewReplacer("\r", " ", "\n", " ").Replace(to))
 		}
 	}
 	if s.Username != "" {
@@ -234,6 +238,10 @@ func (c *Channel) validateEmail() error {
 		c.Secret = ""
 	}
 	return nil
+}
+
+func hasLineBreak(s string) bool {
+	return strings.ContainsAny(s, "\r\n")
 }
 
 func defaultSMTPPort(security SMTPSecurity) int {
@@ -300,8 +308,10 @@ func (c *Channel) ApplyUpdate(u ChannelUpdate) error {
 	if u.Settings != nil {
 		next.Settings = *u.Settings
 	}
-	if u.Secret != nil && strings.TrimSpace(*u.Secret) != "" {
+	secretGiven := u.Secret != nil && strings.TrimSpace(*u.Secret) != ""
+	if secretGiven {
 		next.Secret = *u.Secret
+		next.SecretUnreadable = false
 	}
 	if u.Events != nil {
 		next.Events = *u.Events
@@ -312,6 +322,16 @@ func (c *Channel) ApplyUpdate(u ChannelUpdate) error {
 	if err := next.Validate(); err != nil {
 		return err
 	}
+	// 저장된 SMTP 비밀번호는 그 서버로만 간다. 서버·포트·보안·계정을 바꾸면서 비밀번호를 그대로 두면,
+	// 비밀번호를 볼 수 없는 사람도 smtp_host 를 자기 서버로 돌려 테스트 전송 한 번에 빼낼 수 있다.
+	if c.Type == ChannelEmail && next.Settings.Username != "" && !secretGiven && smtpEndpointChanged(c.Settings, next.Settings) {
+		return invalid("secret", "SMTP 서버나 계정을 바꾸면 비밀번호를 다시 입력하세요")
+	}
 	*c = next
 	return nil
+}
+
+func smtpEndpointChanged(before, after Settings) bool {
+	return before.SMTPHost != after.SMTPHost || before.SMTPPort != after.SMTPPort ||
+		before.SMTPSecurity != after.SMTPSecurity || before.Username != after.Username
 }

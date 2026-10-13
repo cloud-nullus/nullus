@@ -169,3 +169,29 @@ func TestEmailSender_SubjectCannotInjectHeaders(t *testing.T) {
 	m, _ := decodeBody(t, data)
 	assert.Empty(t, m.Header.Get("Bcc"))
 }
+
+// 검증을 거치지 않은 옛 행의 보안 방식이 비었거나 모르는 값이면 평문으로 보내지 않는다.
+func TestEmailSender_UnknownSecurityIsRefused(t *testing.T) {
+	srv := newFakeSMTP(t, func(s *fakeSMTP) { s.startTLS = false; s.authMechs = nil; s.user = "" })
+	ch := emailChannelFor(srv, "")
+	ch.Settings.Username, ch.Secret = "", ""
+	err := testEmailSender(srv).Send(context.Background(), ch, sampleMessage())
+	require.Error(t, err)
+	_, rcpts, _, _, _ := srv.snapshot()
+	assert.Empty(t, rcpts)
+}
+
+// To 헤더는 파싱한 주소로 쓴다 — 원래 문자열을 그대로 쓰면 주석 안의 CR/LF 로 헤더를 끼워 넣는다.
+func TestEmailSender_ToHeaderUsesParsedAddresses(t *testing.T) {
+	srv := newFakeSMTP(t, nil)
+	ch := emailChannelFor(srv, domain.SMTPStartTLS)
+	ch.Settings.To = []string{"운영팀 <ops@example.com>", "dba@example.com"}
+	require.NoError(t, testEmailSender(srv).Send(context.Background(), ch, sampleMessage()))
+	_, rcpts, data, _, _ := srv.snapshot()
+	assert.Equal(t, []string{"ops@example.com", "dba@example.com"}, rcpts)
+	m, _ := decodeBody(t, data)
+	list, err := m.Header.AddressList("To")
+	require.NoError(t, err)
+	require.Len(t, list, 2)
+	assert.Equal(t, "운영팀", list[0].Name)
+}

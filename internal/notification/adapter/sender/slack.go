@@ -49,7 +49,7 @@ func (s *SlackSender) Send(ctx context.Context, ch *domain.Channel, msg domain.M
 		return nil
 	}
 	// Slack 은 실패 이유를 본문 한 단어로 준다(no_service · invalid_payload · channel_is_archived).
-	return httpFailure(resp.StatusCode, redact(string(body), ch.Secret), parseRetryAfter(resp.Header.Get("Retry-After")))
+	return httpFailure(resp.StatusCode, safeRemoteDetail(redact(string(body), ch.Secret)), parseRetryAfter(resp.Header.Get("Retry-After")))
 }
 
 func slackText(msg domain.Message) string {

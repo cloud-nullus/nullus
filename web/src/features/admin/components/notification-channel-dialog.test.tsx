@@ -151,6 +151,56 @@ describe("NotificationChannelDialog", () => {
     });
   });
 
+  it("should ask for the password again when the SMTP server or account changes", () => {
+    const channel: NotificationChannel = {
+      id: "ch-2",
+      name: "운영 메일",
+      type: "email",
+      settings: {
+        smtp_host: "smtp.example.com",
+        smtp_port: 587,
+        smtp_security: "starttls",
+        username: "nullus",
+        from: "nullus@example.com",
+        to: ["ops@example.com"],
+      },
+      secret_set: true,
+      events: ["backup_failed"],
+      active: true,
+      created_at: "",
+      updated_at: "",
+    };
+    renderDialog({ channel });
+    const save = screen.getByRole("button", { name: "Save" });
+    // 받는 주소만 바꾸면 저장된 비밀번호를 그대로 쓴다.
+    type("To", "ops@example.com, dba@example.com");
+    expect(save).toBeEnabled();
+    // 서버를 바꾸면 비밀번호가 그 서버로 간다 — 다시 받는다(서버도 같은 규칙으로 거절한다).
+    type("SMTP server", "smtp.other.example");
+    expect(save).toBeDisabled();
+    type("Password", "new-password");
+    expect(save).toBeEnabled();
+  });
+
+  it("should require a secret again when the stored one cannot be read", () => {
+    const channel: NotificationChannel = {
+      id: "ch-3",
+      name: "slack",
+      type: "slack",
+      settings: {},
+      secret_set: false,
+      secret_unreadable: true,
+      events: ["backup_failed"],
+      active: true,
+      created_at: "",
+      updated_at: "",
+    };
+    renderDialog({ channel });
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    type("Incoming Webhook URL", "https://hooks.slack.com/services/T/B/X");
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
   it("should show the server error", () => {
     renderDialog({ error: "봇 토큰 형식이 아닙니다" });
     expect(screen.getByRole("alert")).toHaveTextContent(

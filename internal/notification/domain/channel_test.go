@@ -244,3 +244,62 @@ func TestChannel_ApplyUpdate_RejectsInvalidResult(t *testing.T) {
 	require.True(t, errors.As(err, &ve))
 	assert.Equal(t, testTelegramToken, ch.Secret, "실패한 갱신은 채널을 바꾸지 않는다")
 }
+
+// 저장된 SMTP 비밀번호를 다른 서버로 보내게 만들 수 없다 — 서버·포트·보안·계정을 바꾸면 비밀번호를
+// 다시 받는다(리뷰 지적: smtp_host 만 바꾸고 테스트 전송을 누르면 원래 비밀번호가 그 서버로 간다).
+func TestChannel_ApplyUpdate_EmailServerChangeRequiresPasswordAgain(t *testing.T) {
+	for name, mutate := range map[string]func(*Settings){
+		"host":     func(s *Settings) { s.SMTPHost = "smtp.evil.example" },
+		"port":     func(s *Settings) { s.SMTPPort = 2525 },
+		"security": func(s *Settings) { s.SMTPSecurity = SMTPTLS },
+		"username": func(s *Settings) { s.Username = "other" },
+	} {
+		ch := emailChannel()
+		require.NoError(t, ch.Validate())
+		settings := ch.Settings
+		settings.To = append([]string(nil), ch.Settings.To...)
+		mutate(&settings)
+
+		err := ch.ApplyUpdate(ChannelUpdate{Settings: &settings})
+		var ve *ValidationError
+		require.True(t, errors.As(err, &ve), name)
+		assert.Equal(t, "secret", ve.Field, name)
+
+		pw := "new-password"
+		assert.NoError(t, ch.ApplyUpdate(ChannelUpdate{Settings: &settings, Secret: &pw}), name)
+	}
+
+	// 받는 주소 · 보내는 주소만 바꾸는 것은 비밀번호가 가는 곳을 바꾸지 않는다.
+	ch := emailChannel()
+	require.NoError(t, ch.Validate())
+	settings := ch.Settings
+	settings.To = []string{"new@example.com"}
+	assert.NoError(t, ch.ApplyUpdate(ChannelUpdate{Settings: &settings}))
+}
+
+// mail.ParseAddress 는 주석 안의 CR/LF 를 받아들인다 — 헤더를 끼워 넣지 못하게 막는다.
+func TestChannel_Validate_RejectsLineBreaksInAddresses(t *testing.T) {
+	ch := emailChannel()
+	ch.Settings.To = []string{"a@b.com (x\r\nBcc: evil@x.com)"}
+	assertInvalid(t, ch, "to")
+
+	ch = emailChannel()
+	ch.Settings.From = "n@example.com (x\nBcc: evil@x.com)"
+	assertInvalid(t, ch, "from")
+}
+
+// 복호화할 수 없는 비밀(키 교체 등)은 다시 입력하게 한다.
+func TestChannel_ApplyUpdate_UnreadableSecretMustBeReentered(t *testing.T) {
+	ch := telegramChannel()
+	ch.Secret = ""
+	ch.SecretUnreadable = true
+	name := "이름만"
+	err := ch.ApplyUpdate(ChannelUpdate{Name: &name})
+	var ve *ValidationError
+	require.True(t, errors.As(err, &ve))
+	assert.Equal(t, "secret", ve.Field)
+
+	token := testTelegramToken
+	require.NoError(t, ch.ApplyUpdate(ChannelUpdate{Secret: &token}))
+	assert.False(t, ch.SecretUnreadable)
+}

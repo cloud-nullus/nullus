@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
@@ -155,8 +156,10 @@ func (r *PostgresChannelRepository) MigrateLegacySecrets(ctx context.Context) (i
 			return moved, err
 		}
 		cfg, _ := json.Marshal(it.config)
+		// 그 사이 누가 채널을 고쳤으면(새 비밀을 넣었으면) 덮어쓰지 않는다.
 		if _, err := r.pool.Exec(ctx,
-			`UPDATE notification_configs SET secret_encrypted = $2, config = $3, updated_at = NOW() WHERE id = $1`,
+			`UPDATE notification_configs SET secret_encrypted = $2, config = $3, updated_at = NOW()
+			 WHERE id = $1 AND secret_encrypted IS NULL`,
 			it.id, enc, cfg); err != nil {
 			return moved, err
 		}
@@ -211,10 +214,13 @@ func (r *PostgresChannelRepository) scan(row pgx.Row) (*domain.Channel, error) {
 		// 000096 전의 행은 이름이 없다 — 화면에서 고를 수 있게 채널 종류를 이름으로 보인다.
 		ch.Name = typ
 	}
+	// 행 하나가 깨져도(옛 모양의 설정 · 바뀐 키) 그 행만 못 쓴다. 목록 전체가 실패하면 화면에서 그
+	// 채널을 지울 수도 없고, 조직의 모든 채널 발송이 멈춘다.
 	cfg := map[string]any{}
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &ch.Settings); err != nil {
-			return nil, fmt.Errorf("채널 %s 설정 읽기: %w", ch.ID, err)
+			slog.Warn("알림 채널 설정을 읽지 못했습니다 — 채널을 다시 저장하세요", "channel_id", ch.ID, "error", err)
+			ch.Settings = domain.Settings{}
 		}
 		_ = json.Unmarshal(raw, &cfg)
 	}
@@ -223,12 +229,12 @@ func (r *PostgresChannelRepository) scan(row pgx.Row) (*domain.Channel, error) {
 	}
 	switch {
 	case secret != nil && *secret != "":
-		if len(r.key) != 32 {
-			return nil, ErrEncryptionKeyMissing
-		}
-		plain, err := crypto.Decrypt(r.key, *secret)
+		plain, err := r.decrypt(*secret)
 		if err != nil {
-			return nil, fmt.Errorf("채널 %s 비밀 복호화 — ENCRYPTION_KEY 가 바뀌었는지 확인하세요: %w", ch.ID, err)
+			slog.Warn("알림 채널 비밀을 풀지 못했습니다 — ENCRYPTION_KEY 를 확인하고 비밀을 다시 입력하세요",
+				"channel_id", ch.ID, "error", err)
+			ch.SecretUnreadable = true
+			break
 		}
 		ch.Secret = string(plain)
 	default:
@@ -236,6 +242,13 @@ func (r *PostgresChannelRepository) scan(row pgx.Row) (*domain.Channel, error) {
 		ch.Secret = takeLegacySecret(cfg)
 	}
 	return &ch, nil
+}
+
+func (r *PostgresChannelRepository) decrypt(enc string) ([]byte, error) {
+	if len(r.key) != 32 {
+		return nil, ErrEncryptionKeyMissing
+	}
+	return crypto.Decrypt(r.key, enc)
 }
 
 func eventStrings(events []sharednotify.EventType) []string {

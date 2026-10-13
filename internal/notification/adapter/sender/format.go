@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -66,6 +67,19 @@ func truncate(s string, max int) string {
 	}
 	r := []rune(s)
 	return string(r[:max-1]) + "…"
+}
+
+// slackErrorCode 는 Slack 웹훅이 실패 이유로 주는 본문 모양(no_service · invalid_payload)이다.
+var slackErrorCode = regexp.MustCompile(`^[a-z0-9_]{1,64}$`)
+
+// safeRemoteDetail 은 원격 응답 본문을 오류 문구에 실어도 되는지 본다. 알려진 오류 코드 모양만
+// 싣는다 — 웹훅 URL 을 내부 주소로 돌려 그 서비스의 응답을 읽어 내는 길을 좁힌다.
+func safeRemoteDetail(body string) string {
+	body = strings.TrimSpace(body)
+	if slackErrorCode.MatchString(body) {
+		return body
+	}
+	return "응답 본문 생략"
 }
 
 // httpFailure 는 HTTP 응답 실패를 분류한다. 429 · 5xx 는 다시 보낸다.

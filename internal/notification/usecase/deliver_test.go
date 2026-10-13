@@ -190,3 +190,53 @@ func TestListDeliveries_ClampsLimit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, items, 2)
 }
+
+// 느린 채널 하나가 다른 채널을 붙들지 않는다(리뷰 지적: 순서대로 보내면 첫 채널이 시간을 다 쓰고
+// 나머지는 만료된 ctx 로 실패했다).
+func TestDispatcher_Publish_SlowChannelDoesNotDelayOthers(t *testing.T) {
+	h := newHarness(
+		channel("tg", "org-1", domain.ChannelTelegram, true, sharednotify.EventBackupFailed),
+		channel("mail", "org-1", domain.ChannelEmail, true, sharednotify.EventBackupFailed),
+	)
+	release := make(chan struct{})
+	h.senders[domain.ChannelTelegram].block = release
+	d := NewDispatcher(h.channels, h.deliverer)
+
+	done := make(chan error, 1)
+	go func() { done <- d.Publish(context.Background(), backupFailed("org-1")) }()
+
+	require.Eventually(t, func() bool {
+		h.senders[domain.ChannelEmail].mu.Lock()
+		defer h.senders[domain.ChannelEmail].mu.Unlock()
+		return len(h.senders[domain.ChannelEmail].sent) == 1
+	}, 2*time.Second, 10*time.Millisecond, "메일은 텔레그램을 기다리지 않는다")
+	close(release)
+	require.NoError(t, <-done)
+	assert.Len(t, h.deliveries.deliveries, 2)
+}
+
+// 생산자의 ctx 가 끝나도 발송 결과는 이력에 남는다.
+func TestDeliverer_RecordsEvenWhenCallerContextEnded(t *testing.T) {
+	h := newHarness(channel("tg", "org-1", domain.ChannelTelegram, true, sharednotify.EventBackupFailed))
+	ch, _ := h.channels.Get(context.Background(), "org-1", "tg")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	d := h.deliverer.Deliver(ctx, ch, domain.NewMessage(backupFailed("org-1")))
+
+	assert.Equal(t, domain.DeliverySent, d.Status, "가짜 발송기는 ctx 를 보지 않는다 — 기록만 확인한다")
+	require.Len(t, h.deliveries.deliveries, 1)
+}
+
+// 비밀을 풀지 못한 채널은 보내지 않고 이유를 남긴다.
+func TestDeliverer_UnreadableSecretFailsWithoutSending(t *testing.T) {
+	h := newHarness()
+	ch := channel("tg", "org-1", domain.ChannelTelegram, true, sharednotify.EventBackupFailed)
+	ch.SecretUnreadable = true
+
+	d := h.deliverer.Deliver(context.Background(), ch, domain.NewMessage(backupFailed("org-1")))
+
+	assert.Equal(t, domain.DeliveryFailed, d.Status)
+	assert.Contains(t, d.Error, "ENCRYPTION_KEY")
+	assert.Zero(t, h.senders[domain.ChannelTelegram].called)
+}

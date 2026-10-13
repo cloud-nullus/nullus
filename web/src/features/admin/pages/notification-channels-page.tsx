@@ -163,6 +163,11 @@ export function NotificationChannelsPage() {
                 </td>
                 <td className="p-3 text-[var(--color-text-secondary)]">
                   {channelTarget(ch)}
+                  {ch.secret_unreadable && (
+                    <div className="mt-1 text-xs text-[var(--color-error)]">
+                      {t("notificationsPage.secretUnreadable")}
+                    </div>
+                  )}
                 </td>
                 <td className="p-3">
                   <div className="flex flex-wrap gap-1">

@@ -144,6 +144,32 @@ func TestNotificationRepositories_Integration(t *testing.T) {
 		assert.Equal(t, 0, again)
 	})
 
+	t.Run("비밀을 풀지 못하는 행은 그 행만 표시하고 목록은 돌아간다", func(t *testing.T) {
+		good := &domain.Channel{OrgID: "org-broken", Name: "정상", Type: domain.ChannelSlack,
+			Secret: "https://hooks.slack.com/services/T/B/GOOD", Events: []sharednotify.EventType{sharednotify.EventBackupFailed}, Active: true}
+		require.NoError(t, channels.Create(ctx, good))
+		var brokenID string
+		require.NoError(t, pool.QueryRow(ctx, `
+			INSERT INTO notification_configs (org_id, name, channel, config, secret_encrypted, events)
+			VALUES ('org-broken', '키가 바뀐 채널', 'telegram', '{"chat_id": 12345}', 'bm90LWEtdmFsaWQtY2lwaGVydGV4dA==', ARRAY['backup_failed'])
+			RETURNING id::text`).Scan(&brokenID))
+
+		list, err := channels.List(ctx, "org-broken")
+		require.NoError(t, err, "깨진 행 하나가 목록 전체를 막지 않는다")
+		require.Len(t, list, 2)
+		byID := map[string]*domain.Channel{}
+		for _, ch := range list {
+			byID[ch.ID] = ch
+		}
+		assert.False(t, byID[good.ID].SecretUnreadable)
+		assert.Equal(t, "https://hooks.slack.com/services/T/B/GOOD", byID[good.ID].Secret)
+		assert.True(t, byID[brokenID].SecretUnreadable)
+		assert.Empty(t, byID[brokenID].Secret)
+		assert.Equal(t, domain.Settings{}, byID[brokenID].Settings, "모양이 다른 설정(숫자 chat_id)은 비운다")
+
+		assert.NoError(t, channels.Delete(ctx, "org-broken", brokenID), "깨진 채널도 지울 수 있다")
+	})
+
 	t.Run("키가 없으면 비밀을 저장하지 않는다", func(t *testing.T) {
 		noKey := NewPostgresChannelRepository(pool, nil)
 		err := noKey.Create(ctx, &domain.Channel{OrgID: "org-it", Name: "x", Type: domain.ChannelTelegram, Secret: itToken})

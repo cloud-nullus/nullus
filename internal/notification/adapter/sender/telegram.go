@@ -77,7 +77,8 @@ func (s *TelegramSender) Send(ctx context.Context, ch *domain.Channel, msg domai
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			return nil
 		}
-		return httpFailure(resp.StatusCode, redact(string(body), ch.Secret), 0)
+		// Bot API 의 응답이 아니다(프록시 · 게이트웨이 오류 페이지). 본문은 싣지 않는다.
+		return httpFailure(resp.StatusCode, "Bot API 응답이 아닙니다 — 응답 본문 생략", 0)
 	}
 	if parsed.OK {
 		return nil

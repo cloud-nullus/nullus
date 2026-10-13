@@ -34,6 +34,8 @@ export interface NotificationChannel {
   settings: ChannelSettings;
   secret_set: boolean;
   secret_hint?: string;
+  /** 저장된 비밀을 서버가 풀지 못했다(ENCRYPTION_KEY 교체). 다시 입력해야 보낸다. */
+  secret_unreadable?: boolean;
   events: NotificationEvent[];
   active: boolean;
   created_at: string;

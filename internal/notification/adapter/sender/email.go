@@ -54,7 +54,15 @@ func (s *EmailSender) Send(ctx context.Context, ch *domain.Channel, msg domain.M
 	if err != nil {
 		return &port.SendError{Err: fmt.Errorf("보내는 주소가 올바르지 않습니다: %s", st.From)}
 	}
-	raw, err := buildEmail(from, st.To, ch, msg)
+	recipients := make([]*mail.Address, 0, len(st.To))
+	for _, to := range st.To {
+		addr, err := mail.ParseAddress(to)
+		if err != nil || strings.ContainsAny(to, "\r\n") {
+			return &port.SendError{Err: fmt.Errorf("받는 주소가 올바르지 않습니다: %s", oneLine(to))}
+		}
+		recipients = append(recipients, addr)
+	}
+	raw, err := buildEmail(from, recipients, ch, msg)
 	if err != nil {
 		return &port.SendError{Err: err}
 	}
@@ -77,11 +85,7 @@ func (s *EmailSender) Send(ctx context.Context, ch *domain.Channel, msg domain.M
 	if err := client.Mail(from.Address); err != nil {
 		return smtpFailure("발신자", err)
 	}
-	for _, to := range st.To {
-		addr, err := mail.ParseAddress(to)
-		if err != nil {
-			return &port.SendError{Err: fmt.Errorf("받는 주소가 올바르지 않습니다: %s", to)}
-		}
+	for _, addr := range recipients {
 		if err := client.Rcpt(addr.Address); err != nil {
 			return smtpFailure("받는 주소 "+addr.Address, err)
 		}
@@ -102,6 +106,12 @@ func (s *EmailSender) Send(ctx context.Context, ch *domain.Channel, msg domain.M
 }
 
 func (s *EmailSender) connect(ctx context.Context, st domain.Settings) (*smtp.Client, error) {
+	switch st.SMTPSecurity {
+	case domain.SMTPStartTLS, domain.SMTPTLS, domain.SMTPNone:
+	default:
+		// 검증을 거치지 않은 옛 행. 모르는 값을 평문으로 읽으면 본문이 그대로 흐른다.
+		return nil, &port.SendError{Err: fmt.Errorf("알 수 없는 SMTP 보안 방식입니다: %q — 채널을 다시 저장하세요", st.SMTPSecurity)}
+	}
 	addr := net.JoinHostPort(st.SMTPHost, strconv.Itoa(st.SMTPPort))
 	tlsCfg := &tls.Config{ServerName: st.SMTPHost, MinVersion: tls.VersionTLS12, RootCAs: s.rootCAs}
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
@@ -190,7 +200,7 @@ func smtpFailure(stage string, err error) error {
 	var tpErr *textproto.Error
 	if errors.As(err, &tpErr) {
 		return &port.SendError{
-			Err:       fmt.Errorf("SMTP %s 실패: %d %s", stage, tpErr.Code, tpErr.Msg),
+			Err:       fmt.Errorf("SMTP %s 실패: %d %s", stage, tpErr.Code, truncate(oneLine(tpErr.Msg), 160)),
 			Retryable: tpErr.Code >= 400 && tpErr.Code < 500,
 		}
 	}
@@ -201,12 +211,17 @@ func smtpFailure(stage string, err error) error {
 }
 
 // buildEmail 은 UTF-8 평문 메일이다. 헤더는 RFC 2047 로, 본문은 quoted-printable 로 싣는다.
-func buildEmail(from *mail.Address, to []string, ch *domain.Channel, msg domain.Message) ([]byte, error) {
+func buildEmail(from *mail.Address, to []*mail.Address, ch *domain.Channel, msg domain.Message) ([]byte, error) {
 	subject := fmt.Sprintf("[Nullus][%s] %s", severityLabel(msg.Severity), oneLine(msg.Title))
 	var h bytes.Buffer
 	writeHeader := func(k, v string) { fmt.Fprintf(&h, "%s: %s\r\n", k, v) }
 	writeHeader("From", from.String())
-	writeHeader("To", strings.Join(to, ", "))
+	// 헤더는 파싱한 주소로 쓴다 — 입력 문자열을 그대로 쓰면 주석 안의 CR/LF 로 헤더를 끼워 넣는다.
+	toHeader := make([]string, 0, len(to))
+	for _, a := range to {
+		toHeader = append(toHeader, a.String())
+	}
+	writeHeader("To", strings.Join(toHeader, ", "))
 	writeHeader("Subject", mime.QEncoding.Encode("UTF-8", subject))
 	writeHeader("Date", time.Now().Format(time.RFC1123Z))
 	writeHeader("Message-ID", messageID(from.Address))

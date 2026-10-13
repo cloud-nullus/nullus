@@ -3,6 +3,7 @@ package notify
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,12 +15,17 @@ import (
 )
 
 type recordingPublisher struct {
+	mu     sync.Mutex
 	events []sharednotify.Event
 	err    error
+	ctxErr error
 }
 
-func (p *recordingPublisher) Publish(_ context.Context, e sharednotify.Event) error {
+func (p *recordingPublisher) Publish(ctx context.Context, e sharednotify.Event) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.events = append(p.events, e)
+	p.ctxErr = ctx.Err()
 	return p.err
 }
 
@@ -46,7 +52,9 @@ func TestChannelNotifier_FailedBackupIsCritical(t *testing.T) {
 	run := finishedRun(domain.StatusFailed)
 	run.Error = "목적지에 쓸 수 없습니다: connection refused"
 
-	require.NoError(t, NewChannelNotifier(nil, pub).NotifyBackupResult(context.Background(), run))
+	n := NewChannelNotifier(nil, pub)
+	require.NoError(t, n.NotifyBackupResult(context.Background(), run))
+	n.Wait()
 
 	require.Len(t, pub.events, 1)
 	e := pub.events[0]
@@ -69,11 +77,13 @@ func TestChannelNotifier_PartialAndSucceeded(t *testing.T) {
 	partial := finishedRun(domain.StatusPartial)
 	partial.Error = "volume data-gitlab-0: timeout"
 	require.NoError(t, n.NotifyBackupResult(context.Background(), partial))
+	n.Wait()
 
 	ok := finishedRun(domain.StatusSucceeded)
 	ok.StackID = ""
 	ok.Mode = domain.ModePlatformOnly
 	require.NoError(t, n.NotifyBackupResult(context.Background(), ok))
+	n.Wait()
 
 	require.Len(t, pub.events, 2)
 	assert.Equal(t, sharednotify.EventBackupPartial, pub.events[0].Type)
@@ -89,7 +99,9 @@ func TestChannelNotifier_IncludesSet(t *testing.T) {
 	pub := &recordingPublisher{}
 	run := finishedRun(domain.StatusFailed)
 	run.SetID = "set_9"
-	require.NoError(t, NewChannelNotifier(nil, pub).NotifyBackupResult(context.Background(), run))
+	n := NewChannelNotifier(nil, pub)
+	require.NoError(t, n.NotifyBackupResult(context.Background(), run))
+	n.Wait()
 	assert.Equal(t, "set_9", fieldValue(pub.events[0], "세트"))
 }
 
@@ -98,14 +110,27 @@ func TestChannelNotifier_IgnoresUnfinishedRuns(t *testing.T) {
 	pub := &recordingPublisher{}
 	n := NewChannelNotifier(nil, pub)
 	require.NoError(t, n.NotifyBackupResult(context.Background(), finishedRun(domain.StatusRunning)))
+	n.Wait()
 	assert.Empty(t, pub.events)
 }
 
-// 채널 발송 실패는 돌려주되(백업 유스케이스가 경고로 남긴다) 로그 알림은 그대로 남는다.
-func TestChannelNotifier_ReturnsPublishErrorAndWorksWithoutPublisher(t *testing.T) {
+// 채널 발송은 백업을 붙들지 않는다 — 백업의 마무리 ctx 가 끝나도 발송은 제 시간으로 간다(리뷰 지적:
+// 마무리 30초 안에서 느린 채널이 다른 채널과 이력까지 막았다). 실패는 로그로 남고 백업에는 오류가 아니다.
+func TestChannelNotifier_PublishesAsynchronouslyWithItsOwnContext(t *testing.T) {
 	pub := &recordingPublisher{err: errors.New("telegram: chat not found")}
-	err := NewChannelNotifier(nil, pub).NotifyBackupResult(context.Background(), finishedRun(domain.StatusFailed))
-	assert.ErrorContains(t, err, "chat not found")
+	n := NewChannelNotifier(nil, pub)
+	ctx, cancel := context.WithCancel(context.Background())
 
-	assert.NoError(t, NewChannelNotifier(nil, nil).NotifyBackupResult(context.Background(), finishedRun(domain.StatusFailed)))
+	require.NoError(t, n.NotifyBackupResult(ctx, finishedRun(domain.StatusFailed)))
+	cancel()
+	n.Wait()
+
+	require.Len(t, pub.events, 1)
+	assert.NoError(t, pub.ctxErr, "생산자 ctx 가 끝나도 발송 ctx 는 살아 있다")
+}
+
+func TestChannelNotifier_WorksWithoutPublisher(t *testing.T) {
+	n := NewChannelNotifier(nil, nil)
+	assert.NoError(t, n.NotifyBackupResult(context.Background(), finishedRun(domain.StatusFailed)))
+	n.Wait()
 }

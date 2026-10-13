@@ -122,6 +122,25 @@ describe("NotificationChannelsPage", () => {
     expect(within(mailRow).getByText("Off")).toBeInTheDocument();
   });
 
+  it("should flag a channel whose stored secret cannot be read", () => {
+    mocks.channels.mockReturnValue({
+      data: [
+        {
+          ...telegram,
+          secret_set: false,
+          secret_hint: "",
+          secret_unreadable: true,
+        },
+      ],
+    });
+    renderWithProviders(<NotificationChannelsPage />);
+    expect(
+      within(channelRow("운영 텔레그램")).getByText(
+        /Stored secret cannot be read/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("should show an empty state", () => {
     mocks.channels.mockReturnValue({ data: [] });
     mocks.history.mockReturnValue({ data: [] });

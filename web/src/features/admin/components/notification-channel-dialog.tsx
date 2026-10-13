@@ -51,11 +51,27 @@ export function NotificationChannelDialog({
   const set = <K extends keyof ChannelForm>(key: K, value: ChannelForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  // 저장된 SMTP 비밀번호는 그 서버로만 간다. 서버 · 포트 · 보안 · 계정을 바꾸면 다시 받는다 — 서버도
+  // 같은 규칙으로 거절한다(비밀번호를 모르는 사람이 서버만 돌려 빼내지 못하게).
+  const original = useMemo(
+    () => (channel ? formFromChannel(channel) : undefined),
+    [channel],
+  );
+  const smtpEndpointChanged =
+    original !== undefined &&
+    form.type === "email" &&
+    (form.smtpHost.trim() !== original.smtpHost ||
+      form.smtpPort !== original.smtpPort ||
+      form.smtpSecurity !== original.smtpSecurity ||
+      form.username.trim() !== original.username);
+
   // 서버가 최종 판단한다. 여기서는 빈 칸만 막는다 — 형식 오류는 서버 문구가 더 정확하다.
   const ready = useMemo(() => {
     if (!form.name.trim() || form.events.length === 0) return false;
     const secretOk =
-      editing && channel?.secret_set ? true : Boolean(form.secret.trim());
+      editing && channel?.secret_set && !smtpEndpointChanged
+        ? true
+        : Boolean(form.secret.trim());
     switch (form.type) {
       case "telegram":
         return secretOk && Boolean(form.chatId.trim());
@@ -71,7 +87,7 @@ export function NotificationChannelDialog({
         );
       }
     }
-  }, [form, editing, channel]);
+  }, [form, editing, channel, smtpEndpointChanged]);
 
   // 저장된 비밀은 돌려받지 않는다. 무엇이 들어 있는지는 서버의 힌트(봇 ID · 웹훅 호스트)로만 보인다.
   const secretKeep =
@@ -243,7 +259,11 @@ export function NotificationChannelDialog({
               </Field>
               <Field
                 label={t("notificationsPage.form.password")}
-                hint={secretKeep}
+                hint={
+                  smtpEndpointChanged && form.username.trim()
+                    ? t("notificationsPage.form.passwordAgain")
+                    : secretKeep
+                }
               >
                 {(id) => (
                   <TextInput

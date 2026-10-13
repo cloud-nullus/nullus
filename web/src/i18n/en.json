@@ -2200,7 +2200,9 @@
       "events": "Events to receive",
       "active": "Enabled",
       "secretKeep": "Saved ({{hint}}). Leave blank to keep it.",
-      "secretKeepNoHint": "Saved. Leave blank to keep it."
-    }
+      "secretKeepNoHint": "Saved. Leave blank to keep it.",
+      "passwordAgain": "You changed the server or account, so enter the password again."
+    },
+    "secretUnreadable": "Stored secret cannot be read (ENCRYPTION_KEY changed?). Edit the channel and enter it again."
   }
 }

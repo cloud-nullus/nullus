@@ -195,3 +195,23 @@ func TestTelegramText_FitsEvenWithManyFields(t *testing.T) {
 	assert.LessOrEqual(t, len([]rune(text)), 4096)
 	assert.Contains(t, text, "<b>백업 실패 &lt;platform&gt;</b>")
 }
+
+// 원격 응답 본문은 알려진 짧은 오류 코드일 때만 싣는다 — 웹훅 URL 을 내부 주소로 돌려 그 응답을
+// 읽어 내는 길을 좁힌다.
+func TestSlackSender_DoesNotEchoArbitraryResponseBodies(t *testing.T) {
+	srv, _ := captureServer(t, http.StatusForbidden, "<html>internal admin page secret=xyz</html>", nil)
+	ch := &domain.Channel{Type: domain.ChannelSlack, Secret: srv.URL + "/x"}
+	err := NewSlackSender(nil).Send(context.Background(), ch, sampleMessage())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP 403")
+	assert.NotContains(t, err.Error(), "secret=xyz")
+}
+
+func TestTelegramSender_DoesNotEchoNonJSONBodies(t *testing.T) {
+	srv, _ := captureServer(t, http.StatusBadGateway, "<html>upstream internal-host:9000</html>", nil)
+	ch := &domain.Channel{Type: domain.ChannelTelegram, Secret: testToken, Settings: domain.Settings{ChatID: "1"}}
+	err := NewTelegramSender(srv.URL, nil).Send(context.Background(), ch, sampleMessage())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP 502")
+	assert.NotContains(t, err.Error(), "internal-host")
+}
