@@ -1171,7 +1171,7 @@ do_smoke() {
   smoke_get "GET /api/v1/admin/clusters"               "http://localhost:${API_PORT}/api/v1/admin/clusters"
   smoke_get "GET /api/v1/admin/known-issues"           "http://localhost:${API_PORT}/api/v1/admin/known-issues"
   smoke_get "GET /api/v1/admin/audit-logs"             "http://localhost:${API_PORT}/api/v1/admin/audit-logs"
-  smoke_get "GET /api/v1/admin/notifications/configs"  "http://localhost:${API_PORT}/api/v1/admin/notifications/configs"
+  smoke_get "GET /api/v1/admin/notifications/channels" "http://localhost:${API_PORT}/api/v1/admin/notifications/channels"
   smoke_get "GET /api/v1/stacks"                       "http://localhost:${API_PORT}/api/v1/stacks"
   smoke_get "GET /api/v1/stacks/templates"             "http://localhost:${API_PORT}/api/v1/stacks/templates"
   smoke_get "GET /api/v1/stacks/compatibility"         "http://localhost:${API_PORT}/api/v1/stacks/compatibility"

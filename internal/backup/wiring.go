@@ -28,6 +28,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/backup/port"
 	"github.com/cloud-nullus/draft/internal/backup/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/config"
+	sharednotify "github.com/cloud-nullus/draft/internal/shared/notification"
 	"github.com/cloud-nullus/draft/internal/shared/secrets"
 )
 
@@ -58,6 +59,8 @@ type Deps struct {
 	// Stacks 는 백업 세트가 "조직의 모든 설치 완료 스택" 을 읽는 창구다(스택 모듈의 저장소를 bridge 로 감싼다).
 	// 없으면 세트 백업은 배선되지 않았다고 거절한다 — 단독 백업·복구는 영향이 없다.
 	Stacks port.StackLister
+	// Notifications 는 백업 결과를 조직의 알림 채널로 보내는 창구다(B3-3, 알림 모듈). 없으면 로그만 남긴다.
+	Notifications sharednotify.Publisher
 	// EncryptionKey 는 clusters.kubeconfig 복호화 키다 (ENCRYPTION_KEY).
 	// 백업이 쓰지는 않지만, 복구 전제 조건 검사에 필요하다 — 이 키가 없으면
 	// 복구해도 어떤 클러스터에도 접근할 수 없다 (§1.3).
@@ -185,7 +188,7 @@ func New(d Deps) (*Module, error) {
 		kv:        backupopenbao.NewKVExporter(d.SecretRouter),
 		targets:   targets,
 		tokens:    bridge.NewTokenSourceLister(d.TokenSources),
-		notifier:  notify.NewLogNotifier(d.Logger),
+		notifier:  notify.NewChannelNotifier(notify.NewLogNotifier(d.Logger), d.Notifications),
 		cache:     map[string]*backupkube.Adapters{},
 	}
 	d.Logger.Info("백업 모듈 준비 완료",

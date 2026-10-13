@@ -24,7 +24,8 @@
     "logout": "Logout",
     "cicdGoldenPath": "Golden Paths",
     "tokenManagement": "Token Management",
-    "backup": "Backup"
+    "backup": "Backup",
+    "notifications": "Notification Channels"
   },
   "common": {
     "save": "Save",
@@ -2112,5 +2113,96 @@
       "cancelled": "Cancelled",
       "rolled_back": "Rolled back"
     }
+  },
+  "notificationsPage": {
+    "title": "Notification Channels",
+    "breadcrumb": "Notification Channels",
+    "description": "Send platform events such as backup failures to Telegram, email or Slack.",
+    "add": "Add channel",
+    "empty": "No channels yet. Add one to receive backup failure alerts.",
+    "saved": "Channel saved.",
+    "deleted": "Channel deleted.",
+    "testSent": "Test message sent to {{name}}.",
+    "testFailed": "Test to {{name}} failed: {{error}}",
+    "table": {
+      "name": "Name",
+      "type": "Type",
+      "target": "Delivers to",
+      "events": "Events",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "active": "On",
+      "inactive": "Off"
+    },
+    "actions": {
+      "test": "Send test",
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "types": {
+      "telegram": "Telegram",
+      "email": "Email (SMTP)",
+      "slack": "Slack"
+    },
+    "events": {
+      "backup_failed": "Backup failed",
+      "backup_partial": "Backup partially succeeded",
+      "backup_succeeded": "Backup succeeded",
+      "test": "Test"
+    },
+    "result": {
+      "sent": "Sent",
+      "failed": "Failed"
+    },
+    "history": {
+      "title": "Recent deliveries",
+      "empty": "Nothing sent yet.",
+      "time": "Time",
+      "channel": "Channel",
+      "event": "Event",
+      "message": "Message",
+      "result": "Result",
+      "attempts": "Attempts"
+    },
+    "confirmDelete": {
+      "title": "Delete channel",
+      "description": "Delete {{name}}? It stops receiving alerts. Its delivery history is kept."
+    },
+    "dialog": {
+      "createTitle": "Add notification channel",
+      "editTitle": "Edit notification channel"
+    },
+    "form": {
+      "name": "Name",
+      "type": "Channel type",
+      "save": "Save",
+      "botToken": "Bot token",
+      "botTokenHint": "Issued by @BotFather, shaped like 123456789:AA…",
+      "chatId": "Chat ID",
+      "chatIdHint": "Groups use negative IDs (-100…); public channels can use @name. Add the bot to the chat first.",
+      "webhookUrl": "Incoming Webhook URL",
+      "webhookHint": "Create it under your Slack app's Incoming Webhooks. The URL itself is a credential.",
+      "smtpHost": "SMTP server",
+      "smtpPort": "Port",
+      "smtpSecurity": "Security",
+      "security": {
+        "starttls": "STARTTLS",
+        "tls": "TLS",
+        "none": "None (relay only)"
+      },
+      "username": "Username (optional)",
+      "password": "Password",
+      "from": "From",
+      "to": "To",
+      "toHint": "Separate addresses with commas or new lines (up to 20).",
+      "events": "Events to receive",
+      "active": "Enabled",
+      "secretKeep": "Saved ({{hint}}). Leave blank to keep it.",
+      "secretKeepNoHint": "Saved. Leave blank to keep it.",
+      "passwordAgain": "You changed the server or account, so enter the password again."
+    },
+    "secretUnreadable": "Stored secret cannot be read (ENCRYPTION_KEY changed?). Edit the channel and enter it again."
   }
 }
