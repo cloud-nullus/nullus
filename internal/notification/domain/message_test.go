@@ -42,6 +42,7 @@ func TestEventCatalog_HasProducedEventsOnly(t *testing.T) {
 	}
 	assert.Equal(t, []sharednotify.EventType{
 		sharednotify.EventBackupFailed, sharednotify.EventBackupPartial, sharednotify.EventBackupSucceeded,
+		sharednotify.EventAlertFired, sharednotify.EventAlertResolved,
 	}, types)
 	assert.True(t, IsKnownEvent(sharednotify.EventBackupFailed))
 	assert.False(t, IsKnownEvent(EventTest), "테스트 전송은 구독하는 이벤트가 아니다")

@@ -169,7 +169,7 @@ func TestNotificationHandler_ListEvents(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, []any{"telegram", "email", "slack"}, body["channel_types"])
 	items := body["items"].([]any)
-	require.Len(t, items, 3)
+	require.Len(t, items, 5)
 	first := items[0].(map[string]any)
 	assert.Equal(t, "backup_failed", first["type"])
 	assert.Equal(t, true, first["default_on"])

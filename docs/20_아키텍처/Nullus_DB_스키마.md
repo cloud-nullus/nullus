@@ -26,7 +26,8 @@
 | `golden_path_templates` | Stack | 10 | ○ |
 | `known_issues` | Observability | 8 | **미반영** |
 | `notification_configs` | Notification | 10 | ○ (000096 — 이름 · 암호화한 비밀 · 갱신 시각) |
-| `notification_history` | Notification | 10 | ○ (000096 — 채널 ID · 시도 횟수) |
+| `notification_history` | Notification | 10 | ○ (000096 — 채널 ID · 시도 횟수, 000097 — 데모 이력 삭제) |
+| `stack_alerts` | Observability | 16 | ○ (000097 — 스택 심각 경보, 열린 경보는 (stack_id, fingerprint) 마다 하나) |
 | `org_members` | Organization | 5 | ○ |
 | `org_resource_profiles` | Organization | 8 | **미반영** |
 | `organizations` | Organization | 9 | ○ |

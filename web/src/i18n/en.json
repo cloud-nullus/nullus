@@ -981,7 +981,7 @@
     "alertRules": "Alert Rules",
     "alertRulesDesc": "Alert rule list and management",
     "alertHistory": "Alert History",
-    "alertHistoryDesc": "Alert occurrence history",
+    "alertHistoryDesc": "Critical alerts from each stack's Prometheus (default rules). Firing and resolved alerts also go to your notification channels.",
     "newRule": "New Rule",
     "connectPanel": {
       "title": "Connect Stack Components",
@@ -1199,29 +1199,38 @@
   },
   "alertHistoryPage": {
     "table": {
-      "ruleName": "Rule Name",
+      "alert": "Alert",
+      "stack": "Stack",
+      "target": "Target",
       "severity": "Severity",
       "message": "Message",
       "firedAt": "Fired At",
       "resolvedAt": "Resolved At"
     },
-    "unresolved": "Unresolved",
-    "empty": "No alert history found.",
+    "active": "Active",
+    "empty": "No critical alerts from your stacks. Each stack's Prometheus evaluates the default rules, and firing alerts appear here.",
     "filters": {
-      "allSeverity": "All Severity",
+      "activeOnly": "Active only",
+      "allStates": "All",
       "last24h": "Last 24h",
       "last7d": "Last 7d",
       "last30d": "Last 30d",
-      "all": "All"
+      "all": "All time"
     },
-    "searchPlaceholder": "Search rule name...",
+    "searchPlaceholder": "Search alert, stack, or message...",
     "detail": {
       "title": "Alert Detail",
-      "rule": "Rule",
+      "alert": "Alert",
+      "stack": "Stack",
+      "target": "Target",
       "severity": "Severity",
       "firedAt": "Fired At",
       "resolvedAt": "Resolved At",
-      "message": "Message"
+      "lastNotified": "Last notified",
+      "message": "Message",
+      "description": "Description",
+      "runbook": "Open runbook",
+      "labels": "Labels"
     },
     "selectAlert": "Select an alert to view its detail."
   },
@@ -2150,7 +2159,9 @@
       "backup_failed": "Backup failed",
       "backup_partial": "Backup partially succeeded",
       "backup_succeeded": "Backup succeeded",
-      "test": "Test"
+      "test": "Test",
+      "alert_fired": "Stack alert fired",
+      "alert_resolved": "Stack alert resolved"
     },
     "result": {
       "sent": "Sent",

@@ -6,7 +6,7 @@
 // 정의하고, 두 화면 요소가 같은 트리를 읽는다.
 
 import { type ReactNode } from 'react'
-import { Bell, BookOpen, Boxes, Bug, Building2, ChartColumn, Database, DatabaseBackup, FileCode2, GitBranch, History, KeyRound, LayoutDashboard, List, Network, Route, Send, Settings, ShieldCheck, Tag, Users, Workflow } from 'lucide-react'
+import { BookOpen, Boxes, Bug, Building2, ChartColumn, Database, DatabaseBackup, FileCode2, GitBranch, History, KeyRound, LayoutDashboard, List, Network, Route, Send, Settings, ShieldCheck, Tag, Users, Workflow } from 'lucide-react'
 import { iconProps } from '../ui/icon'
 import type { Role } from '../../types'
 
@@ -60,7 +60,6 @@ export const navGroups: NavGroup[] = [
     roles: ['admin', 'devops', 'developer'],
     items: [
       { key: 'monitoringDashboard', label: 'sidebar.monitoringDashboard', path: '/observability/monitoring', icon: <LayoutDashboard {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
-      { key: 'alertRules', label: 'sidebar.alertRules', path: '/observability/alerts', icon: <Bell {...iconProps('sm')} />, roles: ['admin', 'devops'] },
       { key: 'alertHistory', label: 'sidebar.alertHistory', path: '/observability/alert-history', icon: <History {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
     ],
   },

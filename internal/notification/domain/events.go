@@ -14,13 +14,15 @@ type EventSpec struct {
 	Description string `json:"description"`
 }
 
-// EventCatalog 는 지금 생산자가 있는 이벤트다. 생산자가 생길 때 여기에 더한다 — 알림 규칙
-// 평가(alert_fired)는 평가 루프가 생길 때다.
+// EventCatalog 는 지금 생산자가 있는 이벤트다 — 백업 결과(B3-3)와 스택 심각 경보(#87). 생산자가
+// 생길 때 여기에 더한다.
 func EventCatalog() []EventSpec {
 	return []EventSpec{
 		{Type: sharednotify.EventBackupFailed, DefaultOn: true, Description: "백업이 실패로 끝났을 때"},
 		{Type: sharednotify.EventBackupPartial, DefaultOn: true, Description: "백업이 일부 컴포넌트를 빠뜨린 채 끝났을 때"},
 		{Type: sharednotify.EventBackupSucceeded, DefaultOn: false, Description: "백업이 성공했을 때"},
+		{Type: sharednotify.EventAlertFired, DefaultOn: true, Description: "스택에서 심각한 경보가 발생했을 때(디스크 · 파드 재시작 · 도구 무응답 등)"},
+		{Type: sharednotify.EventAlertResolved, DefaultOn: true, Description: "그 경보가 해제됐을 때"},
 	}
 }
 

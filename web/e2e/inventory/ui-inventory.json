@@ -73,7 +73,6 @@
       "labels": [
         "sidebar.admin",
         "sidebar.alertHistory",
-        "sidebar.alertRules",
         "sidebar.cicd",
         "sidebar.cicdGoldenPath",
         "sidebar.cicdHistory",
@@ -1951,12 +1950,10 @@
         "alertHistoryPage.detail.firedAt",
         "alertHistoryPage.detail.message",
         "alertHistoryPage.detail.resolvedAt",
-        "alertHistoryPage.detail.rule",
         "alertHistoryPage.detail.severity",
         "alertHistoryPage.detail.title",
         "alertHistoryPage.empty",
         "alertHistoryPage.filters.all",
-        "alertHistoryPage.filters.allSeverity",
         "alertHistoryPage.filters.last24h",
         "alertHistoryPage.filters.last30d",
         "alertHistoryPage.filters.last7d",
@@ -1965,21 +1962,14 @@
         "alertHistoryPage.table.firedAt",
         "alertHistoryPage.table.message",
         "alertHistoryPage.table.resolvedAt",
-        "alertHistoryPage.table.ruleName",
-        "alertHistoryPage.table.severity",
-        "alertHistoryPage.unresolved",
         "observability.alertHistory",
-        "observability.alertHistoryDesc",
-        "observability.severity.critical",
-        "observability.severity.info",
-        "observability.severity.warning"
+        "observability.alertHistoryDesc"
       ],
       "fallbacks": [
         "Alert Detail",
         "Alert History",
         "Alert occurrence history",
         "All",
-        "All Severity",
         "Critical",
         "Fired At",
         "Info",
@@ -1987,14 +1977,9 @@
         "Last 30d",
         "Last 7d",
         "Message",
-        "No alert history found.",
         "Resolved At",
-        "Rule",
-        "Rule Name",
-        "Search rule name...",
         "Select an alert to view its detail.",
         "Severity",
-        "Unresolved",
         "Warning"
       ],
       "labels": [
@@ -2004,13 +1989,7 @@
         "all",
         "expand"
       ],
-      "columns": [
-        "firedAt",
-        "message",
-        "resolvedAt",
-        "ruleName",
-        "severity"
-      ],
+      "columns": [],
       "jsxText": [],
       "testIds": []
     },

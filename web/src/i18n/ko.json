@@ -981,7 +981,7 @@
     "alertRules": "알림 규칙",
     "alertRulesDesc": "알림 규칙 목록 및 관리",
     "alertHistory": "알림 이력",
-    "alertHistoryDesc": "알림 발생 이력",
+    "alertHistoryDesc": "스택마다 Prometheus 가 기본 규칙으로 평가한 심각 경보입니다. 발생 · 해제는 알림 채널로도 갑니다.",
     "newRule": "새 규칙",
     "connectPanel": {
       "title": "스택 컴포넌트 연결",
@@ -1199,31 +1199,40 @@
   },
   "alertHistoryPage": {
     "table": {
-      "ruleName": "규칙 이름",
+      "alert": "경보",
+      "stack": "스택",
+      "target": "대상",
       "severity": "심각도",
-      "message": "메시지",
-      "firedAt": "발생 시간",
-      "resolvedAt": "해결 시간"
+      "message": "내용",
+      "firedAt": "발생",
+      "resolvedAt": "해제"
     },
-    "unresolved": "미해결",
-    "empty": "알림 이력이 없습니다.",
+    "active": "진행 중",
+    "empty": "스택에서 온 심각 경보가 없습니다. 스택마다 Prometheus 가 기본 규칙을 평가하고, 발생한 경보가 여기에 보입니다.",
     "filters": {
-      "allSeverity": "전체 심각도",
+      "activeOnly": "진행 중만",
+      "allStates": "전체",
       "last24h": "최근 24시간",
       "last7d": "최근 7일",
       "last30d": "최근 30일",
-      "all": "전체"
+      "all": "전체 기간"
     },
-    "searchPlaceholder": "규칙 이름 검색...",
+    "searchPlaceholder": "경보 · 스택 · 내용 검색...",
     "detail": {
-      "title": "알림 상세",
-      "rule": "규칙",
+      "title": "경보 상세",
+      "alert": "경보",
+      "stack": "스택",
+      "target": "대상",
       "severity": "심각도",
-      "firedAt": "발생 시간",
-      "resolvedAt": "해결 시간",
-      "message": "메시지"
+      "firedAt": "발생",
+      "resolvedAt": "해제",
+      "lastNotified": "마지막 알림",
+      "message": "내용",
+      "description": "설명",
+      "runbook": "런북 열기",
+      "labels": "라벨"
     },
-    "selectAlert": "알림을 선택하면 상세 정보가 표시됩니다."
+    "selectAlert": "경보를 고르면 상세가 보입니다."
   },
   "alertRulesPage": {
     "table": {
@@ -2150,7 +2159,9 @@
       "backup_failed": "백업 실패",
       "backup_partial": "백업 부분 성공",
       "backup_succeeded": "백업 성공",
-      "test": "테스트"
+      "test": "테스트",
+      "alert_fired": "스택 경보 발생",
+      "alert_resolved": "스택 경보 해제"
     },
     "result": {
       "sent": "전송됨",

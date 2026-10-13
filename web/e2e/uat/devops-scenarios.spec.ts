@@ -97,17 +97,11 @@ test.describe('DevOps UAT Scenarios', () => {
     await expect(page.locator('[class*="card"], svg, canvas').first()).toBeVisible({ timeout: 10000 })
   })
 
-  test('D10: 알림 규칙 페이지 CRUD 버튼', async ({ page }) => {
-    await page.goto('/observability/alert-rules')
-    await expect(page.locator('h1')).toContainText(/alert/i, { timeout: 10000 })
-    await expect(page.getByRole('button', { name: /new rule|새 규칙/i })).toBeVisible({ timeout: 10000 })
-  })
-
-  test('D10: 알림 규칙 생성 모달', async ({ page }) => {
-    await page.goto('/observability/alert-rules')
-    const createBtn = page.getByRole('button', { name: /new rule|새 규칙/i })
-    await createBtn.click()
-    await expect(page.locator('[role="dialog"]')).toBeVisible()
+  // 알림 규칙 화면은 평가되지 않아 숨겼다(nullus-plan#87). 알림 이력이 스택 심각 경보를 보여 준다.
+  test('D10: 알림 이력 — 스택 경보 필터', async ({ page }) => {
+    await page.goto('/observability/alert-history')
+    await expect(page.locator('h1')).toContainText(/alert|알림/i, { timeout: 10000 })
+    await expect(page.getByRole('button', { name: /active only|진행 중만/i })).toBeVisible({ timeout: 10000 })
   })
 
   test('D11: 스택 목록에 Add Tools 버튼', async ({ page, request }) => {
