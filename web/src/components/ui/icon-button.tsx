@@ -34,18 +34,28 @@ interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 
   outlined?: boolean
 }
 
+/**
+ * 아이콘 버튼의 겉모습. 다른 곳으로 보내는 컨트롤은 <button> 이 아니라 <a> 여야 하므로
+ * (새 탭 열기 · 주소 복사가 되고 스크린리더가 "링크" 로 읽는다) 같은 규격을 링크에도 입힌다.
+ */
+export function iconButtonClassName({
+  tone = 'default',
+  outlined = false,
+}: { tone?: IconButtonTone; outlined?: boolean } = {}): string {
+  return cn(
+    'inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)]',
+    'bg-transparent transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40',
+    outlined ? 'border border-[var(--color-border-default)]' : 'border-none',
+    TONE[tone],
+  )
+}
+
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
   ({ tone = 'default', outlined = false, className, type = 'button', ...props }, ref) => (
     <button
       ref={ref}
       type={type}
-      className={cn(
-        'inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[var(--radius-sm)]',
-        'bg-transparent transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40',
-        outlined ? 'border border-[var(--color-border-default)]' : 'border-none',
-        TONE[tone],
-        className,
-      )}
+      className={cn(iconButtonClassName({ tone, outlined }), className)}
       {...props}
     />
   ),

@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react'
-import { GraduationCap, HardHat, LaptopMinimal, Moon, ShieldCheck, Sun } from 'lucide-react'
+import { GraduationCap, HardHat, LaptopMinimal, MessageSquareText, Moon, ShieldCheck, Sun } from 'lucide-react'
 import { iconProps } from '../ui/icon'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores/theme-store'
@@ -7,8 +7,12 @@ import { useAuthStore } from '../../stores/auth-store'
 import { useTourStore } from '../../stores/tour-store'
 import type { Role } from '../../types'
 import { LanguageSwitcher } from '../shared/language-switcher'
-import { IconButton } from '../ui/icon-button'
+import { IconButton, iconButtonClassName } from '../ui/icon-button'
 import { JobNotificationBell } from '../../features/common/components/job-notification-bell'
+
+// 인앱 피드백 위젯 대신 Nullus 저장소의 이슈 페이지로 보낸다(nullus-plan#67 협의) —
+// 받는 곳 · 스크린샷 속 민감정보 · airgap 저장을 따로 만들지 않고 이슈 템플릿에 맡긴다.
+export const FEEDBACK_URL = 'https://github.com/cloud-nullus/nullus/issues'
 
 const roleIcons: Record<Role, ReactNode> = {
   admin: <ShieldCheck {...iconProps('sm')} />,
@@ -52,6 +56,20 @@ export function Header() {
       <IconButton onClick={() => startTour(role)} aria-label={t('tour.start', 'Tutorial')}>
         <GraduationCap {...iconProps('sm')} />
       </IconButton>
+
+      {/* 피드백. 다른 사이트로 보내므로 버튼이 아니라 링크다. noopener 는 새 탭이
+          window.opener 로 이 화면을 건드리지 못하게, noreferrer 는 내부 경로가
+          Referer 로 GitHub 에 새지 않게 한다. */}
+      <a
+        href={FEEDBACK_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={t('header.feedback')}
+        title={t('header.feedbackHint')}
+        className={iconButtonClassName()}
+      >
+        <MessageSquareText {...iconProps('sm')} />
+      </a>
 
       {/* Theme toggle */}
       <IconButton
