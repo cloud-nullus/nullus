@@ -25,8 +25,8 @@
 | `compatibility_matrices` | Stack | 9 | ○ |
 | `golden_path_templates` | Stack | 10 | ○ |
 | `known_issues` | Observability | 8 | **미반영** |
-| `notification_configs` | Observability | 7 | **미반영** |
-| `notification_history` | Observability | 8 | **미반영** |
+| `notification_configs` | Notification | 10 | ○ (000096 — 이름 · 암호화한 비밀 · 갱신 시각) |
+| `notification_history` | Notification | 10 | ○ (000096 — 채널 ID · 시도 횟수) |
 | `org_members` | Organization | 5 | ○ |
 | `org_resource_profiles` | Organization | 8 | **미반영** |
 | `organizations` | Organization | 9 | ○ |

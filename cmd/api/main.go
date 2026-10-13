@@ -44,6 +44,8 @@ import (
 	cicdrunner "github.com/cloud-nullus/draft/internal/cicd/adapter/runner"
 	cicdport "github.com/cloud-nullus/draft/internal/cicd/port"
 	cicduc "github.com/cloud-nullus/draft/internal/cicd/usecase"
+	notificationmod "github.com/cloud-nullus/draft/internal/notification"
+	notificationhandler "github.com/cloud-nullus/draft/internal/notification/adapter/handler"
 	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
 	obsprom "github.com/cloud-nullus/draft/internal/observability/adapter/prometheus"
 	obsrepo "github.com/cloud-nullus/draft/internal/observability/adapter/repository"
@@ -575,7 +577,15 @@ func main() {
 	knownIssuesRepo := adminrepo.NewPostgresKnownIssuesRepository(pool)
 	knownIssuesHandler := adminhandler.NewKnownIssuesHandler(knownIssuesRepo)
 	auditHandler := adminhandler.NewAuditHandler(auditLogger)
-	notificationHandler := adminhandler.NewNotificationHandler(pool)
+	// 알림 채널(Telegram · 이메일 · Slack, nullus-plan#63). 백업 모듈이 결과를 이 모듈의 Publisher 로 낸다.
+	notificationModule := notificationmod.New(context.Background(), notificationmod.Deps{
+		Pool:           pool,
+		EncryptionKey:  []byte(os.Getenv("ENCRYPTION_KEY")),
+		TelegramAPIURL: os.Getenv("NULLUS_TELEGRAM_API_URL"),
+		Logger:         slog.Default(),
+	})
+	notificationHandler := notificationhandler.NewNotificationHandler(
+		notificationModule.Channels, notificationModule.SendTest, notificationModule.Deliveries)
 	tokenSourceHandler := adminhandler.NewTokenSourceHandler(tokenSourceUC)
 
 	orgHandler.RegisterRoutes(admin)
@@ -694,6 +704,7 @@ func main() {
 		SharedComponents: ensureSharedComponentsUC,
 		// 백업 세트가 "조직의 모든 스택" 을 스택 모듈의 저장소로 읽는다(bridge).
 		Stacks:          backupbridge.NewStackLister(pgStackRepo),
+		Notifications:   notificationModule.Publisher,
 		EncryptionKey:   []byte(os.Getenv("ENCRYPTION_KEY")),
 		PlatformVersion: platformVersion,
 		Logger:          slog.Default(),

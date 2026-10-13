@@ -24,7 +24,8 @@
     "logout": "로그아웃",
     "cicdGoldenPath": "골든패스",
     "tokenManagement": "토큰 관리",
-    "backup": "백업"
+    "backup": "백업",
+    "notifications": "알림 채널"
   },
   "common": {
     "save": "저장",
@@ -2111,6 +2112,95 @@
       "failed": "실패",
       "cancelled": "취소됨",
       "rolled_back": "되돌림"
+    }
+  },
+  "notificationsPage": {
+    "title": "알림 채널",
+    "breadcrumb": "알림 채널",
+    "description": "백업 실패 같은 플랫폼 이벤트를 Telegram · 이메일 · Slack 으로 보냅니다.",
+    "add": "채널 추가",
+    "empty": "아직 채널이 없습니다. 채널을 추가하면 백업 실패 알림을 받습니다.",
+    "saved": "채널을 저장했습니다.",
+    "deleted": "채널을 삭제했습니다.",
+    "testSent": "{{name}} 채널로 테스트 메시지를 보냈습니다.",
+    "testFailed": "{{name}} 테스트 전송 실패: {{error}}",
+    "table": {
+      "name": "이름",
+      "type": "종류",
+      "target": "보내는 곳",
+      "events": "받는 이벤트",
+      "status": "상태",
+      "actions": "작업"
+    },
+    "status": {
+      "active": "켜짐",
+      "inactive": "꺼짐"
+    },
+    "actions": {
+      "test": "테스트 전송",
+      "edit": "편집",
+      "delete": "삭제"
+    },
+    "types": {
+      "telegram": "Telegram",
+      "email": "이메일 (SMTP)",
+      "slack": "Slack"
+    },
+    "events": {
+      "backup_failed": "백업 실패",
+      "backup_partial": "백업 부분 성공",
+      "backup_succeeded": "백업 성공",
+      "test": "테스트"
+    },
+    "result": {
+      "sent": "전송됨",
+      "failed": "실패"
+    },
+    "history": {
+      "title": "최근 발송",
+      "empty": "아직 보낸 알림이 없습니다.",
+      "time": "시각",
+      "channel": "채널",
+      "event": "이벤트",
+      "message": "내용",
+      "result": "결과",
+      "attempts": "시도"
+    },
+    "confirmDelete": {
+      "title": "채널 삭제",
+      "description": "{{name}} 채널을 지웁니다. 더 이상 알림을 받지 않습니다. 발송 이력은 남습니다."
+    },
+    "dialog": {
+      "createTitle": "알림 채널 추가",
+      "editTitle": "알림 채널 편집"
+    },
+    "form": {
+      "name": "이름",
+      "type": "채널 종류",
+      "save": "저장",
+      "botToken": "봇 토큰",
+      "botTokenHint": "@BotFather 가 발급한 토큰입니다(123456789:AA… 모양).",
+      "chatId": "Chat ID",
+      "chatIdHint": "그룹은 음수(-100…), 공개 채널은 @이름입니다. 봇을 먼저 대화방에 초대하세요.",
+      "webhookUrl": "Incoming Webhook URL",
+      "webhookHint": "Slack 앱의 Incoming Webhooks 에서 발급합니다. URL 자체가 자격증명입니다.",
+      "smtpHost": "SMTP 서버",
+      "smtpPort": "포트",
+      "smtpSecurity": "보안",
+      "security": {
+        "starttls": "STARTTLS",
+        "tls": "TLS",
+        "none": "없음 (릴레이 전용)"
+      },
+      "username": "사용자 이름 (선택)",
+      "password": "비밀번호",
+      "from": "보내는 주소",
+      "to": "받는 주소",
+      "toHint": "쉼표나 줄바꿈으로 구분합니다(최대 20개).",
+      "events": "받을 이벤트",
+      "active": "켜기",
+      "secretKeep": "저장됨({{hint}}). 비워 두면 그대로 둡니다.",
+      "secretKeepNoHint": "저장됨. 비워 두면 그대로 둡니다."
     }
   }
 }
