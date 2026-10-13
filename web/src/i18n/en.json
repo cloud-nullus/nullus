@@ -100,7 +100,9 @@
     "theme": {
       "switchToLight": "Switch to light mode",
       "switchToDark": "Switch to dark mode"
-    }
+    },
+    "feedback": "Feedback",
+    "feedbackHint": "Report a bug or suggest an improvement on GitHub Issues"
   },
   "knownIssuesPage": {
     "breadcrumb": {

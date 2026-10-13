@@ -100,7 +100,9 @@
     "theme": {
       "switchToLight": "라이트 모드로 전환",
       "switchToDark": "다크 모드로 전환"
-    }
+    },
+    "feedback": "피드백",
+    "feedbackHint": "GitHub 이슈로 버그 신고 · 개선 제안"
   },
   "knownIssuesPage": {
     "breadcrumb": {

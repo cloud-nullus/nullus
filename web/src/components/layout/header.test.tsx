@@ -7,6 +7,7 @@ import { useThemeStore } from '../../stores/theme-store'
 import { useTourStore } from '../../stores/tour-store'
 
 const TUTORIAL_LABEL = /Tutorial|튜토리얼/
+const FEEDBACK_LABEL = /Feedback|피드백/
 
 beforeEach(() => {
   useAuthStore.setState({ role: 'developer', user: null, isAuthenticated: false })
@@ -49,6 +50,25 @@ describe('Header', () => {
     const { isActive, steps } = useTourStore.getState()
     expect(isActive).toBe(true)
     expect(steps.map((step) => step.id)).not.toContain('registerCluster')
+  })
+
+  // 인앱 피드백 위젯 대신 Nullus 저장소의 이슈 페이지로 보낸다(nullus-plan#67 협의).
+  it('피드백 버튼이 Nullus 이슈 페이지를 새 탭으로 연다', () => {
+    renderWithProviders(<Header />)
+
+    const feedback = screen.getByRole('link', { name: FEEDBACK_LABEL })
+    expect(feedback).toHaveAttribute('href', 'https://github.com/cloud-nullus/nullus/issues')
+    expect(feedback).toHaveAttribute('target', '_blank')
+    // 새 탭이 window.opener 로 플랫폼 화면을 건드리지 못하게, 주소창의 내부 경로가 GitHub 로 새지 않게.
+    expect(feedback.getAttribute('rel')).toContain('noopener')
+    expect(feedback.getAttribute('rel')).toContain('noreferrer')
+  })
+
+  it('피드백 버튼이 튜토리얼 버튼 바로 옆에 있다', () => {
+    renderWithProviders(<Header />)
+
+    const tutorial = screen.getByRole('button', { name: TUTORIAL_LABEL })
+    expect(tutorial.nextElementSibling).toBe(screen.getByRole('link', { name: FEEDBACK_LABEL }))
   })
 
   it('renders the header element', () => {
