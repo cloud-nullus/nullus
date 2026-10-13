@@ -32,7 +32,7 @@ const MUI_SIZE = { sm: 'small', md: 'medium', lg: 'large' } as const
  * 내렸다 — Coinbase 구조를 따르면 브랜드 색은 한 곳에만 쓰고 액션은 primary 하나다.
  * 골드 면이 정말 필요하면 brandCtaSx 를 직접 쓴다.
  */
-const VARIANT_SX = {
+const BASE_SX = {
   primary: {
     backgroundColor: 'var(--color-primary)',
     color: 'var(--color-on-primary)',
@@ -66,6 +66,41 @@ const VARIANT_SX = {
     '&:hover': { color: 'var(--color-text-primary)' },
   },
 } as const
+
+/** 비활성 버튼의 불투명도. 같은 색을 흐리게 해 "있지만 지금은 못 누른다" 를 보인다. */
+const DISABLED_OPACITY = 0.45
+
+/**
+ * 비활성 표현. variant 색을 sx 로 덮으면서 MUI 의 비활성 색까지 덮여, 비활성 버튼이 활성 버튼과
+ * 똑같이 보였다(눌러도 아무 일이 없으니 고장으로 보인다). variant 색은 그대로 두고 흐리게 한다.
+ *
+ * - 커서는 금지 모양이다. MUI 는 비활성 버튼의 pointer-events 를 끄는데, 그러면 커서도 바뀌지 않는다.
+ *   네이티브 disabled 버튼은 pointer-events 를 켜도 클릭을 보내지 않는다.
+ * - 진행 중(loading)은 흐리지 않는다 — 스피너가 상태를 말하고, 흐리면 실패한 것처럼 보인다.
+ * - 호버는 반응하지 않는다.
+ */
+function withDisabled<T extends { '&:hover'?: object }>(base: T) {
+  const { '&:hover': _hover, ...colors } = base
+  const disabled = '&.Mui-disabled:not(.MuiButton-loading)'
+  return {
+    ...base,
+    [disabled]: {
+      ...colors,
+      opacity: DISABLED_OPACITY,
+      cursor: 'not-allowed',
+      pointerEvents: 'auto',
+    },
+    [`${disabled}:hover`]: { ...colors, filter: 'none' },
+  }
+}
+
+const VARIANT_SX = {
+  primary: withDisabled(BASE_SX.primary),
+  secondary: withDisabled(BASE_SX.secondary),
+  outline: withDisabled(BASE_SX.outline),
+  danger: withDisabled(BASE_SX.danger),
+  ghost: withDisabled(BASE_SX.ghost),
+}
 
 /** MUI 의 시각 변형. secondary/outline/danger 는 테두리를 쓰므로 outlined 다. */
 const MUI_VARIANT = {

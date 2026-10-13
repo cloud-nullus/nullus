@@ -210,6 +210,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **비활성 버튼이 활성 버튼과 똑같이 보이던 것** (`web/src/components/ui/button.tsx`): variant 색을 sx 로 덮으면서 MUI 의 비활성 색까지 덮여, 눌러도 아무 일이 없는 버튼이 눌릴 것처럼 보였다(알림 채널 양식의 "저장" 등 앱 전체). 공용 Button 의 비활성은 variant 색을 그대로 두고 **흐리게**(불투명도 0.45) 하고, 커서를 금지 모양으로, 호버에 반응하지 않게 했다. 진행 중(loading)은 스피너가 상태를 말하므로 흐리지 않는다. 다섯 variant 모두 테스트로 묶었고, 브라우저에서 비활성 "저장" 의 불투명도 0.45 · `not-allowed` 를 확인했다.
+
 - **스캐폴딩한 `.gitleaks.toml` 을 gitleaks 가 설정 오류로 거부해 모든 새 앱의 첫 파이프라인이 secret-scan 에서 막히던 것** (`internal/cicd/adapter/scaffold/secret_scan.go`): 오탐 자리로 넣은 `[allowlist]` 에 검사 항목(paths·regexes 등)이 하나도 없었다. gitleaks v8.30.1 은 이것을 "[[allowlists]] must contain at least one check" 로 거부하고 종료 코드 1 로 끝나, 단계가 "스캐너 장애 시 차단" 으로 막혔다(2026-10-12 로컬 GitLab 실측 — #316 의 실측은 스캐폴딩 설정 없이 돌렸다). allowlist 블록을 주석 예시로 바꿨다. 테스트는 주석이 아닌 allowlist 에 검사 항목이 없으면 실패한다. 실 이미지로 확인 — 새 설정에서 누출 있음 exit 2, 없음 exit 0. **정의 갱신은 이 파일을 덮어쓰지 않으므로**, #316 이후 이 수정 전에 만든 저장소는 `.gitleaks.toml` 의 `[allowlist]`·`description` 두 줄을 주석 처리해야 한다.
 
 - **스택을 지우면 Prometheus 계열 릴리스가 지워지지 않아 다음 스택 설치가 `installing_prometheus` 에서 실패하던 것** (`internal/stack/domain/helm_releases.go`, `internal/stack/usecase/delete_stack.go`, `internal/stack/adapter/helm/cluster-scoped-adoption.go`): 삭제가 `prometheus-operator-crds` 를 두 번째로 지웠다. 그 뒤 ServiceMonitor·Probe 를 담은 argo-cd · nullus-minio · kube-prometheus-stack · grafana 의 `helm uninstall` 은 매니페스트를 객체로 만들지 못해 **아무것도 지우지 않고** "failed to delete release" 로 멈췄다. 네임스페이스 회수가 안쪽은 치웠지만 kube-system 의 컨트롤 플레인 Service 5개 · ClusterRole/Binding · admission 웹훅이 남았고, 다음 설치가 "kube-prometheus-stack-coredns ... cannot be imported into the current release" 로 실패했다(2026-10-12 실측).
