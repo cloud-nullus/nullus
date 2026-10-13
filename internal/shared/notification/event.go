@@ -21,6 +21,11 @@ const (
 	EventBackupPartial EventType = "backup_partial"
 	// EventBackupSucceeded 는 백업 성공이다. 기본으로는 구독하지 않는다(잡음).
 	EventBackupSucceeded EventType = "backup_succeeded"
+	// EventAlertFired 는 스택의 심각(critical) 경보가 발생했다는 뜻이다(nullus-plan#87). 스택 Prometheus 의
+	// 기본 규칙이 평가하고, 플랫폼이 Alertmanager 에서 가져온다. 계속 발생 중이면 주기적으로 다시 낸다.
+	EventAlertFired EventType = "alert_fired"
+	// EventAlertResolved 는 그 경보가 해제됐다는 뜻이다.
+	EventAlertResolved EventType = "alert_resolved"
 )
 
 // Severity 는 알림의 심각도다.

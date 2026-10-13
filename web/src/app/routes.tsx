@@ -89,9 +89,6 @@ const MonitoringPage = lazy(() =>
   import('../features/observability/pages/monitoring-page').then((m) => ({ default: m.MonitoringPage }))
 )
 
-const AlertRulesPage = lazy(() =>
-  import('../features/observability/pages/alert-rules-page').then((m) => ({ default: m.AlertRulesPage }))
-)
 
 const AlertHistoryPage = lazy(() =>
   import('../features/observability/pages/alert-history-page').then((m) => ({ default: m.AlertHistoryPage }))
@@ -155,8 +152,6 @@ export const router = createBrowserRouter([
           { path: 'stack/versions', element: withSuspense(<StackVersionPage />) },
           { path: 'stack/version', element: withSuspense(<StackVersionPage />) },
           { path: 'observability/monitoring', element: withSuspense(<MonitoringPage />) },
-          { path: 'observability/alerts', element: withSuspense(<AlertRulesPage />) },
-          { path: 'observability/alert-rules', element: withSuspense(<AlertRulesPage />) },
           { path: 'observability/alert-history', element: withSuspense(<AlertHistoryPage />) },
         ],
       },

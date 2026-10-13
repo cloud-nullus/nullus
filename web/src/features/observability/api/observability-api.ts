@@ -25,6 +25,30 @@ const queryKeys = {
   alertRules: () => ['observability', 'alert-rules'] as const,
   alertRule: (id: string) => ['observability', 'alert-rules', id] as const,
   alertHistory: (filters?: Record<string, unknown>) => ['observability', 'alert-history', filters] as const,
+  stackAlerts: (state: StackAlertState) => ['observability', 'stack-alerts', state] as const,
+}
+
+/**
+ * 스택 심각 경보 (nullus-plan#87). 스택마다 Prometheus 가 기본 규칙으로 평가하고, 플랫폼이 Alertmanager 에서
+ * 가져와 기록한다. 발생 · 해제는 조직의 알림 채널로도 간다.
+ */
+export type StackAlertState = 'open' | 'all'
+
+export interface StackAlert {
+  id: string
+  stack_id: string
+  stack_name: string
+  alertname: string
+  severity: string
+  summary: string
+  description?: string
+  runbook_url?: string
+  target?: string
+  labels: Record<string, string>
+  started_at: string
+  resolved_at?: string
+  last_notified_at?: string
+  active: boolean
 }
 
 // --- API functions ---
@@ -47,6 +71,11 @@ const observabilityApiCalls = {
 
   deleteAlertRule: (id: string) =>
     api.delete(`/observability/alert-rules/${id}`).then((r) => r.data),
+
+  getStackAlerts: (state: StackAlertState) =>
+    api
+      .get<{ items: StackAlert[]; total: number }>('/observability/stack-alerts', { params: { state, limit: 200 } })
+      .then((r) => r.data.items ?? []),
 
   getAlertHistory: (filters?: { severity?: AlertSeverity }) =>
     api
@@ -119,6 +148,15 @@ export function useAlertHistory(filters?: { severity?: AlertSeverity }) {
   return useQuery({
     queryKey: queryKeys.alertHistory(filters),
     queryFn: () => observabilityApiCalls.getAlertHistory(filters),
+  })
+}
+
+/** 스택 경보 목록. 수집이 1분마다 돌므로 같은 주기로 다시 읽는다. */
+export function useStackAlerts(state: StackAlertState) {
+  return useQuery({
+    queryKey: queryKeys.stackAlerts(state),
+    queryFn: () => observabilityApiCalls.getStackAlerts(state),
+    refetchInterval: 60_000,
   })
 }
 

@@ -46,11 +46,14 @@ import (
 	cicduc "github.com/cloud-nullus/draft/internal/cicd/usecase"
 	notificationmod "github.com/cloud-nullus/draft/internal/notification"
 	notificationhandler "github.com/cloud-nullus/draft/internal/notification/adapter/handler"
+	obsalertmanager "github.com/cloud-nullus/draft/internal/observability/adapter/alertmanager"
+	obsbridge "github.com/cloud-nullus/draft/internal/observability/adapter/bridge"
 	obshandler "github.com/cloud-nullus/draft/internal/observability/adapter/handler"
 	obsprom "github.com/cloud-nullus/draft/internal/observability/adapter/prometheus"
 	obsrepo "github.com/cloud-nullus/draft/internal/observability/adapter/repository"
 	obstoolhealth "github.com/cloud-nullus/draft/internal/observability/adapter/toolhealth"
 	obsport "github.com/cloud-nullus/draft/internal/observability/port"
+	obsscheduler "github.com/cloud-nullus/draft/internal/observability/scheduler"
 	obsuc "github.com/cloud-nullus/draft/internal/observability/usecase"
 	"github.com/cloud-nullus/draft/internal/shared/audit"
 	"github.com/cloud-nullus/draft/internal/shared/config"
@@ -486,6 +489,9 @@ func main() {
 		obshandler.WithKubeconfigProvider(kubeconfigProvider),
 	)
 	alertHandler := obshandler.NewAlertHandler(createAlertRuleUC, getAlertRuleUC, listAlertRulesUC, updateAlertRuleUC, deleteAlertRuleUC, listAlertsUC)
+	// 스택 심각 경보(nullus-plan#87) — 알림 이력 화면이 읽는다. 수집은 아래 스케줄러가 한다.
+	pgStackAlertRepo := obsrepo.NewPostgresStackAlertRepository(pool)
+	stackAlertHandler := obshandler.NewStackAlertHandler(obsuc.NewListStackAlerts(pgStackAlertRepo))
 
 	// Echo
 	e := echo.New()
@@ -618,6 +624,7 @@ func main() {
 	scanPolicyHandler.RegisterStackRoutes(stacks)
 	dashboardHandler.RegisterRoutes(observability)
 	alertHandler.RegisterRoutes(observability)
+	stackAlertHandler.RegisterRoutes(observability)
 
 	if cfg.Server.Mode == "development" {
 		e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
@@ -675,6 +682,20 @@ func main() {
 		adminrepo.NewClusterWorkloadRestarter(kubeconfigProvider),
 	)
 	go rotationScheduler.Start(rotationCtx)
+
+	// 스택 심각 경보 전달(nullus-plan#87). 스택마다 Alertmanager 의 활성 경보를 API 서버 프록시로
+	// 가져와 기록하고, 심각한 것을 조직의 알림 채널로 보낸다. NULLUS_STACK_ALERT_INTERVAL(기본 1m, "off" 로 끔).
+	if interval := obsscheduler.ParseStackAlertInterval(os.Getenv("NULLUS_STACK_ALERT_INTERVAL")); interval > 0 {
+		stackAlertCollector := obsuc.NewCollectStackAlerts(
+			obsbridge.NewMonitoredStacks(pgStackRepo),
+			obsalertmanager.NewSource(kubeconfigProvider),
+			pgStackAlertRepo,
+			notificationModule.Publisher,
+		).WithLock(obsrepo.NewPostgresCycleLock(pool))
+		go obsscheduler.NewStackAlertScheduler(stackAlertCollector, interval, slog.Default()).Start(rotationCtx)
+	} else {
+		slog.Info("스택 경보 수집이 꺼져 있습니다 (NULLUS_STACK_ALERT_INTERVAL)")
+	}
 
 	// ── 백업/복구 (nullus-plan#75) ──
 	//

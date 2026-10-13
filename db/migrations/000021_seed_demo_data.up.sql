@@ -200,16 +200,8 @@ INSERT INTO alert_rules (id, name, condition, threshold, channel, enabled, creat
 ('ar-5', 'Storage Warning',         'storage_usage > threshold',        80,   'email', false, '2026-02-01T10:00:00Z')
 ON CONFLICT (id) DO NOTHING;
 
--- ── Alert History (6개) ─────────────────────────────────────────────────────
-
-INSERT INTO alerts (id, rule_id, severity, message, fired_at, resolved_at) VALUES
-('al-1', 'ar-1', 'critical', 'frontend-web 파이프라인 빌드 실패율 15% 초과 (최근 1시간)',           '2026-03-19T10:15:00Z', '2026-03-19T11:30:00Z'),
-('al-2', 'ar-3', 'warning',  'backend-api 파이프라인 실행 시간 420초 (임계값 300초 초과)',           '2026-03-18T14:00:00Z', '2026-03-18T14:30:00Z'),
-('al-3', 'ar-4', 'info',     'kind-nullus-platform CPU 사용률 88% — 스케일링 검토 필요',          '2026-03-20T09:00:00Z', NULL),
-('al-4', 'ar-1', 'critical', 'ml-service 파이프라인 빌드 3회 연속 실패',                            '2026-03-14T15:20:00Z', '2026-03-14T16:00:00Z'),
-('al-5', 'ar-2', 'warning',  'frontend-web v1.2.2 배포 실패 후 자동 롤백 발생',                    '2026-03-19T10:10:00Z', '2026-03-19T10:12:00Z'),
-('al-6', 'ar-5', 'info',     'kind-nullus-develop 스토리지 사용률 82% — 정리 권장',                '2026-03-21T08:00:00Z', NULL)
-ON CONFLICT (id) DO NOTHING;
+-- 알림 이력(alerts) · 발송 이력(notification_history) 데모는 뺐다(nullus-plan#87). 화면이 실제 스택 경보와
+-- 발송 결과를 보여 주므로 데모 행이 섞이면 무엇이 실제로 일어났는지 가린다. 이미 들어간 DB 는 000097 이 지운다.
 
 -- ── Notification Configs (2개) ──────────────────────────────────────────────
 
@@ -233,51 +225,6 @@ INSERT INTO notification_configs (id, org_id, channel, config, events, is_active
   '2026-01-25T09:00:00Z'
 )
 ON CONFLICT (id) DO NOTHING;
-
--- ── Notification History (4개) ──────────────────────────────────────────────
-
-INSERT INTO notification_history (id, org_id, channel, event, status, payload, error, created_at) VALUES
-(
-  gen_random_uuid(),
-  '11111111-1111-1111-1111-111111111111',
-  'slack',
-  'pipeline_failure',
-  'sent',
-  '{"pipeline": "frontend-web", "version": "v1.2.2", "message": "빌드 실패"}'::jsonb,
-  NULL,
-  '2026-03-19T10:10:00Z'
-),
-(
-  gen_random_uuid(),
-  '11111111-1111-1111-1111-111111111111',
-  'email',
-  'deploy_rollback',
-  'sent',
-  '{"pipeline": "frontend-web", "version": "v1.2.2", "recipients": ["admin@nullus.io"]}'::jsonb,
-  NULL,
-  '2026-03-19T10:12:00Z'
-),
-(
-  gen_random_uuid(),
-  '11111111-1111-1111-1111-111111111111',
-  'slack',
-  'high_cpu',
-  'sent',
-  '{"cluster": "kind-nullus-platform", "cpu": 88, "threshold": 85}'::jsonb,
-  NULL,
-  '2026-03-20T09:01:00Z'
-),
-(
-  gen_random_uuid(),
-  '11111111-1111-1111-1111-111111111111',
-  'email',
-  'storage_warning',
-  'failed',
-  '{"cluster": "kind-nullus-develop", "storage": 82, "threshold": 80}'::jsonb,
-  'SMTP connection timeout',
-  '2026-03-21T08:01:00Z'
-)
-ON CONFLICT DO NOTHING;
 
 -- ── Audit Logs (6개) ────────────────────────────────────────────────────────
 
