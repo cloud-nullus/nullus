@@ -4,8 +4,8 @@ import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronRight, Plus, RefreshCw, Rocket, Trash2 } from 'lucide-react';
-import { iconProps } from '../../../components/ui/icon'
+import { ChevronRight, Plus, RefreshCw, Rocket, Trash2 } from "lucide-react";
+import { iconProps } from "../../../components/ui/icon";
 import { CodePreview } from "../../../components/shared/code-preview";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
@@ -21,8 +21,8 @@ import {
 import type { AppType } from "../api/cicd-api";
 import { StepSection, labelStyleClass } from "../components/deploy-ui";
 import { generateManifestYamls } from "../utils/yaml-generator";
-import { PageHeader } from '../../../components/layout/page-header'
-import { Checkbox } from "../../../components/ui/checkbox"
+import { PageHeader } from "../../../components/layout/page-header";
+import { Checkbox } from "../../../components/ui/checkbox";
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
 type Capability = "CI" | "CD" | "Test" | "Security";
@@ -509,9 +509,20 @@ export function DeveloperDeployPage() {
 
     const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
     const loadFile = async (fileName: string) => {
-      const response = await fetch(new URL(`${directory}/${fileName}`, base));
+      let response: Response;
+      try {
+        response = await fetch(new URL(`${directory}/${fileName}`, base));
+      } catch {
+        const err = new Error(`네트워크 연결 실패 (${fileName})`);
+        (err as any).isNetworkError = true;
+        (err as any).fileName = fileName;
+        throw err;
+      }
       if (!response.ok) {
-        throw new Error(`${fileName} 파일을 불러오지 못했습니다.`);
+        const err = new Error(`${fileName} (${response.status})`);
+        (err as any).status = response.status;
+        (err as any).fileName = fileName;
+        throw err;
       }
       return response.text();
     };
@@ -524,10 +535,24 @@ export function DeveloperDeployPage() {
         loadFile("ingress.yaml"),
       ]);
       setLoadedManifests({ deployment, service, ingress });
-    } catch {
-      setManifestLoadError(
-        "해당 directory에서 deployment.yaml, service.yaml, ingress.yaml을 불러오지 못했습니다. 경로와 파일명을 확인하세요.",
-      );
+    } catch (err: any) {
+      if (err?.isNetworkError) {
+        setManifestLoadError(
+          "저장소에 연결할 수 없습니다. 기준 URL 또는 도메인 해석(DNS/hosts), 네트워크 연결 상태를 확인하세요.",
+        );
+      } else if (err?.status === 404) {
+        setManifestLoadError(
+          `해당 directory에서 ${err.fileName || "매니페스트 파일"}을 찾을 수 없습니다 (404). 경로와 파일명을 확인하세요.`,
+        );
+      } else if (err?.status) {
+        setManifestLoadError(
+          `저장소에서 ${err.fileName || "파일"}을 불러오는 중 오류가 발생했습니다 (HTTP ${err.status}). 권한이나 서버 상태를 확인하세요.`,
+        );
+      } else {
+        setManifestLoadError(
+          "해당 directory에서 deployment.yaml, service.yaml, ingress.yaml을 불러오지 못했습니다. 경로와 파일명을 확인하세요.",
+        );
+      }
     } finally {
       setIsLoadingManifests(false);
     }
@@ -591,21 +616,17 @@ export function DeveloperDeployPage() {
   return (
     <div>
       <PageHeader
-        breadcrumb={
-          [
-            { label: t("sidebar.cicdList", "CI/CD List"), path: "/cicd/list" },
-            { label: t("developerDeployPage.title", "Pipeline Setup") },
-          ]
-        }
-        icon={<Rocket {...iconProps('sm')} />}
+        breadcrumb={[
+          { label: t("sidebar.cicdList", "CI/CD List"), path: "/cicd/list" },
+          { label: t("developerDeployPage.title", "Pipeline Setup") },
+        ]}
+        icon={<Rocket {...iconProps("sm")} />}
         tone="primary"
         title={t("developerDeployPage.title", "Pipeline Setup")}
-        subtitle={
-          t(
-            "developerDeployPage.description",
-            "Configure your application pipeline before deployment.",
-          )
-        }
+        subtitle={t(
+          "developerDeployPage.description",
+          "Configure your application pipeline before deployment.",
+        )}
       />
 
       <div className="mb-6 flex flex-wrap items-center gap-1">
@@ -649,7 +670,7 @@ export function DeveloperDeployPage() {
             </button>
             {index < 5 && (
               <ChevronRight
-                {...iconProps('sm')}
+                {...iconProps("sm")}
                 className="shrink-0 text-[var(--color-text-secondary)]"
               />
             )}
@@ -763,7 +784,11 @@ export function DeveloperDeployPage() {
         >
           <div className="flex flex-col gap-6">
             <div>
-              <label id="deploy-stack-label" htmlFor="deploy-stack" className={labelStyleClass}>
+              <label
+                id="deploy-stack-label"
+                htmlFor="deploy-stack"
+                className={labelStyleClass}
+              >
                 {t("developerDeployPage.form.stackRequired", "Stack 선택")}
                 <RequiredDot />
               </label>
@@ -1021,7 +1046,7 @@ export function DeveloperDeployPage() {
                             aria-label="Reload Deploy YAML files"
                             title="Reload Deploy YAML files"
                           >
-                            <RefreshCw {...iconProps('sm')} />
+                            <RefreshCw {...iconProps("sm")} />
                           </Button>
                         </div>
                       ) : (
@@ -1046,7 +1071,7 @@ export function DeveloperDeployPage() {
                             aria-label="Reload Deploy YAML files"
                             title="Reload Deploy YAML files"
                           >
-                            <RefreshCw {...iconProps('sm')} />
+                            <RefreshCw {...iconProps("sm")} />
                           </Button>
                         </div>
                       )}
@@ -1305,10 +1330,13 @@ export function DeveloperDeployPage() {
                             <button
                               type="button"
                               onClick={() => remove(index)}
-                              aria-label={t('developerDeployPage.removeItem', 'Remove')}
+                              aria-label={t(
+                                "developerDeployPage.removeItem",
+                                "Remove",
+                              )}
                               className="shrink-0 cursor-pointer border-none bg-none p-1 text-[var(--color-error)]"
                             >
-                              <Trash2 {...iconProps('sm')} />
+                              <Trash2 {...iconProps("sm")} />
                             </button>
                           </div>
                           {errors.envVars?.[index]?.key?.message && (
@@ -1325,7 +1353,7 @@ export function DeveloperDeployPage() {
                         className="mt-1 self-start"
                         type="button"
                       >
-                        <Plus {...iconProps('xs')} />
+                        <Plus {...iconProps("xs")} />
                         {t(
                           "developerDeployPage.actions.addVariable",
                           "Add Variable",
@@ -1405,7 +1433,7 @@ export function DeveloperDeployPage() {
                             return onSubmit({ ...data, gitUrl });
                           })}
                         >
-                          <Rocket {...iconProps('sm')} />
+                          <Rocket {...iconProps("sm")} />
                           {t("developerDeployPage.actions.execute", "Execute")}
                         </Button>
                       </div>

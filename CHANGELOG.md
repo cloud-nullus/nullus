@@ -130,6 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Deploy YAML 매니페스트 로드 실패 시 네트워크/DNS 실패와 404 경로 오류를 구분해 안내한다** (`web/src/features/cicd/pages/developer-deploy-page.tsx`, #158): Developer Deploy 폼에서 매니페스트 fetch 실패 시 오류 원인을 무시하고 일괄적으로 "경로와 파일명을 확인하세요"로 표시하여 네트워크/DNS 실패 상황에서도 사용자가 경로를 잘못 입력한 것으로 오진하도록 유도했다. fetch 예외(네트워크/DNS 실패)와 HTTP 상태코드(404 경로 부재 등)를 분기하여 구체적인 원인에 맞는 안내 메시지를 노출한다.
+
 - **`/health` 의 버전 하드코딩을 제거하고 릴리즈 태그와 동기화한다** (`cmd/api`, `Dockerfile`, `Makefile`, `.github/workflows/cd.yml`, `docs/20_개발가이드/Nullus_릴리즈 정책.md`, #239): `cmd/api/main.go` 의 `/health` 가 `"version": "0.1.0-alpha"` 로 하드코딩되어 있어 `pkg/nullusclient.MinServerVersion` 의 버전 스큐 검사가 무력화되고 배포 버전 식별이 불가능했다. `var version = "dev"` 변수로 전환하고 빌드 시 `ldflags "-X main.version=$TAG"` 를 주입하도록 파이프라인을 배선했다. 기동 로그에도 버전을 남긴다.
 
 - **Harbor 레지스트리 인증 realm 이 http 로 나가던 결함, YAML override 가 있는 스택에서 GitLab realm 이 http 로 돌아가던 결함** (`internal/stack/adapter/helm/helm-values.go`, nullus-plan#76): Harbor 는 realm 을 따로 정하는 설정이 없어 `<externalURL>/service/token` 을 광고한다. SSO·TLS 를 켜지 않은 스택은 externalURL 이 http 라, 게이트웨이 HTTPS 리스너로 붙은 스캐너(Trivy 등 go-containerregistry)가 http realm 을 거부하는 구조였다. 접속 도메인이 있으면 externalURL 을 항상 `https://harbor.<도메인>` 으로 둔다 — 업로드 Location 은 `registry.relativeurls` 로 스킴이 나가지 않고, 도구 링크(`domain.ToolAccessURL`)·OIDC redirect 는 이미 https 다. Harbor UI 는 CSRF 쿠키가 Secure 가 되므로 https 로 연다. 또 YAML override 가 하나라도 있으면 `valuesForStep` 이 다른 분기를 타는데, 그 분기에 GitLab 공용 값(`registry.authEndpoint`, `global.hosts.https`)이 빠져 있어 다른 도구 하나만 손봐도 GitLab realm 이 http 로 돌아갔다. kind 실측에서 Harbor 가 https·http 요청 모두에 `realm="https://harbor.<도메인>/service/token"` 을 광고하고, 파이프라인이 우회 없이 Harbor push·Trivy 스캔·Argo CD pull 까지 성공했다.
