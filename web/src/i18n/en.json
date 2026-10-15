@@ -429,7 +429,7 @@
     "steps": {
       "0": "1. Category Selection",
       "1": "2. Tool Configuration",
-      "2": "3. Review & Deploy"
+      "2": "3. Review & Save"
     },
     "loading": "Loading stack information...",
     "notFound": "Target stack not found.",
@@ -444,7 +444,8 @@
       "selectCategoryFirst": "Please select categories first in Step 1."
     },
     "step2": {
-      "title": "Review & Deploy",
+      "title": "Review & Save",
+      "description": "Review tools to add and save configuration. Actual cluster deployment must be executed separately.",
       "noItems": "No new tools to add. Please review your category/tool selection."
     },
     "table": {
@@ -457,12 +458,12 @@
       "backToList": "Back to List",
       "previous": "Previous",
       "next": "Next",
-      "confirmDeploy": "Confirm & Deploy"
+      "confirmDeploy": "Confirm & Save"
     },
     "toast": {
       "selectTools": "Please select tools to add.",
-      "deployStarted": "Tool addition deployment has started.",
-      "deployFailed": "Failed to add tools. Please try again later."
+      "deployStarted": "Tool configuration saved (deployment must be run separately).",
+      "deployFailed": "Failed to save tool configuration. Please try again later."
     },
     "categories": {
       "artifacts": {

@@ -74,6 +74,7 @@
         "sidebar.admin",
         "sidebar.alertHistory",
         "sidebar.alertRules",
+        "sidebar.backup",
         "sidebar.cicd",
         "sidebar.cicdGoldenPath",
         "sidebar.cicdHistory",
@@ -220,6 +221,49 @@
       "testIds": []
     },
     {
+      "file": "src/components/shared/severity-counts.tsx",
+      "i18nKeys": [
+        "common.vulnerability.countsUnknown"
+      ],
+      "fallbacks": [],
+      "labels": [],
+      "columns": [],
+      "jsxText": [],
+      "testIds": []
+    },
+    {
+      "file": "src/components/shared/vulnerability-list.tsx",
+      "i18nKeys": [
+        "common.vulnerabilityList.allClasses",
+        "common.vulnerabilityList.classFilterLabel",
+        "common.vulnerabilityList.empty",
+        "common.vulnerabilityList.emptyFiltered",
+        "common.vulnerabilityList.error",
+        "common.vulnerabilityList.fixableOnly",
+        "common.vulnerabilityList.loading",
+        "common.vulnerabilityList.next",
+        "common.vulnerabilityList.noFix",
+        "common.vulnerabilityList.pagination",
+        "common.vulnerabilityList.previous",
+        "common.vulnerabilityList.range",
+        "common.vulnerabilityList.rangeUnknownTotal",
+        "common.vulnerabilityList.resetFilters",
+        "common.vulnerabilityList.searchLabel",
+        "common.vulnerabilityList.searchPlaceholder",
+        "common.vulnerabilityList.severityFilterLabel",
+        "common.vulnerabilityList.targetTotal",
+        "common.vulnerabilityList.targetsLabel"
+      ],
+      "fallbacks": [],
+      "labels": [],
+      "columns": [],
+      "jsxText": [],
+      "testIds": [
+        "vulnerability-row",
+        "vulnerability-target-summary"
+      ]
+    },
+    {
       "file": "src/components/shared/yaml-editor.tsx",
       "i18nKeys": [],
       "fallbacks": [],
@@ -273,6 +317,38 @@
       "testIds": [
         "skeleton"
       ]
+    },
+    {
+      "file": "src/features/admin/components/backup-target-dialog.tsx",
+      "i18nKeys": [
+        "backupPage.dialog.confirmLabel",
+        "backupPage.dialog.description",
+        "backupPage.dialog.nothingSelected",
+        "backupPage.dialog.quiesceWarning",
+        "backupPage.dialog.start",
+        "backupPage.dialog.title",
+        "common.cancel"
+      ],
+      "fallbacks": [
+        "Cancel",
+        "Choose what to include in this backup.",
+        "Including volumes stops the workloads while the backup runs.",
+        "Select at least one target.",
+        "Select backup targets",
+        "Start backup",
+        "Type the namespace to confirm"
+      ],
+      "labels": [
+        "backup-confirm",
+        "keycloak_db",
+        "ns_resources",
+        "openbao_kv",
+        "platform_db",
+        "volume"
+      ],
+      "columns": [],
+      "jsxText": [],
+      "testIds": []
     },
     {
       "file": "src/features/admin/components/matrix-edit-modal.tsx",
@@ -342,6 +418,36 @@
         "matrix-drop-warn",
         "matrix-dup-warn"
       ]
+    },
+    {
+      "file": "src/features/admin/pages/backup-page.tsx",
+      "i18nKeys": [
+        "backupPage.breadcrumb.current",
+        "backupPage.description",
+        "backupPage.empty",
+        "backupPage.run",
+        "backupPage.table.mode",
+        "backupPage.table.quiesce",
+        "backupPage.table.size",
+        "backupPage.table.startedAt",
+        "backupPage.table.status",
+        "backupPage.title"
+      ],
+      "fallbacks": [
+        "Backup",
+        "Downtime",
+        "Mode",
+        "No backups yet.",
+        "Run a backup and review past runs.",
+        "Run backup",
+        "Size",
+        "Started",
+        "Status"
+      ],
+      "labels": [],
+      "columns": [],
+      "jsxText": [],
+      "testIds": []
     },
     {
       "file": "src/features/admin/pages/cluster-page.tsx",
@@ -960,6 +1066,39 @@
         "파이프라인 삭제",
         "함께 지울 항목"
       ],
+      "labels": [],
+      "columns": [],
+      "jsxText": [],
+      "testIds": []
+    },
+    {
+      "file": "src/features/cicd/components/image-scan-summary.tsx",
+      "i18nKeys": [
+        "cicdListPage.imageScan.dbStale",
+        "cicdListPage.imageScan.dbStaleHint",
+        "cicdListPage.imageScan.dbUpdatedAt",
+        "cicdListPage.imageScan.digest",
+        "cicdListPage.imageScan.errorHint",
+        "cicdListPage.imageScan.image",
+        "cicdListPage.imageScan.scannedAt",
+        "cicdListPage.imageScan.scanner",
+        "cicdListPage.imageScan.title",
+        "cicdListPage.imageScan.unknown",
+        "cicdListPage.imageScan.viewReport"
+      ],
+      "fallbacks": [],
+      "labels": [],
+      "columns": [],
+      "jsxText": [],
+      "testIds": []
+    },
+    {
+      "file": "src/features/cicd/components/pipeline-scan-vulnerabilities.tsx",
+      "i18nKeys": [
+        "common.vulnerabilityList.hide",
+        "common.vulnerabilityList.show"
+      ],
+      "fallbacks": [],
       "labels": [],
       "columns": [],
       "jsxText": [],
@@ -1602,6 +1741,27 @@
       "testIds": [
         "provision-warnings",
         "required-dot"
+      ]
+    },
+    {
+      "file": "src/features/common/components/job-notification-bell.tsx",
+      "i18nKeys": [
+        "jobNotifications.empty",
+        "jobNotifications.summaryIdle",
+        "jobNotifications.summaryRunning",
+        "jobNotifications.title",
+        "jobNotifications.trigger",
+        "jobNotifications.triggerBusy"
+      ],
+      "fallbacks": [],
+      "labels": [],
+      "columns": [],
+      "jsxText": [],
+      "testIds": [
+        "job-notification-bell",
+        "job-notification-count",
+        "job-notification-icon",
+        "job-notification-panel"
       ]
     },
     {
@@ -2282,6 +2442,42 @@
       "testIds": []
     },
     {
+      "file": "src/features/stack/components/stack-image-scans-tab.tsx",
+      "i18nKeys": [
+        "stackList.imageScans.columns.fixable",
+        "stackList.imageScans.columns.image",
+        "stackList.imageScans.columns.release",
+        "stackList.imageScans.columns.status",
+        "stackList.imageScans.dbStale",
+        "stackList.imageScans.dbStaleHint",
+        "stackList.imageScans.empty",
+        "stackList.imageScans.item.failed",
+        "stackList.imageScans.item.failedNoReason",
+        "stackList.imageScans.item.fixable",
+        "stackList.imageScans.item.scanned",
+        "stackList.imageScans.item.unknown",
+        "stackList.imageScans.item.vulnerabilityList",
+        "stackList.imageScans.item.vulnerabilityListFor",
+        "stackList.imageScans.lastScannedAt",
+        "stackList.imageScans.loading",
+        "stackList.imageScans.noData",
+        "stackList.imageScans.reportOnly",
+        "stackList.imageScans.summaryHint",
+        "stackList.imageScans.summaryScanner",
+        "stackList.imageScans.title"
+      ],
+      "fallbacks": [],
+      "labels": [],
+      "columns": [],
+      "jsxText": [],
+      "testIds": [
+        "stack-image-scan-detail",
+        "stack-image-scan-image",
+        "stack-image-scan-item",
+        "stack-image-scan-summary"
+      ]
+    },
+    {
       "file": "src/features/stack/components/stack-info-panels.tsx",
       "i18nKeys": [
         "stackInfo.allocated",
@@ -2525,6 +2721,7 @@
         "stackAddTools.notFound",
         "stackAddTools.step0.description",
         "stackAddTools.step1.selectCategoryFirst",
+        "stackAddTools.step2.description",
         "stackAddTools.step2.noItems",
         "stackAddTools.step2.title",
         "stackAddTools.table.category",
@@ -2541,8 +2738,8 @@
         "Back to List",
         "Category",
         "Check installed status and select categories that are not added yet.",
-        "Confirm & Deploy",
-        "Failed to add tools. Please try again later.",
+        "Confirm & Save",
+        "Failed to save tool configuration. Please try again later.",
         "Installed",
         "Loading stack information...",
         "Next",
@@ -2550,20 +2747,21 @@
         "Please select categories first in Step 1.",
         "Please select tools to add.",
         "Previous",
-        "Review & Deploy",
+        "Review & Save",
+        "Review tools to add and save configuration. Actual cluster deployment must be executed separately.",
         "Safely add required tools to an existing stack.",
         "Selected",
         "Slot",
         "Stack List",
         "Target stack not found.",
         "Tool",
-        "Tool addition deployment has started.",
+        "Tool configuration saved (deployment must be run separately).",
         "Version"
       ],
       "labels": [
         "1. Category Selection",
         "2. Tool Configuration",
-        "3. Review & Deploy",
+        "3. Review & Save",
         "AWS S3",
         "Amazon S3 오브젝트 스토리지",
         "ArgoCD",
@@ -2864,6 +3062,8 @@
         "stackInstall.labels.cdTool",
         "stackInstall.labels.cicdPlatform",
         "stackInstall.labels.containerRegistry",
+        "stackInstall.labels.imageScanner",
+        "stackInstall.labels.imageScannerHint",
         "stackInstall.labels.logs",
         "stackInstall.labels.metrics",
         "stackInstall.labels.packageRegistry",
@@ -2903,11 +3103,13 @@
         "Final access guide: each OSS is available at",
         "GitHub 연동",
         "GitHub는 외부 서비스라 Nullus가 계정을 만들 수 없습니다. 파이프라인을 만들려면 리포지토리를 생성할 Organization과 접근 토큰이 필요합니다.",
+        "Image Scanner",
         "Logs",
         "Metrics",
         "Namespace",
         "New",
         "New Stack",
+        "Not installed unless selected. Harbor's built-in scanner can serve instead.",
         "Not selected",
         "OpenBao를 선택하면 현재 스택에 포함된 모든 OSS가 공통 인증 공급자(OpenBao)를 공유합니다. 미선택 시 기존 방식으로 배포됩니다.",
         "Organization / 사용자",
@@ -2948,6 +3150,7 @@
         "Preview Deploy Script",
         "Resources",
         "Save current values to selected profile",
+        "Security",
         "Stack Name 형식",
         "Storage",
         "Storage 플랜 검토",
@@ -2977,6 +3180,7 @@
         "pipeline",
         "resourceBounds",
         "resources",
+        "security",
         "stackName",
         "storage",
         "versionConflict",
@@ -3184,6 +3388,7 @@
         "GitLab",
         "Grafana",
         "History",
+        "Image Vulnerabilities",
         "Info",
         "Monitoring",
         "Prometheus",

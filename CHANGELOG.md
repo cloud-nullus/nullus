@@ -130,6 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **도구 추가 3단계에서 배포가 시작되지 않는데 "배포 시작됨" 토스트를 띄우던 결함을 정직한 안내로 교정한다** (`web/src/features/stack/pages/stack-add-tools-page.tsx`, `web/src/i18n/{ko,en}.json`, #169): Add Tools 3단계에서 확인 클릭 시 설정만 저장(`PATCH /stacks/:id/tools`)하고 실제 배포는 트리거하지 않으면서 "도구 추가 배포를 시작했습니다" 토스트를 띄워 배포가 진행 중인 것처럼 오해를 유발했다. 단계 타이틀을 "검토 및 저장"으로, 버튼을 "확인 및 저장"(Confirm & Save)으로 바꾸고, 토스트 안내도 "도구 설정이 저장되었습니다 (배포는 별도로 진행해야 합니다)"로 정직하게 수정했다.
+
 - **Deploy YAML 매니페스트 로드 실패 시 네트워크/DNS 실패와 404 경로 오류를 구분해 안내한다** (`web/src/features/cicd/pages/developer-deploy-page.tsx`, #158): Developer Deploy 폼에서 매니페스트 fetch 실패 시 오류 원인을 무시하고 일괄적으로 "경로와 파일명을 확인하세요"로 표시하여 네트워크/DNS 실패 상황에서도 사용자가 경로를 잘못 입력한 것으로 오진하도록 유도했다. fetch 예외(네트워크/DNS 실패)와 HTTP 상태코드(404 경로 부재 등)를 분기하여 구체적인 원인에 맞는 안내 메시지를 노출한다.
 
 - **`/health` 의 버전 하드코딩을 제거하고 릴리즈 태그와 동기화한다** (`cmd/api`, `Dockerfile`, `Makefile`, `.github/workflows/cd.yml`, `docs/20_개발가이드/Nullus_릴리즈 정책.md`, #239): `cmd/api/main.go` 의 `/health` 가 `"version": "0.1.0-alpha"` 로 하드코딩되어 있어 `pkg/nullusclient.MinServerVersion` 의 버전 스큐 검사가 무력화되고 배포 버전 식별이 불가능했다. `var version = "dev"` 변수로 전환하고 빌드 시 `ldflags "-X main.version=$TAG"` 를 주입하도록 파이프라인을 배선했다. 기동 로그에도 버전을 남긴다.
