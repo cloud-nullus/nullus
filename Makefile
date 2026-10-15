@@ -59,8 +59,11 @@ dev: dev-up migrate-up
 	@echo "═══════════════════════════════════════════"
 
 # ─── 백엔드 ───
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS := -X main.version=$(VERSION)
+
 build:
-	go build -o bin/api ./cmd/api
+	go build -ldflags "$(LDFLAGS)" -o bin/api ./cmd/api
 	# 무인 설치용 부트스트랩 자격 CLI (에어갭 스크립트가 사용)
 	go build -o bin/nullus-bootstrap ./cmd/nullus-bootstrap
 

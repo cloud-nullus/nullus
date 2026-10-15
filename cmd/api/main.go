@@ -66,6 +66,31 @@ import (
 	echomw "github.com/labstack/echo/v4/middleware"
 )
 
+// version 은 빌드 시 ldflags 로 주입된다 (-X main.version=$TAG).
+// 주입되지 않았을 때의 기본값은 "dev" 이다.
+var version = "dev"
+
+type dbPinger interface {
+	Ping(ctx context.Context) error
+}
+
+func healthHandler(pool dbPinger) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		dbStatus := "connected"
+		if pool != nil {
+			if err := pool.Ping(c.Request().Context()); err != nil {
+				slog.Warn("health check db ping failed", "error", err)
+				dbStatus = "unavailable"
+			}
+		}
+		return c.JSON(http.StatusOK, map[string]string{
+			"status":  "healthy",
+			"db":      dbStatus,
+			"version": version,
+		})
+	}
+}
+
 func main() {
 	cfg, err := config.LoadConfig("configs/config.yaml")
 	if err != nil {
@@ -586,18 +611,7 @@ func main() {
 		e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
 	}
 
-	e.GET("/health", func(c echo.Context) error {
-		dbStatus := "connected"
-		if err := pool.Ping(c.Request().Context()); err != nil {
-			slog.Warn("health check db ping failed", "error", err)
-			dbStatus = "unavailable"
-		}
-		return c.JSON(http.StatusOK, map[string]string{
-			"status":  "healthy",
-			"db":      dbStatus,
-			"version": "0.1.0-alpha",
-		})
-	})
+	e.GET("/health", healthHandler(pool))
 
 	// 토큰 회전 스케줄러 기동.
 	// 그동안 이 스케줄러는 정의만 되어 있고 어디서도 호출되지 않아 실제로는
@@ -730,7 +744,7 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	go func() {
-		slog.Info("starting server", "addr", addr)
+		slog.Info("starting server", "addr", addr, "version", version)
 		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "error", err)
 			os.Exit(1)

@@ -3,7 +3,8 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /bin/api ./cmd/api
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION}" -o /bin/api ./cmd/api
 
 FROM alpine:3.21
 # 스택 오케스트레이터가 차트 설치/매니페스트 적용 시 helm·kubectl CLI 를 exec 하므로
