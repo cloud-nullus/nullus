@@ -29,4 +29,32 @@ describe('buildInstallOverridesFromTemplate', () => {
 
     expect(overrides.security?.imageScanner).toEqual({ tool: '', version: '' })
   })
+
+  // toolDetails 없이 tools 문자열 배열만 있는 템플릿(Lite 등)도 도구명으로 카테고리를 찾아
+  // 마법사에 온전히 반영한다 (#170). 없으면 카테고리를 몰라 모든 슬롯이 비어 0개가 된다.
+  it('should resolve tool categories from legacy tool name array', () => {
+    const overrides = buildInstallOverridesFromTemplate({
+      id: 'gitea-jenkins-argocd-lite-v1',
+      name: 'Lite Template',
+      tools: ['Gitea', 'Jenkins', 'Harbor', 'Argo CD'],
+    } as unknown as StackTemplate)
+
+    expect(overrides.artifacts?.sourceRepository.tool).toBe('gitea')
+    expect(overrides.pipeline?.cicdPlatform.tool).toBe('jenkins')
+    expect(overrides.artifacts?.containerRegistry.tool).toBe('harbor')
+    expect(overrides.pipeline?.cdTool.tool).toBe('argocd')
+  })
+
+  // toolDetails 에 category 가 비어있는 경우에도 도구명으로 역추론하여 복구한다.
+  it('should fallback to resolving category when toolDetails category is empty', () => {
+    const overrides = buildInstallOverridesFromTemplate(
+      templateWith([
+        { category: '', name: 'Gitea', helm_version: '12.7.0', app_version: '1.27.0' },
+        { category: '', name: 'Jenkins', helm_version: '5.9.54', app_version: '2.568.2' },
+      ])
+    )
+
+    expect(overrides.artifacts?.sourceRepository.tool).toBe('gitea')
+    expect(overrides.pipeline?.cicdPlatform.tool).toBe('jenkins')
+  })
 })

@@ -130,6 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **스택 템플릿 상세에서 "이 템플릿 사용" 클릭 시 도구 구성이 마법사에 누락되던 결함 교정** (`web/src/features/stack/utils/template-overrides.ts`, `web/src/features/stack/pages/stack-template-page.tsx`, `web/src/i18n/{ko,en}.json`, #170): Lite 템플릿 등 레거시 도구 배열(`tools: string[]`)을 갖거나 `category`가 누락된 템플릿 상세에서 "이 템플릿 사용"을 눌러 마법사로 진입할 때 카테고리를 추론하지 못해 모든 슬롯이 빈 값으로 초기화되어 생성 스택에 도구가 0개로 배포되는 문제가 있었다. 도구명 기반 카테고리 역추론 폴백을 추가해 템플릿 도구(Gitea, Jenkins, Harbor, Argo CD 등)가 마법사 슬롯에 온전히 선반영되도록 교정하고, 모달 버튼 라벨을 일반 템플릿은 "이 템플릿 사용"(Use This Template), 빈 템플릿은 "빈 기반에서 시작"(Start with Empty Base)으로 명확화했다.
+
 - **도구 추가 3단계에서 배포가 시작되지 않는데 "배포 시작됨" 토스트를 띄우던 결함을 정직한 안내로 교정한다** (`web/src/features/stack/pages/stack-add-tools-page.tsx`, `web/src/i18n/{ko,en}.json`, #169): Add Tools 3단계에서 확인 클릭 시 설정만 저장(`PATCH /stacks/:id/tools`)하고 실제 배포는 트리거하지 않으면서 "도구 추가 배포를 시작했습니다" 토스트를 띄워 배포가 진행 중인 것처럼 오해를 유발했다. 단계 타이틀을 "검토 및 저장"으로, 버튼을 "확인 및 저장"(Confirm & Save)으로 바꾸고, 토스트 안내도 "도구 설정이 저장되었습니다 (배포는 별도로 진행해야 합니다)"로 정직하게 수정했다.
 
 - **Deploy YAML 매니페스트 로드 실패 시 네트워크/DNS 실패와 404 경로 오류를 구분해 안내한다** (`web/src/features/cicd/pages/developer-deploy-page.tsx`, #158): Developer Deploy 폼에서 매니페스트 fetch 실패 시 오류 원인을 무시하고 일괄적으로 "경로와 파일명을 확인하세요"로 표시하여 네트워크/DNS 실패 상황에서도 사용자가 경로를 잘못 입력한 것으로 오진하도록 유도했다. fetch 예외(네트워크/DNS 실패)와 HTTP 상태코드(404 경로 부재 등)를 분기하여 구체적인 원인에 맞는 안내 메시지를 노출한다.

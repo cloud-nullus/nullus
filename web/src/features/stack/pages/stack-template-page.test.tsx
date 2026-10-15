@@ -185,17 +185,17 @@ describe('StackTemplatePage', () => {
     })
   })
 
-  it('clicking Use Base Template navigates to /stack/install', () => {
+  it('clicking Use This Template navigates to /stack/install', () => {
     renderWithProviders(<StackTemplatePage />)
     fireEvent.click(within(getTemplateCard('GitLab All-in-One')).getByRole('button', { name: 'View Detail' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Use As Base' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use This Template' }))
     expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-allinone-v1')
   })
 
-  it('clicking Use Base Template sets template in store and clears unselected slots', () => {
+  it('clicking Use This Template sets template in store and clears unselected slots', () => {
     renderWithProviders(<StackTemplatePage />)
     fireEvent.click(within(getTemplateCard('GitLab All-in-One')).getByRole('button', { name: 'View Detail' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Use As Base' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use This Template' }))
     const { draft } = useStackConfigStore.getState()
     expect(draft.selectedTemplateId).toBe('gitlab-allinone-v1')
     expect(draft.logging.search.tool).toBe('')
@@ -206,13 +206,26 @@ describe('StackTemplatePage', () => {
   it('clicking Empty Template clears install selections in store', () => {
     renderWithProviders(<StackTemplatePage />)
     fireEvent.click(within(getTemplateCard('Empty Template')).getByRole('button', { name: 'View Detail' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Use As Base' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start with Empty Base' }))
 
     const { draft } = useStackConfigStore.getState()
     expect(draft.selectedTemplateId).toBe('empty-template-v1')
     expect(draft.artifacts.packageRegistry.tool).toBe('')
     expect(draft.pipeline.cicdPlatform.tool).toBe('')
     expect(draft.storage.planMode).toBe('none')
+  })
+
+  it('clicking Lite Template detail sets Gitea, Jenkins, and Argo CD in store', () => {
+    renderWithProviders(<StackTemplatePage />)
+    fireEvent.click(within(getTemplateCard('Lite Template')).getByRole('button', { name: 'View Detail' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use This Template' }))
+
+    const { draft } = useStackConfigStore.getState()
+    expect(draft.selectedTemplateId).toBe('gitea-jenkins-argocd-lite-v1')
+    expect(draft.artifacts.sourceRepository.tool).toBe('gitea')
+    expect(draft.pipeline.cicdPlatform.tool).toBe('jenkins')
+    expect(draft.pipeline.cdTool.tool).toBe('argocd')
+    expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitea-jenkins-argocd-lite-v1')
   })
 
   it('shows create template button only for admin role', () => {

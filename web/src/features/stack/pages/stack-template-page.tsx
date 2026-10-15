@@ -771,10 +771,15 @@ export function StackTemplatePage() {
                   }}
                   data-tour="use-base-template"
                 >
-                  {t(
-                    "stackTemplatePage.actions.useBaseTemplate",
-                    "Use Base Template",
-                  )}
+                  {selectedTemplate.id === "empty-template-v1"
+                    ? t(
+                        "stackTemplatePage.actions.useEmptyTemplate",
+                        "Start with Empty Base",
+                      )
+                    : t(
+                        "stackTemplatePage.actions.useBaseTemplate",
+                        "Use This Template",
+                      )}
                 </Button>
               </>
             )}
