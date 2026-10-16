@@ -425,6 +425,7 @@ OSS(GitLab·Harbor 등)는 이 절의 대상이 아닙니다(그쪽은 컨테이
 | Git 태그 | - | `vX.Y.Z[-PRERELEASE]`, CD 트리거 기준 |
 | CHANGELOG 헤더 | `CHANGELOG.md` | `## [X.Y.Z] - YYYY-MM-DD` |
 | Helm 차트 | `deploy/helm/nullus/Chart.yaml` | `version`(차트 버전) / `appVersion`(Nullus 앱 버전) |
+| API 바이너리 (`/health`) | `cmd/api/main.go` | 빌드 시 `ldflags "-X main.version=$TAG"` 주입 (미주입 시 `dev`, #239) |
 
 > **드리프트 해소 (2026-07-26)**: `Chart.yaml`이 `version: 0.1.0` / `appVersion: "0.1.0-alpha"`로 CHANGELOG와 어긋나 있던 것을 `0.3.0` / `"0.3.0-alpha"`로 동기화했습니다.
 >
@@ -680,9 +681,7 @@ A. 아니요. legacy이며 제거 대상입니다(§10.4). 릴리즈는 항상 `
 
 **Q3. 코드에 현재 버전을 하드코딩해야 하나요?**
 A. 아니요. git 태그를 기준으로 관리합니다(§8). 애플리케이션이 자기 버전을 알아야 한다면 빌드 시 `ldflags`로 주입합니다.
-> **규칙과 코드가 어긋나 있습니다 (v2.3 확인).** `ldflags` 주입은 여전히 `Makefile`·`Dockerfile`·워크플로 어디에도 없는데, `cmd/api/main.go`의 `/health` 핸들러가 `"version": "0.1.0-alpha"`를 **하드코딩**해 응답합니다. 태그 3건을 발행하는 동안 이 값은 한 번도 바뀌지 않았습니다.
->
-> v2.2까지는 "앱이 자기 버전을 모른다"로 끝나는 문제였지만, 이제 **틀린 버전을 단언합니다.** `pkg/nullusclient`의 서버 버전 스큐 검사가 이 필드를 읽으므로(`MinServerVersion = "0.1.0-alpha"`), 어느 버전을 배포하든 스큐 판정이 같은 값을 보고 통과합니다 — 검사가 있으나 아무것도 걸러내지 못합니다. 처리는 §13-13.
+> **`ldflags` 주입 완료 (#239)**: `cmd/api/main.go`의 `/health` 핸들러가 `var version = "dev"`를 보고하도록 변경하고, `Dockerfile`·`Makefile`·`cd.yml` 빌드 파이프라인에서 `-ldflags "-X main.version=$TAG"`를 주입하도록 배선했습니다. 이제 `pkg/nullusclient`의 서버 버전 스큐 검사가 실제 배포된 버전을 기준으로 정상 동작합니다.
 
 **Q4. MAJOR를 올려야 할지 애매합니다.**
 A. §6.1 기준표를 먼저 확인하고, 애매하면 리뷰어와 PR에서 논의해 결정합니다.
@@ -716,6 +715,6 @@ A. 해당 시점 커밋을 특정하기 어렵고 이미지도 남아 있지 않
 | 10 | ~~§9.1 step 11(설치 검증)을 **실 클러스터 서버 사이드**로 명시~~ | §9.1 | **완료 (2026-08-07, v2.2)** — step 11을 가시성 확인 + 익명 `helm pull` + `--dry-run=server` + 실제 설치 4단계로 구체화. v0.3.0-alpha 릴리즈 후 Zadara PoC 클러스터에 `--dry-run=server`를 돌려서야 차트 결함 2건(사설 CA 시크릿 필수 마운트, `bitnami/postgresql` 이미지 소멸)이 드러났다. 로컬 `helm template`은 둘 다 통과시킨다 — step 11이 로컬 렌더로 충족된다고 읽히면 같은 유형을 계속 놓친다 |
 | 11 | ~~§7.2 `publish-chart`가 `--version`/`--app-version`을 함께 주입하는 문제~~ | §7.2, §8.2 | **완료 (2026-08-31, v2.3)** — 잡을 고치는 대신 규칙을 코드에 맞췄다. `publish-chart`가 태그를 두 값에 모두 넣는 것은 "차트와 앱이 같은 버전으로 함께 나간다"는 전제에서 옳고, 어긋나는 것은 §8.2의 "차트만 바뀌면 `version`만 올린다" 쪽이다. §8.2에 **차트 전용 패치는 태그로 게시하지 않는다**를 명시했다 — 태그로 게시하면 존재하지 않는 `appVersion`이 찍혀 `ImagePullBackOff`가 된다 |
 | 12 | 릴리즈 절단 시 compare 링크·`Chart.yaml` 누락 | §9.1 A-4·A-5 | **열림** — `v0.4.1` 발행 시 둘 다 빠졌다. `CHANGELOG.md` 하단은 아직 `[unreleased]: …/compare/v0.4.0-alpha...HEAD`이고 `[0.4.1]` 줄이 없으며, `Chart.yaml`은 `version: 0.4.0` / `appVersion: "0.4.0-alpha"`다. **게시된 산출물에는 영향이 없다**(차트 버전은 태그에서 주입) — 저장소 기준값만 어긋난 상태라 후속 PR로 채우면 된다. 절차 쪽 방어는 v2.3에서 §9.1 D-10으로 넣었고, 자동 검사로 올리려면 `check_changelog.py`에 "릴리즈 섹션이 있으면 같은 버전의 compare 링크도 있어야 한다"를 더하는 방법이 있다 |
+| 13 | ~~`/health`가 버전을 하드코딩한다~~ | §8, §12 Q3 | **완료 (#239)** — `cmd/api/main.go`의 하드코딩을 제거하고 `ldflags "-X main.version=$TAG"` 주입 구조로 전환. `Dockerfile`·`Makefile`·`cd.yml` 배선 완료 |
 | 14 | ~~릴리즈 이미지 SBOM · provenance · 취약점 스캔 게이트~~ | §7.4 | **완료 (2026-10-12, v2.4, nullus-plan#77)** — `cd.yml` 에 SBOM(syft, SPDX)·provenance attestation·`scan-images`(Trivy, 태그 게이트)·Release 자산 첨부, `image-scan.yml` 주간 재스캔, `generate-sbom.sh` 엄격 모드 |
 | 15 | ~~기준선 CRITICAL 수정 — API(`pgx` · `grpc` · 동봉 `helm`/`kubectl`/`migrate`) · Jenkins(Debian perl · `git-lfs`)~~ | §7.4 | **완료 (2026-10-12)** — 같은 날 닫았다. API CRITICAL 11 → 0, Jenkins 13 → 0 (§7.4 기준선 각주). 시드 템플릿의 Jenkins `app_version` 은 마이그레이션 000094 가 올린다 |
-| 13 | `/health`가 버전을 하드코딩한다 | §8, §12 Q3 | **열림** — `cmd/api/main.go`의 `/health`가 `"version": "0.1.0-alpha"`를 고정 응답한다. §8의 "코드에 하드코딩하지 않는다"에 정면으로 어긋나고, `pkg/nullusclient`의 버전 스큐 검사가 이 필드를 읽으므로 **검사가 어떤 스큐도 잡지 못한다**. `ldflags`로 태그를 주입하고(§12 Q3) `MinServerVersion`을 실제 하한으로 올리는 코드 변경이 필요하다 |

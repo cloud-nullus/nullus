@@ -33,6 +33,40 @@ const TOOL_ID_BY_NAME: Record<string, string> = {
   'opentelemetry collector': 'opentelemetry-collector',
   elasticsearch: 'elasticsearch',
   loki: 'loki',
+  trivy: 'trivy',
+}
+
+const DEFAULT_CATEGORY_BY_TOOL_ID: Record<string, string> = {
+  gitlab: 'source_repository',
+  'gitlab-registry': 'container_registry',
+  'gitlab-ci': 'ci_platform',
+  gitea: 'source_repository',
+  github: 'source_repository',
+  jenkins: 'ci_platform',
+  'github-actions': 'ci_platform',
+  tekton: 'ci_platform',
+  harbor: 'container_registry',
+  ghcr: 'container_registry',
+  'docker-hub': 'container_registry',
+  argocd: 'cd_tool',
+  flux: 'cd_tool',
+  minio: 'storage_backend',
+  nexus: 'package_registry',
+  jfrog: 'package_registry',
+  prometheus: 'monitoring_collection',
+  thanos: 'monitoring_collection',
+  victoriametrics: 'monitoring_collection',
+  grafana: 'monitoring_visualization',
+  'opensearch-dashboards': 'monitoring_visualization',
+  kibana: 'monitoring_visualization',
+  loki: 'log_search',
+  opensearch: 'log_search',
+  elasticsearch: 'log_search',
+  fluentd: 'log_search',
+  tempo: 'trace_layer',
+  jaeger: 'trace_layer',
+  'opentelemetry-collector': 'agent',
+  trivy: 'image_scanner',
 }
 
 function normalizeToolKey(name: string): string {
@@ -41,6 +75,11 @@ function normalizeToolKey(name: string): string {
 
 export function resolveToolIdByName(name: string): string {
   return TOOL_ID_BY_NAME[normalizeToolKey(name)] ?? normalizeToolKey(name)
+}
+
+export function resolveCategoryByToolName(name: string): string {
+  const toolId = resolveToolIdByName(name)
+  return DEFAULT_CATEGORY_BY_TOOL_ID[toolId] ?? ''
 }
 
 type NormalizedTemplateTool = {
@@ -53,7 +92,7 @@ function normalizeTemplateTools(template: StackTemplate): NormalizedTemplateTool
   const details = (template.toolDetails ?? [])
     .filter((tool): tool is TemplateToolDetail => Boolean(tool?.name && tool.name.trim().length > 0))
     .map((tool) => ({
-      category: tool.category,
+      category: tool.category || resolveCategoryByToolName(tool.name),
       name: tool.name,
       app_version: tool.app_version,
     }))
@@ -64,7 +103,7 @@ function normalizeTemplateTools(template: StackTemplate): NormalizedTemplateTool
 
   const legacyTools = Array.isArray(template.tools) ? template.tools : []
   return legacyTools.map((toolName) => ({
-    category: '',
+    category: resolveCategoryByToolName(toolName),
     name: toolName,
   }))
 }

@@ -74,6 +74,8 @@ jobs:
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version || github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

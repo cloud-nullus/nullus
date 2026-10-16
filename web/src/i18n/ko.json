@@ -241,7 +241,8 @@
       "createTemplate": "템플릿 생성",
       "edit": "수정",
       "delete": "삭제",
-      "useBaseTemplate": "기본 템플릿 사용",
+      "useBaseTemplate": "이 템플릿 사용",
+      "useEmptyTemplate": "빈 기반에서 시작",
       "viewDetail": "상세 보기",
       "close": "닫기",
       "baseTemplate": "기본 템플릿",
@@ -442,7 +443,7 @@
     "steps": {
       "0": "1. 카테고리 선택",
       "1": "2. 도구 설정",
-      "2": "3. 검토 및 배포"
+      "2": "3. 검토 및 저장"
     },
     "loading": "스택 정보를 불러오는 중...",
     "notFound": "대상 스택을 찾을 수 없습니다.",
@@ -457,7 +458,8 @@
       "selectCategoryFirst": "먼저 Step 1에서 카테고리를 선택해 주세요."
     },
     "step2": {
-      "title": "검토 및 배포",
+      "title": "검토 및 저장",
+      "description": "추가할 도구를 검토하고 설정을 저장합니다. 실제 클러스터 배포는 별도로 진행해야 합니다.",
       "noItems": "추가할 신규 도구가 없습니다. 카테고리/도구 선택을 다시 확인해 주세요."
     },
     "table": {
@@ -470,12 +472,12 @@
       "backToList": "목록으로 돌아가기",
       "previous": "이전",
       "next": "다음",
-      "confirmDeploy": "확인 후 배포"
+      "confirmDeploy": "확인 및 저장"
     },
     "toast": {
       "selectTools": "추가할 도구를 선택해 주세요.",
-      "deployStarted": "도구 추가 배포를 시작했습니다.",
-      "deployFailed": "도구 추가에 실패했습니다. 잠시 후 다시 시도해 주세요."
+      "deployStarted": "도구 설정이 저장되었습니다 (배포는 별도로 진행해야 합니다).",
+      "deployFailed": "도구 설정 저장에 실패했습니다. 잠시 후 다시 시도해 주세요."
     },
     "categories": {
       "artifacts": {

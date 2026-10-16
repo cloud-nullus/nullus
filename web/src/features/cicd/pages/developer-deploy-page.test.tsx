@@ -521,6 +521,51 @@ describe("DeveloperDeployPage", () => {
     );
   });
 
+  it("shows network connection error when manifest fetch fails with network exception", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))),
+    );
+    renderWithProviders(<DeveloperDeployPage />);
+    completeRequiredFields();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reload Deploy YAML files" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "저장소에 연결할 수 없습니다. 기준 URL 또는 도메인 해석(DNS/hosts), 네트워크 연결 상태를 확인하세요.",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("shows 404 not found error when manifest files are not found", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: "Not Found",
+          text: () => Promise.resolve("404 page not found"),
+        });
+      }),
+    );
+    renderWithProviders(<DeveloperDeployPage />);
+    completeRequiredFields();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reload Deploy YAML files" }),
+    );
+
+    expect(
+      await screen.findByText(
+        /해당 directory에서 .*을 찾을 수 없습니다 \(404\)\. 경로와 파일명을 확인하세요\./,
+      ),
+    ).not.toBeNull();
+  });
+
   it("navigates to the deployment logs after creating from manifest review", async () => {
     renderWithProviders(<DeveloperDeployPage />);
     completeRequiredFields();

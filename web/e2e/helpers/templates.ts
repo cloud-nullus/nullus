@@ -23,7 +23,7 @@ export const VIEW_DETAIL = /view detail/i;
  * 인라인 폴백으로 'Use Base Template' 이 적혀 있지만 키가 존재하므로 화면에는
  * 절대 그 문구가 뜨지 않는다 — 폴백을 보고 셀렉터를 쓰면 영원히 0 개가 잡힌다.
  */
-export const USE_AS_BASE = /use as base/i;
+export const USE_AS_BASE = /use (as base|this template)/i;
 
 /** 카드 하나의 상세 모달을 연다. */
 export async function openTemplateDetail(page: Page, index = 0) {
