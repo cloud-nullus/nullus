@@ -1,0 +1,22 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_nexus
+# chart: nexus-repository-manager 64.2.0
+fullnameOverride: nexus
+ingress:
+    enabled: false
+nexus:
+    env:
+        - name: INSTALL4J_ADD_VM_PARAMS
+          value: -Xms1200M -Xmx1200M -XX:MaxDirectMemorySize=1200M -Djava.util.prefs.userRoot=/nexus-data/javaprefs
+        - name: NEXUS_SECURITY_RANDOMPASSWORD
+          value: "true"
+    resources:
+        limits:
+            cpu: "2"
+            memory: 3Gi
+        requests:
+            cpu: 200m
+            memory: 1536Mi
+persistence:
+    enabled: true
+    storageSize: 20Gi

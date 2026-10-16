@@ -131,23 +131,33 @@ func TestSanitize_서버_관리_필드를_걷어낸다(t *testing.T) {
 	assert.Equal(t, float64(3), items[0]["spec"].(map[string]any)["replicas"])
 }
 
-func TestSanitize_Service_의_clusterIP_를_뺀다(t *testing.T) {
-	// 클러스터가 배정하는 값이다. 그대로 되돌리면 이미 쓰이는 주소와
-	// 충돌하거나 다른 클러스터에서는 범위 밖이다.
-	items := sanitizedItems(t, rawList(map[string]any{
-		"kind":     "Service",
-		"metadata": map[string]any{"name": "gitlab"},
-		"spec": map[string]any{
-			"clusterIP":  "10.96.0.10",
-			"clusterIPs": []any{"10.96.0.10"},
-			"ports":      []any{map[string]any{"port": float64(80)}},
+// ClusterIP 를 남긴다. 설치는 스택 게이트웨이의 ClusterIP 를 러너·Argo CD 의 hostAliases 에 박는다
+// (stack/adapter/helm/gitlab-runner-host-aliases.go). 복구가 IP 를 버리면 게이트웨이는 새 주소를
+// 받는데 hostAliases 는 옛 주소를 가리켜, 파이프라인이 "Could not resolve host" 로 멈춘다.
+// 같은 클러스터로 되돌리면 그 IP 는 대개 비어 있다 — 못 쓰면 Apply 가 새 주소로 되돌린다.
+func TestSanitize_Service_의_clusterIP_를_남긴다(t *testing.T) {
+	items := sanitizedItems(t, rawList(
+		map[string]any{
+			"kind":     "Service",
+			"metadata": map[string]any{"name": "envoy-gateway"},
+			"spec": map[string]any{
+				"clusterIP":  "10.96.45.47",
+				"clusterIPs": []any{"10.96.45.47"},
+				"ports":      []any{map[string]any{"port": float64(80)}},
+			},
 		},
-	}))
-	require.Len(t, items, 1)
-	spec := items[0]["spec"].(map[string]any)
-	assert.NotContains(t, spec, "clusterIP")
-	assert.NotContains(t, spec, "clusterIPs")
-	assert.Contains(t, spec, "ports", "포트 정의는 남아야 한다")
+		// headless 는 None 이 정체다. 지우면 일반 Service 로 돌아와 StatefulSet 의 파드별 DNS
+		// (openbao-internal, gitlab-gitaly …)가 끊긴다.
+		map[string]any{
+			"kind":     "Service",
+			"metadata": map[string]any{"name": "openbao-internal"},
+			"spec":     map[string]any{"clusterIP": "None", "clusterIPs": []any{"None"}},
+		},
+	))
+	require.Len(t, items, 2)
+	assert.Equal(t, "10.96.45.47", items[0]["spec"].(map[string]any)["clusterIP"])
+	assert.Equal(t, []any{"10.96.45.47"}, items[0]["spec"].(map[string]any)["clusterIPs"])
+	assert.Equal(t, "None", items[1]["spec"].(map[string]any)["clusterIP"])
 }
 
 func TestSanitize_컨트롤러가_소유한_것은_뺀다(t *testing.T) {
@@ -376,4 +386,38 @@ func TestDumpKinds_ArgoCD_애플리케이션을_담는다(t *testing.T) {
 		assert.Contains(t, dumpKinds, kind,
 			"%s 가 빠지면 복구 후 앱을 배포할 주체가 사라진다", kind)
 	}
+}
+
+// kube-prometheus-stack 의 Prometheus · Alertmanager 는 **CR 이 주체다** — 오퍼레이터가 CR 을 읽어
+// StatefulSet 을 만든다. 그 StatefulSet 은 ownerReferences 때문에 덤프에서 빠지는데(소유자가 다시
+// 만든다), 소유자인 CR 까지 빠지면 다시 만들 주체가 없다. 2026-10-12 제품 삭제 뒤 복구 리허설에서
+// 복구가 succeeded 인데 prometheus·alertmanager StatefulSet 이 영영 돌아오지 않았고, 워크로드 재개
+// 단계가 "statefulsets … not found" 를 남겼다. ServiceMonitor · PrometheusRule 이 빠지면 스크랩
+// 대상과 알림 규칙이 사라져 Grafana 가 비어 보인다. Application(Argo CD) · ExternalSecret 과 같은
+// 뿌리다 — 컨트롤러가 다시 만드는 것의 **원본**은 덤프에 있어야 한다.
+func TestDumpKinds_모니터링_CR_을_담는다(t *testing.T) {
+	for _, k := range []string{
+		"prometheuses.monitoring.coreos.com",
+		"alertmanagers.monitoring.coreos.com",
+		"servicemonitors.monitoring.coreos.com",
+		"podmonitors.monitoring.coreos.com",
+		"prometheusrules.monitoring.coreos.com",
+		"probes.monitoring.coreos.com",
+		"scrapeconfigs.monitoring.coreos.com",
+		"alertmanagerconfigs.monitoring.coreos.com",
+	} {
+		assert.Contains(t, dumpKinds, k, "오퍼레이터가 다시 만드는 StatefulSet 의 원본이다")
+	}
+	// 모니터링 스택이 없는 클러스터(api-resources 에 없음)에서는 조회하지 않는다.
+	assert.NotContains(t, filterAvailable(dumpKinds, "deployments.apps\nsecrets\n"), "prometheuses.monitoring.coreos.com")
+}
+
+// 접근 도메인 인증서(nullus-access-domain-cert)는 cert-manager 의 Certificate 가 주체다. 그 Secret
+// (nullus-access-domain-tls)은 덤프에 담겨 되살아나지만 Certificate 가 빠지면 갱신할 주체가 없다 —
+// 복구 직후에는 멀쩡하다가 만기(기본 90일)에 게이트웨이 TLS 가 조용히 죽는다. 2026-10-12 리허설
+// 지문 대조에서 Certificate 가 복구 뒤 사라진 것이 드러났다. 복구가 cert-manager 를 먼저 세우므로
+// (EnsureSharedComponents) 네임스페이스 리소스 단계에서 CR 을 적용할 수 있다.
+func TestDumpKinds_cert_manager_Certificate_를_담는다(t *testing.T) {
+	assert.Contains(t, dumpKinds, "certificates.cert-manager.io")
+	assert.Contains(t, dumpKinds, "issuers.cert-manager.io")
 }

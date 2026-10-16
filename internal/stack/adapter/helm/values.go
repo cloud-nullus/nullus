@@ -24,7 +24,7 @@ const (
 	// CI 는 ghcr.io/<repo>/<이미지> 로 push 한다(cd.yml). 경로가 어긋나면 게시된
 	// 이미지를 아무도 받지 못한다.
 	jenkinsImageRepository = "cloud-nullus/nullus/nullus-jenkins"
-	jenkinsImageTag        = "2.568.2"
+	jenkinsImageTag        = "2.568.3"
 )
 
 func DefaultValues(stepName string) map[string]any {
@@ -172,13 +172,51 @@ func DefaultValues(stepName string) map[string]any {
 			// 스캐너 장애가 그 스택의 배포를 멈추는 것이 부담이면 운영에서 늘린다.
 			"replicaCount": 1,
 			"trivy": map[string]any{
-				// 취약점 DB 를 받아올 OCI 저장소. 에어갭 설치는
-				// airgap/helm/stack-values/trivy.yaml 이 내부 미러로 덮는다.
+				// 취약점 DB 를 받아올 OCI 저장소. 에어갭 설치는 mergedValuesForStep 이
+				// trivyAirgapDBValues 로 내부 레지스트리를 가리키게 덮는다.
 				"dbRepository": "ghcr.io/aquasecurity/trivy-db",
 				// 켜면 미러를 갱신해도 서버가 옛 DB 를 계속 쓴다. 내부 미러에서
 				// 정상 갱신 경로를 타게 두면 DB 를 갱신했을 때 저절로 반영된다.
 				"skipDBUpdate": false,
 			},
+		}
+	case "installing_sonarqube":
+		return map[string]any{
+			// 에디션을 고르지 않으면 차트 렌더가 실패한다. Community 빌드를 쓴다.
+			"community": map[string]any{"enabled": true},
+			// 차트 기본 이름은 <릴리스>-sonarqube 다. 게이트웨이·연결정보가 찾는 이름으로 고정한다.
+			"fullnameOverride": domain.SonarQubeServiceName,
+			"service": map[string]any{
+				"type":         "ClusterIP",
+				"externalPort": domain.SonarQubeServicePort,
+				"internalPort": domain.SonarQubeServicePort,
+			},
+			// 차트가 요구하는 값이다(없으면 렌더 실패). 평문을 values 에 두지 않는다.
+			"monitoringPasscodeSecretName": domain.SonarQubeSecret,
+			"monitoringPasscodeSecretKey":  domain.SonarQubeMonitoringPasscodeKey,
+			// 끄면 내장 H2 로 떠서 데이터가 공유 DB 와 백업 밖에 놓인다. 주소는
+			// 네임스페이스에서 파생되므로 sonarqubeSharedServiceValues 가 넣는다.
+			"jdbcOverwrite": map[string]any{
+				"enabled":               true,
+				"jdbcUsername":          domain.SonarQubeDBUser,
+				"jdbcSecretName":        domain.SonarQubeSecret,
+				"jdbcSecretPasswordKey": domain.SonarQubeDBPasswordKey,
+			},
+			// 검색 색인을 담는다. 휘발 볼륨이면 재시작마다 색인을 다시 만든다.
+			"persistence": map[string]any{"enabled": true, "size": "10Gi"},
+			// 차트 기본값은 메모리 요청 4096M 이다. 웹·CE·검색 JVM 세 개가 유휴 상태로도
+			// 2.69Gi 를 쓰므로(kind 실측) 요청은 그 위인 3Gi 로 둔다. 관리자 기본값
+			// (stack_resource_defaults)이 있으면 그 값이 이긴다.
+			"resources": map[string]any{
+				"requests": map[string]any{"cpu": "500m", "memory": "3Gi"},
+				"limits":   map[string]any{"cpu": "2", "memory": "4Gi"},
+			},
+			// 접속은 스택 게이트웨이가 연다. 차트의 Ingress·HTTPRoute 는 쓰지 않는다.
+			"ingress":   map[string]any{"enabled": false},
+			"httproute": map[string]any{"enabled": false},
+			// helm test 파드와 메트릭 jar 다운로드(GitHub)는 에어갭에서 실패한다.
+			"tests":              map[string]any{"enabled": false},
+			"prometheusExporter": map[string]any{"enabled": false},
 		}
 	case "installing_harbor":
 		return map[string]any{
@@ -444,6 +482,13 @@ func DefaultValues(stepName string) map[string]any {
 			},
 			"global": map[string]any{
 				"edition": "ce",
+				// 초기 root 비밀번호는 프로비저닝된 Secret 에서 읽는다. 이것이 없으면 차트가
+				// gitlab-gitlab-initial-root-password 에 임의 비밀번호를 만들어, 금고의 값·연결
+				// 정보 안내·백업이 가리키는 것과 실제 비밀번호가 달라진다.
+				"initialRootPassword": map[string]any{
+					"secret": ProvisionedGitLabRootSecret,
+					"key":    domain.GitLabRootPassKey,
+				},
 				"minio": map[string]any{
 					"enabled": false,
 				},
@@ -590,16 +635,10 @@ func DefaultValues(stepName string) map[string]any {
 				"create": true,
 			},
 			"runners": map[string]any{
-				// 차트 0.72.0 은 runners.privileged 를 읽지 않는다 — 설정은
-				// runners.config 의 TOML 로 넣어야 config.toml 에 반영된다.
-				// privileged 없이는 docker:dind 서비스가 기동하지 못해
-				// 파이프라인의 이미지 빌드 단계가 통째로 실패한다.
-				"config": `[[runners]]
-  [runners.kubernetes]
-    namespace = "{{.Release.Namespace}}"
-    image = "alpine"
-    privileged = true
-`,
+				// TOML 을 만드는 이유는 gitLabRunnerConfigTOML 주석에 있다.
+				// helper 이미지는 노드 아키텍처를 알아야 정할 수 있어 여기서는
+				// 비워 두고, mergedValuesForStep 이 클러스터를 보고 채운다.
+				"config": gitLabRunnerConfigTOML("", nil, false),
 			},
 		}
 	case "installing_prometheus":

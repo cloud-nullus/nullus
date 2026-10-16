@@ -138,21 +138,34 @@ func (c *Client) DeleteJob(ctx context.Context, name string) error {
 //
 // multibranch job 은 브랜치가 하위 job 이다. 브랜치를 빼면 폴더 자체를 실행하려
 // 들고 Jenkins 는 405 로 거절한다 — ListBuilds 와 같은 경로 규칙이다.
-func (c *Client) TriggerBuild(ctx context.Context, jobName, branch string) error {
+func (c *Client) TriggerBuild(ctx context.Context, jobName, branch string) (string, error) {
 	job := strings.TrimSpace(jobName)
 	if job == "" {
-		return fmt.Errorf("jenkins: job 이름이 필요합니다")
+		return "", fmt.Errorf("jenkins: job 이름이 필요합니다")
 	}
 	b := strings.TrimSpace(branch)
 	if b == "" {
-		return fmt.Errorf("jenkins: job %q 를 실행할 브랜치가 필요합니다", job)
+		return "", fmt.Errorf("jenkins: job %q 를 실행할 브랜치가 필요합니다", job)
 	}
 
-	path := "/job/" + url.PathEscape(job) + "/job/" + url.PathEscape(b) + "/build"
-	if err := c.post(ctx, path, "", nil); err != nil {
-		return fmt.Errorf("trigger jenkins build %s/%s: %w", job, b, err)
+	jobPath := "/job/" + url.PathEscape(job) + "/job/" + url.PathEscape(b)
+	if err := c.post(ctx, jobPath+"/build", "", nil); err != nil {
+		return "", fmt.Errorf("trigger jenkins build %s/%s: %w", job, b, err)
 	}
-	return nil
+	return c.runURL(jobPath), nil
+}
+
+// runURL 은 사람이 열어 볼 브랜치 job 주소다. 외부 주소를 알면 그것을, 모르면
+// 컨트롤러 주소를 쓴다 — 둘 다 없으면 빈 값이다. 지어내면 열리지 않는 링크가 화면에 남는다.
+func (c *Client) runURL(jobPath string) string {
+	base := c.webBaseURL
+	if base == "" {
+		base = strings.TrimRight(strings.TrimSpace(c.baseURL), "/")
+	}
+	if base == "" {
+		return ""
+	}
+	return base + jobPath + "/"
 }
 
 func (c *Client) jobExists(ctx context.Context, name string) (bool, error) {

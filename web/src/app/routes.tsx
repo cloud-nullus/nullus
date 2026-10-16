@@ -89,9 +89,6 @@ const MonitoringPage = lazy(() =>
   import('../features/observability/pages/monitoring-page').then((m) => ({ default: m.MonitoringPage }))
 )
 
-const AlertRulesPage = lazy(() =>
-  import('../features/observability/pages/alert-rules-page').then((m) => ({ default: m.AlertRulesPage }))
-)
 
 const AlertHistoryPage = lazy(() =>
   import('../features/observability/pages/alert-history-page').then((m) => ({ default: m.AlertHistoryPage }))
@@ -119,6 +116,9 @@ const StackVersionsAdminPage = lazy(() =>
 
 const BackupPage = lazy(() =>
   import('../features/admin/pages/backup-page').then((m) => ({ default: m.BackupPage }))
+)
+const NotificationChannelsPage = lazy(() =>
+  import('../features/admin/pages/notification-channels-page').then((m) => ({ default: m.NotificationChannelsPage }))
 )
 
 
@@ -152,8 +152,6 @@ export const router = createBrowserRouter([
           { path: 'stack/versions', element: withSuspense(<StackVersionPage />) },
           { path: 'stack/version', element: withSuspense(<StackVersionPage />) },
           { path: 'observability/monitoring', element: withSuspense(<MonitoringPage />) },
-          { path: 'observability/alerts', element: withSuspense(<AlertRulesPage />) },
-          { path: 'observability/alert-rules', element: withSuspense(<AlertRulesPage />) },
           { path: 'observability/alert-history', element: withSuspense(<AlertHistoryPage />) },
         ],
       },
@@ -189,6 +187,7 @@ export const router = createBrowserRouter([
           { path: 'admin/token-management', element: withSuspense(<TokenManagementPage />) },
           { path: 'admin/stack-versions', element: withSuspense(<StackVersionsAdminPage />) },
           { path: 'admin/backup', element: withSuspense(<BackupPage />) },
+          { path: 'admin/notifications', element: withSuspense(<NotificationChannelsPage />) },
         ],
       },
       { path: '*', element: withSuspense(<NotFoundPage />) },

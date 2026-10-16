@@ -1,0 +1,104 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_openbao
+# chart: openbao 0.28.4
+injector:
+    enabled: false
+server:
+    dataStorage:
+        accessMode: ReadWriteOnce
+        enabled: true
+        mountPath: /openbao/data
+        size: 5Gi
+        storageClass: null
+    extraContainers:
+        - command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              KEYS_DIR="/openbao/unseal"
+              ADDR="http://127.0.0.1:8200"
+              while true; do
+                status="$(wget -q -O - "${ADDR}/v1/sys/seal-status" 2>/dev/null || true)"
+                case "${status}" in
+                  *'"sealed":true'*)
+                    if [ ! -d "${KEYS_DIR}" ]; then
+                      echo "unseal: 키가 아직 프로비저닝되지 않음, 대기"
+                    else
+                      # 제출한 조각 수를 세어 로그로 남긴다. Secret 이 만들어지기 전이나
+                      # kubelet 이 마운트를 동기화하기 전에는 glob 이 아무것도 잡지 못하는데,
+                      # 이때도 "제출 완료" 를 찍으면 키를 보냈는데 안 열리는 것처럼 보여
+                      # 원인 파악을 방해한다.
+                      submitted=0
+                      for f in "${KEYS_DIR}"/key*; do
+                        [ -f "${f}" ] || continue
+                        key="$(cat "${f}")"
+                        [ -n "${key}" ] || continue
+                        wget -q -O /dev/null --header='Content-Type: application/json' \
+                          --post-data="{\"key\":\"${key}\"}" "${ADDR}/v1/sys/unseal" 2>/dev/null || true
+                        submitted=$((submitted+1))
+                      done
+                      if [ "${submitted}" -eq 0 ]; then
+                        echo "unseal: 키 파일이 아직 마운트되지 않음, 대기"
+                      else
+                        echo "unseal: key share ${submitted}개 제출"
+                      fi
+                    fi
+                    ;;
+                  *'"sealed":false'*)
+                    : # 이미 개방됨 - 아무것도 하지 않는다
+                    ;;
+                  *)
+                    echo "unseal: openbao 응답 대기 중"
+                    ;;
+                esac
+                sleep 10
+              done
+          image: openbao/openbao:2.5.5
+          imagePullPolicy: IfNotPresent
+          name: unseal
+          resources:
+            limits:
+                cpu: 50m
+                memory: 64Mi
+            requests:
+                cpu: 10m
+                memory: 32Mi
+          volumeMounts:
+            - mountPath: /openbao/unseal
+              name: unseal-keys
+              readOnly: true
+    image:
+        repository: openbao/openbao
+        tag: 2.5.5
+    ingress:
+        enabled: false
+    resources:
+        limits:
+            cpu: 500m
+            memory: 512Mi
+        requests:
+            cpu: 200m
+            memory: 256Mi
+    standalone:
+        config: |
+            ui = true
+            disable_mlock = true
+
+            listener "tcp" {
+              tls_disable     = 1
+              address         = "[::]:8200"
+              cluster_address = "[::]:8201"
+            }
+
+            storage "file" {
+              path = "/openbao/data"
+            }
+        enabled: true
+    volumes:
+        - name: unseal-keys
+          secret:
+            optional: true
+            secretName: openbao-unseal-keys
+ui:
+    enabled: true

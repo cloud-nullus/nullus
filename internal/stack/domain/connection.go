@@ -105,6 +105,35 @@ const (
 	TrivyChartVersion = "0.26.0"
 	TrivyAppVersion   = "0.74.0"
 
+	// SonarQubeReleaseName 은 소스 정적 분석(SAST) 서버 릴리스명이다.
+	//
+	// 차트 기본 이름은 <릴리스>-sonarqube 라 fullnameOverride 로 릴리스명과 같게
+	// 둔다 — Service·StatefulSet·PVC 이름이 모두 이 값이 된다.
+	SonarQubeReleaseName = shareddomain.SonarQubeReleaseName
+	SonarQubeServiceName = SonarQubeReleaseName
+	// SonarQubeServicePort 는 화면과 웹 API 포트다. 차트 기본 service.externalPort 와 같다.
+	SonarQubeServicePort = shareddomain.SonarQubeServicePort
+	// SonarQubeSecret 은 DB 비밀번호·모니터링 패스코드·관리자 비밀번호를 담는다.
+	// OpenBao 에서 만든 값을 ESO 가 이 이름으로 옮긴다.
+	SonarQubeSecret = "nullus-sonarqube-credentials"
+	// 키 이름은 차트 jdbcOverwrite.jdbcSecretPasswordKey · monitoringPasscodeSecretKey
+	// 에 그대로 넘긴다.
+	SonarQubeDBPasswordKey         = "jdbc-password"
+	SonarQubeMonitoringPasscodeKey = "monitoring-passcode"
+	SonarQubeAdminPasswordKey      = "admin-password"
+	// SonarQubeAdminUser 는 차트가 처음 만드는 관리자다. 첫 비밀번호는 admin 이고
+	// 프로비저닝이 바로 바꾼다.
+	SonarQubeAdminUser = "admin"
+	// SonarQubeDatabase / SonarQubeDBUser 는 공유 PostgreSQL 안의 전용 자리다.
+	// GitLab DB 와 테이블 이름(users·projects·issues)이 겹쳐 같은 DB 를 쓸 수 없다.
+	SonarQubeDatabase = "sonarqube"
+	SonarQubeDBUser   = "sonarqube"
+	// 차트 버전과 실제로 깔리는 Community 빌드 번호다. 차트의 appVersion(2026.5.2)은
+	// 유료 Server 판의 번호라 Community 를 고르면 깔리는 것과 다르다.
+	// (고정: TestChartVersionsMatchCompatibilityMatrix)
+	SonarQubeChartVersion = "2026.5.1002"
+	SonarQubeAppVersion   = "26.9.0.129388"
+
 	// NexusServiceName 은 Nexus 진입 Service 다. 차트 기본 이름은
 	// {release}-nexus-repository-manager 라 길어지므로 fullnameOverride 로 맞춘다.
 	NexusReleaseName = "nexus"
@@ -179,6 +208,13 @@ const (
 	GitLabChartVersion = "8.7.2"
 	GitLabAppVersion   = "v17.7.0"
 
+	// GitLab Runner 는 별도 차트다. 차트 0.72.0 이 러너 17.7.0 을 싣는다.
+	// AppVersion 은 helper 이미지 태그에 그대로 들어가므로(gitlab-runner-helper:
+	// arm64-v17.7.0) 차트를 올릴 때 함께 올려야 한다 — 어긋나면 그 태그가 없어
+	// helper 를 받지 못하고 모든 CI 잡이 멈춘다.
+	GitLabRunnerChartVersion = "0.72.0"
+	GitLabRunnerAppVersion   = "v17.7.0"
+
 	// Gitea 는 소스 저장소만 담당한다 — GitLab 과 달리 CI 도 레지스트리도 겸하지
 	// 않으므로, 이 스택은 CI(Jenkins)와 레지스트리(Harbor)를 따로 세운다.
 	GiteaChartVersion = "12.7.0"
@@ -186,10 +222,10 @@ const (
 
 	// Jenkins 차트 버전은 자유롭게 내릴 수 없다. Gitea multibranch 스캔에 쓰는
 	// jenkinsci/gitea 플러그인이 Jenkins 2.528.3 이상을 요구하므로, appVersion 이
-	// 그 하한을 넘는 차트여야 한다. 5.9.54 → 2.568.2 로 요건을 만족한다.
+	// 그 하한을 넘는 차트여야 한다. 5.9.54 → 2.568.3 로 요건을 만족한다.
 	// (고정: TestJenkinsAppVersion_SatisfiesGiteaPluginMinimum)
 	JenkinsChartVersion = "5.9.54"
-	JenkinsAppVersion   = "2.568.2"
+	JenkinsAppVersion   = "2.568.3"
 	// JenkinsGiteaPluginMinAppVersion 은 gitea 플러그인이 요구하는 Jenkins 하한이다.
 	JenkinsGiteaPluginMinAppVersion = "2.528.3"
 
@@ -253,10 +289,15 @@ func OTelCollectorOTLPHTTPEndpoint(namespace string) string {
 // 차트마다 이름 규칙이 다르다 — Argo CD 는 Deployment/Service 에는 릴리스
 // 접두사를 붙이지만 Secret 에는 붙이지 않는다.
 const (
-	ArgoCDAdminSecret   = "argocd-initial-admin-secret" // #nosec G101 -- Secret 리소스 이름
-	ArgoCDAdminUser     = "admin"
-	ArgoCDAdminPassKey  = "password"
-	GitLabRootSecret    = "gitlab-gitlab-initial-root-password" // #nosec G101 -- Secret 리소스 이름
+	ArgoCDAdminSecret  = "argocd-initial-admin-secret" // #nosec G101 -- Secret 리소스 이름
+	ArgoCDAdminUser    = "admin"
+	ArgoCDAdminPassKey = "password"
+	// GitLabRootSecret 은 설치가 금고 값(artifacts/gitlab/root-password)으로 ESO 프로비저닝하는
+	// Secret 이다. 차트의 global.initialRootPassword 가 이것을 참조하므로 실제 root 비밀번호다.
+	// 차트가 스스로 만드는 gitlab-gitlab-initial-root-password 는 참조하지 않는다 — 참조하지 않으면
+	// 차트가 임의 비밀번호를 거기 만들어, 금고·연결 정보·백업이 전부 가짜를 가리켰다(2026-10-12 실측).
+	// 이 변경 전에 설치한 스택은 차트가 만든 그 Secret 이 실제 비밀번호다.
+	GitLabRootSecret    = "gitlab-initial-root-password" // #nosec G101 -- Secret 리소스 이름
 	GitLabRootUser      = "root"
 	GitLabRootPassKey   = "password"
 	GrafanaAdminUser    = "admin"

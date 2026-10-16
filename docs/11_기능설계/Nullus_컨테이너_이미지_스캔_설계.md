@@ -474,6 +474,10 @@ Jenkins · GitHub Actions 판도 **같은 두 명령**이다. `<unfixed>` 는 `N
 
 서버는 내부 레지스트리에 미러된 DB 를 `TRIVY_DB_REPOSITORY` 로 가리킨다. `--skip-db-update` 는 쓰지 않는다 — 내부 미러에서 정상 갱신 경로를 타게 두면, DB 를 갱신했을 때 서버가 저절로 새 DB 를 쓴다.
 
+**누가 넣나** — API 로 설치하는 에어갭 스택(`29-install-stacks-via-api.sh`)은 `stack-values/trivy.yaml` 을 읽지 않는다. API 가 에어갭 모드(`NULLUS_HELM_OCI_REGISTRY`, 예: `kind-registry:5000/charts`)에서 **같은 레지스트리의 루트**로 `trivy.dbRepository=kind-registry:5000/aquasecurity/trivy-db` 와 `TRIVY_INSECURE=true`(내부 레지스트리가 plain HTTP)를 넣는다(`trivyAirgapDBValues`). 처음에는 이 값이 values 파일에만 있어 API 설치의 서버가 ghcr.io 를 찾았고, 파일 값도 호스트 주소(`localhost:5001`)라 파드 안에서는 닿지 않았다. helm 으로 직접 설치하는 경로는 `stack-values/trivy.yaml` 이 같은 값을 가진다.
+
+**CI 잡의 Java DB** — 서버 모드여도 JAR 분석은 client 가 한다. client 는 Maven 메타데이터(`pom.properties`)가 없는 JAR 을 만나면 Java DB(약 900MiB)를 스스로 받는데, 기본 주소는 `mirror.gcr.io/aquasec/trivy-java-db:1` 이다. 에어갭에서는 스캔이 `FATAL … post analysis error … mirror.gcr.io` 로 끝나 기본 정책(스캐너 장애 시 차단)에서 배포가 멈춘다(kind 에서 client 파드의 인터넷을 막고 실측). 에어갭 모드면 API 가 `TRIVY_JAVA_DB_REPOSITORY=kind-registry:5000/aquasecurity/trivy-java-db` 를 GitLab 스캔 잡 · Jenkins 스캐너 단계에 싣는다 — 같은 미러에서 16초에 받았다. GitHub 호스티드 러너는 클러스터 안의 레지스트리에 닿지 않아 싣지 않는다. 서버 DB 와 Java DB 의 미러 경로 규칙은 `internal/shared/domain` 의 `TrivyDBRepository` · `TrivyJavaDBRepository` 가 소유한다.
+
 **제약**: DB 미러는 클러스터 안에서 접근 가능한 레지스트리 경로여야 한다. 스택마다 다른 곳을 보게 만들지 않는다 — 반입 절차가 갈라지면 그중 하나는 반드시 낡는다. Trivy Operator 를 나중에 넣더라도(§11) 같은 미러를 그대로 쓴다.
 
 ### 7.3 갱신 주기 — 그리고 지켜지지 않을 때
@@ -582,11 +586,12 @@ TDD 순서(CLAUDE.md): 각 단계마다 실패하는 테스트를 먼저 쓴다.
 |---|---|---|
 | **경로 2 — 레지스트리 연계 스캔** | 게이트가 먼저 선다. 서버가 서면 증분 작업이다 | §9 8번 |
 | Trivy Operator (실행 중 워크로드 스캔) | 게이트가 아니라 탐지. **§7.2 의 DB 미러를 그대로 쓴다**. 스택 네임스페이스의 설치 이미지는 §12.4 가 주기 스캔으로 덮는다 — 사용자 앱·다른 네임스페이스 워크로드는 여전히 범위 밖 | 경로 2 이후 |
-| Dependency-Track (SBOM 지속 모니터링) | NVD 피드라는 **별개 반입 경로**가 하나 더 늘어난다 | **#77 소관** |
-| 조직 공통 CVE allowlist | 소유·승인 절차 설계 필요 | 운영 규칙 정리 시 |
+| Dependency-Track (SBOM 지속 모니터링) | NVD 피드라는 **별개 반입 경로**가 하나 더 늘어난다 | **#77 에서 미도입으로 결정**(2026-10-12) — 제품 이미지는 주간 재스캔(`image-scan.yml`)이 대신하고, SBOM 은 Release 자산·attestation 으로 배포한다(릴리즈 정책 §7.4) |
+| 조직 공통 CVE allowlist | 소유·승인 절차 설계 필요. 시크릿 탐지(#80)의 조직 공통 allowlist 도 같은 보류 — 저장소 안 `.gitleaks.toml` 로만 다룬다 | 운영 규칙 정리 시 |
 | Harbor Deployment security 활성화 방침 | 2차 방어. 게이트가 먼저 선다 | §9 7번 이후 |
 | 템플릿 `tools` JSONB 와 슬롯의 일반적 정합 | §1 의 간극은 스캐너 슬롯을 만들며 **스캐너에 한해** 닫힌다. 다른 자유 텍스트 도구는 그대로다 | 템플릿 개편 시 |
-| Nullus **제품 이미지** 스캔 | **#77 소관** (B축) | — |
+| 앱 **의존성(락파일)** 스캔 — 빌드 전 | **#79 에서 구현**(2026-10-12) — 같은 스택 Trivy 서버·같은 정책으로 `trivy fs`(설계 `Nullus_의존성_취약점_스캔_설계.md`). 스택 설치의 선택 항목 SCA | — |
+| Nullus **제품 이미지** 스캔 | **#77 에서 구현**(2026-10-12) — `cd.yml` `scan-images`(태그 게이트) + `image-scan.yml`(주간), 릴리즈 정책 §7.4 | — |
 
 ---
 
@@ -640,6 +645,7 @@ CI API 클라이언트는 클러스터 내부 주소로 붙는다. 그 주소는
 - 결과를 JSON 리포트가 아니라 **취약점 하나당 탭으로 나눈 한 줄**(심각도 · ID · 패키지 · 설치/수정 버전 · Trivy Class · 대상 · 링크)로 만들고, 이미지마다 **gzip+base64 한 줄**로 싸서 로그에 찍는다. GitLab 이미지 하나에 수천 건이라 그대로 찍으면 kubelet 컨테이너 로그 상한(기본 10Mi)을 넘어 앞부분이 잘린다. kind 실측에서 alpine 48건이 7.2KB → 784B 로 줄었고, 건수는 같은 이미지의 JSON 리포트와 일치했다(§12.5).
 - 서버 모드 client 는 템플릿 출력에 DB 시각을 싣지 않는다. DB 날짜는 서버의 `metadata.json` 에서 읽는다.
 - 이미지 참조는 셸 스크립트에 들어가므로 `저장소@sha256:` 모양이 아니면 넣지 않는다.
+- 이미지마다 **최대 3회** 시도한다(사이 10초, `NULLUS_SCAN_ATTEMPTS` · `NULLUS_SCAN_RETRY_DELAY`). 설치 직후 스캔에서 레이어를 받다 끊기는 일시적 실패(argocd 의 `failed to extract the archive: unexpected EOF`, gitlab-runner 의 파일 열기 실패)가 났고, 같은 이미지를 다시 스캔하면 통과했다. 한 번만 시도하면 다음 주기 재스캔(기본 24h)까지 `failed` 로 남는다. 끝내 실패하면 마지막 시도의 오류를 `N회 시도 후 실패:` 와 함께 남긴다.
 
 **저장** — `stack_image_scans`(000081, **stack 모듈 소유**). 파이프라인 결과(`image_scan_results`)와 나눈다 — 그쪽은 cicd 가 소유한 CI 실행 기록이다.
 

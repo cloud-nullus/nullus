@@ -29,16 +29,37 @@ import (
 //	9  참조 정합성    — 경고하되 중단하지 않는다
 
 type RestoreDeps struct {
-	Repo         port.BackupRepository
-	Dumper       port.DBDumper
-	KV           port.KVExporter
-	Scaler       port.WorkloadScaler
-	Archiver     port.VolumeArchiver
-	Resources    port.ResourceDumper
-	Sealer       port.Sealer
-	Store        port.ArtifactStore
-	TokenSources port.TokenSourceLister
-	Targets      DBTargets
+	Repo      port.BackupRepository
+	Dumper    port.DBDumper
+	KV        port.KVExporter
+	Scaler    port.WorkloadScaler
+	Archiver  port.VolumeArchiver
+	Resources port.ResourceDumper
+	// Shared 는 클러스터 공용 자원을 없을 때만 되살린다. Resources 와 같이 스택 클러스터 어댑터다.
+	Shared port.SharedResourceDumper
+	// SharedComponents 는 공용 자원을 되살리기 전에 cert-manager·metrics-server 를 다시 세운다(스택 모듈의
+	// 설치기). 없으면 컨트롤러가 이미 있다고 보고 건너뛴다 — 없으면 ApplyShared 가 무엇을 깔아야 하는지
+	// 말하고 멈춘다.
+	SharedComponents port.SharedComponentsEnsurer
+	// Namespaces 는 복구할 네임스페이스를 만든다. 없으면 이미 있다고 보고 건너뛴다.
+	Namespaces port.NamespaceEnsurer
+	// Connections 는 플랫폼 DB 를 되돌린 직후 연결 풀을 비운다 — 옛 테이블을 가리키는 준비된 문장이
+	// 다음 질의를 0A000 으로 죽인다. 없으면 건너뛴다(테스트·풀 없는 구성).
+	Connections port.ConnectionResetter
+	// KVImportWait / KVImportRetry 는 스택 금고 KV import 를 기다리는 상한과 재시도 간격이다. 금고는
+	// 워크로드 재개 뒤 뜨는 데 시간이 걸린다. 0 이면 기본값(2분 / 10초).
+	KVImportWait  time.Duration
+	KVImportRetry time.Duration
+	// GatewayAliases 는 복구 뒤 러너·Argo CD hostAliases 를 게이트웨이의 지금 주소로 맞춘다.
+	// 없으면 건너뛴다.
+	GatewayAliases port.GatewayAliasRepinner
+	// StackKubeconfig 는 복구가 붙은 스택 클러스터의 kubeconfig 다. 복구를 시작할 때(DB 를 되돌리기
+	// 전) 읽은 것이라, full 복구가 DB 의 클러스터 정보를 백업 시점으로 돌려도 실제 대상을 가리킨다.
+	StackKubeconfig []byte
+	Sealer          port.Sealer
+	Store           port.ArtifactStore
+	TokenSources    port.TokenSourceLister
+	Targets         DBTargets
 
 	// Prereq 는 실행 시점의 전제 조건을 읽어온다. 함수로 둔 이유는 키의
 	// 존재 여부가 프로세스 수명 동안 바뀔 수 있기 때문이다.
@@ -157,16 +178,25 @@ func (uc *RestoreUseCase) run(ctx context.Context, req RunRestoreRequest, rr *do
 	touchStack := req.Mode != domain.ModePlatformOnly
 	touchPlatform := req.Mode != domain.ModeStackOnly
 
-	// ── 3~5. 스택: PVC → 볼륨 → 리소스. 워크로드는 아직 띄우지 않는다 ──
+	// ── 3~5. 스택: 공용 컨트롤러·자원 → PVC → 볼륨 → 리소스. 워크로드는 아직 띄우지 않는다 ──
+	var sharedComponents *domain.SharedComponentsOutcome
 	if touchStack {
-		if err := uc.restoreStackData(ctx, req, manifest, arts); err != nil {
+		outcome, err := uc.restoreStackData(ctx, req, manifest, arts)
+		if err != nil {
 			return err
 		}
+		sharedComponents = outcome
 	}
 
 	// ── 6~7. 플랫폼: DB → 금고 ──
+	//
+	// 금고(KV)는 **뜬 곳으로** 되돌린다 — 백업이 스택 ID 로 스택 금고를 떴으면 복구도 그 금고다. 빈
+	// 스택 ID 로 부르면 전역 주소(OPENBAO_ADDR)로 가서 다른 금고에 쓰거나(인클러스터) 닿지 못한다
+	// (호스트). 스택 금고는 워크로드가 다시 뜬 뒤에야 있으므로(§6.1 8단계) 스택을 되돌리는 복구에서는
+	// 재개 뒤로 미룬다. 스택을 건드리지 않는 복구(platform_only)는 금고가 이미 떠 있다 — 바로 한다.
+	deferVault := touchStack && strings.TrimSpace(backup.StackID) != ""
 	if touchPlatform {
-		if err := uc.restorePlatform(ctx, arts); err != nil {
+		if err := uc.restorePlatform(ctx, backup, arts, !deferVault); err != nil {
 			return err
 		}
 	}
@@ -179,9 +209,45 @@ func (uc *RestoreUseCase) run(ctx context.Context, req RunRestoreRequest, rr *do
 		uc.resumeWorkloads(ctx, manifest)
 	}
 
+	// ── 8b. 스택 금고 KV import. 금고 파드가 뜬 뒤라 기다려 다시 시도한다 ──
+	//
+	// touchPlatform 과 무관하다 — 스택 금고는 스택 데이터다. 세트 복구가 스택을 stack_only 로 되돌릴 때도
+	// 금고는 돌아와야 한다(볼륨이 담겼으면 이미 그 안에 있고, 없으면 이것이 유일한 길이다).
+	var vaultImport *domain.VaultImportOutcome
+	if deferVault {
+		vaultImport = uc.restoreStackVault(ctx, backup, arts)
+	}
+
 	// ── 9. 참조 정합성. 경고하되 중단하지 않는다 ──
 	rr.IntegrityReport = uc.checkIntegrity(ctx, req, backup)
+	rr.IntegrityReport.SharedComponents = sharedComponents
+	rr.IntegrityReport.VaultImport = vaultImport
+
+	// ── 10. 게이트웨이 주소. 워크로드를 띄운 뒤 지금 주소로 hostAliases 를 맞춘다 ──
+	//
+	// Service 는 백업 때의 ClusterIP 로 되살아나지만, 그 IP 를 쓸 수 없거나(다른 클러스터) 백업에
+	// IP 가 없으면(옛 백업) 주소가 바뀐다. 실패해도 복구는 성공이다 — 데이터는 되돌아왔고, 결과를
+	// 기록에 남겨 손으로 맞출 수 있게 한다.
+	if touchStack && uc.d.GatewayAliases != nil && strings.TrimSpace(backup.StackID) != "" {
+		rr.IntegrityReport.GatewayAliases = uc.repinGatewayAliases(ctx, backup.StackID, req.Namespace)
+	}
 	return nil
+}
+
+func (uc *RestoreUseCase) repinGatewayAliases(ctx context.Context, stackID, namespace string) *domain.GatewayAliasesOutcome {
+	ip, updated, err := uc.d.GatewayAliases.RepinGatewayAliases(ctx, stackID, namespace, uc.d.StackKubeconfig)
+	out := &domain.GatewayAliasesOutcome{GatewayIP: ip, Updated: updated}
+	if err != nil {
+		out.Error = err.Error()
+		uc.d.Logger.Warn("게이트웨이 주소를 러너·Argo CD 에 맞추지 못했습니다 — hostAliases 를 손으로 맞춰야 합니다",
+			"stack_id", stackID, "namespace", namespace, "error", err)
+		return out
+	}
+	if len(updated) > 0 {
+		uc.d.Logger.Info("게이트웨이 주소가 바뀌어 러너·Argo CD 의 hostAliases 를 맞췄습니다",
+			"stack_id", stackID, "gateway_ip", ip, "releases", updated)
+	}
+	return out
 }
 
 func (uc *RestoreUseCase) verifyArtifacts(ctx context.Context, arts []*domain.Artifact) error {
@@ -197,11 +263,71 @@ func (uc *RestoreUseCase) verifyArtifacts(ctx context.Context, arts []*domain.Ar
 	return nil
 }
 
-func (uc *RestoreUseCase) restoreStackData(ctx context.Context, req RunRestoreRequest, m domain.Manifest, arts []*domain.Artifact) error {
+func (uc *RestoreUseCase) restoreStackData(ctx context.Context, req RunRestoreRequest, m domain.Manifest, arts []*domain.Artifact) (*domain.SharedComponentsOutcome, error) {
+	// 2c. 네임스페이스 — 새 클러스터나 지운 네임스페이스로 되돌리면 없다. 리소스 덤프는
+	// 네임스페이스 안의 것만 담으므로 여기서 만들지 않으면 첫 PVC 생성부터 실패한다.
+	if uc.d.Namespaces != nil {
+		if err := uc.d.Namespaces.EnsureNamespace(ctx, req.Namespace, req.BackupRunID); err != nil {
+			return nil, fmt.Errorf("네임스페이스 준비(%s): %w", req.Namespace, err)
+		}
+	}
+
+	var shared []*domain.Artifact
+	for _, a := range arts {
+		if a.Component == domain.ComponentSharedResources {
+			shared = append(shared, a)
+		}
+	}
+	if len(shared) > 0 && uc.d.Shared == nil {
+		return nil, fmt.Errorf("클러스터 공용 자원 복원이 배선되지 않았습니다")
+	}
+
+	// 2d. 내부 CA Secret 선복원 — 컨트롤러보다 **먼저**. cert-manager 설치 단계는 끝에 내부 CA 를
+	// 부트스트랩하는데, 그때 Secret 이 있으면 옛 키를 채택하고 없으면 새 키를 발급한다. 새 키가
+	// 생긴 뒤에는 없을-때만-만들기(2f)가 옛 키를 되살릴 수 없다. Secret 은 CRD 가 필요 없다.
+	for _, a := range shared {
+		if err := uc.pullStream(ctx, a, func(r io.Reader) error {
+			return uc.d.Shared.ApplySharedSecrets(ctx, r)
+		}); err != nil {
+			return nil, fmt.Errorf("내부 CA Secret 선복원: %w", err)
+		}
+	}
+
+	// 2e. 공용 컨트롤러 — cert-manager·metrics-server 를 설치기로 다시 세운다. 클러스터의 마지막
+	// 스택을 지우면 회수되는데, 컨트롤러는 설치물이라 백업이 담지 않는다. 설치기는 이미 있으면 다시
+	// 쓰므로 다른 스택이 쓰는 클러스터에서도 안전하다. cert-manager 실패는 여기서 멈춘다 — 빈
+	// 네임스페이스와 CA Secret 말고는 아직 아무것도 건드리지 않았다.
+	var outcome *domain.SharedComponentsOutcome
+	if uc.d.SharedComponents != nil {
+		steps, warnings, err := uc.d.SharedComponents.EnsureSharedComponents(ctx, uc.d.StackKubeconfig, req.Namespace)
+		if err != nil {
+			return nil, fmt.Errorf("공용 컨트롤러 재설치: %w", err)
+		}
+		outcome = &domain.SharedComponentsOutcome{Steps: steps, Warnings: warnings}
+		for _, w := range warnings {
+			uc.d.Logger.Warn("공용 컨트롤러를 다 세우지 못했습니다 — 복구는 계속합니다", "warning", w)
+		}
+	}
+
+	// 2f. 클러스터 공용 자원 — 네임스페이스 리소스가 기대는 것(Gateway CRD·GatewayClass·내부 CA
+	// ClusterIssuer·Certificate)을 볼륨보다 **먼저**, 없을 때만 되살린다.
+	//
+	// 네임스페이스 준비 뒤다 — 내부 CA 가 스택 네임스페이스에 있는 구성(cert-manager 를 스택
+	// 네임스페이스에 깐 경우)에서 공용 자원 복원이 먼저 네임스페이스를 만들면 복구 라벨 없이 생긴다.
+	// 실패하면 여기서 멈춘다. 볼륨까지 되돌린 뒤 Gateway CR 에서 "no matches for kind" 로 죽으면
+	// 되돌릴 방법이 없다.
+	for _, a := range shared {
+		if err := uc.pullStream(ctx, a, func(r io.Reader) error {
+			return uc.d.Shared.ApplyShared(ctx, r)
+		}); err != nil {
+			return nil, fmt.Errorf("클러스터 공용 자원 복원: %w", err)
+		}
+	}
+
 	// 3. PVC 재생성 — 매니페스트의 크기·StorageClass 대로.
 	for _, v := range m.Volumes {
 		if err := uc.d.Archiver.EnsurePVC(ctx, req.Namespace, v, req.BackupRunID); err != nil {
-			return fmt.Errorf("PVC 재생성(%s): %w", v.Name, err)
+			return nil, fmt.Errorf("PVC 재생성(%s): %w", v.Name, err)
 		}
 	}
 
@@ -213,7 +339,7 @@ func (uc *RestoreUseCase) restoreStackData(ctx context.Context, req RunRestoreRe
 		if err := uc.pullStream(ctx, a, func(r io.Reader) error {
 			return uc.d.Archiver.Restore(ctx, req.Namespace, a.ResourceName, r)
 		}); err != nil {
-			return fmt.Errorf("볼륨 복원(%s): %w", a.ResourceName, err)
+			return nil, fmt.Errorf("볼륨 복원(%s): %w", a.ResourceName, err)
 		}
 	}
 
@@ -225,13 +351,14 @@ func (uc *RestoreUseCase) restoreStackData(ctx context.Context, req RunRestoreRe
 		if err := uc.pullStream(ctx, a, func(r io.Reader) error {
 			return uc.d.Resources.Apply(ctx, req.Namespace, r)
 		}); err != nil {
-			return fmt.Errorf("네임스페이스 리소스 복원: %w", err)
+			return nil, fmt.Errorf("네임스페이스 리소스 복원: %w", err)
 		}
 	}
-	return nil
+	return outcome, nil
 }
 
-func (uc *RestoreUseCase) restorePlatform(ctx context.Context, arts []*domain.Artifact) error {
+// restorePlatform 은 플랫폼 DB · Keycloak DB · (withVault 면) 금고를 되돌린다.
+func (uc *RestoreUseCase) restorePlatform(ctx context.Context, backup *domain.BackupRun, arts []*domain.Artifact, withVault bool) error {
 	for _, a := range arts {
 		switch a.Component {
 		case domain.ComponentPlatformDB:
@@ -240,6 +367,11 @@ func (uc *RestoreUseCase) restorePlatform(ctx context.Context, arts []*domain.Ar
 				return uc.d.Dumper.Restore(ctx, uc.d.Targets.Platform, r)
 			}); err != nil {
 				return fmt.Errorf("플랫폼 DB 복원: %w", err)
+			}
+			// 테이블이 새로 만들어졌다 — 풀이 들고 있던 준비된 문장은 옛것을 가리킨다. 이 뒤의
+			// 질의(토큰 참조 검사·스택 조회·복구 기록 갱신)가 새 연결을 쓰게 비운다.
+			if uc.d.Connections != nil {
+				uc.d.Connections.Reset()
 			}
 		case domain.ComponentKeycloakDB:
 			// Keycloak 실패는 치명적이지 않다 (§6.3). users.password_hash
@@ -250,20 +382,92 @@ func (uc *RestoreUseCase) restorePlatform(ctx context.Context, arts []*domain.Ar
 				uc.d.Logger.Error("Keycloak DB 복원 실패 — 포털 ID/PW 경로로 진입해야 합니다", "error", err)
 			}
 		case domain.ComponentOpenBaoKV:
+			if !withVault {
+				continue // 스택 금고는 워크로드 재개 뒤(restoreStackVault)
+			}
 			if err := uc.pullStream(ctx, a, func(r io.Reader) error {
-				return uc.d.KV.Import(ctx, "", r)
+				return uc.d.KV.Import(ctx, backup.StackID, r)
 			}); err != nil {
 				uc.d.Logger.Error("금고 복원 실패 — 참조 정합성 검사에서 드러납니다", "error", err)
+			} else {
+				uc.d.Logger.Info("금고 KV 를 되돌렸습니다", "stack_id", backup.StackID)
 			}
 		}
 	}
 	return nil
 }
 
+const (
+	defaultKVImportWait  = 2 * time.Minute
+	defaultKVImportRetry = 10 * time.Second
+)
+
+// restoreStackVault 는 스택 금고로 KV 를 되돌린다 — 워크로드 재개 직후라 금고가 아직 안 떠 있을 수
+// 있어 기다려 다시 시도한다. 상한을 넘기면 오류로 남긴다(치명적이지 않다 — 볼륨이 되돌아왔으면 금고의
+// 데이터는 이미 그 안에 있고, 없으면 참조 정합성 검사가 드러낸다).
+//
+// 결과는 복구 기록(integrity_report.vault_import)에 남는다. 로그만으로는 응답에서 "안 돌았다" 와 "실패했다"
+// 를 가를 수 없다. 백업에 금고 산출물이 없으면 nil 이다.
+func (uc *RestoreUseCase) restoreStackVault(ctx context.Context, backup *domain.BackupRun, arts []*domain.Artifact) *domain.VaultImportOutcome {
+	wait, retry := uc.d.KVImportWait, uc.d.KVImportRetry
+	if wait <= 0 {
+		wait = defaultKVImportWait
+	}
+	if retry <= 0 {
+		retry = defaultKVImportRetry
+	}
+	var outcome *domain.VaultImportOutcome
+	for _, a := range arts {
+		if a.Component != domain.ComponentOpenBaoKV {
+			continue
+		}
+		outcome = &domain.VaultImportOutcome{}
+		deadline := time.Now().Add(wait)
+		var err error
+		for attempt := 1; ; attempt++ {
+			outcome.Attempts = attempt
+			err = uc.pullStream(ctx, a, func(r io.Reader) error {
+				return uc.d.KV.Import(ctx, backup.StackID, r)
+			})
+			if err == nil || ctx.Err() != nil || time.Now().After(deadline) {
+				break
+			}
+			// 금고가 아직 안 떴을 수도, 권한·주소 문제일 수도 있다 — 원인은 오류에 있다.
+			uc.d.Logger.Info("스택 금고 KV import 실패 — 다시 시도합니다",
+				"stack_id", backup.StackID, "attempt", attempt, "error", err)
+			select {
+			case <-ctx.Done():
+				err = ctx.Err()
+			case <-time.After(retry):
+				continue
+			}
+			break
+		}
+		if err != nil {
+			outcome.Error = err.Error()
+			uc.d.Logger.Error("금고 복원 실패 — integrity_report.vault_import 에 남습니다. 그 스택의 도구들은 금고의 자격증명을 못 찾는다",
+				"stack_id", backup.StackID, "attempts", outcome.Attempts, "error", err)
+			continue
+		}
+		outcome.Imported = true
+		// 성공도 남긴다 — 네 번의 리허설에서 이 단계는 실패 로그로만 보였다. 조용히 지나가면
+		// "안 돌았다" 와 구별할 수 없다.
+		uc.d.Logger.Info("스택 금고 KV 를 되돌렸습니다", "stack_id", backup.StackID, "attempts", outcome.Attempts)
+	}
+	return outcome
+}
+
 func (uc *RestoreUseCase) resumeWorkloads(ctx context.Context, m domain.Manifest) {
 	// 역순 재개 — 의존 대상이 먼저 뜬다.
 	for i := len(m.Workloads) - 1; i >= 0; i-- {
 		w := m.Workloads[i]
+		if w.OwnerManaged {
+			// 오퍼레이터가 CR 에서 다시 만드는 것(Prometheus·Alertmanager StatefulSet). 덤프가 담지
+			// 않았으므로 지금은 없거나 오퍼레이터가 막 만드는 중이다 — 조정하려 들면 "not found" 를
+			// 수동 조치 경보로 남긴다. 오퍼레이터가 CR 의 replicas 로 세운다.
+			uc.d.Logger.Info("소유자가 다시 만드는 워크로드는 재개하지 않습니다", "kind", w.Kind, "name", w.Name)
+			continue
+		}
 		t := domain.QuiesceTarget{
 			Kind: w.Kind, Namespace: w.Namespace, Name: w.Name,
 			OriginalReplicas: w.OriginalReplicas,

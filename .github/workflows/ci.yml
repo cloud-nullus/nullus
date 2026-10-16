@@ -37,6 +37,11 @@ jobs:
       # 여기서 따로 부른다.
       - run: go test ./deploy/... -count=1
       - run: go vet ./...
+      # 통합 테스트(//go:build integration)는 testcontainers 로 Postgres 를 띄워 실제 스키마로
+      # 저장소를 돌린다. CI 가 돌리지 않는 동안 깨진 채 몇 달씩 남았다 — 알림 규칙 수정 SQL 이 없는
+      # 열(updated_at)을 써서 운영에서 늘 실패했는데 그것을 잡을 테스트가 여기 있었다.
+      - run: go vet -tags integration ./...
+      - run: go test -tags integration ./... -count=1
 
   frontend:
     runs-on: ubuntu-latest

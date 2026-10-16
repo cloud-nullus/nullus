@@ -1,0 +1,15 @@
+# 제품 이미지 취약점 스캔 예외 (cd.yml scan-images · image-scan.yml — nullus-plan#77)
+#
+# 스캔 게이트는 "수정판이 있는 CRITICAL 0" 이다. 수정판이 있는데도 지금 반영할 수 없는 CVE 만
+# 여기에 적는다 — 반드시 **만료일(expired_at)** 과 **사유(statement)** 를 함께. 만료가 지나면
+# Trivy 가 다시 보고하므로 예외가 영구히 남지 않는다(릴리즈 정책 §7.4). 수정판이 없는 CVE 는
+# --ignore-unfixed 가 이미 걸러서 적지 않는다.
+#
+# 형식(Trivy 문서 "Filtering > By Finding IDs > .trivyignore.yaml"):
+# vulnerabilities:
+#   - id: CVE-2026-00000
+#     paths:
+#       - "usr/lib/..."          # 선택 — 특정 경로에만
+#     expired_at: 2026-12-31     # 필수 — 이 날 뒤에는 다시 보고된다
+#     statement: 왜 지금 못 고치는지, 누가 언제 다시 보는지
+vulnerabilities: []

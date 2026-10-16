@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -111,6 +112,29 @@ func (o *Orchestrator) runKubectl(ctx context.Context, args ...string) ([]byte, 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return output, fmt.Errorf("kubectl %s failed: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+	}
+	return output, nil
+}
+
+// runKubectlStdout 은 표준출력만 돌려준다. 출력을 파싱하는 호출에 쓴다 — kubectl 이
+// 표준에러에 찍는 경고(죽은 aggregated APIService 의 discovery 오류 등)가 섞이면
+// JSON 이 깨진다. 표준에러는 실패했을 때 오류 메시지에만 싣는다.
+func (o *Orchestrator) runKubectlStdout(ctx context.Context, args ...string) ([]byte, error) {
+	kubeconfigPath, err := o.writeKubeconfigTempFile()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = os.Remove(kubeconfigPath)
+	}()
+
+	cmdArgs := append([]string{"--kubeconfig", kubeconfigPath}, args...)
+	cmd := exec.CommandContext(ctx, "kubectl", cmdArgs...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	if err != nil {
+		return output, fmt.Errorf("kubectl %s failed: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return output, nil
 }

@@ -51,3 +51,20 @@ func TestOrgContextMiddleware_ExtractsOrgIDFromUserMap(t *testing.T) {
 	require.NoError(t, h(c))
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 }
+
+// 핸들러가 미들웨어 없이도 principal 의 조직을 읽을 수 있어야 한다 — 스택·백업
+// 핸들러가 각자 리플렉션을 복사하지 않도록 한곳에 둔다.
+func TestOrgIDFromEchoContext_ReadsCurrentUserStruct(t *testing.T) {
+	e := echo.New()
+	c := e.NewContext(httptest.NewRequest(http.MethodGet, "/", nil), httptest.NewRecorder())
+	c.Set("current_user", &admindomain.User{ID: "u1", OrgID: "org-123"})
+
+	assert.Equal(t, "org-123", OrgIDFromEchoContext(c))
+}
+
+func TestOrgIDFromEchoContext_EmptyWithoutPrincipal(t *testing.T) {
+	e := echo.New()
+	c := e.NewContext(httptest.NewRequest(http.MethodGet, "/", nil), httptest.NewRecorder())
+
+	assert.Empty(t, OrgIDFromEchoContext(c))
+}

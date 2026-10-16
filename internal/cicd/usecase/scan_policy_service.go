@@ -91,6 +91,23 @@ func (s *ScanPolicyService) Update(
 	if id == "" {
 		return nil, fmt.Errorf("stack_id 가 필요합니다")
 	}
+	// 이 필드를 모르는 옛 클라이언트는 SAST 동작을 보내지 않는다. 빈 값으로 덮으면
+	// 운영자가 경고로 바꿔 둔 게이트가 몰래 차단으로 돌아가므로 저장된 값을 이어받는다.
+	if policy.SASTOnGateFailure == "" || policy.SecretDetection == "" {
+		stored, found, err := s.policies.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			if policy.SASTOnGateFailure == "" {
+				policy.SASTOnGateFailure = stored.SASTOnGateFailure
+			}
+			// 시크릿 탐지도 같다 — 운영자가 끄거나 경고로 바꾼 것을 옛 클라이언트의 저장이 되돌리면 안 된다.
+			if policy.SecretDetection == "" {
+				policy.SecretDetection = stored.SecretDetection
+			}
+		}
+	}
 	if err := policy.Validate(); err != nil {
 		return nil, err
 	}
@@ -108,7 +125,7 @@ func (s *ScanPolicyService) Update(
 	}
 	targets := make([]*domain.Pipeline, 0, len(pipelines))
 	for _, p := range pipelines {
-		if hasImageScanStage(p) {
+		if readsScanPolicy(p) {
 			targets = append(targets, p)
 		}
 	}
@@ -121,7 +138,7 @@ func (s *ScanPolicyService) Update(
 // 싣지 않으면 스크립트 기본값으로 돌아, 운영자가 HIGH 를 막아 둔 스택에서 새
 // 파이프라인만 HIGH 가 통과한다. 스캔 단계가 없는 파이프라인은 nil 이다.
 func (s *ScanPolicyService) PublishToPipeline(ctx context.Context, pipeline *domain.Pipeline) *ScanPolicyPush {
-	if pipeline == nil || strings.TrimSpace(pipeline.StackID) == "" || !hasImageScanStage(pipeline) {
+	if pipeline == nil || strings.TrimSpace(pipeline.StackID) == "" || !readsScanPolicy(pipeline) {
 		return nil
 	}
 	view, err := s.Get(ctx, pipeline.StackID)
@@ -182,15 +199,26 @@ func (s *ScanPolicyService) publish(
 	return pushes
 }
 
-// hasImageScanStage 는 파이프라인이 스캔 단계를 가졌는지 본다. 단계 기록이 없는
-// 옛 파이프라인은 스캔 단계가 없는 것으로 본다 — 스캔 단계가 생긴 뒤(#254)에
-// 만든 파이프라인은 모두 단계를 기록한다.
-func hasImageScanStage(p *domain.Pipeline) bool {
+// sastStageKey 는 소스 정적 분석 단계다. 이 단계도 스택 정책 변수를 읽는다.
+var sastStageKey = port.StageKey("SAST")
+
+// secretScanStageKey · dependencyScanStageKey 도 스택 정책 변수를 읽는다 — 시크릿 탐지는
+// NULLUS_SECRET_DETECTION(#80), 의존성 스캔은 이미지 스캔과 같은 차단 심각도(#79).
+var (
+	secretScanStageKey     = port.StageKey("SecretScan")
+	dependencyScanStageKey = port.StageKey("DependencyScan")
+)
+
+// readsScanPolicy 는 파이프라인이 스택 정책 변수를 읽는 단계(이미지 스캔·소스 정적
+// 분석)를 가졌는지 본다. 단계 기록이 없는 옛 파이프라인은 없는 것으로 본다 — 스캔
+// 단계가 생긴 뒤(#254)에 만든 파이프라인은 모두 단계를 기록한다.
+func readsScanPolicy(p *domain.Pipeline) bool {
 	if p == nil {
 		return false
 	}
 	for _, s := range p.Stages {
-		if port.StageKey(s) == imageScanStageKey {
+		switch port.StageKey(s) {
+		case imageScanStageKey, sastStageKey, secretScanStageKey, dependencyScanStageKey:
 			return true
 		}
 	}

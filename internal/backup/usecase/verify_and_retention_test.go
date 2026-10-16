@@ -18,7 +18,7 @@ func TestVerify_정상_백업(t *testing.T) {
 	uc := NewBackupUseCase(BackupDeps{
 		Repo: repo, Dumper: &fakeDumper{tr: tr, schema: domain.SchemaState{Version: 74}},
 		KV: &fakeKV{tr: tr}, Scaler: &fakeScaler{tr: tr}, Archiver: &fakeArchiver{tr: tr},
-		Resources: &fakeResources{tr: tr}, Sealer: fakeSealer{}, Store: store,
+		Resources: &fakeResources{tr: tr}, Shared: &fakeShared{tr: tr}, Sealer: fakeSealer{}, Store: store,
 		Targets: DBTargets{
 			Platform: dbTarget(domain.ComponentPlatformDB, "nullus"),
 			Keycloak: dbTarget(domain.ComponentKeycloakDB, "keycloak"),
@@ -43,7 +43,7 @@ func TestVerify_오브젝트가_사라지면_실패(t *testing.T) {
 	uc := NewBackupUseCase(BackupDeps{
 		Repo: repo, Dumper: &fakeDumper{tr: tr}, KV: &fakeKV{tr: tr},
 		Scaler: &fakeScaler{tr: tr}, Archiver: &fakeArchiver{tr: tr},
-		Resources: &fakeResources{tr: tr}, Sealer: fakeSealer{}, Store: store,
+		Resources: &fakeResources{tr: tr}, Shared: &fakeShared{tr: tr}, Sealer: fakeSealer{}, Store: store,
 		Targets: DBTargets{
 			Platform: dbTarget(domain.ComponentPlatformDB, "nullus"),
 			Keycloak: dbTarget(domain.ComponentKeycloakDB, "keycloak"),

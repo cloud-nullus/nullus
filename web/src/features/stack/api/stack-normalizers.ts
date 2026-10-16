@@ -482,6 +482,8 @@ export function toCreateStackBody(req: CreateStackRequest) {
       // 아무도 고르지 않은 스캐너 워크로드가 뜬다.
       security: {
         image_scanner: toBackendTool(sec.imageScanner ?? { tool: '', version: '' }),
+        sast: toBackendTool(sec.sast ?? { tool: '', version: '' }),
+        sca: toBackendTool(sec.sca ?? { tool: '', version: '' }),
       },
       resources: {
         developers: req.resources?.developerCount ?? 0,

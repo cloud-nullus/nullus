@@ -270,7 +270,7 @@ paths:
       operationId: listCicdTemplates
       responses:
         '200':
-          description: CI/CD templates
+          description: CI/CD templates (id 오름차순)
           content:
             application/json:
               schema:
@@ -279,6 +279,103 @@ paths:
                   $ref: '#/components/schemas/CicdTemplate'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [cicd]
+      summary: Create CI/CD template
+      description: >-
+        템플릿을 만든다. id 는 요청 본문에 있어야 하며 같은 id 가 있으면 덮어쓰지 않고 409 다.
+        id·name·app_type·stages(1개 이상)는 필수다.
+      operationId: createCicdTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CicdTemplateRequest'
+      responses:
+        '201':
+          description: Created template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CicdTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /cicd/templates/{id}:
+    get:
+      tags: [cicd]
+      summary: Get CI/CD template by id
+      operationId: getCicdTemplate
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: CI/CD template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CicdTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        'default':
+          $ref: '#/components/responses/Error'
+    put:
+      tags: [cicd]
+      summary: Update CI/CD template
+      description: >-
+        경로의 id 가 대상이다(본문의 id 는 무시). 저장된 템플릿에 요청에 있는 필드만 덧씌운다 —
+        보내지 않은 필드(빌드 설정·설명 등)는 저장된 값을 그대로 두고, 빈 문자열·빈 객체를 보내면 지운다.
+        created_by 는 바꾸지 않는다. 덧씌운 결과가 저장 규칙을 어기면 400 이다.
+      operationId: updateCicdTemplate
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CicdTemplateRequest'
+      responses:
+        '200':
+          description: Updated template (merged)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CicdTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        'default':
+          $ref: '#/components/responses/Error'
+    delete:
+      tags: [cicd]
+      summary: Delete CI/CD template
+      description: >-
+        템플릿을 지운다. 이 템플릿으로 만든 파이프라인은 그대로 남는다(template_id 는 참조 제약이 없다).
+      operationId: deleteCicdTemplate
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '204':
+          description: Template deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         'default':
           $ref: '#/components/responses/Error'
 
@@ -311,6 +408,10 @@ paths:
       tags: [cicd]
       summary: Create pipeline
       operationId: createPipeline
+      description: |
+        stackId 가 있으면 clusterId 는 스택이 설치된 클러스터여야 한다(다르면 400
+        STACK_CLUSTER_MISMATCH, 비우면 스택 클러스터로 채움). 스택의 Argo CD 가
+        자기 클러스터에 배포하기 때문이다.
       requestBody:
         required: true
         content:
@@ -324,6 +425,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Pipeline'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         'default':
@@ -345,6 +448,50 @@ paths:
                 $ref: '#/components/schemas/DeploymentIdResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /cicd/pipelines/{id}/refresh-definition:
+    post:
+      tags: [cicd]
+      summary: Refresh pipeline definition
+      operationId: refreshPipelineDefinition
+      description: |
+        스택에 묶인 기존 파이프라인의 CI 정의 파일(.gitlab-ci.yml · .github/workflows/nullus-ci.yml ·
+        Jenkinsfile)을 플랫폼 기본으로 다시 쓰고 CI 변수(SONAR_TOKEN 등)를 다시 등록한다. 앱 코드 ·
+        Dockerfile · 배포 매니페스트 · Argo CD Application 은 건드리지 않는다. SAST 리포트를 남기기
+        전에 만든 파이프라인에 결과가 붙게 하는 길이다. 사용자가 손본 정의 파일은 덮어쓴다.
+        저장소가 없으면 다시 만들고 전체 스캐폴딩을 쓴다(repository_recreated).
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Definition refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pipeline, stages, warnings, missing_variables, repository_recreated]
+                properties:
+                  pipeline:
+                    $ref: '#/components/schemas/Pipeline'
+                  stages:
+                    type: array
+                    items: { type: string }
+                  warnings:
+                    type: array
+                    items: { type: string }
+                  missing_variables:
+                    type: array
+                    items: { type: string }
+                  repository_recreated:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         'default':
           $ref: '#/components/responses/Error'
 
@@ -398,6 +545,11 @@ paths:
       tags: [cicd]
       summary: Deploy application from template
       operationId: deployApp
+      description: |
+        stackId 가 있으면 생성과 같은 규칙을 따른다 — 없는 스택은 400 STACK_NOT_FOUND,
+        다른 조직의 스택은 403 STACK_ORG_MISMATCH, clusterId 는 스택이 설치된 클러스터여야
+        한다(다르면 400 STACK_CLUSTER_MISMATCH, 비우면 스택 클러스터로 채움). 스택을 읽지
+        못하면 500 STACK_LOOKUP_FAILED. 어느 경우도 적용·기록하지 않는다.
       requestBody:
         required: true
         content:
@@ -806,6 +958,24 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    BadRequest:
+      description: 요청이 저장 규칙을 어긴다 (error.code 예 CICD_TEMPLATE_INVALID)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: 대상이 없다 (error.code 예 CICD_TEMPLATE_NOT_FOUND)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: 같은 식별자가 이미 있다 (error.code 예 CICD_TEMPLATE_ALREADY_EXISTS)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     Error:
       description: Error response
       content:
@@ -816,12 +986,26 @@ components:
   schemas:
     ErrorResponse:
       type: object
-      required: [message]
+      description: 모든 모듈의 오류 본문. 핸들러의 errorResponse 와 shared AppError 가 같은 모양을 낸다.
+      required: [error]
       properties:
-        message:
-          type: string
-        code:
-          type: integer
+        error:
+          type: object
+          required: [code, http_status, message]
+          properties:
+            code:
+              type: string
+              description: 기계가 읽는 오류 코드 (예 CICD_TEMPLATE_NOT_FOUND)
+            http_status:
+              type: integer
+            message:
+              type: string
+            detail:
+              type: string
+            retryable:
+              type: boolean
+            trace_id:
+              type: string
 
     Role:
       type: string
@@ -847,7 +1031,9 @@ components:
       $ref: '#/components/schemas/DeploymentState'
     AppType:
       type: string
-      enum: [web-backend, web-frontend, batch-job]
+      description: >-
+        파이프라인·템플릿의 애플리케이션 유형. pipelines.app_type ENUM 과 같은 세 값만 받는다.
+      enum: [web, backend, batch]
     AppTemplate:
       type: string
       enum: [react-spa, next-app, express-api, spring-boot, python-fastapi]
@@ -1172,6 +1358,10 @@ components:
           $ref: '#/components/schemas/AppType'
         clusterId:
           type: string
+          description: |
+            앱이 실제로 서 있는 클러스터(서버 응답의 deploy_cluster_id). 스택 파이프라인의
+            앱은 스택의 Argo CD 가 스택 클러스터에 올리므로, 저장된 cluster_id 가 다른
+            예전 파이프라인도 스택 클러스터를 가리킨다.
         clusterName:
           type: string
         status:
@@ -1211,20 +1401,77 @@ components:
 
     CicdTemplate:
       type: object
-      required: [id, name, description, appType, stages]
+      description: >-
+        CI/CD 파이프라인 템플릿. 서버 응답은 snake_case 다. 빌드 설정(git_repo_url·dockerfile_path·
+        docker_context·env_vars)과 created_by 는 값이 없으면 생략된다.
+      required: [id, name, description, app_type, stages]
       properties:
         id:
           type: string
+          maxLength: 100
+          example: nullus-sample-backend-v1
         name:
           type: string
+          maxLength: 255
         description:
           type: string
-        appType:
+        app_type:
           $ref: '#/components/schemas/AppType'
         stages:
           type: array
+          minItems: 1
           items:
             type: string
+          example: [Build, SAST, Deploy]
+        git_repo_url:
+          type: string
+        dockerfile_path:
+          type: string
+        docker_context:
+          type: string
+        env_vars:
+          type: object
+          additionalProperties:
+            type: string
+        created_by:
+          type: string
+          description: 화면에서 만든 템플릿의 작성자. 시드 템플릿에는 없다.
+
+    CicdTemplateRequest:
+      type: object
+      description: >-
+        템플릿 생성·수정 본문. 생성에는 id·name·app_type·stages 가 필수다. 수정은 보낸 필드만 덧씌우므로
+        어느 필드도 필수가 아니다 — 생략은 "유지", 빈 값은 "지움"이다.
+      properties:
+        id:
+          type: string
+          maxLength: 100
+          description: 생성 때 필수. 수정 때는 경로의 id 가 쓰이고 본문 값은 무시된다.
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        app_type:
+          $ref: '#/components/schemas/AppType'
+        stages:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        git_repo_url:
+          type: string
+        dockerfile_path:
+          type: string
+        docker_context:
+          type: string
+        env_vars:
+          type: object
+          additionalProperties:
+            type: string
+        created_by:
+          type: string
+          description: 생성 때만 저장된다. 수정 요청의 값은 무시된다.
 
     AppTemplateInfo:
       type: object
@@ -1378,7 +1625,7 @@ components:
 
     CreatePipelineRequest:
       type: object
-      required: [name, appType, clusterId]
+      required: [name, appType]
       properties:
         name:
           type: string
@@ -1386,6 +1633,16 @@ components:
           $ref: '#/components/schemas/AppType'
         clusterId:
           type: string
+          description: |
+            배포 클러스터. stackId 가 없으면 필수다.
+            stackId 가 있으면 스택이 설치된 클러스터여야 한다 — 스택의 Argo CD 는
+            자기 클러스터(kubernetes.default.svc)에만 배포하므로 앱은 늘 그곳에 선다.
+            다르면 400 STACK_CLUSTER_MISMATCH 로 거절하고, 비우면 스택 클러스터로 채운다.
+        stackId:
+          type: string
+          description: |
+            파이프라인을 묶을 스택. 저장소·CI 잡·Argo CD Application 을 이 스택의
+            도구로 만들고, 배포 클러스터는 이 스택의 클러스터로 정해진다.
         templateId:
           type: string
 
@@ -1413,7 +1670,7 @@ components:
 
     DeployAppRequest:
       type: object
-      required: [appName, gitUrl, clusterId, namespace, template, resources, envVars]
+      required: [appName, gitUrl, namespace, template, resources, envVars]
       properties:
         appName:
           type: string
@@ -1421,6 +1678,10 @@ components:
           type: string
         clusterId:
           type: string
+          description: 적용할 클러스터. stackId 가 없으면 필수다. stackId 가 있으면 스택 클러스터여야 하고(다르면 400 STACK_CLUSTER_MISMATCH), 비우면 채운다.
+        stackId:
+          type: string
+          description: 앱을 묶을 스택(관측 주소·접속 주소의 출처).
         namespace:
           type: string
         template:

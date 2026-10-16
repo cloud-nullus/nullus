@@ -24,7 +24,8 @@
     "logout": "Logout",
     "cicdGoldenPath": "Golden Paths",
     "tokenManagement": "Token Management",
-    "backup": "Backup"
+    "backup": "Backup",
+    "notifications": "Notification Channels"
   },
   "common": {
     "save": "Save",
@@ -99,7 +100,9 @@
     "theme": {
       "switchToLight": "Switch to light mode",
       "switchToDark": "Switch to dark mode"
-    }
+    },
+    "feedback": "Feedback",
+    "feedbackHint": "Report a bug or suggest an improvement on GitHub Issues"
   },
   "knownIssuesPage": {
     "breadcrumb": {
@@ -180,7 +183,11 @@
       "traces": "Traces",
       "traceExporter": "Exporter / Agent",
       "imageScanner": "Image Scanner",
-      "imageScannerHint": "Not installed unless selected. Harbor's built-in scanner can serve instead."
+      "imageScannerHint": "Not installed unless selected. Harbor's built-in scanner can serve instead.",
+      "sast": "Static Analysis (SAST)",
+      "sastHint": "Not installed unless selected. Uses the stack's PostgreSQL and signs in with Keycloak when SSO is on.",
+      "sca": "Third-party Dependency Vulnerabilities (SCA)",
+      "scaHint": "Pipelines check the repository's lockfiles against the stack's Trivy server before the build. Selecting it installs the Trivy server even without the image scanner."
     },
     "resourceTotal": {
       "description": "Combined request/limit totals for {{count}} selected OSS"
@@ -361,6 +368,12 @@
       "name": "Name",
       "namePlaceholder": "e.g. Standard Web Backend",
       "description": "Description",
+      "appType": "Application Type",
+      "appTypeOptions": {
+        "web": "Web",
+        "backend": "Backend",
+        "batch": "Batch"
+      },
       "stages": "Capabilities"
     },
     "errors": {
@@ -603,6 +616,14 @@
         "label": "VictoriaMetrics",
         "description": "High-performance time-series database"
       },
+      "trivy": {
+        "label": "Trivy",
+        "description": "Container image vulnerability scanning (server mode)"
+      },
+      "sonarqube": {
+        "label": "SonarQube",
+        "description": "Static source code analysis (Community)"
+      },
       "grafana": {
         "label": "Grafana",
         "description": "Open-source metrics visualization"
@@ -822,6 +843,14 @@
       "irreversible": "This cannot be undone",
       "typeToConfirm": "Type the repository name to confirm: {{path}}",
       "typeToConfirmLabel": "Confirm repository name"
+    },
+    "refreshDefinitionDialog": {
+      "title": "Refresh CI definition",
+      "intro": "Rewrite the CI definition of pipeline \"{{name}}\" with the platform default.",
+      "overwrites": "Overwritten: the stack's pipeline definition file (.gitlab-ci.yml, .github/workflows/nullus-ci.yml or Jenkinsfile) and CI variables such as SONAR_TOKEN. Edits you made to that file are lost.",
+      "keeps": "Left alone: application code, Dockerfile, deploy/ manifests and the Argo CD Application.",
+      "why": "Pipelines created before a stage existed (for example SAST reports) only get it after this refresh.",
+      "confirm": "Refresh definition"
     }
   },
   "cicdListPage": {
@@ -872,6 +901,51 @@
       "dbUpdatedAt": "Vulnerability DB",
       "scannedAt": "Scanned",
       "unknown": "Unknown"
+    },
+    "sast": {
+      "label": "SAST",
+      "title": "Static analysis (SonarQube)",
+      "gate": {
+        "pass": "Quality Gate passed",
+        "warn": "Quality Gate failed (warn)",
+        "block": "Blocked by Quality Gate",
+        "error": "Analysis failed"
+      },
+      "warnHint": "The Quality Gate failed, but the stack policy is set to warn, so the deployment went ahead.",
+      "errorHint": "The analysis could not run (SonarQube unreachable or authentication failed). This is not a code finding.",
+      "failedConditions": "Failed conditions",
+      "failsWhen": "fails when",
+      "metrics": {
+        "vulnerabilities": "Vulnerabilities",
+        "bugs": "Bugs",
+        "securityHotspots": "Security hotspots",
+        "codeSmells": "Code smells",
+        "coverage": "Coverage",
+        "duplications": "Duplications",
+        "ncloc": "Lines of code"
+      },
+      "metricNames": {
+        "new_violations": "New issues",
+        "new_coverage": "Coverage on new code",
+        "new_duplicated_lines_density": "Duplications on new code",
+        "new_security_hotspots_reviewed": "Security hotspots reviewed",
+        "new_reliability_rating": "Reliability rating on new code",
+        "new_security_rating": "Security rating on new code",
+        "new_maintainability_rating": "Maintainability rating on new code"
+      },
+      "metricsUnknown": "Metrics unavailable",
+      "openInSonarQube": "Open in SonarQube",
+      "analyzedAt": "Analyzed"
+    },
+    "refreshDefinition": {
+      "button": "Refresh definition",
+      "busy": "Refreshing…",
+      "doneTitle": "CI definition refreshed",
+      "done": "Stages: {{stages}}. The next run uses the new definition.",
+      "repositoryRecreated": "The repository was missing and has been recreated with a full scaffold — push the application code again.",
+      "missingVariables": "Variables to fill in by hand: {{variables}}",
+      "failedTitle": "CI definition could not be refreshed",
+      "failed": "The CI definition could not be refreshed"
     }
   },
   "cicdHistoryPage": {
@@ -911,7 +985,7 @@
     "alertRules": "Alert Rules",
     "alertRulesDesc": "Alert rule list and management",
     "alertHistory": "Alert History",
-    "alertHistoryDesc": "Alert occurrence history",
+    "alertHistoryDesc": "Critical alerts from each stack's Prometheus (default rules). Firing and resolved alerts also go to your notification channels.",
     "newRule": "New Rule",
     "connectPanel": {
       "title": "Connect Stack Components",
@@ -1129,29 +1203,38 @@
   },
   "alertHistoryPage": {
     "table": {
-      "ruleName": "Rule Name",
+      "alert": "Alert",
+      "stack": "Stack",
+      "target": "Target",
       "severity": "Severity",
       "message": "Message",
       "firedAt": "Fired At",
       "resolvedAt": "Resolved At"
     },
-    "unresolved": "Unresolved",
-    "empty": "No alert history found.",
+    "active": "Active",
+    "empty": "No critical alerts from your stacks. Each stack's Prometheus evaluates the default rules, and firing alerts appear here.",
     "filters": {
-      "allSeverity": "All Severity",
+      "activeOnly": "Active only",
+      "allStates": "All",
       "last24h": "Last 24h",
       "last7d": "Last 7d",
       "last30d": "Last 30d",
-      "all": "All"
+      "all": "All time"
     },
-    "searchPlaceholder": "Search rule name...",
+    "searchPlaceholder": "Search alert, stack, or message...",
     "detail": {
       "title": "Alert Detail",
-      "rule": "Rule",
+      "alert": "Alert",
+      "stack": "Stack",
+      "target": "Target",
       "severity": "Severity",
       "firedAt": "Fired At",
       "resolvedAt": "Resolved At",
-      "message": "Message"
+      "lastNotified": "Last notified",
+      "message": "Message",
+      "description": "Description",
+      "runbook": "Open runbook",
+      "labels": "Labels"
     },
     "selectAlert": "Select an alert to view its detail."
   },
@@ -1478,6 +1561,7 @@
     "form": {
       "stackOptional": "Stack",
       "stackRequired": "Stack 선택",
+      "clusterLockedToStack": "Fixed to the cluster the stack is installed on. The stack's Argo CD deploys the app there.",
       "manualInput": "Manual Input",
       "appName": "App Name",
       "imageRegistry": "Image Registry",
@@ -1975,7 +2059,10 @@
       "mode": "Mode",
       "size": "Size",
       "quiesce": "Downtime",
-      "status": "Status"
+      "status": "Status",
+      "target": "Target",
+      "platform": "Platform",
+      "set": "Set"
     },
     "dialog": {
       "title": "Select backup targets",
@@ -1983,7 +2070,15 @@
       "start": "Start backup",
       "nothingSelected": "Select at least one target.",
       "quiesceWarning": "Including volumes stops the workloads while the backup runs.",
-      "confirmLabel": "Type the namespace to confirm"
+      "confirmLabel": "Type the namespace to confirm",
+      "stackLabel": "Backup target",
+      "platformOnly": "Platform only (no stack)",
+      "platformOnlyHint": "Vault, Kubernetes resources and volumes belong to a stack. Pick a stack to include them.",
+      "allStacks": "Everything — platform + all stacks",
+      "allStacksCount": "{{count}} stacks",
+      "allStacksHint": "One run for the platform and one per stack, tied together as a set — every target, every time. Restore a set from the API with its set ID.",
+      "allStacksWarning": "Every stack's workloads stop in turn while its volumes are backed up.",
+      "allConfirmLabel": "Type the word to confirm"
     },
     "target": {
       "platformDb": "Platform DB",
@@ -1994,6 +2089,8 @@
       "openbaoKvDesc": "Tokens and credentials. Without it the tools cannot authenticate to each other",
       "nsResources": "Kubernetes resources",
       "nsResourcesDesc": "Wiring and configuration — Deployments, Secrets, CRDs, Argo CD Applications",
+      "sharedResources": "Shared cluster resources",
+      "sharedResourcesDesc": "What deleting the last stack reclaims — Gateway CRDs, GatewayClass, the internal CA. Restored first, and only when missing",
       "volume": "Volumes",
       "volumeDesc": "Data inside the tools — Git repos, build history, container images. The largest, and the only one that stops the service"
     }
@@ -2029,5 +2126,98 @@
       "cancelled": "Cancelled",
       "rolled_back": "Rolled back"
     }
+  },
+  "notificationsPage": {
+    "title": "Notification Channels",
+    "breadcrumb": "Notification Channels",
+    "description": "Send platform events such as backup failures to Telegram, email or Slack.",
+    "add": "Add channel",
+    "empty": "No channels yet. Add one to receive backup failure alerts.",
+    "saved": "Channel saved.",
+    "deleted": "Channel deleted.",
+    "testSent": "Test message sent to {{name}}.",
+    "testFailed": "Test to {{name}} failed: {{error}}",
+    "table": {
+      "name": "Name",
+      "type": "Type",
+      "target": "Delivers to",
+      "events": "Events",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "active": "On",
+      "inactive": "Off"
+    },
+    "actions": {
+      "test": "Send test",
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "types": {
+      "telegram": "Telegram",
+      "email": "Email (SMTP)",
+      "slack": "Slack"
+    },
+    "events": {
+      "backup_failed": "Backup failed",
+      "backup_partial": "Backup partially succeeded",
+      "backup_succeeded": "Backup succeeded",
+      "test": "Test",
+      "alert_fired": "Stack alert fired",
+      "alert_resolved": "Stack alert resolved"
+    },
+    "result": {
+      "sent": "Sent",
+      "failed": "Failed"
+    },
+    "history": {
+      "title": "Recent deliveries",
+      "empty": "Nothing sent yet.",
+      "time": "Time",
+      "channel": "Channel",
+      "event": "Event",
+      "message": "Message",
+      "result": "Result",
+      "attempts": "Attempts"
+    },
+    "confirmDelete": {
+      "title": "Delete channel",
+      "description": "Delete {{name}}? It stops receiving alerts. Its delivery history is kept."
+    },
+    "dialog": {
+      "createTitle": "Add notification channel",
+      "editTitle": "Edit notification channel"
+    },
+    "form": {
+      "name": "Name",
+      "type": "Channel type",
+      "save": "Save",
+      "botToken": "Bot token",
+      "botTokenHint": "Issued by @BotFather, shaped like 123456789:AA…",
+      "chatId": "Chat ID",
+      "chatIdHint": "Groups use negative IDs (-100…); public channels can use @name. Add the bot to the chat first.",
+      "webhookUrl": "Incoming Webhook URL",
+      "webhookHint": "Create it under your Slack app's Incoming Webhooks. The URL itself is a credential.",
+      "smtpHost": "SMTP server",
+      "smtpPort": "Port",
+      "smtpSecurity": "Security",
+      "security": {
+        "starttls": "STARTTLS",
+        "tls": "TLS",
+        "none": "None (relay only)"
+      },
+      "username": "Username (optional)",
+      "password": "Password",
+      "from": "From",
+      "to": "To",
+      "toHint": "Separate addresses with commas or new lines (up to 20).",
+      "events": "Events to receive",
+      "active": "Enabled",
+      "secretKeep": "Saved ({{hint}}). Leave blank to keep it.",
+      "secretKeepNoHint": "Saved. Leave blank to keep it.",
+      "passwordAgain": "You changed the server or account, so enter the password again."
+    },
+    "secretUnreadable": "Stored secret cannot be read (ENCRYPTION_KEY changed?). Edit the channel and enter it again."
   }
 }

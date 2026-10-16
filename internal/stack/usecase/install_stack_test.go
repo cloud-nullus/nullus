@@ -143,6 +143,10 @@ func (s *fakeStreamer) Subscribe(_ string) <-chan port.LogEntry {
 
 func (s *fakeStreamer) Unsubscribe(_ string, _ <-chan port.LogEntry) {}
 
+func (s *fakeStreamer) Tail(_ context.Context, _ string, _ int) ([]port.LogEntry, error) {
+	return nil, nil
+}
+
 func (s *fakeStreamer) steps() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -899,6 +903,19 @@ func indexOfStep(steps []string, target string) int {
 
 func (r *fakeStackRepo) ListInFlight(context.Context) ([]*domain.Stack, error) {
 	return nil, nil
+}
+
+func (r *fakeStackRepo) ListByCluster(_ context.Context, clusterID string) ([]*domain.Stack, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*domain.Stack, 0, len(r.stacks))
+	for _, stack := range r.stacks {
+		if stack.DeletedAt == nil && stack.ClusterID == clusterID {
+			cp := *stack
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
 }
 
 // 리퍼는 갱신 시각만 보고 끊긴 설치를 판정한다. 그런데 갱신 시각은 단계가

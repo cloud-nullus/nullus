@@ -32,6 +32,33 @@ const (
 	UnreachableAllow UnreachableAction = "allow"
 )
 
+// SASTGateAction 은 소스 정적 분석의 Quality Gate 가 실패했을 때의 동작이다.
+type SASTGateAction string
+
+const (
+	// SASTGateBlock 은 멈춘다. 기본값이다 — 이미지 스캔과 같다.
+	SASTGateBlock SASTGateAction = "block"
+	// SASTGateWarn 은 실패를 기록만 하고 통과시킨다. Quality Gate 를 막 도입한 팀이
+	// 기존 코드의 문제로 배포가 멈추지 않게 하는 길이다.
+	SASTGateWarn SASTGateAction = "warn"
+)
+
+// SecretDetectionAction 은 시크릿 탐지 단계(gitleaks)가 시크릿을 찾았을 때의 동작이다(nullus-plan#80).
+//
+// 이미지 스캔·SAST 와 달리 "끄기" 가 있다 — 스택에 설치하는 것이 없어 단계가 모든 파이프라인에
+// 렌더되므로, 끄는 길은 정책이어야 한다. 끄면 단계는 돌되 바로 통과한다.
+type SecretDetectionAction string
+
+const (
+	// SecretDetectionBlock 은 멈춘다. 기본값이다 — 시크릿이 든 소스로 이미지를 만들어 올리는 것부터 막는다.
+	SecretDetectionBlock SecretDetectionAction = "block"
+	// SecretDetectionWarn 은 기록만 남기고 통과시킨다. 이력에 남은 옛 시크릿을 정리하는 동안의 길이다 —
+	// 탐지 메시지의 폐기·회전 안내는 그대로 나온다.
+	SecretDetectionWarn SecretDetectionAction = "warn"
+	// SecretDetectionOff 는 탐지를 건너뛴다. 조직이 다른 수단(SCM push protection)으로 막을 때.
+	SecretDetectionOff SecretDetectionAction = "off"
+)
+
 // ErrInvalidScanPolicy 는 정책 값이 허용 범위를 벗어났을 때의 오류다.
 var ErrInvalidScanPolicy = errors.New("스캔 정책이 올바르지 않습니다")
 
@@ -50,7 +77,35 @@ func (p ScanPolicy) Validate() error {
 		return fmt.Errorf("%w: 스캐너 장애 시 동작 %q 는 block·allow 중 하나여야 합니다",
 			ErrInvalidScanPolicy, p.OnScannerUnreachable)
 	}
+	switch p.SASTOnGateFailure {
+	case "", SASTGateBlock, SASTGateWarn:
+	default:
+		return fmt.Errorf("%w: Quality Gate 실패 시 동작 %q 는 block·warn 중 하나여야 합니다",
+			ErrInvalidScanPolicy, p.SASTOnGateFailure)
+	}
+	switch p.SecretDetection {
+	case "", SecretDetectionBlock, SecretDetectionWarn, SecretDetectionOff:
+	default:
+		return fmt.Errorf("%w: 시크릿 탐지 동작 %q 는 block·warn·off 중 하나여야 합니다",
+			ErrInvalidScanPolicy, p.SecretDetection)
+	}
 	return nil
+}
+
+// SecretDetectionOrDefault 는 비어 있으면 기본값(block)이다 — 이 필드를 모르는 옛 클라이언트·저장 행.
+func (p ScanPolicy) SecretDetectionOrDefault() SecretDetectionAction {
+	if p.SecretDetection == "" {
+		return SecretDetectionBlock
+	}
+	return p.SecretDetection
+}
+
+// SASTGateActionOrDefault 는 비어 있으면 기본값(block)이다.
+func (p ScanPolicy) SASTGateActionOrDefault() SASTGateAction {
+	if p.SASTOnGateFailure == "" {
+		return SASTGateBlock
+	}
+	return p.SASTOnGateFailure
 }
 
 // TrivySeverities 는 게이트 명령의 --severity 값이다.

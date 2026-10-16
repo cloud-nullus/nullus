@@ -144,6 +144,8 @@ export function buildInstallOverridesFromTemplate(template: StackTemplate): Part
     // 남거나, 템플릿에 넣은 스캐너가 설치에서 빠진다.
     security: {
       imageScanner: { tool: '', version: '' },
+      sast: { tool: '', version: '' },
+      sca: { tool: '', version: '' },
     },
   }
 
@@ -203,6 +205,12 @@ export function buildInstallOverridesFromTemplate(template: StackTemplate): Part
         break
       case 'image_scanner':
         apply('security', 'imageScanner', tool.name, tool.app_version)
+        break
+      case 'sast':
+        apply('security', 'sast', tool.name, tool.app_version)
+        break
+      case 'sca':
+        apply('security', 'sca', tool.name, tool.app_version)
         break
       default:
         break

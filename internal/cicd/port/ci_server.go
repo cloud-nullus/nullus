@@ -71,7 +71,9 @@ type CIBuild struct {
 	// ID 는 CI API 가 실행을 가리키는 식별자다(GitLab pipeline id, GitHub run id).
 	// 번호와 다를 수 있고, 산출물 조회는 이것으로 한다.
 	ID string
-	// Result 는 CI 가 보고한 결과다(SUCCESS/FAILURE/ABORTED). 실행 중이면 빈 값이다.
+	// Result 는 CI 가 보고한 결과다(SUCCESS/FAILURE/ABORTED/SKIPPED). 실행 중이면 빈 값이다.
+	// SKIPPED(Jenkins 는 NOT_BUILT)는 실행이 아니다 — 아무 잡도 돌지 않은 빈 파이프라인이라
+	// 동기화가 실행 기록으로 남기지 않는다.
 	Result   string
 	Building bool
 	// StartedAt 은 빌드 시작 시각, Duration 은 실행 시간이다.
@@ -87,8 +89,11 @@ type CIBuild struct {
 //
 // webhook 은 커밋이 있을 때만 돈다. 사용자가 화면에서 "배포 실행" 을 누르는
 // 것은 커밋 없이 지금 실행하겠다는 뜻이라, 트리거가 따로 필요하다.
+//
+// 돌려주는 주소는 사람이 열어 볼 실행 주소다. 플랫폼마다 모양이 다르므로(Jenkins 는
+// /job/…, GitLab 은 /-/pipelines/…) 호출부가 지어내지 않고 트리거가 준다. 모르면 빈 값이다.
 type CIBuildTrigger interface {
-	TriggerBuild(ctx context.Context, jobName, branch string) error
+	TriggerBuild(ctx context.Context, jobName, branch string) (runURL string, err error)
 }
 
 // CIBuildReader 는 CI 서버에서 빌드 이력을 읽는다.
@@ -107,6 +112,23 @@ const (
 	ImageScanReportArtifact = "trivy-report"
 	// ImageScanReportFile 은 리포트 파일 경로다.
 	ImageScanReportFile = "trivy-report.json"
+)
+
+// 소스 정적 분석 리포트 산출물의 이름이다. 이미지 스캔 리포트와 같은 규칙이다 —
+// 스캐폴딩이 남기고 실행 기록 동기화가 같은 이름으로 읽는다.
+const (
+	// SASTReportArtifact 는 GitHub upload-artifact 의 묶음 이름이다.
+	SASTReportArtifact = "sast-report"
+	// SASTReportFile 은 리포트 파일 경로다.
+	SASTReportFile = "sast-report.json"
+	// SecretScanReportArtifact 는 시크릿 탐지 리포트(gitleaks JSON)의 GitHub upload-artifact 묶음 이름이다.
+	SecretScanReportArtifact = "secret-scan-report"
+	// SecretScanReportFile 은 리포트 파일 경로다. 비밀값은 --redact 로 가려져 있다.
+	SecretScanReportFile = "gitleaks-report.json"
+	// DependencyScanReportArtifact 는 의존성 스캔 리포트(trivy fs JSON)의 GitHub upload-artifact 묶음 이름이다.
+	DependencyScanReportArtifact = "dependency-scan-report"
+	// DependencyScanReportFile 은 리포트 파일 경로다.
+	DependencyScanReportFile = "dependency-scan-report.json"
 )
 
 // MaxCIArtifactBytes 는 산출물 파일 하나를 읽을 때의 상한이다.

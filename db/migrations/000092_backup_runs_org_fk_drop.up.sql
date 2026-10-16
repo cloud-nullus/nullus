@@ -1,0 +1,13 @@
+-- backup_runs.org_id 의 FK(000091)를 거둔다.
+--
+-- 복구는 백업 이력(backup_runs·backup_artifacts·restore_runs)을 보존한 채 나머지 플랫폼 테이블을
+-- pg_restore --clean 으로 백업 시점으로 되돌린다. 그런데 이력 테이블이 플랫폼 테이블을 FK 로 참조하면
+-- --clean 이 그 테이블의 PK 를 지우는 순간 "cannot drop constraint organizations_pkey … backup_runs_org_id_fkey
+-- depends on" 으로 복구 전체가 멈춘다 — 2026-10-12 실환경 리허설(마지막 스택 삭제 뒤 full 복구)에서
+-- 플랫폼 DB 단계가 그렇게 죽었다(백업복구 설계 §10.2.3).
+--
+-- 원칙: 백업 이력 테이블은 플랫폼 테이블을 FK 로 참조하지 않는다. 이력은 복구를 가로질러 살아남아야
+-- 하는 유일한 테이블이고, 복구가 되돌리는 쪽과 묶이면 그 복구를 막는다. 조직 검증은 요청 시점에
+-- 애플리케이션이 한다(backup handler 의 OrganizationChecker — 없는 조직은 400). 000091 이 고아 행을
+-- 시드 조직으로 옮긴 것은 그대로 둔다.
+ALTER TABLE backup_runs DROP CONSTRAINT IF EXISTS backup_runs_org_id_fkey;

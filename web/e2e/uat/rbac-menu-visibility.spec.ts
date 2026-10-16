@@ -42,9 +42,11 @@ test.describe('RBAC Menu Visibility', () => {
     await expect(page.locator('aside a[href="/cicd/history"]').first()).toBeVisible({ timeout: 5000 })
   })
 
-  test('DevOps: 알림 규칙 메뉴 표시', async ({ page }) => {
+  // 알림 규칙은 평가되지 않아 메뉴에서 뺐다(nullus-plan#87). 알림 이력(스택 경보)은 보인다.
+  test('DevOps: 알림 이력 메뉴 표시 · 알림 규칙 메뉴 없음', async ({ page }) => {
     await loginAs(page, 'devops')
-    await expect(page.locator('aside a[href="/observability/alerts"]').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('aside a[href="/observability/alert-history"]').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('aside a[href="/observability/alerts"]')).toHaveCount(0)
   })
 
   test('Developer: 알림 규칙 메뉴 숨김', async ({ page }) => {

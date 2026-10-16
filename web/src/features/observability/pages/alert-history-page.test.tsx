@@ -1,17 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { fireEvent, screen } from '@testing-library/react'
-import { renderWithProviders, selectOption } from '../../../__tests__/test-utils'
+import '@testing-library/jest-dom/vitest'
+import { fireEvent, screen, within } from '@testing-library/react'
+import { renderWithProviders } from '../../../__tests__/test-utils'
 import { AlertHistoryPage } from './alert-history-page'
 
-const mockUseAlertHistory = vi.hoisted(() => vi.fn())
+const mockUseStackAlerts = vi.hoisted(() => vi.fn())
 const mockUseClusterStackFilterState = vi.hoisted(() => vi.fn())
 
 vi.mock('../api/observability-api', async () => {
   const actual = await vi.importActual('../api/observability-api')
-  return {
-    ...actual,
-    useAlertHistory: mockUseAlertHistory,
-  }
+  return { ...actual, useStackAlerts: mockUseStackAlerts }
 })
 
 vi.mock('../components/cluster-stack-filter', () => ({
@@ -19,7 +17,34 @@ vi.mock('../components/cluster-stack-filter', () => ({
   ClusterStackFilter: () => <div>ClusterStackFilter</div>,
 }))
 
-describe('AlertHistoryPage', () => {
+const recent = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+
+const active = {
+  id: 'a1',
+  stack_id: 'stk_1',
+  stack_name: 'gitlab-sca',
+  alertname: 'KubePodNotReady',
+  severity: 'critical',
+  summary: 'Pod has been in a non-ready state for more than 15 minutes.',
+  description: 'Pod nullus-gitlab/gitlab-webservice-0 has been in a non-ready state.',
+  runbook_url: 'https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodnotready',
+  target: 'nullus-gitlab/gitlab-webservice-0',
+  labels: { namespace: 'nullus-gitlab', pod: 'gitlab-webservice-0' },
+  started_at: recent,
+  last_notified_at: recent,
+  active: true,
+}
+const resolved = {
+  ...active,
+  id: 'a2',
+  alertname: 'NodeFilesystemAlmostOutOfSpace',
+  summary: 'Filesystem has less than 3% space left.',
+  target: '10.0.0.1:9100',
+  resolved_at: recent,
+  active: false,
+}
+
+describe('AlertHistoryPage (스택 경보)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockUseClusterStackFilterState.mockReturnValue({
@@ -28,88 +53,64 @@ describe('AlertHistoryPage', () => {
       selectedCluster: undefined,
       selectedStack: undefined,
     })
-    mockUseAlertHistory.mockReturnValue({ data: { items: [], total: 0 } })
+    mockUseStackAlerts.mockReturnValue({ data: [active, resolved] })
   })
 
-  it('renders page title without crashing', () => {
+  it('shows stack alerts with stack, target, and active/resolved state', () => {
     renderWithProviders(<AlertHistoryPage />)
-    expect(screen.getByRole('heading', { level: 1, name: 'Alert History' })).not.toBeNull()
+    expect(screen.getByRole('heading', { level: 1, name: 'Alert History' })).toBeInTheDocument()
+
+    const row = screen.getByText('KubePodNotReady').closest('tr') as HTMLElement
+    expect(within(row).getByText('gitlab-sca')).toBeInTheDocument()
+    expect(within(row).getByText('nullus-gitlab/gitlab-webservice-0')).toBeInTheDocument()
+    expect(within(row).getByText('Active')).toBeInTheDocument()
+
+    const resolvedRow = screen.getByText('NodeFilesystemAlmostOutOfSpace').closest('tr') as HTMLElement
+    expect(within(resolvedRow).queryByText('Active')).not.toBeInTheDocument()
   })
 
-  it('shows stable loading-state UI while history is not loaded yet', () => {
-    mockUseAlertHistory.mockReturnValue({ data: undefined })
-
+  it('asks for every alert by default and only active ones when filtered', () => {
     renderWithProviders(<AlertHistoryPage />)
-
-    expect(screen.getByRole('heading', { level: 1, name: 'Alert History' })).not.toBeNull()
-    expect(screen.queryByText('No alert history found.')).not.toBeNull()
+    expect(mockUseStackAlerts).toHaveBeenLastCalledWith('all')
+    fireEvent.click(screen.getByRole('button', { name: 'Active only' }))
+    expect(mockUseStackAlerts).toHaveBeenLastCalledWith('open')
   })
 
-  it('renders history rows when hook returns data', () => {
-    mockUseAlertHistory.mockReturnValue({
-      data: {
-        items: [
-          {
-            id: 'hist-1',
-            ruleName: 'High CPU',
-            severity: 'critical',
-            message: 'CPU usage exceeded threshold',
-            firedAt: '2099-01-01T00:00:00Z',
-            resolvedAt: null,
-          },
-        ],
-        total: 1,
-      },
+  it('shows detail with description, runbook and labels', () => {
+    renderWithProviders(<AlertHistoryPage />)
+    fireEvent.click(screen.getByText('KubePodNotReady'))
+    expect(screen.getByText('Alert Detail')).toBeInTheDocument()
+    expect(screen.getByText(/has been in a non-ready state\./)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /runbook/i })).toHaveAttribute('href', active.runbook_url)
+    expect(screen.getByText('pod=gitlab-webservice-0')).toBeInTheDocument()
+  })
+
+  it('filters by search text over alert, stack and summary', () => {
+    renderWithProviders(<AlertHistoryPage />)
+    fireEvent.change(screen.getByPlaceholderText('Search alert, stack, or message...'), {
+      target: { value: 'filesystem' },
     })
-
-    renderWithProviders(<AlertHistoryPage />)
-
-    expect(screen.queryByText('High CPU')).not.toBeNull()
-    expect(screen.queryByText('CPU usage exceeded threshold')).not.toBeNull()
-    expect(screen.queryByText('Unresolved')).not.toBeNull()
+    expect(screen.queryByText('KubePodNotReady')).not.toBeInTheDocument()
+    expect(screen.getByText('NodeFilesystemAlmostOutOfSpace')).toBeInTheDocument()
   })
 
-  it('shows empty state when there is no history', () => {
-    mockUseAlertHistory.mockReturnValue({ data: { items: [], total: 0 } })
-
-    renderWithProviders(<AlertHistoryPage />)
-
-    expect(screen.queryByText('No alert history found.')).not.toBeNull()
-  })
-
-  it('passes selected severity filter to API hook', () => {
-    renderWithProviders(<AlertHistoryPage />)
-
-    selectOption(screen.getByRole('combobox'), 'Warning')
-
-    expect(mockUseAlertHistory).toHaveBeenLastCalledWith({ severity: 'warning' })
-  })
-
-  it('shows alert detail when row is expanded', () => {
-    mockUseAlertHistory.mockReturnValue({
-      data: {
-        items: [
-          {
-            id: 'hist-1',
-            ruleName: 'Disk Full',
-            severity: 'warning',
-            message: 'Disk usage exceeded threshold',
-            firedAt: '2099-01-01T00:00:00Z',
-            resolvedAt: null,
-          },
-        ],
-        total: 1,
-      },
+  // 기간은 "그 기간에 걸쳐 있었는지" 로 본다 — 8일 전에 시작해 아직 진행 중인 경보가 7일 보기에서 숨으면 안 된다.
+  it('keeps long-running active alerts in the default 7-day view', () => {
+    const old = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
+    mockUseStackAlerts.mockReturnValue({
+      data: [
+        { ...active, id: 'old-active', alertname: 'LongRunningActive', started_at: old },
+        { ...resolved, id: 'old-resolved', alertname: 'LongAgoResolved', started_at: old, resolved_at: old },
+      ],
     })
-
     renderWithProviders(<AlertHistoryPage />)
+    expect(screen.getByText('LongRunningActive')).toBeInTheDocument()
+    expect(screen.queryByText('LongAgoResolved')).not.toBeInTheDocument()
+  })
 
-    const rows = screen.getAllByRole('row')
-    const firstDataRow = rows[1]
-    const expandButton = firstDataRow?.querySelector('button')
-    expect(expandButton).not.toBeNull()
-    fireEvent.click(expandButton!)
-    expect(screen.queryByText('Alert Detail')).not.toBeNull()
-    expect(screen.queryAllByText('Disk usage exceeded threshold').length).toBeGreaterThan(0)
+  it('shows an empty state that explains where alerts come from', () => {
+    mockUseStackAlerts.mockReturnValue({ data: [] })
+    renderWithProviders(<AlertHistoryPage />)
+    expect(screen.getByText(/No critical alerts from your stacks/)).toBeInTheDocument()
   })
 })

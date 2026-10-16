@@ -123,10 +123,14 @@ func (r *PostgresAlertRuleRepository) List(ctx context.Context) ([]*domain.Alert
 	return rules, rows.Err()
 }
 
+// Update 는 알림 규칙을 고친다.
+//
+// alert_rules 에는 updated_at 이 없다(000003·000032). 예전 쿼리가 그 열을 써서 수정이 매번
+// "column updated_at does not exist" 로 실패했다 — 통합 테스트가 CI 에서 돌지 않아 드러나지 않았다.
 func (r *PostgresAlertRuleRepository) Update(ctx context.Context, rule *domain.AlertRule) error {
 	const q = `
 		UPDATE alert_rules
-		SET name = $1, condition = $2, threshold = $3, warning_threshold = $4, critical_threshold = $5, channel = $6, enabled = $7, updated_at = NOW()
+		SET name = $1, condition = $2, threshold = $3, warning_threshold = $4, critical_threshold = $5, channel = $6, enabled = $7
 		WHERE id = $8`
 
 	result, err := r.pool.Exec(ctx, q,

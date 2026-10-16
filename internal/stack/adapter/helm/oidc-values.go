@@ -167,6 +167,9 @@ requestedScopes:
 			},
 		}
 
+	case "installing_sonarqube":
+		return o.sonarQubeSAMLValues(clientID, issuer)
+
 	case "installing_minio":
 		return map[string]any{
 			"oidc": map[string]any{

@@ -51,6 +51,8 @@ const SLOT_BY_CATEGORY: Record<string, string> = {
   trace_layer: "traceLayer",
   agent: "traceExporter",
   image_scanner: "imageScanner",
+  sast: "sast",
+  sca: "sca",
   authentication: "authentication",
 };
 

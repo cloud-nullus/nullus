@@ -15,6 +15,7 @@ import (
 )
 
 type fakeReleaseManager struct {
+	kubeconfig   string
 	releases     []port.ReleaseInfo
 	values       map[string]map[string]any
 	upgrades     []port.HelmUpgradeRequest

@@ -45,7 +45,6 @@ const SCREENS: { name: string; path: string }[] = [
   { name: 'cicd-history', path: '/cicd/history' },
   { name: 'cicd-pipeline-logs', path: '/cicd/pipelines/1/logs' },
   { name: 'observability-monitoring', path: '/observability/monitoring' },
-  { name: 'observability-alert-rules', path: '/observability/alert-rules' },
   { name: 'observability-alert-history', path: '/observability/alert-history' },
   { name: 'admin-organization', path: '/admin/organization' },
   { name: 'admin-users', path: '/admin/users' },

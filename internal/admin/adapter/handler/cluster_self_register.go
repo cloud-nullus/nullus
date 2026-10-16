@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -46,8 +47,12 @@ func (h *ClusterHandler) SelfRegisterCluster(c echo.Context) error {
 
 	ctx := c.Request().Context()
 
-	// 이미 등록되어 있으면 그대로 돌려준다.
+	// 이미 등록되어 있으면 그대로 돌려준다. 아키텍처를 모르는 채 등록된 클러스터(탐색이
+	// 실패했거나 이 경로가 탐색을 하지 않던 때 등록된 것)는 여기서 다시 탐색한다.
 	if existing, err := h.findSelfCluster(c, orgID, name); err == nil && existing != nil {
+		if len(existing.NodeArchitectures) == 0 {
+			existing = h.discoverSelfCluster(c, existing)
+		}
 		return c.JSON(http.StatusOK, toClusterResponse(existing, ""))
 	}
 
@@ -79,8 +84,30 @@ func (h *ClusterHandler) SelfRegisterCluster(c echo.Context) error {
 	if err := h.clusterUC.SaveKubeconfig(ctx, cluster.ID, []byte(encrypted)); err != nil {
 		return err
 	}
+	cluster = h.discoverSelfCluster(c, cluster)
 
 	return c.JSON(http.StatusCreated, toClusterResponse(cluster, ""))
+}
+
+// discoverSelfCluster 는 노드 아키텍처를 탐색해 저장한다.
+//
+// 업로드 등록은 탐색을 하는데 셀프 등록만 하지 않았다. node_architectures 가 비면
+// Pre-Deploy Gate 는 CLUSTER_ARCH_UNKNOWN warn 만 내고, 무인 설치(29)는 warn 에
+// 동의하고 진행한다 — DGX Spark(arm64)에서 amd64 전용 Harbor 가 그렇게 게이트를
+// 지나갔다(#270).
+//
+// 실패해도 등록은 유지한다(업로드 경로와 같은 정책). 설치 직전 사전검사가 노드를
+// 직접 읽으므로 여기서 막을 이유는 없다.
+func (h *ClusterHandler) discoverSelfCluster(c echo.Context, cluster *domain.Cluster) *domain.Cluster {
+	refreshed, err := h.clusterUC.RefreshDiscovery(c.Request().Context(), cluster.ID)
+	if err != nil {
+		slog.Warn("self cluster discovery failed", "cluster_id", cluster.ID, "error", err)
+	}
+	// 실패해도 RefreshDiscovery 는 connection_failed 로 저장한 클러스터를 돌려준다.
+	if refreshed == nil {
+		return cluster
+	}
+	return refreshed
 }
 
 // findSelfCluster 는 같은 조직에 이미 등록된 self 클러스터를 찾는다.

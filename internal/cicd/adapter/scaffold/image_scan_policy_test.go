@@ -40,7 +40,7 @@ exit 99
 `
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "trivy"), []byte(fake), 0o755))
 
-	cmd := exec.Command("sh", "-c", "set -eu\n"+strings.Join(scanScriptLines(), "\n"))
+	cmd := exec.Command("bash", "-c", "set -euo pipefail\n"+strings.Join(scanScriptLines(), "\n"))
 	cmd.Env = []string{
 		"PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"IMAGE_REPOSITORY=registry.local/shop/api",

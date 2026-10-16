@@ -121,7 +121,7 @@ export const TOUR_STEPS: TourStep[] = [
 
   // ── 6. 돌아가는 것 지켜보기 ─────────────────────────────
   { id: 'observe', route: '/observability/monitoring', target: '[data-tour="monitoring"]', placement: 'bottom' },
-  { id: 'alertRules', route: '/observability/alerts', target: '[data-tour="alert-rule-new"]', roles: INSTALLER, placement: 'bottom' },
+  // 알림 규칙 단계는 뺐다 — 규칙이 평가되지 않아 화면을 숨겼다(nullus-plan#87). 스택 경보는 알림 이력에 보인다.
 
   // ── 마무리 ──────────────────────────────────────────────
   //

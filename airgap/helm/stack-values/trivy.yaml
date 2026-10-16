@@ -18,7 +18,13 @@
 #
 #   oras copy ghcr.io/aquasecurity/trivy-db:2 <내부레지스트리>/aquasecurity/trivy-db:2
 #
-# 그 뒤 아래 dbRepository 를 미러 경로로 바꾼다.
+# 그 뒤 아래 dbRepository 를 미러 경로로 바꾼다. **클러스터 안에서 부르는 이름**이어야
+# 한다 — 호스트의 localhost:5001 은 파드 안에서 파드 자신이라 DB 를 받지 못한다.
+# values-airgap.yaml 의 config.helm.ociRegistry 와 같은 호스트(kind-registry:5000)를 쓴다.
+# 내부 레지스트리는 plain HTTP 라 TRIVY_INSECURE 를 켠다.
+#
+# API 로 설치하는 스택(29-install-stacks-via-api.sh)은 이 파일을 읽지 않는다 — API 가
+# 에어갭 모드(NULLUS_HELM_OCI_REGISTRY)에서 같은 값을 넣는다(trivyAirgapDBValues).
 # skipDBUpdate 는 켜지 않는다 — 켜면 미러를 갱신해도 서버가 옛 DB 를 계속 쓴다.
 #
 # 에어갭에서 DB 는 사람이 가져다 넣는 만큼만 새것이다. 번들 릴리스마다
@@ -32,8 +38,10 @@ image:
 
 trivy:
   # 내부 미러. 에어갭이 아니면 ghcr.io/aquasecurity/trivy-db 를 그대로 쓴다.
-  dbRepository: localhost:5001/aquasecurity/trivy-db
+  dbRepository: kind-registry:5000/aquasecurity/trivy-db
   skipDBUpdate: false
+  extraEnvVars:
+    TRIVY_INSECURE: "true"
 
 service:
   type: ClusterIP

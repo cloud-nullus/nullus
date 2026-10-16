@@ -59,7 +59,7 @@ export const TOOL_VERSION_CATALOG: Record<string, ToolVersionCatalogEntry> = {
   // Jenkins 차트는 임의로 내릴 수 없다 — Gitea multibranch 스캔에 쓰는 gitea
   // 플러그인이 Jenkins 2.528.3 이상을 요구한다.
   // (백엔드 단일 출처: internal/stack/domain/connection.go)
-  jenkins: { appVersion: '2.568.2', chartVersion: '5.9.54' },
+  jenkins: { appVersion: '2.568.3', chartVersion: '5.9.54' },
   flux: { appVersion: 'v2.3.0', chartVersion: '2.13.0' },
   spinnaker: { appVersion: '1.33.0', chartVersion: '2.32.1' },
   thanos: { appVersion: '0.36.1', chartVersion: '15.7.1' },
@@ -73,6 +73,9 @@ export const TOOL_VERSION_CATALOG: Record<string, ToolVersionCatalogEntry> = {
   // 설치 경로의 분기(helm-values.go 의 resolveChartSpecForStep)에만 있다.
   // 아래 테스트가 못 잡는 값이므로 그쪽을 고칠 때 여기도 함께 본다.
   loki: { appVersion: '2.9.8', chartVersion: '2.10.3' },
+  // 보안 슬롯. 없으면 고른 버전이 '1.0.0' 으로 보이고 템플릿 편집기 기본값도 그렇게 들어간다.
+  trivy: { appVersion: '0.74.0', chartVersion: '0.26.0' },
+  sonarqube: { appVersion: '26.9.0.129388', chartVersion: '2026.5.1002' },
 }
 
 export function getToolAppVersion(toolId: string): string {
@@ -197,6 +200,11 @@ export interface SourceControlDraft {
 // 이미지 스캐너는 선택이다. 기본값은 "고르지 않음" 이라 아무것도 설치되지 않는다.
 export interface SecurityConfig {
   imageScanner: ToolSelection
+  // 소스 정적 분석(SonarQube). 이미지 스캐너와 같은 선택 슬롯이다.
+  sast: ToolSelection
+  // 서드파티 의존성 취약점 스캔(SCA, nullus-plan#79). 선택지는 Trivy 하나 — 따로 설치하는 것이 없고
+  // 파이프라인이 스택 Trivy 서버에 붙는다. 이것만 골라도 Trivy 서버가 선다.
+  sca: ToolSelection
 }
 
 export interface StackConfigDraft {
@@ -289,6 +297,8 @@ const DEFAULT_DRAFT: StackConfigDraft = {
   // 스캐너 파드를 떠안는다 — 레지스트리가 Harbor 면 내장 스캐너로 충분하다.
   security: {
     imageScanner: emptyToolSelection(),
+    sast: emptyToolSelection(),
+    sca: emptyToolSelection(),
   },
   resources: {
     developerCount: 10,
@@ -363,6 +373,8 @@ function buildTemplateDraft(templateId: string, overrides?: Partial<StackConfigD
         },
         security: {
           imageScanner: emptyToolSelection(),
+          sast: emptyToolSelection(),
+          sca: emptyToolSelection(),
         },
         storage: {
           ...DEFAULT_DRAFT.storage,
@@ -412,6 +424,8 @@ function migrateDraftToolVersions(draft: StackConfigDraft): StackConfigDraft {
     },
     security: {
       imageScanner: normalizeToolSelectionVersion(draft.security.imageScanner),
+      sast: normalizeToolSelectionVersion(draft.security.sast),
+      sca: normalizeToolSelectionVersion(draft.security.sca ?? emptyToolSelection()),
     },
   }
 }

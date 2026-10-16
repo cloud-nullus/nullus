@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -15,18 +16,23 @@ import (
 // kubectl 호출을 그대로 받아 적는다. 실제 클러스터 없이 "무엇을 지우려 했는가"를
 // 검사하려면 인자 그대로가 필요하다.
 type kubectlRecorder struct {
-	calls  []string
-	stubs  map[string]string
-	failed map[string]bool
+	calls []string
+	stubs map[string]string
+	// errs 는 실패시킬 호출과 그 오류 문구다.
+	errs map[string]string
 }
 
 func newKubectlRecorder() *kubectlRecorder {
-	return &kubectlRecorder{stubs: map[string]string{}, failed: map[string]bool{}}
+	return &kubectlRecorder{stubs: map[string]string{}, errs: map[string]string{}}
 }
 
 func (r *kubectlRecorder) run(_ context.Context, _ []byte, args ...string) (string, error) {
 	call := strings.Join(args, " ")
 	r.calls = append(r.calls, call)
+	if message, ok := r.errs[call]; ok {
+		// 실패해도 표준 출력이 있을 수 있다(api-resources 의 일부 그룹 실패).
+		return r.stubs[call], fmt.Errorf("kubectl %s failed: exit status 1 (%s)", call, message)
+	}
 	return r.stubs[call], nil
 }
 

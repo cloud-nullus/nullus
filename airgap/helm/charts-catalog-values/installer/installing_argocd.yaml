@@ -1,0 +1,14 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_argocd
+# chart: argo-cd 7.7.16
+configs:
+    params:
+        server.insecure: "true"
+    secret:
+        extra:
+            server.secretkey: <generated-at-install>
+crds:
+    install: true
+server:
+    ingress:
+        enabled: false

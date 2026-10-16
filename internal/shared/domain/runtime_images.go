@@ -23,7 +23,8 @@ package domain
 const (
 	// MinIOClientImage — GitLab 오브젝트 스토리지 버킷 부트스트랩 Job.
 	// (internal/stack/adapter/helm/object-storage-buckets.go)
-	MinIOClientImage = "minio/mc:RELEASE.2025-05-21T01-59-54Z"
+	// MinIO 는 Docker Hub 배포를 멈춰 docker.io/minio/* 가 거절된다. quay.io 에서 받는다.
+	MinIOClientImage = "quay.io/minio/mc:RELEASE.2025-05-21T01-59-54Z"
 
 	// CurlImage — Harbor·Nexus 프로비저닝 Job 이 REST API 를 호출한다.
 	// (internal/stack/adapter/helm/{harbor,nexus}-provisioning.go)
@@ -38,11 +39,44 @@ const (
 	// (internal/cicd/adapter/scaffold/react_app.go)
 	NodeBuilderImage = "node:22-alpine"
 
-	// JenkinsAgentImage / JenkinsDindImage — Jenkins kubernetes 플러그인이
-	// 빌드마다 띄우는 파드. GitLab CI 와 달리 실행기를 차트로 세우지 않는다.
+	// JenkinsAgentImage — Jenkins kubernetes 플러그인이 빌드마다 띄우는 파드.
+	// GitLab CI 와 달리 실행기를 차트로 세우지 않는다.
 	// (internal/cicd/adapter/scaffold/jenkins_renderer.go)
 	JenkinsAgentImage = "docker:27-cli"
-	JenkinsDindImage  = "docker:27-dind"
+
+	// DindImage — 이미지 빌드용 docker 데몬. Jenkins 빌드 파드의 사이드카이자
+	// GitLab build 잡의 서비스다.
+	// (internal/cicd/adapter/scaffold/{jenkins_renderer,renderer}.go)
+	DindImage = "docker:27-dind"
+
+	// GitLabCIBuildImage / GitLabCIDeployImage — 생성된 .gitlab-ci.yml 의 build·deploy 잡.
+	// 쿠버네티스 실행기가 잡마다 이 이미지로 파드를 띄운다.
+	// (internal/cicd/adapter/scaffold/renderer.go)
+	GitLabCIBuildImage  = "docker:27"
+	GitLabCIDeployImage = "alpine:3.20"
+
+	// TrivyCLIImage — 파이프라인 이미지 스캔 단계의 Trivy CLI. 취약점 DB 는 들어 있지 않다 —
+	// client 로 붙어 스택 Trivy 서버에 매칭을 맡긴다. 에어갭 번들은 Trivy 차트가 같은 태그를
+	// 이미 싣는다(images.txt). RuntimeImages 에 넣지 않는 이유다 — 넣으면 생성기가 두 번 싣는다.
+	// 정책 변수와 함께 CI 에 밀린다(port.ScanPolicyVariables) — 올리면 파이프라인 정의를
+	// 다시 쓰지 않아도 다음 실행부터 따라온다.
+	// (internal/cicd/adapter/scaffold/image_scan.go)
+	TrivyCLIImage = "aquasec/trivy:0.74.0"
+
+	// SonarScannerImage — 파이프라인 SAST 단계(GitLab CI·GitHub Actions·Jenkins). 공식
+	// sonarsource/sonar-scanner-cli 는 amd64 빌드만 게시해(Docker Hub 전 태그 실측, 2026-10)
+	// arm64 노드와 에어갭 arm64 번들에서 단계가 서지 않았다 — 플랫폼 독립 스캐너 zip 을 멀티아치
+	// JRE 위에 우리가 굽는다(deploy/images/sonar-scanner, CD 의 build-and-push-sonar-scanner,
+	// 로컬은 scripts/build-sonar-scanner-image.sh). 태그는 Dockerfile 의 스캐너 버전이다
+	// (테스트가 둘을 묶는다). ghcr 패키지는 처음 만들어질 때 private 이므로 public 으로 바꿔야
+	// 익명 pull 이 된다(릴리즈 정책 §7.1).
+	// (internal/cicd/adapter/scaffold/sast.go)
+	SonarScannerImage = "ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389"
+
+	// GitleaksImage 는 파이프라인 시크릿 탐지 단계가 쓰는 gitleaks 다(nullus-plan#80). 상류가
+	// amd64·arm64 를 모두 내므로 그대로 쓴다. 태그는 앱 저장소에 넣는 pre-commit 훅의 rev 와
+	// 같아야 한다(scaffold.gitleaksVersionTag 가 여기서 뽑는다) — 로컬과 CI 가 같은 규칙을 봐야 한다.
+	GitleaksImage = "ghcr.io/gitleaks/gitleaks:v8.30.1"
 )
 
 // RuntimeImages 는 위 이미지 전부를 돌려준다.
@@ -55,6 +89,10 @@ func RuntimeImages() []string {
 		KubectlImage,
 		NodeBuilderImage,
 		JenkinsAgentImage,
-		JenkinsDindImage,
+		DindImage,
+		GitLabCIBuildImage,
+		GitLabCIDeployImage,
+		SonarScannerImage,
+		GitleaksImage,
 	}
 }

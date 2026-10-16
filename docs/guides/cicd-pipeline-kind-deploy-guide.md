@@ -2,6 +2,8 @@
 
 CI/CD 파이프라인 템플릿을 선택하고, kind 클러스터에 배포하는 전 과정을 단계별로 안내합니다.
 
+- **최종 갱신**: 2026-10-12 — 요청 본문·템플릿 목록·실행 모드를 지금 코드(`internal/cicd/adapter/handler/pipeline_handler.go`, `internal/cicd/usecase/create_pipeline.go`)와 대조해 맞췄다. 스택 설치부터 파이프라인·백업까지 실제로 돌려 본 순서는 [로컬 E2E 가이드](../50_운영/Nullus_로컬_E2E_가이드.html)가 더 자세하다.
+
 ## 사전 요구사항
 
 - Docker Desktop 실행 중
@@ -84,6 +86,8 @@ curl -s -X POST http://localhost:8090/api/v1/admin/clusters \
   | python3 -m json.tool
 ```
 
+요청 필드는 `name` · `type`(또는 여러 역할이면 `types: ["pipeline","target"]`) · `org_id` · `kubeconfig` 이고, `cloud_provider` · `endpoint` 는 선택이다 (`internal/admin/adapter/handler/cluster_handler.go` 의 `registerClusterRequest`). kind 클러스터는 런북 `up`/`refresh` 가 자동으로 등록·갱신하므로 보통 이 단계는 확인만 한다 (`GET /api/v1/admin/clusters`).
+
 응답에서 `id` 값을 복사합니다 (예: `11097a85-140d-42c9-9bcd-68d3d96d9fb9`).
 
 ### 1-3. 연결 검증
@@ -109,154 +113,185 @@ curl -s -X POST http://localhost:8090/api/v1/admin/clusters/<cluster-id>/verify 
 2. 테스트 계정으로 로그인:
    - Email: `devops@nullus.dev`
    - Password: `devops123`
-3. Stack Template 페이지로 리다이렉트됩니다
 
 ### 2-2. CI/CD Template 페이지 이동
 
 1. 좌측 사이드바에서 **CI/CD** → **CI/CD Template** 클릭
 2. 또는 직접 URL 입력: `http://localhost:5173/cicd/templates`
 
-3가지 템플릿이 표시됩니다:
+시드된 CI/CD 템플릿은 4개다 (`GET /api/v1/cicd/templates`, 2026-10-12 기준):
 
-| 템플릿 | 앱 타입 | 파이프라인 스테이지 |
-|--------|---------|-------------------|
-| Batch Job Pipeline | batch | Build → ImageBuild → CronJobDeploy |
-| **Web Backend Pipeline** | backend | Build → Test → ImageBuild → Deploy |
-| Web Frontend Pipeline | web | Build → Test → StaticBuild → Deploy |
+| 템플릿 ID | 이름 | 앱 타입 | stages |
+|-----------|------|---------|--------|
+| `nullus-sample-backend-v1` | **Nullus Sample App — Backend** | backend | GitClone → DockerBuild → ImageLoad → Deploy |
+| `nullus-sample-frontend-v1` | Nullus Sample App — Frontend | web | GitClone → DockerBuild → ImageLoad → Deploy |
+| `web-backend-v1` | User Custom Pipeline | backend | Build → Deploy |
+| `batch-job-v1` | Batch Job Pipeline | batch | Build → Deploy |
+
+> `stages` 는 카드에 보이는 단계 라벨이자 **스택 없이 만든 파이프라인**의 단계 기본값이다. 스택에 붙여 만든 파이프라인은 저장소 프로비저닝이 CI 정의에서 단계(SecretScan · DependencyScan · Build · SAST · ImageScan · Deploy 등)를 정한다 — 템플릿의 `stages` 와 다를 수 있다.
 
 ### 2-3. 템플릿 선택
 
-**Web Backend Pipeline** 카드의 `Use Base Template` 버튼을 클릭합니다.
-
-→ **Pipeline Setup & Developer Deploy** 페이지(`/cicd/developer-deploy`)로 이동합니다.
+**Nullus Sample App — Backend** 카드의 **기본 템플릿 사용**(Use Base Template) 버튼을 클릭한다. → **Pipeline Setup & Developer Deploy** 페이지(`/cicd/developer-deploy`)로 이동한다.
 
 ---
 
-## Step 3: 파이프라인 설정 (5단계 위저드)
-
-Pipeline Setup 페이지는 5단계 위저드와 YAML 미리보기로 구성됩니다.
+## Step 3: 파이프라인 설정 (위저드)
 
 ### 3-1. 앱 템플릿 선택
 
-상단의 앱 템플릿 중 하나를 선택합니다:
-- **Go Web API** (go1.24)
-- React Vite App (node22)
-- Spring Boot Service (java21)
+상단의 앱 템플릿(`GET /api/v1/cicd/app-templates`) 중 하나를 선택한다:
 
-### 3-2. Step 1 — 앱 이름 입력
+| ID | 이름 | 런타임 | 포트 |
+|----|------|--------|------|
+| `go-web-api` | **Go Web API** | go1.24 | 8080 |
+| `react-vite` | React Vite App | node22 | 5173 |
+| `spring-boot` | Spring Boot Service | java21 | 8080 |
+
+### 3-2. 앱 이름
 
 - 입력: `nullus-api-demo`
-- 규칙: 소문자, 숫자, 하이픈만 사용 가능
-- 우측 YAML 미리보기에 Deployment + Service 매니페스트가 실시간 반영됩니다
-- `다음` 버튼 클릭
+- 규칙: 소문자, 숫자, 하이픈만 사용 가능. 네임스페이스 기본값도 이 이름이다.
+- 우측 YAML 미리보기에 Deployment + Service 매니페스트가 실시간 반영된다
 
-### 3-3. Step 2 — Git Repository
+### 3-3. 저장소
 
-- Repository URL: `https://github.com/cloud-nullus/draft`
-- Branch: `main`
+- **스택을 골랐으면** 저장소는 Nullus 가 스택의 GitLab/Gitea 에 만들어 준다 (스캐폴딩 커밋 포함) — URL 을 입력하지 않는다
+- **스택 없이** 만들 때만 Repository URL / Branch 를 직접 넣는다 (예: `https://github.com/cloud-nullus/draft`, `main`)
 
-### 3-4. Step 3 — 클러스터 / 네임스페이스
+### 3-4. 클러스터 / 네임스페이스 / 스택
 
 - 클러스터: `kind-nullus-platform` (Step 1에서 등록한 클러스터)
-- 네임스페이스: `default`
+- 네임스페이스: 앱 이름과 같게 (예: `nullus-api-demo`)
+- 스택: 그 클러스터에 설치된 스택이 있으면 고른다. **앱은 스택이 설치된 클러스터에 배포된다** (Argo CD 목적지가 `kubernetes.default.svc`) — 화면에서 고른 클러스터가 다르면 모니터링 탭이 비어 보일 수 있다
 
-### 3-5. Step 4 — 리소스 설정
+### 3-5. 리소스 / 환경 변수
 
-기본값 사용:
-- CPU Request: 100m / Limit: 500m
-- Memory Request: 128Mi / Limit: 512Mi
-- Replicas: 2
-
-### 3-6. Step 5 — 환경 변수
-
-필요한 환경 변수를 추가합니다 (선택 사항).
+기본값: CPU 100m / 500m, Memory 128Mi / 512Mi, Replicas 2 (화면 기본값. API 예시는 1 로 준다). 환경 변수는 선택이다.
 
 ---
 
-## Step 4: 파이프라인 생성 및 배포
+## Step 4: 파이프라인 생성 및 실행
 
-### 방법 A: UI에서 배포
+파이프라인은 **실행 모드**가 둘이다. 어느 쪽인지에 따라 "배포" 가 뜻하는 것이 다르다.
 
-1. CI/CD List 페이지(`/cicd/list`)에서 생성된 파이프라인의 **Deploy** 버튼 클릭
-2. Pipeline Setup 페이지에서 배포 진행
+| 실행 모드 | 언제 | 빌드·배포 주체 | `/deploy` 호출 |
+|-----------|------|---------------|---------------|
+| `stack_integrated` (기본) | `stack_id` 를 준 경우 | 스택의 CI(GitLab CI · Jenkins · GitHub Actions) + Argo CD | **하지 않는다.** 저장소에 커밋이 올라가면 CI 가 돌고 Argo CD 가 배포한다 |
+| `emergency_direct` | `stack_id` 없이 만든 경우 | 플랫폼이 직접 이미지를 준비하고 매니페스트를 apply | `POST /pipelines/:id/deploy` |
 
-### 방법 B: API로 배포 (권장 — 직접 확인용)
+`execution_mode` 를 비우면 `stack_id` 유무로 위처럼 정해진다 (`internal/cicd/usecase/create_pipeline.go`).
+
+### 방법 A: UI
+
+Pipeline Setup 페이지에서 생성하면 스택 통합 파이프라인은 저장소 · CI 변수 · pull Secret · Argo CD Application 까지 만들어지고 첫 CI 가 돈다. CI/CD List(`/cicd/list`)에서 실행 기록(History)을 본다.
+
+### 방법 B: API — 스택 통합 파이프라인 (권장)
 
 ```bash
-# 1. 파이프라인 생성
-PIPELINE_ID=$(curl -s -X POST http://localhost:8090/api/v1/cicd/pipelines \
+API=http://localhost:8090
+STACK_ID=$(curl -s $API/api/v1/stacks | jq -r '.items[0].id')          # 설치된 스택
+CLUSTER_ID=$(curl -s $API/api/v1/admin/clusters | jq -r '.items[] | select(.name=="kind-nullus-platform") | .id')
+APP=nullus-api-demo
+
+# 1. 파이프라인 생성 — 저장소 스캐폴딩·CI 변수·pull Secret·Argo CD Application 까지 만든다
+curl -s -X POST $API/api/v1/cicd/pipelines \
   -H 'Content-Type: application/json' \
-  -d '{
-    "name": "nullus-api-demo",
-    "template_id": "web-backend-v1",
-    "app_type": "backend",
-    "cluster_id": "<cluster-id>",
-    "namespace": "default",
-    "git_repo": "https://github.com/cloud-nullus/draft",
-    "git_branch": "main",
-    "image_registry": "harbor.nullus.io",
-    "image_name": "nullus-api-demo"
-  }' | jq -r '.id')
+  -d "{
+    \"name\": \"$APP\",
+    \"template_id\": \"nullus-sample-backend-v1\",
+    \"app_type\": \"backend\",
+    \"cluster_id\": \"$CLUSTER_ID\",
+    \"stack_id\": \"$STACK_ID\",
+    \"namespace\": \"$APP\",
+    \"port\": 8080,
+    \"replicas\": 1
+  }" | tee /tmp/pipeline.json | jq '{id: .pipeline.id, execution_mode: .pipeline.execution_mode, repository_path, argo_application_created, warnings}'
 
-echo "Pipeline ID: $PIPELINE_ID"
-# → pip_xxxxxxxxxx
+PIPELINE_ID=$(jq -r '.pipeline.id' /tmp/pipeline.json)
+# → pip_xxxxxxxxxxxx, execution_mode stack_integrated, repository_path nullus/nullus-api-demo
 ```
 
+응답은 `pipeline`(생성된 레코드) · `repository_path` · `argo_application_created` · `warnings` 다. `warnings` 가 비어 있지 않으면 만들어졌지만 준비가 덜 된 것이다 — 내용대로 손본다.
+
 ```bash
-# 2. 배포 실행
-curl -s -X POST "http://localhost:8090/api/v1/cicd/pipelines/$PIPELINE_ID/deploy" \
+# 2. 실행 기록 — CI 가 돌면 동기화되어 쌓인다 (GitLab 스택은 생성 직후 첫 파이프라인이 돈다)
+curl -s "$API/api/v1/cicd/deployments?pipeline_id=$PIPELINE_ID" \
+  | jq '.items[] | {id, status, version}'
+# → dep_ci_<pipeline>_<n>, status: running → success
+```
+
+다시 돌리려면 저장소에 커밋을 올리거나 GitLab 에서 Run pipeline 을 누른다. `[skip ci]` 되커밋의 빈 파이프라인은 실행 기록에 남지 않는다.
+
+### 방법 C: API — 스택 없는 파이프라인 (`emergency_direct`)
+
+스택이 없는 클러스터에 플랫폼이 직접 배포하는 경로다. 저장소·이미지 준비는 사용자가 한다.
+
+```bash
+# 1. 생성 — 저장소 URL 을 직접 준다
+PIPELINE_ID=$(curl -s -X POST $API/api/v1/cicd/pipelines \
   -H 'Content-Type: application/json' \
-  -d '{"version": "v0.1.0", "image_tag": "latest"}' \
-  | python3 -m json.tool
-# → {"deploymentId":"dep_xxxxxxxxxx"}
+  -d "{
+    \"name\": \"$APP\",
+    \"template_id\": \"web-backend-v1\",
+    \"app_type\": \"backend\",
+    \"cluster_id\": \"$CLUSTER_ID\",
+    \"namespace\": \"$APP\",
+    \"git_repo_url\": \"https://github.com/cloud-nullus/draft\",
+    \"dockerfile_path\": \"Dockerfile\",
+    \"docker_context\": \".\",
+    \"port\": 8080,
+    \"replicas\": 1
+  }" | jq -r '.pipeline.id')
+
+# 2. 배포 실행 — 202 와 deploymentId 를 돌려주고 적용은 비동기로 진행된다
+curl -s -X POST "$API/api/v1/cicd/pipelines/$PIPELINE_ID/deploy" \
+  -H 'Content-Type: application/json' \
+  -d '{"version": "v0.1.0", "deployed_by": "devops@nullus.dev", "manifest_types": ["deployment", "service"]}'
+# → {"deploymentId":"dep_xxxxxxxxxxxx"}
+
+# 3. 배포 이력
+curl -s "$API/api/v1/cicd/deployments?pipeline_id=$PIPELINE_ID" | jq '.items[] | {id, status, version}'
 ```
 
-```bash
-# 3. 배포 이력 확인
-curl -s http://localhost:8090/api/v1/cicd/deployments \
-  | jq '.items[] | select(.pipeline_id == "'$PIPELINE_ID'")'
-# → status: "success"
-```
+요청 필드 전체는 `internal/cicd/adapter/handler/pipeline_handler.go` 의 `createPipelineRequest` 와 `deployRequest` 다 — `name` · `template_id` · `app_type` · `cluster_id` · `stack_id` · `namespace` · `git_repo_url` · `dockerfile_path` · `docker_context` · `env_vars` · `provision_repository` · `port` · `replicas` · `registry_credentials` · `execution_mode`, 그리고 배포는 `version` · `deployed_by` · `manifest_types`.
 
 ---
 
-## Step 5: 배포 결과 확인
+## Step 5: 결과 확인
 
-### UI에서 확인
+### UI
 
-1. **CI/CD List** (`/cicd/list`): 파이프라인 목록에 `nullus-api-demo`가 Active 상태로 표시
-2. **CI/CD History** (`/cicd/history`): 배포 이력에 v0.1.0 — **Success** 표시
+1. **CI/CD List** (`/cicd/list`): 파이프라인이 Active 로 보인다
+2. 파이프라인의 **History**: 실행마다 상태(running · success · failed)와 단계가 보인다. 맨 앞 `SecretScan` 은 이번 푸시의 커밋에서 시크릿을 찾는 단계라 걸리면 빌드 전에 멈춘다(정책 `secret_detection` 으로 경고·끄기). 스택에서 서드파티 의존성 취약점(SCA)을 골랐으면 `DependencyScan` 이 이어서 락파일의 의존성을 스택 Trivy 서버로 검사한다(차단 기준은 이미지 스캔과 같은 스택 정책). SonarQube 가 있는 스택이면 SAST 판정도 붙는다
 
-### API로 확인
-
-```bash
-# 파이프라인 목록
-curl -s http://localhost:8090/api/v1/cicd/pipelines | jq '.items[0]'
-
-# 배포 이력
-curl -s http://localhost:8090/api/v1/cicd/deployments | jq '.items[0]'
-```
-
-### kind 클러스터 상태 확인 (Nullus 플랫폼 자체 배포)
+### API
 
 ```bash
-# Nullus 플랫폼이 Helm으로 배포된 경우
-kubectl get pods -n nullus-system --context kind-nullus-platform
-# NAME                          READY   STATUS    RESTARTS   AGE
-# nullus-api-xxx                1/1     Running   0          ...
-# nullus-postgresql-0           1/1     Running   0          ...
-# nullus-web-xxx                1/1     Running   0          ...
-
-kubectl exec -n nullus-system deploy/nullus-api --context kind-nullus-platform \
-  -- wget -qO- http://localhost:8080/health
-# → {"db":"connected","status":"healthy","version":"0.1.0-alpha"}
+curl -s $API/api/v1/cicd/pipelines | jq '.items[] | {id, name, execution_mode, status}'
+curl -s "$API/api/v1/cicd/deployments?pipeline_id=$PIPELINE_ID" | jq '.items[] | {id, status}'
 ```
+
+### 클러스터
+
+```bash
+# 스택 통합 파이프라인: Argo CD Application 과 앱 네임스페이스
+kubectl --context kind-nullus-platform -n <스택 네임스페이스> get applications.argoproj.io
+kubectl --context kind-nullus-platform -n $APP get deploy,pods
+# 이미지 태그가 커밋 SHA 로 바뀌면 CI → CD 가 한 바퀴 돈 것이다. :bootstrap 이면 아직이다
+kubectl --context kind-nullus-platform -n $APP get deploy $APP -o jsonpath='{.spec.template.spec.containers[0].image}'
+```
+
+> kind 노드가 `registry.<도메인>` 을 풀고 내부 CA 를 믿어야 앱 이미지를 받는다. `stack-up --wait` 가 자동으로 하고, 화면에서 설치한 스택은 `./scripts/runbook_local.sh wire` 로 잇는다. 안 돼 있으면 앱이 `ImagePullBackOff` 로 멈춘다.
 
 ---
 
 ## 정리
 
 ```bash
+# 파이프라인 삭제 — 부수 리소스는 쿼리로 각각 켠다 (기본은 레코드만)
+curl -s -X DELETE "$API/api/v1/cicd/pipelines/$PIPELINE_ID?cluster_resources=true&repository=true&images=true"
+
 # kind 클러스터 삭제
 ./scripts/runbook_local.sh kind-down
 
@@ -272,10 +307,10 @@ kubectl exec -n nullus-system deploy/nullus-api --context kind-nullus-platform \
 - [ ] `./scripts/runbook_local.sh kind-up` — kind 클러스터 생성 (2개)
 - [ ] API `/health` → `db: connected`
 - [ ] kind 클러스터 등록 → `/verify` → `status: connected`
-- [ ] CI/CD Template 페이지 → Web Backend Pipeline 선택
-- [ ] Pipeline Setup 위저드 5단계 완료
-- [ ] 파이프라인 생성 → 배포 → `status: success`
-- [ ] CI/CD History 페이지에서 배포 이력 확인
+- [ ] (스택 통합 경로) 스택이 `completed` 이고 `wire` 로 노드 배선됨
+- [ ] CI/CD Template 페이지 → 템플릿 선택 → 위저드 완료
+- [ ] 파이프라인 생성 응답의 `warnings` 가 비어 있음
+- [ ] 실행 기록 `status: success`, 앱 이미지 태그가 커밋 SHA
 
 ---
 
@@ -299,6 +334,10 @@ kubeconfig의 API endpoint가 폐기된 포트를 가리키는 경우. 클러스
 cp .env.example .env.dev
 # ENCRYPTION_KEY=nullus-dev-key-32bytes-padding!! 확인
 ```
+
+### 앱이 `ImagePullBackOff`
+
+kind 노드가 스택 레지스트리 주소를 못 풀거나 내부 CA 를 믿지 않는다. `./scripts/runbook_local.sh wire` 를 돌린다. 앱 네임스페이스에 pull Secret `nullus-registry` 가 없으면 파이프라인을 다시 만들거나 백업에서 복구한다 (백업이 앱 네임스페이스의 pull Secret 을 담는다).
 
 ### Docker 이미지 빌드 오류 (Go 버전)
 

@@ -221,6 +221,9 @@ spec:
 	if cfg.Authentication != nil && strings.EqualFold(strings.TrimSpace(cfg.Authentication.Provider), "openbao") {
 		routes = append(routes, routeSpec{name: "openbao-route", host: fmt.Sprintf("openbao.%s", accessDomain), service: "openbao", port: 8200})
 	}
+	if domain.HasSAST(cfg.Security.SAST) {
+		routes = append(routes, routeSpec{name: "sonarqube-route", host: fmt.Sprintf("sonarqube.%s", accessDomain), service: domain.SonarQubeServiceName, port: domain.SonarQubeServicePort})
+	}
 
 	for _, route := range routes {
 		manifests = append(manifests, fmt.Sprintf(`apiVersion: gateway.networking.k8s.io/v1
@@ -275,14 +278,18 @@ func sanitizeK8sName(value string) string {
 	return out
 }
 
+// defaultEnvoyGatewayClassManifest 는 설치기가 만드는 GatewayClass 다. 없을 때만 만들므로
+// (ensureEnvoyGatewayClass) 설치 표시를 함께 단다.
 func defaultEnvoyGatewayClassManifest() string {
-	return `apiVersion: gateway.networking.k8s.io/v1
+	return fmt.Sprintf(`apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:
-  name: envoy
+  name: %s
+  labels:
+    %s: %s
 spec:
-  controllerName: gateway.envoyproxy.io/gatewayclass-controller
-`
+  controllerName: %s
+`, domain.EnvoyGatewayClassName, domain.LabelInstalledBy, domain.InstalledByNullus, domain.EnvoyGatewayControllerName)
 }
 
 // isArgoCDSelection 은 Argo CD 표기 흔들림을 흡수한다.

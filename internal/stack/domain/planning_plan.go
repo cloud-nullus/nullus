@@ -60,7 +60,10 @@ func plannedSelections(cfg StackConfig) []plannedSelection {
 		{SlotLogSearch, cfg.Logging.Search},
 		{SlotTraceLayer, cfg.Logging.TraceLayer},
 		{SlotTraceExporter, cfg.Logging.TraceExporter},
-		{SlotImageScanner, cfg.Security.ImageScanner},
+		// Trivy 서버는 이미지 스캐너와 의존성 스캔(SCA)이 함께 쓴다. 서버 하나의 계획을 이 슬롯에
+		// 싣는다 — 의존성 스캔만 고른 스택도 설치 단계가 같은 자리에서 크기를 찾는다.
+		{SlotImageScanner, TrivyServerSelection(cfg)},
+		{SlotSAST, cfg.Security.SAST},
 	}
 }
 

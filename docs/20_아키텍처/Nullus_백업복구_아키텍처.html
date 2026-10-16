@@ -729,8 +729,8 @@
           <tbody>
             <tr>
               <td><code>backup_runs</code></td>
-              <td>실행 하나</td>
-              <td><code>scope TEXT[]</code> · <code>quiesce_started_at</code> / <code>_ended_at</code> · <code>manifest JSONB</code></td>
+              <td>실행 하나 — 플랫폼 하나 또는 스택 하나</td>
+              <td><code>scope TEXT[]</code> · <code>quiesce_started_at</code> / <code>_ended_at</code> · <code>manifest JSONB</code> · <code>set_id UUID</code>(세트 꼬리표, NULL 이면 단독)</td>
             </tr>
             <tr>
               <td><code>backup_artifacts</code></td>
@@ -768,6 +768,16 @@
         <code>stack_id</code> 는 <code>TEXT</code> 다. Nullus 스택 ID 는 UUID 가 아니라
         <code>stk_352e9f68db06</code> 형태이며, 이것을 <code>UUID</code> 로 선언했던 동안
         <strong>스택을 대상으로 하는 백업이 행을 만드는 순간 죽었다</strong>(마이그레이션 <code>000076</code>).
+      </p>
+
+      <p class="prose" style="font-size:14px;color:var(--muted)">
+        <strong>"플랫폼 전체" 는 실행의 묶음이다.</strong> 한 실행은 플랫폼 하나 또는 스택 하나만 담는다 —
+        스택의 리소스·볼륨은 그 스택의 클러스터에서 뜨고 금고는 스택마다 있어서다. 그래서 플랫폼 + 조직의 모든 스택은
+        <strong>세트</strong>(<code>POST /backups/sets</code>)로 뜬다: 플랫폼 <code>platform_only</code> 실행 하나 +
+        설치 완료 스택마다 <code>stack_only</code>(+ 금고) 실행 하나가 같은 <code>set_id</code> 를 단다. 세트는 테이블이 아니라
+        꼬리표이고 FK 가 없다 — 이력 테이블은 어디도 참조하지 않는다(<code>000092</code> 의 원칙). 세트 복구
+        (<code>POST /restores/sets</code>)는 플랫폼 멤버를 먼저 되돌린 뒤 스택 멤버를 매니페스트의 <code>namespace</code> 로
+        하나씩 되돌린다 — 스택 복구가 플랫폼 DB 의 스택 기록으로 클러스터에 붙기 때문이다(설계 §6.7).
       </p>
     </section>
 

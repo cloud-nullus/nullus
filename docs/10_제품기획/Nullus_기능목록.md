@@ -26,7 +26,7 @@
 | F4 | 자동 설치/배포/이력 | 구현 | 설치·재시도(`/retry`)·이어하기(`/continue`)·재시도 이력·롤백. 설치 로그는 **DB 에 남는다**(`stack_deploy_logs`, 마이그레이션 `000074`) |
 | F5 | CI/CD 파이프라인 템플릿 | 구현 | **4개** (`pipeline_templates`). 프런트엔드 템플릿은 nginx 기본 페이지가 아니라 **실제 React 앱을 스캐폴딩**한다 |
 | F6 | CI/CD 배포/이력 | 구현 | 파이프라인 CRUD·배포·이력. **저장소 프로비저닝**(GitLab/GitHub/Gitea) + **CI job 프로비저닝**(Jenkins multibranch) + 삭제 시 이미지·배포 앱·CI job 회수 |
-| F7 | 모니터링/알림 | **부분 구현** | 대시보드·알림 규칙 CRUD·알림 채널 설정은 있다. **알림이 실제로 발송되지는 않는다** — 규칙을 평가하는 루프도, notifier 호출부도 없다. 화면의 이력 행은 데모 시드다. 상세는 아래 0.2 |
+| F7 | 모니터링/알림 | **부분 구현** | 대시보드 · **알림 채널(Telegram · 이메일 · Slack)** · **스택 심각 경보 전달**이 있다. 백업 결과(nullus-plan#63)와 스택 Prometheus 기본 규칙의 심각 경보(#87)가 채널로 가고, 알림 이력 화면은 실제 스택 경보를 보여 준다. **사용자 정의 알림 규칙은 없다** — 평가되지 않던 규칙 화면은 숨겼다(Backlog). 상세는 아래 0.2 |
 | F8 | OSS 버전 호환성 | **계획 초과** | 매트릭스 **8개**. 설치 전 게이트로 동작. 단 매트릭스 **추가·수정은 마이그레이션 시드로만** 가능하다(관리자 화면 버튼은 미배선 API 를 부른다) |
 | F9 | UI 권한 체계 | 구현 | 사이드바·라우트·API 3중 역할 검사 + Keycloak/Authentik OIDC + **ID/PW 로그인 병행**(IdP 장애 대비) |
 | F10 | 리소스 예상량 계산 | 구현 | 위자드 리소스 단계, 통화 선택. 템플릿마다 설치 규모 프로파일(`planning_profile`)을 갖는다 |
@@ -51,7 +51,7 @@
 
 | 항목 | 상태 |
 |------|------|
-| **알림 발송(F7)** | 규칙 CRUD·채널 설정 CRUD·notifier 구현체는 다 있는데 **잇는 코드가 없다.** 규칙을 평가하는 루프가 없고, `SlackNotifier`/`EmailNotifier` 를 만드는 프로덕션 코드가 하나도 없으며, `notification_history` 에 쓰는 코드도 없다(읽기만 한다). 설정은 저장되므로 화면상으로는 동작하는 것처럼 보인다 |
+| **사용자 정의 알림 규칙(F7)** | 2026-10-13 에 알림 채널(#63)과 **스택 심각 경보 전달**(#87)이 생겼다 — 스택마다 Prometheus 가 평가하는 기본 규칙(kube-prometheus-stack) 의 심각 경보를 플랫폼이 가져와 채널로 보내고 알림 이력에 남긴다(설계 `docs/11_기능설계/Nullus_스택_경보_전달_설계.md`). **사용자가 규칙을 만드는 편집기는 없다** — 평가되지 않던 규칙 CRUD 화면은 메뉴에서 숨겼고 API 는 남아 있다. 기본 규칙이 대부분을 덮어 Backlog 로 두었다 |
 | **호환성 매트릭스 관리 API** | `RegisterAdminRoutes` 가 `main.go` 에서 호출되지 않아 `/admin/stack-versions` 의 생성·수정·삭제 버튼 3개가 404 로 끝난다. 매트릭스 추가는 마이그레이션 시드로만 가능하다 |
 | `/api/v1/auth` 의 `logout`·`me`·`refresh` | 미구현. `login` 은 구현됐다. 나머지는 필요하지 않다고 판단한 결과다(로그아웃은 토큰 폐기, 갱신은 IdP·CLI 가 직접) |
 | 프론트 OIDC 런타임 | **런타임 연결은 해소됐다.** 다만 로컬 기본값은 여전히 mock(`VITE_AUTH_MODE=mock`)이고 배포 차트 기본값이 `oidc` 다 |
@@ -746,7 +746,7 @@ Keycloak Role "developer" → GitLab Reporter + Argo CD Read-only + Grafana View
 | 보안 | Kubeconfig | AES-256 암호화 저장, 메모리에서 복호화 |
 | 보안 | 민감 정보 | Kubernetes Secret 저장 |
 | 보안 | RBAC | ServiceAccount 최소 권한 원칙, Namespace 격리 |
-| 보안 | 이미지 스캔 | Trivy 스캔 완료, CVE 24시간 내 패치 |
+| 보안 | 이미지 스캔 | 릴리즈마다 Trivy 스캔 — 수정판 있는 CRITICAL 0 이 릴리즈 게이트, SBOM·provenance attestation 동봉, CRITICAL 은 탐지 후 24시간 내 패치 릴리즈 (릴리즈 정책 §7.4) |
 | 확장성 | 동시 설치 | 최대 10개 파이프라인 동시 설치 |
 | 확장성 | 팀 규모 | 최대 500명 개발자 (Phase 1) |
 | 신뢰성 | 가동시간 | 웹 UI 99.0% (베타 기간) |

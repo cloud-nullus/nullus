@@ -1,7 +1,7 @@
 # Nullus 템플릿 추가 가이드
 
 **작성일**: 2026-03-22
-**최종 갱신**: 2026-08-31
+**최종 갱신**: 2026-10-12 — API 요청·응답 필드, 템플릿 목록, 매트릭스 화면 안내를 지금 코드와 대조해 맞췄다
 **범위**: Stack Template + CI/CD Template 추가 방법
 
 ---
@@ -25,7 +25,8 @@ Template
 ├── estimated_install_time  int64      5400000000000 (나노초, 90분)
 ├── recommended_use_case    string     "Jenkins 기존 사용 조직"
 ├── min_resources           string     "8 vCPU / 16Gi RAM / 100Gi Storage"
-└── created_by              string     "admin" (선택)
+├── planning_profile        string     "standard" (local | startup | standard | enterprise — 설치 규모, §1.2 주의 참조)
+└── created_by              string     "admin" (응답에만 있다 — 요청으로 받지 않는다)
 ```
 
 **도구 카테고리 목록** (category 필드에 사용):
@@ -113,9 +114,10 @@ ON CONFLICT (id) DO UPDATE SET tools = EXCLUDED.tools, updated_at = NOW();
 차트 버전은 **설치 경로가 쓰는 값**(`internal/stack/domain/connection.go`)과 같아야 한다.
 `TestChartVersionsMatchCompatibilityMatrix` 가 이 일치를 고정하므로, 어긋나면 테스트가 깨진다.
 
-> 매트릭스를 화면에서 추가할 수는 **없다.** 관리자 화면 `/admin/stack-versions` 에 생성·
-> 수정·삭제 버튼이 있지만 그 API 가 `main.go` 에 등록되지 않아 404 로 끝난다
-> (`Nullus_설계_대비_미구현_항목.md` 3.7). 지금은 시드가 유일한 경로다.
+> 매트릭스는 화면(`/admin/stack-versions`)이나 API 로도 만들 수 있다 — `POST/PUT/DELETE
+> /api/v1/stacks/compatibility/matrices[/:id]` 가 등록되어 있다(`compatibility_handler.go`,
+> 2026-10-12 확인). 다만 **코드의 차트 버전과 어긋나면 `TestChartVersionsMatchCompatibilityMatrix`
+> 가 깨지므로**, 템플릿을 코드로 들이는 경우(마이그레이션)에는 매트릭스도 같은 마이그레이션에 둔다.
 
 **Step 3**: DOWN 마이그레이션 작성
 
@@ -138,12 +140,22 @@ migrate -path db/migrations -database "postgres://nullus:nullus_dev@localhost:54
 **Step 5**: 확인
 
 ```bash
-curl -s http://localhost:8090/api/v1/stacks/templates | jq '.[].name'
-# "GitLab All-in-One"
-# "GitLab + Argo CD"
-# "GitHub + Argo CD"
-# "Jenkins + Tekton"  ← 새로 추가됨
+curl -s http://localhost:8090/api/v1/stacks/templates | jq -r '.[] | "\(.id)  \(.planning_profile)  \(.name)"'
+# empty-template-v1               standard  Empty Template
+# gitea-jenkins-argocd-lite-v1    local     Gitea + Jenkins + Argo CD (Lite)
+# gitea-jenkins-argocd-v1         standard  Gitea + Jenkins + Argo CD
+# github-argocd-v1                standard  GitHub + Argo CD
+# gitlab-allinone-v1              standard  GitLab All-in-One
+# gitlab-argocd-otel-v1           standard  GitLab + Argo CD + OpenTelemetry
+# gitlab-argocd-sonarqube-v1      standard  GitLab + Argo CD + SonarQube
+# gitlab-argocd-v1                standard  GitLab + Argo CD
+# gitlab-harbor-trivy-v1          standard  GitLab + Harbor + Trivy
+# gitlab-harbor-v1                standard  GitLab + Harbor
+# gitlab-nexus-v1                 standard  GitLab + Nexus
+# jenkins-tekton-v1               standard  Jenkins + Tekton   ← 새로 추가됨
 ```
+
+응답은 배열이다(`{items: …}` 가 아니다). 2026-10-12 시드 기준 11개.
 
 ### 1.3 방법 2: API로 동적 추가
 
@@ -167,26 +179,30 @@ curl -X POST http://localhost:8090/api/v1/stacks/templates \
     ],
     "estimated_install_time": 6480000000000,
     "recommended_use_case": "기존 Jenkins 사용 조직",
-    "min_resources": "10 vCPU / 20Gi RAM / 120Gi Storage"
+    "min_resources": "10 vCPU / 20Gi RAM / 120Gi Storage",
+    "planning_profile": "standard"
   }'
 ```
 
-Admin UI에서도 가능: **Stack Template 페이지 → "New Template" 버튼 → 모달 폼 작성 → Create**
+요청 필드는 `id` · `name` · `description` · `tools` · `estimated_install_time` · `recommended_use_case` · `min_resources` · `planning_profile` 이다 (`internal/stack/adapter/handler/template_handler.go` 의 `templateRequest`). `created_by` 는 받지 않는다. 호환성 매트릭스는 이 API 가 만들어 주지 않으므로 §1.2 Step 2-b 처럼 따로 넣어야 설치 직전 게이트를 통과한다.
+
+Admin UI에서도 가능: **스택 템플릿 페이지 → "템플릿 생성" 버튼 → 모달 폼 작성 → 생성**
 
 ### 1.4 방법 3: 프론트엔드 Admin UI 사용
 
 1. Admin 또는 DevOps 역할로 로그인
 2. 데브섹옵스 스택 > 스택 템플릿 이동
-3. 우상단 "New Template" 클릭
+3. 우상단 "템플릿 생성"(Create Template) 클릭
 4. 모달에서 입력:
    - **Template ID**: 영문 소문자 + 하이픈 (예: `jenkins-tekton-v1`)
    - **Name**: 표시 이름
    - **Description**: 설명
-   - **Tools**: JSON 배열 (위 구조 참고)
+   - **Tools**: 도구 선택 (위 구조의 category · name · 버전)
    - **Estimated Install Time**: 나노초 단위 (90분 = `5400000000000`)
    - **Recommended Use Case**: 권장 사용 사례
    - **Minimum Resources**: 최소 리소스
-5. "Create Template" 클릭
+   - **설치 규모**(planning_profile): local / startup / standard / enterprise
+5. "템플릿 생성" 클릭
 
 ### 1.5 estimated_install_time 변환 참고
 
@@ -209,12 +225,19 @@ CI/CD 템플릿은 파이프라인 단계 조합을 정의하는 프리셋이다
 
 ```
 PipelineTemplate
-├── id              string      "ml-pipeline-v1"
-├── name            string      "ML Training Pipeline"
-├── description     string      "머신러닝 모델 학습/배포 파이프라인"
-├── app_type        string      "batch" (web | backend | batch)
-└── stages          []string    ["DataPrep", "Train", "Evaluate", "Deploy"]
+├── id               string             "ml-pipeline-v1"
+├── name             string             "ML Training Pipeline"
+├── description      string             "머신러닝 모델 학습/배포 파이프라인"
+├── app_type         string             "batch" (web | backend | batch)
+├── stages           []string           ["DataPrep", "Train", "Evaluate", "Deploy"]
+├── git_repo_url     string             (선택) 스택 없는 파이프라인의 기본 저장소
+├── dockerfile_path  string             (선택) 기본 Dockerfile 경로
+├── docker_context   string             (선택) 기본 빌드 컨텍스트
+├── env_vars         map[string]string  (선택) 기본 환경 변수
+└── created_by       string             (선택)
 ```
+
+(`internal/cicd/domain/pipeline.go` 의 `PipelineTemplate`.) **`stages` 는 카드 표시와 스택 없는 파이프라인의 단계 기본값이다.** 스택에 붙여 만든 파이프라인은 저장소 프로비저닝이 CI 정의(`.gitlab-ci.yml` · Jenkinsfile · 워크플로)에서 단계를 정하므로(Build · SAST · ImageScan · Deploy 등) 템플릿의 `stages` 가 그대로 실행 단계가 되지 않는다.
 
 **app_type 값과 UI 색상**:
 
@@ -224,15 +247,14 @@ PipelineTemplate
 | `backend` | Web Backend | 파란색 |
 | `batch` | Batch Job | 주황색 |
 
-**일반적인 stages 조합**:
+**시드된 템플릿의 stages** (2026-10-12, `GET /api/v1/cicd/templates`):
 
-| 앱 타입 | 단계 예시 |
-|---------|----------|
-| Backend | `["Build", "Test", "ImageBuild", "Deploy"]` |
-| Frontend | `["Build", "Test", "StaticBuild", "Deploy"]` |
-| Batch | `["Build", "ImageBuild", "CronJobDeploy"]` |
-| ML | `["DataPrep", "Train", "Evaluate", "Deploy"]` |
-| Mobile | `["Build", "Test", "Sign", "Distribute"]` |
+| ID | 이름 | 앱 타입 | stages |
+|----|------|---------|--------|
+| `nullus-sample-backend-v1` | Nullus Sample App — Backend | backend | `["GitClone", "DockerBuild", "ImageLoad", "Deploy"]` |
+| `nullus-sample-frontend-v1` | Nullus Sample App — Frontend | web | `["GitClone", "DockerBuild", "ImageLoad", "Deploy"]` |
+| `web-backend-v1` | User Custom Pipeline | backend | `["Build", "Deploy"]` |
+| `batch-job-v1` | Batch Job Pipeline | batch | `["Build", "Deploy"]` |
 
 ### 2.2 방법 1: DB 마이그레이션으로 추가 (권장)
 
@@ -276,12 +298,15 @@ docker exec -i draft-postgres-1 psql -U nullus -d nullus < db/migrations/000024_
 **Step 5**: 확인
 
 ```bash
-curl -s http://localhost:8090/api/v1/cicd/templates | jq '.[].name'
-# "Web Backend Pipeline"
-# "Web Frontend Pipeline"
-# "Batch Job Pipeline"
-# "ML Training Pipeline"  ← 새로 추가됨
+curl -s http://localhost:8090/api/v1/cicd/templates | jq -r '.[] | "\(.id)  \(.app_type)  \(.name)"'
+# batch-job-v1               batch    Batch Job Pipeline
+# nullus-sample-backend-v1   backend  Nullus Sample App — Backend
+# nullus-sample-frontend-v1  web      Nullus Sample App — Frontend
+# web-backend-v1             backend  User Custom Pipeline
+# ml-pipeline-v1             batch    ML Training Pipeline   ← 새로 추가됨
 ```
+
+응답은 배열이다.
 
 ### 2.3 방법 2: API로 동적 추가
 
@@ -294,21 +319,28 @@ curl -X POST http://localhost:8090/api/v1/cicd/templates \
     "description": "머신러닝 모델 학습, 평가, 배포를 자동화하는 파이프라인.",
     "app_type": "batch",
     "stages": ["DataPrep", "Train", "Evaluate", "ModelRegistry", "Deploy"],
+    "git_repo_url": "https://github.com/acme/ml-pipeline",
+    "dockerfile_path": "Dockerfile",
+    "docker_context": ".",
+    "env_vars": {"MODEL_BUCKET": "models"},
     "created_by": "admin"
   }'
 ```
+
+요청 필드는 `id` · `name` · `description` · `app_type` · `stages` 와 선택인 `git_repo_url` · `dockerfile_path` · `docker_context` · `env_vars` · `created_by` 다 (`internal/cicd/adapter/handler/cicd_template_handler.go` 의 `cicdTemplateRequest`). `id` 는 100자, `name` 은 255자까지다.
 
 ### 2.4 방법 3: 프론트엔드 Admin UI 사용
 
 1. Admin 또는 DevOps 역할로 로그인
 2. CI/CD > CI/CD 템플릿 이동
-3. 우상단 "New Template" 클릭
+3. 우상단 "템플릿 생성"(Create Template) 클릭
 4. 모달에서 입력:
    - **Template ID**: 영문 소문자 + 하이픈 (예: `ml-pipeline-v1`)
    - **Name**: 표시 이름
    - **Description**: 설명
+   - **App Type**: web / backend / batch
    - **Stages**: 체크박스에서 선택하거나 직접 입력
-5. "Create Template" 클릭
+5. "템플릿 생성" 클릭
 
 ---
 
@@ -356,7 +388,7 @@ curl -X DELETE http://localhost:8090/api/v1/cicd/templates/ml-pipeline-v1
 - [ ] `app_type`이 `web`, `backend`, `batch` 중 하나
 - [ ] `stages` 배열이 비어있지 않음
 - [ ] `id`가 기존 템플릿과 중복되지 않음
-- [ ] 각 stage 이름이 파이프라인 실행 엔진에서 인식 가능한 이름인지 확인
+- [ ] 스택 없는 파이프라인에 쓸 템플릿이면 `stages` 가 플랫폼 직접 배포 단계(Build · Deploy)와 맞는지 확인 — 스택 통합 파이프라인은 CI 정의가 단계를 정한다
 - [ ] 프론트엔드에서 카드가 정상 렌더링되는지 확인
 
 ---

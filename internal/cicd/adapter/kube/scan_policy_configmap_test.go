@@ -9,6 +9,7 @@ import (
 
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // Jenkins 에는 CI 변수 저장소가 없다. 스캐너 컨테이너가 envFrom 으로 읽는
@@ -40,7 +41,15 @@ func TestRenderScanPolicyConfigMap(t *testing.T) {
 	assert.Equal(t, map[string]string{
 		port.ScanSeverityVariable:      "HIGH,CRITICAL",
 		port.ScanIgnoreUnfixedVariable: "true",
+		// SAST 분석 컨테이너도 같은 ConfigMap 을 읽는다. 비우면 차단이다.
+		port.SASTOnGateFailureVariable: "block",
 		port.ScanOnUnreachableVariable: "block",
+		// 이미지도 정책과 함께 실린다. Jenkins 파드 템플릿은 정적이라 지금은 읽지 않지만,
+		// 같은 ConfigMap 이라 셋 중 어느 CI 도 다른 값을 보지 않는다.
+		port.ScanImageVariable:       shareddomain.TrivyCLIImage,
+		port.SASTImageVariable:       shareddomain.SonarScannerImage,
+		port.SecretDetectionVariable: "block",
+		port.SecretScanImageVariable: shareddomain.GitleaksImage,
 	}, doc.Data)
 }
 

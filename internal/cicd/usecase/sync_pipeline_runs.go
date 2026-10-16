@@ -34,6 +34,8 @@ type SyncPipelineRuns struct {
 	artifacts port.CIArtifactReader
 	// policies 는 파이프라인이 속한 스택의 스캔 정책을 찾는다. nil 이면 기본 정책이다.
 	policies port.ScanPolicyRepository
+	// sastResults 는 분석 단계의 결과를 남긴다. nil 이면 남기지 않는다.
+	sastResults port.SASTResultRepository
 }
 
 const (
@@ -54,6 +56,8 @@ type SyncPipelineRunsInput struct {
 	JobName    string
 	Branch     string
 	Limit      int
+	// SASTWebURL 은 스택 SonarQube 의 공개 주소다. 분석 결과의 링크를 만든다.
+	SASTWebURL string
 	// Policy 는 판정에 쓸 스택 정책이다. nil 이면 기본 정책이다 — CI 는 푸시된 정책으로
 	// 막으므로, 동기화도 같은 정책으로 읽어야 차단과 스캔 오류를 바르게 가른다.
 	Policy *domain.ScanPolicy
@@ -83,6 +87,17 @@ func (uc *SyncPipelineRuns) Execute(ctx context.Context, input SyncPipelineRunsI
 
 	synced := 0
 	for _, b := range builds {
+		if isSkippedBuild(b) {
+			// 실행이 아니다 — 기록하지 않는다. 이 규칙 전에 실패로 남긴 기록이 있으면 거둔다.
+			id := runDeploymentID(pipelineID, b.Number)
+			if existing, getErr := uc.deployments.GetByID(ctx, id); getErr == nil && existing != nil {
+				if err := uc.deployments.Delete(ctx, id); err != nil {
+					return synced, fmt.Errorf("실행이 아닌 기록 정리 실패 (%s): %w", id, err)
+				}
+				synced++
+			}
+			continue
+		}
 		deployment := deploymentFromBuild(pipelineID, b)
 
 		// 이미 있으면 갱신한다 — 실행 중이던 빌드가 끝나면 상태가 바뀐다.
@@ -109,6 +124,7 @@ func (uc *SyncPipelineRuns) Execute(ctx context.Context, input SyncPipelineRunsI
 	}
 
 	uc.recordImageScans(ctx, input, pipelineID, builds)
+	uc.recordSASTResults(ctx, input, pipelineID, builds)
 	return synced, nil
 }
 
@@ -370,6 +386,20 @@ func stepsFromStages(stages []port.CIStage) []domain.DeployStep {
 	return steps
 }
 
+// isSkippedBuild 는 아무 잡도 돌지 않은 빈 파이프라인이다 — 배포 되커밋([skip ci])이나 규칙에 맞는
+// 잡이 없는 커밋에 CI 가 만든다(GitLab·GitHub 은 skipped, Jenkins 는 NOT_BUILT). 실행이 아니라
+// 실행 기록에 넣지 않는다. 실패로 넣으면 "배포마다 실패 하나" 가 화면에 남는다(2026-10-12 리허설).
+func isSkippedBuild(b port.CIBuild) bool {
+	if b.Building {
+		return false
+	}
+	switch strings.ToUpper(strings.TrimSpace(b.Result)) {
+	case "SKIPPED", "NOT_BUILT":
+		return true
+	}
+	return false
+}
+
 func deploymentStatusFromBuild(b port.CIBuild) domain.DeploymentStatus {
 	if b.Building {
 		return domain.DeploymentStatusRunning
@@ -503,15 +533,17 @@ func (uc *SyncPipelineRuns) syncWithBundle(ctx context.Context, pipeline *domain
 	}
 	sync := NewSyncPipelineRuns(reader, uc.deployments).
 		WithImageScans(uc.imageScans).
+		WithSASTResults(uc.sastResults).
 		WithArtifacts(artifacts)
 	return sync.Execute(ctx, SyncPipelineRunsInput{
 		PipelineID: pipeline.ID,
 		JobName:    pipeline.Name,
 		// 스캐폴딩한 파이프라인은 기본 브랜치에서만 돈다
 		// (Jenkinsfile 의 when { branch 'main' }, 워크플로의 on.push.branches).
-		Branch: defaultRunBranch,
-		Limit:  runSyncLimit,
-		Policy: uc.stackPolicy(ctx, pipeline.StackID),
+		Branch:     defaultRunBranch,
+		Limit:      runSyncLimit,
+		SASTWebURL: bundle.SASTWebURL,
+		Policy:     uc.stackPolicy(ctx, pipeline.StackID),
 	})
 }
 

@@ -1,0 +1,13 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_runner
+# chart: gitlab-runner 0.72.0
+gitlabUrl: http://gitlab-webservice-default.nullus.svc:8181
+rbac:
+    create: true
+runners:
+    config: |
+        [[runners]]
+          [runners.kubernetes]
+            namespace = "{{.Release.Namespace}}"
+            image = "alpine"
+            privileged = true

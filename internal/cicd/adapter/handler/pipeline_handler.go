@@ -34,7 +34,9 @@ const resourceStatusRunning = "running"
 // PipelineHandler handles HTTP requests for pipeline operations.
 type PipelineHandler struct {
 	// imageScans 는 스캔 결과 조회용이다. nil 이면 조회가 503 을 돌려준다.
-	imageScans     port.ImageScanResultRepository
+	imageScans port.ImageScanResultRepository
+	// sastResults 는 소스 정적 분석 결과 조회용이다. nil 이면 조회가 503 을 돌려준다.
+	sastResults    port.SASTResultRepository
 	createPipeline *usecase.CreatePipeline
 	listPipelines  *usecase.ListPipelines
 	deployPipeline *usecase.DeployPipeline
@@ -51,6 +53,10 @@ type PipelineHandler struct {
 	// deletePipeline 은 부수 리소스까지 지우는 경로다. 선택적으로 배선되며,
 	// 없으면 삭제는 종전대로 레코드만 지운다.
 	deletePipeline *usecase.DeletePipeline
+
+	// refreshDefinition 은 기존 파이프라인의 CI 정의 파일을 플랫폼 기본으로 다시 쓴다.
+	// 선택적으로 배선되며, 없으면 그 경로는 503 이다.
+	refreshDefinition *usecase.RefreshPipelineDefinition
 
 	// applier 는 직접 배포(POST /deploy-app)가 매니페스트를 클러스터에
 	// 적용하는 데 쓴다. 없으면 배포가 실패한다 — 적용하지 않고 성공을
@@ -99,8 +105,21 @@ func (h *PipelineHandler) WithImageScans(repo port.ImageScanResultRepository) *P
 	return h
 }
 
+// WithSASTResults 는 소스 정적 분석 결과 조회를 배선한다. 이미지 스캔과 같이 대시보드(#65)가
+// 읽는 공개 경로다.
+func (h *PipelineHandler) WithSASTResults(repo port.SASTResultRepository) *PipelineHandler {
+	h.sastResults = repo
+	return h
+}
+
 func (h *PipelineHandler) WithRunSync(uc *usecase.SyncPipelineRuns) *PipelineHandler {
 	h.syncRuns = uc
+	return h
+}
+
+// WithDefinitionRefresh 는 파이프라인 정의 갱신 경로를 배선한다.
+func (h *PipelineHandler) WithDefinitionRefresh(uc *usecase.RefreshPipelineDefinition) *PipelineHandler {
+	h.refreshDefinition = uc
 	return h
 }
 
@@ -139,9 +158,11 @@ func (h *PipelineHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/pipelines", h.CreatePipeline)
 	g.DELETE("/pipelines/:id", h.DeletePipeline)
 	g.POST("/pipelines/:id/deploy", h.DeployPipeline)
+	g.POST("/pipelines/:id/refresh-definition", h.RefreshPipelineDefinition)
 	g.GET("/pipelines/:id/resources", h.GetPipelineResources)
 	g.GET("/pipelines/:id/image-scans", h.ListImageScans)
 	g.GET("/pipelines/:id/image-scans/:scanId/vulnerabilities", h.ListScanVulnerabilities)
+	g.GET("/pipelines/:id/sast-results", h.ListSASTResults)
 	g.GET("/deployments", h.ListDeployments)
 	g.GET("/deployments/:id", h.GetDeployment)
 	g.GET("/app-templates", h.ListAppTemplates)
@@ -228,14 +249,20 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 		if errors.Is(err, usecase.ErrStackOrgMismatch) {
 			return errorResponse(c, http.StatusForbidden, "STACK_ORG_MISMATCH", err.Error())
 		}
+		if errors.Is(err, usecase.ErrStackClusterMismatch) {
+			return errorResponse(c, http.StatusBadRequest, "STACK_CLUSTER_MISMATCH", err.Error())
+		}
 		return errorResponse(c, http.StatusBadRequest, "PIPELINE_CONFIG_INVALID", err.Error())
 	}
 
 	// 만들자마자 어디로 열리는지 알려 준다. 목록으로 돌아가 다시 찾게 하지 않는다.
-	views := h.withAccessURLs(c.Request().Context(), []*domain.Pipeline{out.Pipeline})
+	views := h.pipelineViews(c.Request().Context(), []*domain.Pipeline{out.Pipeline})
 	resp := map[string]any{"pipeline": out.Pipeline}
 	if len(views) == 1 && views[0].AccessURL != "" {
 		resp["access_url"] = views[0].AccessURL
+	}
+	if len(views) == 1 && views[0].DeployClusterID != "" {
+		resp["deploy_cluster_id"] = views[0].DeployClusterID
 	}
 	if out.StackWarning != "" {
 		resp["warning"] = out.StackWarning
@@ -270,18 +297,23 @@ type pipelineView struct {
 	// AccessURL 은 배포된 앱의 외부 접속 주소다.
 	// 스택에 접근 도메인이 없으면 비어 있다 — 앱이 클러스터 안에서만 닿는다.
 	AccessURL string `json:"access_url,omitempty"`
+	// DeployClusterID 는 앱이 실제로 서 있는 클러스터다. 스택 파이프라인의 앱은
+	// 스택의 Argo CD 가 스택 클러스터에 올린다 — cluster_id 에 다른 클러스터가
+	// 저장돼 있어도(스택 클러스터 규칙 전에 만든 파이프라인) 그렇다. 화면은 이 값을
+	// 배포 대상으로 보여 준다.
+	DeployClusterID string `json:"deploy_cluster_id,omitempty"`
 }
 
-// withAccessURLs 는 파이프라인 목록에 접속 주소를 붙인다.
+// pipelineViews 는 파이프라인 목록에 서버가 계산하는 값(접속 주소·배포 클러스터)을 붙인다.
 //
 // 스택마다 한 번만 조회한다. 같은 스택의 파이프라인이 여럿인 것이 보통이라,
 // 파이프라인 수만큼 조회하면 목록 한 번에 같은 질의가 수십 번 나간다.
 //
 // 조회에 실패해도 목록은 그대로 돌려준다. 주소를 못 보여 주는 것이 목록 전체를
-// 못 보여 줄 이유는 아니다.
-func (h *PipelineHandler) withAccessURLs(ctx context.Context, pipelines []*domain.Pipeline) []pipelineView {
+// 못 보여 줄 이유는 아니다. 배포 클러스터는 저장된 값으로 떨어진다.
+func (h *PipelineHandler) pipelineViews(ctx context.Context, pipelines []*domain.Pipeline) []pipelineView {
 	views := make([]pipelineView, 0, len(pipelines))
-	domains := make(map[string]string, 4)
+	stacks := make(map[string]*port.StackSummary, 4)
 
 	for _, pipeline := range pipelines {
 		if pipeline == nil {
@@ -289,17 +321,22 @@ func (h *PipelineHandler) withAccessURLs(ctx context.Context, pipelines []*domai
 		}
 		view := pipelineView{Pipeline: pipeline}
 
+		var accessDomain, stackCluster string
 		stackID := strings.TrimSpace(pipeline.StackID)
 		if stackID != "" && h.stackReader != nil {
-			accessDomain, seen := domains[stackID]
+			summary, seen := stacks[stackID]
 			if !seen {
-				if summary, err := h.stackReader.GetStackSummary(ctx, stackID); err == nil && summary != nil {
-					accessDomain = summary.AccessDomain
+				if got, err := h.stackReader.GetStackSummary(ctx, stackID); err == nil {
+					summary = got
 				}
-				domains[stackID] = accessDomain
+				stacks[stackID] = summary
+			}
+			if summary != nil {
+				accessDomain, stackCluster = summary.AccessDomain, summary.ClusterID
 			}
 			view.AccessURL = domain.AppAccessURL(pipeline.Name, accessDomain)
 		}
+		view.DeployClusterID = pipeline.DeployClusterID(stackCluster)
 
 		views = append(views, view)
 	}
@@ -317,7 +354,7 @@ func (h *PipelineHandler) ListPipelines(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_LIST_FAILED", err.Error())
 	}
 
-	views := h.withAccessURLs(c.Request().Context(), out.Pipelines)
+	views := h.pipelineViews(c.Request().Context(), out.Pipelines)
 	return c.JSON(http.StatusOK, map[string]any{"items": views, "total": len(views)})
 }
 
@@ -334,7 +371,7 @@ func (h *PipelineHandler) ListPipelinesByStack(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "PIPELINE_LIST_FAILED", err.Error())
 	}
 
-	views := h.withAccessURLs(c.Request().Context(), pipelines)
+	views := h.pipelineViews(c.Request().Context(), pipelines)
 	return c.JSON(http.StatusOK, map[string]any{"items": views, "total": len(views)})
 }
 
@@ -525,6 +562,49 @@ func (h *PipelineHandler) ListDeployments(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"items": results, "total": len(results)})
 }
 
+// RefreshPipelineDefinition 은 POST /pipelines/:id/refresh-definition 을 처리한다.
+//
+// SAST 리포트를 남기기 전에 만든 파이프라인은 실행 기록에 결과가 붙지 않았다 — 그 파이프라인의
+// sast 잡은 리포트를 남기지 않는다. 정의 파일을 플랫폼 기본으로 다시 쓰면 붙는다. 사용자가
+// 손본 정의 파일은 덮어쓰므로 화면이 먼저 묻는다.
+func (h *PipelineHandler) RefreshPipelineDefinition(c echo.Context) error {
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		return errorResponse(c, http.StatusBadRequest, "PIPELINE_ID_REQUIRED", "pipeline id is required")
+	}
+	if h.refreshDefinition == nil {
+		return errorResponse(c, http.StatusServiceUnavailable, "DEFINITION_REFRESH_NOT_CONFIGURED",
+			"파이프라인 정의 갱신이 배선되지 않았습니다")
+	}
+	ctx := c.Request().Context()
+	if _, err := h.pipelineRepo.GetByID(ctx, id); err != nil {
+		return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
+	}
+	out, err := h.refreshDefinition.Execute(ctx, id)
+	if err != nil {
+		if errors.Is(err, usecase.ErrPipelineNotStackBound) {
+			return errorResponse(c, http.StatusBadRequest, "PIPELINE_NOT_STACK_BOUND",
+				"스택에 묶이지 않은 파이프라인은 플랫폼이 쓴 정의가 없어 갱신할 수 없습니다")
+		}
+		return errorResponse(c, http.StatusBadGateway, "DEFINITION_REFRESH_FAILED", err.Error())
+	}
+	return c.JSON(http.StatusOK, map[string]any{
+		"pipeline":             out.Pipeline,
+		"stages":               nonNilStrings(out.Stages),
+		"warnings":             nonNilStrings(out.Warnings),
+		"missing_variables":    nonNilStrings(out.MissingVariables),
+		"repository_recreated": out.RepositoryRecreated,
+	})
+}
+
+// nonNilStrings 는 nil 을 빈 배열로 내보낸다 — 화면이 null 을 배열로 다루지 않게.
+func nonNilStrings(v []string) []string {
+	if v == nil {
+		return []string{}
+	}
+	return v
+}
+
 func (h *PipelineHandler) GetPipelineResources(c echo.Context) error {
 	id := strings.TrimSpace(c.Param("id"))
 	if id == "" {
@@ -540,12 +620,17 @@ func (h *PipelineHandler) GetPipelineResources(c echo.Context) error {
 		return errorResponse(c, http.StatusInternalServerError, "KUBECONFIG_PROVIDER_NOT_CONFIGURED", "kubeconfig provider not configured")
 	}
 
-	kubeconfig, err := h.kubeconfig.GetKubeconfig(c.Request().Context(), pipeline.ClusterID)
+	// 앱이 실제로 서 있는 클러스터를 읽는다. 스택 파이프라인의 앱은 스택의 Argo CD
+	// 가 스택 클러스터에 올리므로, 파이프라인에 적힌 클러스터를 읽으면 빈 네임스페이스를
+	// 보고 모니터링 탭이 비어 보인다 — 실제로 그랬다.
+	clusterID := usecase.DeployClusterID(c.Request().Context(), h.stackReader, pipeline)
+	kubeconfig, err := h.kubeconfig.GetKubeconfig(c.Request().Context(), clusterID)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "KUBECONFIG_LOAD_FAILED", err.Error())
 	}
 	if len(kubeconfig) == 0 {
-		return errorResponse(c, http.StatusBadRequest, "KUBECONFIG_NOT_REGISTERED", "kubeconfig is not registered for this cluster")
+		return errorResponse(c, http.StatusBadRequest, "KUBECONFIG_NOT_REGISTERED",
+			fmt.Sprintf("kubeconfig is not registered for cluster %s", clusterID))
 	}
 
 	items, err := collectPipelineResources(c.Request().Context(), pipeline, kubeconfig)
@@ -1046,6 +1131,22 @@ func (h *PipelineHandler) DeployApp(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "DEPLOY_APP_INVALID", err.Error())
 	}
 
+	// 스택을 주면 생성과 같은 규칙을 따른다 — 클러스터는 스택 클러스터여야 한다
+	// (판정은 아래 usecase.MatchStackTarget). 스택을 확인하지 못한 채 요청한 클러스터에
+	// 적용하면 기록은 스택 파이프라인(러너·Argo CD 경로)으로 남아, 모니터링·삭제는 스택
+	// 클러스터를 뒤지고 앱은 요청한 클러스터에 남는다.
+	var stack *port.StackSummary
+	if stackID := strings.TrimSpace(req.StackID); stackID != "" && h.stackReader != nil {
+		summary, err := h.stackReader.GetStackSummary(c.Request().Context(), stackID)
+		if err != nil {
+			return errorResponse(c, http.StatusInternalServerError, "STACK_LOOKUP_FAILED", err.Error())
+		}
+		if summary == nil {
+			return errorResponse(c, http.StatusBadRequest, "STACK_NOT_FOUND", usecase.ErrStackNotFound.Error())
+		}
+		stack = summary
+	}
+
 	generated, err := manifests.Generate(manifests.DeployAppRequest{
 		AppName:   req.AppName,
 		GitURL:    req.GitURL,
@@ -1067,9 +1168,27 @@ func (h *PipelineHandler) DeployApp(c echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	orgID, err := h.resolveOrgID(ctx, c.Request().Header.Get("X-Org-ID"), req.ClusterID)
+	// 클러스터를 비우고 스택만 주면 스택 클러스터로 조직을 찾는다. 그 조직이 스택의
+	// 조직인지는 아래에서 본다.
+	orgCluster := req.ClusterID
+	if strings.TrimSpace(orgCluster) == "" && stack != nil {
+		orgCluster = stack.ClusterID
+	}
+	orgID, err := h.resolveOrgID(ctx, c.Request().Header.Get("X-Org-ID"), orgCluster)
 	if err != nil {
 		return errorResponse(c, http.StatusBadRequest, "DEPLOY_APP_INVALID", "cannot resolve organization: "+err.Error())
+	}
+	if stack != nil {
+		cluster, matchErr := usecase.MatchStackTarget(stack, orgID, req.ClusterID)
+		switch {
+		case errors.Is(matchErr, usecase.ErrStackOrgMismatch):
+			return errorResponse(c, http.StatusForbidden, "STACK_ORG_MISMATCH", matchErr.Error())
+		case errors.Is(matchErr, usecase.ErrStackClusterMismatch):
+			return errorResponse(c, http.StatusBadRequest, "STACK_CLUSTER_MISMATCH", matchErr.Error())
+		case matchErr != nil:
+			return errorResponse(c, http.StatusBadRequest, "DEPLOY_APP_INVALID", matchErr.Error())
+		}
+		req.ClusterID = cluster
 	}
 
 	// Pipeline 저장 (이미 존재하면 무시)
@@ -1226,4 +1345,28 @@ func (h *PipelineHandler) ListImageScans(c echo.Context) error {
 		items = append(items, imageScanView{ImageScanResult: r, DBStale: domain.IsDBStale(r.DBUpdatedAt, now)})
 	}
 	return c.JSON(http.StatusOK, map[string]any{"items": items, "total": len(items)})
+}
+
+// ListSASTResults handles GET /pipelines/:id/sast-results.
+//
+// 실행 기록 동기화가 남긴 분석 결과다. 실행 기록과는 deployment_id 로 잇는다.
+func (h *PipelineHandler) ListSASTResults(c echo.Context) error {
+	if h.sastResults == nil {
+		// 빈 목록을 돌려주지 않는다 — "분석한 적 없음" 으로 읽힌다.
+		return errorResponse(c, http.StatusServiceUnavailable, "SAST_RESULTS_NOT_CONFIGURED",
+			"sast result store is not configured")
+	}
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		return errorResponse(c, http.StatusBadRequest, "PIPELINE_ID_REQUIRED", "pipeline id is required")
+	}
+	if _, err := h.pipelineRepo.GetByID(c.Request().Context(), id); err != nil {
+		return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
+	}
+
+	results, err := h.sastResults.ListByPipelineID(c.Request().Context(), id)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, "SAST_RESULTS_LIST_FAILED", err.Error())
+	}
+	return c.JSON(http.StatusOK, map[string]any{"items": results, "total": len(results)})
 }

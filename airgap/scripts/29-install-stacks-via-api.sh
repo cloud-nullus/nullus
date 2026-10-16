@@ -19,9 +19,13 @@
 #   ORG_ID            조직 ID (미지정 시 첫 조직 사용)
 #   TEMPLATE_ID       설치할 골든패스 템플릿 (기본: gitea-jenkins-argocd-v1)
 #   STACK_NAME        스택 이름 (기본: airgap-stack)
-#   STACK_NAMESPACE   설치 네임스페이스 (기본: nullus)
+#   STACK_NAMESPACE   설치 네임스페이스 (기본: 비움 — API 가 nullus-<STACK_NAME> 으로 정한다.
+#                     플랫폼이 사는 nullus 는 API 가 거부한다)
 #   ACCESS_DOMAIN     접속 도메인 (기본: nullus.internal)
 #   STORAGE_CLASS     PVC StorageClass (미지정 시 클러스터 기본값)
+#   YAML_OVERRIDES_DIR 단계별 values 덮어쓰기 디렉토리 — <step>.yaml 이 config.yaml_overrides[<step>] 가 된다.
+#                     arm64 노드의 Harbor 이미지는 따로 넣지 않아도 된다 — 설치 백엔드가 노드 아키텍처를
+#                     읽어 멀티아키 이미지로 바꾼다(internal/stack/domain/arch_image_source.go)
 # =============================================================================
 set -euo pipefail
 IFS=$'\n\t'
@@ -29,9 +33,10 @@ IFS=$'\n\t'
 NULLUS_API="${NULLUS_API:-http://127.0.0.1:18080/api/v1}"
 TEMPLATE_ID="${TEMPLATE_ID:-gitea-jenkins-argocd-v1}"
 STACK_NAME="${STACK_NAME:-airgap-stack}"
-STACK_NAMESPACE="${STACK_NAMESPACE:-nullus}"
+STACK_NAMESPACE="${STACK_NAMESPACE:-}"
 ACCESS_DOMAIN="${ACCESS_DOMAIN:-nullus.internal}"
 STORAGE_CLASS="${STORAGE_CLASS:-}"
+YAML_OVERRIDES_DIR="${YAML_OVERRIDES_DIR:-}"
 
 log() { printf '[INFO] %s\n' "$*" >&2; }
 die() { printf '[ERR ] %s\n' "$*" >&2; exit 1; }
@@ -46,6 +51,12 @@ command -v python3 >/dev/null || die "python3 이 필요합니다"
 # 정책은 "폐기 + 멱등 재발급" — 쓰지 않는 admin 자격을 번들·로그에 남기지 않되,
 # 재실행 시 마찰 없이 다시 발급된다.
 BOOTSTRAP_BIN="${BOOTSTRAP_BIN:-nullus-bootstrap}"
+# install.sh 가 PATH 에 넣은 번들 bin 은 install.sh 가 끝나면 사라진다 — PATH 에 없으면 번들에서 찾는다.
+if ! command -v "${BOOTSTRAP_BIN}" >/dev/null; then
+  PLATFORM="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed -e 's/^x86_64$/amd64/' -e 's/^aarch64$/arm64/')"
+  BUNDLE_BOOTSTRAP="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bin/${PLATFORM}/nullus-bootstrap"
+  [[ -x "${BUNDLE_BOOTSTRAP}" ]] && BOOTSTRAP_BIN="${BUNDLE_BOOTSTRAP}"
+fi
 BOOTSTRAP_ISSUED=0
 
 cleanup_bootstrap() {
@@ -102,15 +113,18 @@ CLUSTER_ID="$(api POST /admin/clusters/self-register \
 log "클러스터: ${CLUSTER_ID}"
 
 # --- 3) 스택 생성 -----------------------------------------------------------
+# 에어갭 스택 설치에는 화면에서 yaml_overrides 를 넣을 사람이 없다. 필요하면 YAML_OVERRIDES_DIR 로 싣는다.
+[[ -n "${YAML_OVERRIDES_DIR}" ]] && log "단계별 values 덮어쓰기: ${YAML_OVERRIDES_DIR}"
+
 log "스택 생성 (템플릿: ${TEMPLATE_ID})"
 # 도구 선택은 템플릿 응답에서 가져온다. 여기에 차트 버전 표를 복사해 두면
 # 마이그레이션이 버전을 올릴 때마다 에어갭 경로만 낡는다.
 TEMPLATES_JSON="$(api GET /stacks/templates)" || die "템플릿 목록 조회 실패"
 
 # heredoc 안의 python 이 환경변수를 읽으므로 먼저 export 한다.
-export CLUSTER_ID STACK_NAME STACK_NAMESPACE ACCESS_DOMAIN STORAGE_CLASS TEMPLATE_ID
+export CLUSTER_ID STACK_NAME STACK_NAMESPACE ACCESS_DOMAIN STORAGE_CLASS TEMPLATE_ID YAML_OVERRIDES_DIR
 STACK_PAYLOAD="$(printf '%s' "${TEMPLATES_JSON}" | python3 - <<'PY'
-import json, os, sys
+import glob, json, os, sys
 
 SLOTS = {
     "package_registry":         ("artifacts",  "package_registry"),
@@ -124,6 +138,10 @@ SLOTS = {
     "log_search":               ("logging",    "search"),
     "trace_layer":              ("logging",    "trace_layer"),
     "agent":                    ("logging",    "trace_exporter"),
+    # 보안 슬롯. 빠지면 템플릿이 고른 Trivy·SonarQube 가 설정에서 사라진다.
+    "image_scanner":            ("security",   "image_scanner"),
+    "sast":                     ("security",   "sast"),
+    "sca":                      ("security",   "sca"),
 }
 
 data = json.load(sys.stdin)
@@ -134,7 +152,7 @@ if template is None:
     sys.stderr.write("template %s not found\n" % wanted)
     sys.exit(1)
 
-cfg = {"artifacts": {}, "pipeline": {}, "monitoring": {}, "logging": {}}
+cfg = {"artifacts": {}, "pipeline": {}, "monitoring": {}, "logging": {}, "security": {}}
 for section, field in SLOTS.values():
     cfg[section][field] = {"name": "", "version": "", "enabled": False}
 
@@ -176,6 +194,16 @@ cfg["storage"] = {
 sc = os.environ.get("STORAGE_CLASS", "").strip()
 if sc:
     cfg["storage"]["storage_class"] = sc
+
+overrides_dir = os.environ.get("YAML_OVERRIDES_DIR", "").strip()
+if overrides_dir:
+    overrides = {}
+    for path in sorted(glob.glob(os.path.join(overrides_dir, "*.yaml"))):
+        with open(path) as f:
+            overrides[os.path.splitext(os.path.basename(path))[0]] = f.read()
+    if overrides:
+        sys.stderr.write("[INFO] yaml_overrides: %s\n" % ", ".join(overrides))
+        cfg["yaml_overrides"] = overrides
 
 print(json.dumps({
     "name": os.environ["STACK_NAME"],

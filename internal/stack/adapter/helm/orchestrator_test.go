@@ -29,6 +29,8 @@ type mockInstaller struct {
 	failDelete      map[string]error
 	statusByRelease map[string]string
 	strictStatus    bool
+	// failStatus 는 Status 가 돌려줄 오류다(릴리스 없음과 다른 실패).
+	failStatus error
 }
 
 type mockResourceDefaultRepo struct {
@@ -76,6 +78,9 @@ func (m *mockInstaller) Uninstall(_ context.Context, releaseName, _ string) erro
 }
 
 func (m *mockInstaller) Status(_ context.Context, releaseName, namespace string) (*port.HelmInstallResult, error) {
+	if m.failStatus != nil {
+		return nil, m.failStatus
+	}
 	if m.strictStatus {
 		found := false
 		for _, installed := range m.installed {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/cloud-nullus/draft/internal/cicd/port"
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
@@ -12,7 +13,7 @@ import (
 // 차트로 세우지 않고 kubernetes 플러그인이 이 파드를 빌드마다 띄운다.
 const (
 	jenkinsAgentImage = shareddomain.JenkinsAgentImage
-	jenkinsDindImage  = shareddomain.JenkinsDindImage
+	jenkinsDindImage  = shareddomain.DindImage
 )
 
 // renderJenkinsfile 은 build → deploy 2단계 선언적 파이프라인을 만든다.
@@ -60,7 +61,8 @@ func renderJenkinsfile(in Input) string {
 	b.WriteString("      envFrom:\n")
 	b.WriteString("        # ESO 가 OpenBao 에서 동기화한 파이프라인 자격증명이다.\n")
 	fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
-	if opts.ImageScan {
+	// 의존성 스캔(#79)도 같은 trivy 컨테이너를 쓴다.
+	if opts.ImageScan || opts.DependencyScan {
 		// 스캐너는 별도 컨테이너다. builder 에 trivy 를 설치하면 빌드마다
 		// 내려받게 되고, 이미지에 굽자니 빌더가 스캐너 버전에 묶인다.
 		b.WriteString("    - name: scanner\n")
@@ -75,6 +77,26 @@ func renderJenkinsfile(in Input) string {
 		// 스캐너는 빌드가 올린 이미지를 레지스트리에서 다시 받는다. 자격증명은
 		// 빌더와 같은 파이프라인 Secret 에서 온다.
 		fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
+	}
+	if opts.SAST {
+		// 분석기도 별도 컨테이너다. 정책은 스택 네임스페이스의 ConfigMap, 토큰은
+		// 파이프라인 Secret(SONAR_TOKEN)에서 온다 — sonar-scanner 가 그 이름을 그대로 읽는다.
+		b.WriteString("    - name: sonar-scanner\n")
+		fmt.Fprintf(&b, "      image: %s\n", defaultSASTScannerImage)
+		b.WriteString("      command: [\"cat\"]\n")
+		b.WriteString("      tty: true\n")
+		b.WriteString("      envFrom:\n")
+		fmt.Fprintf(&b, "        - configMapRef: {name: %s, optional: true}\n", scanPolicyConfigMap)
+		fmt.Fprintf(&b, "        - secretRef: {name: %s}\n", ciSecretName(app))
+	}
+	if opts.SecretScan {
+		// 시크릿 탐지기도 별도 컨테이너다. 정책은 스택 네임스페이스의 ConfigMap 에서 온다.
+		b.WriteString("    - name: gitleaks\n")
+		fmt.Fprintf(&b, "      image: %s\n", defaultSecretScannerImage)
+		b.WriteString("      command: [\"cat\"]\n")
+		b.WriteString("      tty: true\n")
+		b.WriteString("      envFrom:\n")
+		fmt.Fprintf(&b, "        - configMapRef: {name: %s, optional: true}\n", scanPolicyConfigMap)
 	}
 	b.WriteString("    - name: dind\n")
 	fmt.Fprintf(&b, "      image: %s\n", jenkinsDindImage)
@@ -104,6 +126,41 @@ func renderJenkinsfile(in Input) string {
 	b.WriteString("  }\n\n")
 
 	b.WriteString("  stages {\n")
+
+	if opts.SecretScan {
+		// SecretScan — 빌드 앞에서 이번 푸시의 커밋에 든 시크릿을 찾는다. 모든 브랜치에서 돈다.
+		// 되커밋(deploy/ 만 바꾸는 것)은 빌드와 같은 이유로 건너뛴다.
+		fmt.Fprintf(&b, "    stage('%s') {\n", secretScanStageName)
+		b.WriteString("      when {\n")
+		b.WriteString("        beforeAgent true\n")
+		b.WriteString("        not { changeset pattern: 'deploy/**' , comparator: 'ANT' }\n")
+		b.WriteString("      }\n")
+		b.WriteString("      environment {\n")
+		// multibranch 가 주입하는 직전 성공 커밋. 첫 빌드면 null 이라 빈 문자열로 — 스크립트가 작업 트리 검사로 떨어진다.
+		fmt.Fprintf(&b, "        %s = \"${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: ''}\"\n", port.SecretScanBaseVariable)
+		b.WriteString("      }\n")
+		b.WriteString("      steps {\n")
+		b.WriteString("        container('gitleaks') {\n")
+		b.WriteString("          sh '''\n")
+		b.WriteString("            set -eu\n")
+		for _, line := range secretScanScriptLines() {
+			fmt.Fprintf(&b, "            %s\n", line)
+		}
+		b.WriteString("          '''\n")
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("      post {\n")
+		b.WriteString("        always {\n")
+		fmt.Fprintf(&b, "          archiveArtifacts artifacts: %q, allowEmptyArchive: true\n", port.SecretScanReportFile)
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("    }\n\n")
+	}
+
+	if opts.DependencyScan {
+		// DependencyScan — 소스의 락파일로 의존성 취약점을 찾는다. 빌드 앞이다.
+		writeJenkinsDependencyScanStage(&b, in)
+	}
 
 	// build
 	b.WriteString("    stage('Build') {\n")
@@ -145,6 +202,38 @@ func renderJenkinsfile(in Input) string {
 	b.WriteString("      }\n")
 	b.WriteString("    }\n\n")
 
+	if opts.SAST {
+		// SAST — 소스를 스택 SonarQube 로 분석하고 Quality Gate 로 판정한다.
+		fmt.Fprintf(&b, "    stage('%s') {\n", sastStageName)
+		b.WriteString("      when {\n")
+		b.WriteString("        beforeAgent true\n")
+		b.WriteString("        allOf {\n")
+		b.WriteString("          branch 'main'\n")
+		b.WriteString("          not { changeset pattern: 'deploy/**' , comparator: 'ANT' }\n")
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("      environment {\n")
+		fmt.Fprintf(&b, "        %s = %q\n", port.SASTServerVariable, in.SASTServerEndpoint)
+		b.WriteString("      }\n")
+		b.WriteString("      steps {\n")
+		fmt.Fprintf(&b, "        container('sonar-scanner') {\n")
+		b.WriteString("          sh '''\n")
+		b.WriteString("            set -eu\n")
+		for _, line := range sastScriptLines(app) {
+			fmt.Fprintf(&b, "            %s\n", line)
+		}
+		b.WriteString("          '''\n")
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		// 리포트는 게이트에 걸려도 남긴다 — 무엇에 걸렸는지는 실패한 실행에서 봐야 한다.
+		b.WriteString("      post {\n")
+		b.WriteString("        always {\n")
+		fmt.Fprintf(&b, "          archiveArtifacts artifacts: %q, allowEmptyArchive: true\n", port.SASTReportFile)
+		b.WriteString("        }\n")
+		b.WriteString("      }\n")
+		b.WriteString("    }\n\n")
+	}
+
 	if opts.ImageScan {
 		// image-scan — 빌드한 이미지를 스택 Trivy 서버로 검사한다.
 		//
@@ -169,6 +258,10 @@ func renderJenkinsfile(in Input) string {
 			// 빌드가 --insecure-registry 로 push 하는 레지스트리다. 스캔만 인증서를
 			// 검증하면 같은 레지스트리를 못 읽는다.
 			b.WriteString("            export TRIVY_INSECURE=true\n")
+		}
+		if repo := strings.TrimSpace(in.ImageScannerJavaDBRepository); repo != "" {
+			// 에어갭 Java DB 미러. 에이전트는 클러스터 안이라 내부 레지스트리에 닿는다.
+			fmt.Fprintf(&b, "            export TRIVY_JAVA_DB_REPOSITORY=%q\n", repo)
 		}
 		b.WriteString("            set -x\n")
 		for _, line := range scanScriptLines() {

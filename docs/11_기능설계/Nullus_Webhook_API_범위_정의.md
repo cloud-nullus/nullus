@@ -38,7 +38,7 @@ Nullus에는 **외부에서 걸어오는 수신 창구가 하나도 없다.** �
 | 기존 webhook | Nullus가 **등록만** 해준다 — Gitea 저장소에 push 훅을 걸되 **수신자는 Jenkins**(`/gitea-webhook/post`). "커밋 → 빌드 시작" 자동화용 | `internal/cicd/usecase/provision_app_project.go:369`, `adapter/gitea/client.go:267` |
 | CI 실행 기록 반영 | **화면 조회 시점 pull** — 배포 이력 조회(`GET /cicd/deployments?pipeline=`)가 오면 그때 `SyncPipelineRuns.ForPipeline` 이 CI 서버에서 당겨온다. 백그라운드 주기 실행 없음 → **실시간 아님** | `adapter/handler/pipeline_handler.go:405`, `usecase/sync_pipeline_runs.go` |
 | 배포 상태 추적 | k8s watch 로 직접 관측 — webhook 불필요 영역 | `adapter/kube/step_tracker.go` |
-| 알림(경보) | **발신만 있음**(notifier, #35 에서 채널 확장 예정). 수신·평가·`alert-history` 기록을 만드는 생산자는 미구현 | `internal/shared/notification/notifier.go`, observability 에 history insert 주체 없음 |
+| 알림(경보) | **발신만 있음** — 알림 채널 모듈(Telegram · 이메일 · Slack, nullus-plan#63)이 백업 결과를 보낸다. 수신·규칙 평가·`alert-history` 기록을 만드는 생산자는 미구현 | `internal/notification`, observability 에 history insert 주체 없음 |
 
 ### 2. 외부 이벤트 유형 정의 (세부 태스크 ①)
 
@@ -129,5 +129,5 @@ POST /api/v1/webhooks/ci/:pipelineId     # CI 빌드 완료 신호
 - 기존 webhook 등록(아웃바운드): `internal/cicd/usecase/provision_app_project.go:369`, `internal/cicd/adapter/gitea/client.go:267`
 - pull 동기화(재사용 대상): `internal/cicd/usecase/sync_pipeline_runs.go`, `internal/cicd/adapter/handler/pipeline_handler.go:405`
 - 멱등 실행 축: `dep_ci_<pipeline>_<build#>` (sync_pipeline_runs.go)
-- 발신 알림(수신과 별개): `internal/shared/notification/notifier.go` — 채널 확장은 nullus-plan#35
+- 발신 알림(수신과 별개): `internal/notification`(공개 계약 `internal/shared/notification/event.go`) — nullus-plan#63
 - 연계 설계: [Nullus_Test_Coverage_Dashboard_설계.md](./Nullus_Test_Coverage_Dashboard_설계.md) (#46 — push 수집을 본 카드와 묶어 재검토하기로 한 출처)

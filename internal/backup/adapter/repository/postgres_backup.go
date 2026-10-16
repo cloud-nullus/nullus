@@ -42,12 +42,12 @@ func (r *PostgresBackupRepository) CreateRun(ctx context.Context, run *domain.Ba
 		return fmt.Errorf("매니페스트 직렬화: %w", err)
 	}
 	const q = `
-		INSERT INTO backup_runs (org_id, stack_id, trigger, mode, scope, status, manifest)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO backup_runs (org_id, stack_id, trigger, mode, scope, status, manifest, set_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id, created_at`
 	return r.pool.QueryRow(ctx, q,
 		run.OrgID, nullable(run.StackID), string(run.Trigger), string(run.Mode), scope,
-		string(run.Status), manifest,
+		string(run.Status), manifest, nullable(run.SetID),
 	).Scan(&run.ID, &run.CreatedAt)
 }
 
@@ -69,7 +69,7 @@ func (r *PostgresBackupRepository) UpdateRun(ctx context.Context, run *domain.Ba
 
 const runColumns = `id, org_id, COALESCE(stack_id::text, ''), trigger, mode, scope, status,
 	COALESCE(schema_version, 0), quiesce_started_at, quiesce_ended_at, manifest,
-	COALESCE(total_bytes, 0), COALESCE(error, ''), started_at, finished_at, created_at`
+	COALESCE(total_bytes, 0), COALESCE(error, ''), started_at, finished_at, created_at, COALESCE(set_id::text, '')`
 
 func scanRun(row pgx.Row) (*domain.BackupRun, error) {
 	run := &domain.BackupRun{}
@@ -78,7 +78,7 @@ func scanRun(row pgx.Row) (*domain.BackupRun, error) {
 	var trigger, mode, status string
 	if err := row.Scan(&run.ID, &run.OrgID, &run.StackID, &trigger, &mode, &scope, &status,
 		&run.SchemaVersion, &run.QuiesceStartedAt, &run.QuiesceEndedAt, &manifestRaw,
-		&run.TotalBytes, &run.Error, &run.StartedAt, &run.FinishedAt, &run.CreatedAt); err != nil {
+		&run.TotalBytes, &run.Error, &run.StartedAt, &run.FinishedAt, &run.CreatedAt, &run.SetID); err != nil {
 		return nil, err
 	}
 	run.Trigger = domain.Trigger(trigger)
@@ -111,6 +111,29 @@ func (r *PostgresBackupRepository) ListRuns(ctx context.Context, orgID string, l
 		`SELECT `+runColumns+` FROM backup_runs
 		  WHERE ($1 = '' OR org_id::text = $1)
 		  ORDER BY created_at DESC LIMIT $2`, orgID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]*domain.BackupRun, 0)
+	for rows.Next() {
+		run, err := scanRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, run)
+	}
+	return out, rows.Err()
+}
+
+// ListRunsBySet 은 한 세트의 실행을 만든 순서로 준다 — 플랫폼이 먼저다(domain.PlanBackupSet 의 순서).
+func (r *PostgresBackupRepository) ListRunsBySet(ctx context.Context, setID string) ([]*domain.BackupRun, error) {
+	if setID == "" {
+		return nil, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+runColumns+` FROM backup_runs WHERE set_id::text = $1 ORDER BY created_at ASC, id ASC`, setID)
 	if err != nil {
 		return nil, err
 	}

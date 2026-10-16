@@ -62,6 +62,18 @@ var protectedValuePathsByStep = map[string][]string{
 	"installing_argocd":  {"configs.cm", "configs.secret"},
 	// openBaoValues — StorageClass 가 비면 PVC 가 Pending 에서 멈춘다.
 	"installing_openbao": {"server.dataStorage.storageClass"},
+	// sonarqubeSharedServiceValues + sonarQubeSAMLValues — 공유 DB 주소, 서버 주소(ACS 의
+	// 바탕), Keycloak 로그인 설정. 인증서가 옛것으로 얼면 모든 SAML 로그인이 서명
+	// 검증에서 실패한다.
+	"installing_sonarqube": {
+		"jdbcOverwrite.jdbcUrl",
+		"sonarProperties.sonar.core.serverBaseURL",
+		"sonarProperties.sonar.auth.saml.enabled",
+		"sonarProperties.sonar.auth.saml.applicationId",
+		"sonarProperties.sonar.auth.saml.providerId",
+		"sonarProperties.sonar.auth.saml.loginUrl",
+		"sonarProperties.sonar.auth.saml.certificate.secured",
+	},
 }
 
 // ProtectedValuePaths 는 해당 설치 단계에서 플랫폼이 소유한 values 경로다.
@@ -112,21 +124,33 @@ func ProtectedValueViolations(step string, base, edited map[string]any) []Protec
 }
 
 // lookupValuePath 는 점으로 구분된 경로를 values 맵에서 찾는다.
+//
+// 키 자체에 점이 들어 있을 수 있다(grafana.ini, sonar.auth.saml.*). 점마다 쪼개기만
+// 하면 그런 경로는 영영 못 찾아 보호가 조용히 꺼지므로, 각 단계에서 남은 조각을
+// 이어 붙인 긴 키부터 맞춰 본다.
 func lookupValuePath(values map[string]any, path string) (any, bool) {
 	if len(values) == 0 || strings.TrimSpace(path) == "" {
 		return nil, false
 	}
+	return lookupValueSegments(values, strings.Split(path, "."))
+}
 
-	var current any = values
-	for _, segment := range strings.Split(path, ".") {
-		node, ok := current.(map[string]any)
+func lookupValueSegments(current any, segments []string) (any, bool) {
+	if len(segments) == 0 {
+		return current, true
+	}
+	node, ok := current.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	for n := len(segments); n >= 1; n-- {
+		child, ok := node[strings.Join(segments[:n], ".")]
 		if !ok {
-			return nil, false
+			continue
 		}
-		current, ok = node[segment]
-		if !ok {
-			return nil, false
+		if found, ok := lookupValueSegments(child, segments[n:]); ok {
+			return found, true
 		}
 	}
-	return current, true
+	return nil, false
 }

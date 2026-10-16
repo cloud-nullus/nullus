@@ -1,0 +1,4 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_prometheus_crds
+# chart: prometheus-operator-crds 18.0.0
+{}

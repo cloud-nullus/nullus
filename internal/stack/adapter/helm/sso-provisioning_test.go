@@ -58,3 +58,7 @@ func TestSSOProvisioner_AccessDomainStillReachesProvisioner(t *testing.T) {
 		t.Fatalf("expected the access domain to reach the provisioner, got %q", seen)
 	}
 }
+
+func (r recordingProvisioner) UsesClientSecret(string) bool { return true }
+
+func (r recordingProvisioner) SAMLSigningCertificate(context.Context) (string, error) { return "", nil }

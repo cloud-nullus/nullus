@@ -1,0 +1,6 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_grafana
+# chart: grafana 8.9.0
+adminUser: admin
+ingress:
+    enabled: false

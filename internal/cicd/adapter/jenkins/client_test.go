@@ -270,17 +270,39 @@ func TestClient_TriggerBuild_UsesBranchSubJob(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL, "admin", "secret")
-	err := client.TriggerBuild(context.Background(), "orders-api", "main")
+	runURL, err := client.TriggerBuild(context.Background(), "orders-api", "main")
 
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodPost, gotMethod)
 	assert.Equal(t, "/job/orders-api/job/main/build", gotPath)
+	// 외부 주소를 모르면 컨트롤러 주소로 실행 링크를 만든다.
+	assert.Equal(t, srv.URL+"/job/orders-api/job/main/", runURL)
+}
+
+// 실행 링크는 브라우저가 여는 주소여야 한다. 클러스터 안 주소는 화면에서 열리지 않는다.
+func TestClient_TriggerBuild_PrefersWebBaseURLForRunURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "crumbIssuer") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "admin", "secret").WithWebBaseURL("https://jenkins.nullus.local/")
+	runURL, err := client.TriggerBuild(context.Background(), "orders-api", "main")
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://jenkins.nullus.local/job/orders-api/job/main/", runURL)
 }
 
 // 브랜치를 주지 않으면 job 이름만으로는 무엇을 실행할지 정해지지 않는다.
 func TestClient_TriggerBuild_RequiresJobAndBranch(t *testing.T) {
 	client := NewClient("http://jenkins.local", "admin", "secret")
 
-	assert.Error(t, client.TriggerBuild(context.Background(), "", "main"))
-	assert.Error(t, client.TriggerBuild(context.Background(), "orders-api", ""))
+	_, err := client.TriggerBuild(context.Background(), "", "main")
+	assert.Error(t, err)
+	_, err = client.TriggerBuild(context.Background(), "orders-api", "")
+	assert.Error(t, err)
 }

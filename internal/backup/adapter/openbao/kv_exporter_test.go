@@ -3,6 +3,7 @@ package openbao
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -14,7 +15,8 @@ import (
 
 // fakeVault 는 KV 트리를 흉내낸다. 키는 전체 경로다.
 type fakeVault struct {
-	data map[string]map[string]any
+	putErr error
+	data   map[string]map[string]any
 }
 
 func (f *fakeVault) ListKeys(_ context.Context, path string) ([]string, error) {
@@ -47,10 +49,14 @@ func (f *fakeVault) GetSecret(_ context.Context, path string) (map[string]any, e
 }
 
 func (f *fakeVault) PutSecret(_ context.Context, path string, data map[string]any) error {
+	if f.putErr != nil {
+		return f.putErr
+	}
 	f.data[path] = data
 	return nil
 }
 
+// putErr 가 있으면 모든 PutSecret 이 그 오류로 실패한다 — 금고가 안 뜬·권한 없는·잘못 라우팅된 상황.
 type fakeResolver struct{ v *fakeVault }
 
 func (r *fakeResolver) ForStack(context.Context, string, string) (secrets.Store, error) {
@@ -120,4 +126,21 @@ func TestPathExists(t *testing.T) {
 	ok, err = e.PathExists(context.Background(), "s", "kv/nullus/dev/org-1/없음")
 	require.NoError(t, err)
 	assert.False(t, ok)
+}
+
+// 실패한 경로 목록만 남기면 "금고가 아직 안 떴다" 와 "권한이 없다" 와 "주소가 다른 금고를 가리킨다" 를
+// 가를 수 없다 — 2026-10-12 두 스택 리허설에서 한 스택의 import 가 25 경로 실패로만 남아 원인을 로그로
+// 알 수 없었다. 첫 오류의 원인을 함께 남긴다.
+func TestImport_실패_원인을_남긴다(t *testing.T) {
+	e, src := newFixture()
+	var buf bytes.Buffer
+	_, err := e.Export(context.Background(), "stack-1", &buf)
+	require.NoError(t, err)
+	_ = src
+
+	dst := &fakeVault{data: map[string]map[string]any{}, putErr: errors.New("dial tcp 10.96.0.1:8200: connection refused")}
+	err = NewKVExporter(&fakeResolver{v: dst}).Import(context.Background(), "stack-1", &buf)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "복원하지 못했습니다")
+	assert.Contains(t, err.Error(), "connection refused", "원인이 함께 남아야 한다")
 }

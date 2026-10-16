@@ -307,3 +307,7 @@ make pre-build
 ```
 
 산출물(`bundle/`, `bin/`, `dist/`, `helm/charts/`, `helm/nullus-*.tgz`)은 `.gitignore` 로 제외되어 커밋되지 않습니다.
+
+**고객에게 내보내는 번들은 `SBOM_REQUIRED=1 make pre-build` 로 만듭니다.** syft 가 없거나 이미지·차트 SBOM 이 하나라도
+실패하면 빌드가 멈춥니다 — 번들이 초록불인 채 `bundle/sbom/` 만 빠져 나간 일이 있었습니다(릴리즈 정책 §7.4). GitHub Actions
+처럼 `CI=true` 인 환경은 기본이 엄격입니다. `SKIP_SBOM=1` 은 로컬 개발용이며 릴리즈 번들에는 쓰지 않습니다.

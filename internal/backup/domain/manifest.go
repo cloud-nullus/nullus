@@ -21,6 +21,8 @@ type WorkloadSpec struct {
 	Name      string `json:"name"`
 	// OriginalReplicas 는 복원의 필수 입력이다 (설계 §3.4 3단계).
 	OriginalReplicas int32 `json:"original_replicas"`
+	// OwnerManaged 가 참이면 복구의 재개가 건너뛴다 — 오퍼레이터가 CR 에서 다시 만드는 것이다.
+	OwnerManaged bool `json:"owner_managed,omitempty"`
 }
 
 type QuiesceWindow struct {
@@ -78,6 +80,8 @@ type Manifest struct {
 	Trigger         Trigger `json:"trigger"`
 	SchemaVersion   int     `json:"schema_version"`
 	PlatformVersion string  `json:"platform_version,omitempty"`
+	// Namespace 는 스택 백업이 뜬 네임스페이스다. 세트 복구는 스택을 어디로 되돌릴지 여기서 읽는다.
+	Namespace string `json:"namespace,omitempty"`
 
 	// pg_dump 는 서버 버전보다 낮으면 실패한다 (설계 §3.1 버전 함정).
 	PGServerVersion string `json:"pg_server_version,omitempty"`
@@ -100,6 +104,9 @@ type Manifest struct {
 }
 
 type ManifestInput struct {
+	// Namespace 는 스택 백업이 뜬 네임스페이스다. 복구(특히 세트 복구)가 어디로 되돌릴지 여기서 읽는다 —
+	// 비어 있으면 사용자가 네임스페이스를 직접 대야 한다.
+	Namespace          string
 	PlatformVersion    string
 	PGServerVersion    string
 	PGDumpVersion      string
@@ -119,6 +126,7 @@ func BuildManifest(run *BackupRun, in ManifestInput) Manifest {
 		Mode:               run.Mode,
 		Trigger:            run.Trigger,
 		SchemaVersion:      run.SchemaVersion,
+		Namespace:          in.Namespace,
 		PlatformVersion:    in.PlatformVersion,
 		PGServerVersion:    in.PGServerVersion,
 		PGDumpVersion:      in.PGDumpVersion,
@@ -135,6 +143,7 @@ func BuildManifest(run *BackupRun, in ManifestInput) Manifest {
 			Namespace:        t.Namespace,
 			Name:             t.Name,
 			OriginalReplicas: t.OriginalReplicas,
+			OwnerManaged:     t.OwnerManaged,
 		})
 	}
 

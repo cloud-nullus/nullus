@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { NullusMark } from './nullus-mark'
@@ -10,6 +11,7 @@ import {
   MARK_STROKE,
   MARK_GAP,
   MARK_DARK_MIN_RATIO,
+  MARK_WHOLE,
 } from './mark-geometry.generated'
 
 const svgOf = (c: HTMLElement) => c.querySelector('svg') as SVGSVGElement
@@ -143,5 +145,65 @@ describe('favicon', () => {
     for (const [, , dark] of [...MARK_SEGMENTS, ...MARK_OVERS]) {
       expect(favicon).toContain(`stroke:${dark}`)
     }
+  })
+})
+
+// 문서·외부 제출용 배포본(docs/40_UI_UX/logo/export)도 같은 생성기에서 나온다.
+// 도형을 고치고 배포본을 다시 굽지 않았거나, SVG 만 굽고 PNG 를 잊으면 여기서 걸린다.
+describe('brand export', () => {
+  const dir = join(__dirname, '../../../../docs/40_UI_UX/logo/export')
+  const files = [
+    ['nullus-logo.svg', 'light'],
+    ['nullus-logo-on-dark.svg', 'dark'],
+    ['nullus-mark.svg', 'light'],
+    ['nullus-mark-on-dark.svg', 'dark'],
+  ] as const
+  const read = (name: string) => readFileSync(join(dir, name), 'utf8')
+  // 꺾은선(M…L…)이든 곡선(M…C…)이든 명령마다 마지막 두 수가 지나는 점이다.
+  const vertices = (d: string) =>
+    d
+      .replace(/Z$/, '')
+      .split(/[MLC]/)
+      .filter(Boolean)
+      .map((cmd) => cmd.trim().split(/\s+/).slice(-2).map(Number))
+
+  // 배포본은 큰 배율에서 꺾임이 보이지 않게 곡선으로 그리지만, 지나는 점은 컴포넌트와 같아야 한다.
+  it.each(files)('%s runs through the same knot as the component', (name) => {
+    const shape = read(name).match(/<mask id="nullus-shape">[\s\S]*?\bd="([^"]+)"/)?.[1] as string
+    const expected = vertices(MARK_WHOLE)
+    const actual = vertices(shape)
+    expect(actual.length).toBe(expected.length)
+    actual.forEach(([x, y], i) => {
+      expect(Math.abs(x - expected[i][0])).toBeLessThanOrEqual(0.006)
+      expect(Math.abs(y - expected[i][1])).toBeLessThanOrEqual(0.006)
+    })
+  })
+
+  it.each(files)('%s keeps the strand width and the gap', (name) => {
+    const svg = read(name)
+    expect(svg).toContain(`stroke-width="${MARK_STROKE}"`)
+    expect(svg).toContain(`stroke-width="${MARK_STROKE + MARK_GAP * 2}"`)
+  })
+
+  // 위로 지나가는 가닥의 색은 교차점의 색이다 — 배포본도 교차점에서 같은 색을 지나야 한다.
+  it.each(files)('%s paints the %s-background palette', (name, bg) => {
+    const svg = read(name)
+    for (const [, light, dark] of MARK_OVERS) {
+      expect(svg).toContain(`stroke="${bg === 'light' ? light : dark}"`)
+    }
+  })
+
+  // 남의 문서·슬라이드에 이미지로 박히는 파일이라 보는 사람의 OS 테마를 따라가면 안 된다.
+  it.each(files)('%s does not follow the viewer colour scheme', (name) => {
+    expect(read(name)).not.toContain('prefers-color-scheme')
+  })
+
+  it.each(files)('%s has a transparent PNG, 2000px+ on the long side, baked from this SVG', (name) => {
+    const png = readFileSync(join(dir, name.replace(/\.svg$/, '.png')))
+    expect(Math.max(png.readUInt32BE(16), png.readUInt32BE(20))).toBeGreaterThanOrEqual(2000)
+    expect(png[25]).toBe(6) // IHDR colour type 6 = RGBA
+    // rasterize.mjs 가 원본 SVG 의 해시를 tEXt 청크로 남긴다.
+    const hash = createHash('sha256').update(read(name)).digest('hex')
+    expect(png.toString('latin1')).toContain(`nullus-source-sha256\0${hash}`)
   })
 })
