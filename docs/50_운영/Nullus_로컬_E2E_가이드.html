@@ -471,6 +471,7 @@ footer { max-width: 46rem; margin-top: 64px; padding-top: 18px; border-top: 1px 
     <p>도구는 Homebrew로 한 번에 깐다. Docker는 Docker Desktop이나 OrbStack 중 하나를 쓴다.</p>
     <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>brew install go node kind kubectl helm jq libpq
 brew install --cask orbstack      <span class="c"># 또는 Docker Desktop</span></code></pre></div>
+    <div class="callout"><b>리눅스에서는</b>Go·Node·kind·kubectl·helm 은 각 배포처의 바이너리를 받아 <code>~/.local/bin</code> 에 두면 된다. <code>pg_dump</code> 는 주의가 필요하다 — 10단계의 백업이 <b>서버와 같은 메이저 버전</b>의 <code>pg_dump</code> 를 요구하는데(스택 Postgres 는 17) Ubuntu 24.04 의 <code>postgresql-client</code> 는 16 까지만 준다. PGDG 저장소를 붙여 <code>postgresql-client-17</code> 을 깐다. 컨테이너에서 바이너리만 꺼내 쓰는 방법은 통하지 않는다 — <code>postgres:17</code> 이미지는 glibc 2.41 로 빌드돼 있어 호스트(2.39)에서 실행되지 않는다.</div>
     <div class="table-wrap"><table>
       <thead><tr><th>도구</th><th>버전</th><th>비고</th></tr></thead>
       <tbody>
@@ -499,8 +500,12 @@ cd nullus</code></pre></div>
   </div>
   <div class="step-body">
     <p><code>up --kind</code> 하나가 Postgres·Redis·MinIO·Keycloak을 띄우고, 마이그레이션을 돌리고, API(8090)와 웹(5173)을 띄우고, kind 클러스터 둘을 만들어 Nullus에 등록한다.</p>
-    <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>./scripts/runbook_local.sh preflight
+    <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code># 설치되는 도구가 쓸 Keycloak 주소를 정해 둔다 — up 보다 앞서야 한다
+export NULLUS_LOCAL_DOMAIN=nullus.local
+
+./scripts/runbook_local.sh preflight
 ./scripts/runbook_local.sh up --kind
+./scripts/setup-local-domain.sh        # 클러스터가 생긴 뒤 CoreDNS 에 keycloak.&lt;도메인&gt; 을 넣는다
 ./scripts/runbook_local.sh status
 ./scripts/runbook_local.sh smoke</code></pre></div>
     <div class="table-wrap"><table>
@@ -514,6 +519,7 @@ cd nullus</code></pre></div>
         <tr><td>kind</td><td><code>kind-nullus-platform</code> (컨트롤 1 + 워커 2)<br><code>kind-nullus-develop</code> (컨트롤 1 + 워커 1)</td><td>스택은 platform에 깐다</td></tr>
       </tbody>
     </table></div>
+    <div class="callout warn"><b><code>NULLUS_LOCAL_DOMAIN</code> 을 빼면 4단계에서 설치가 멈춘다</b>이 값이 없으면 설치되는 도구의 OIDC issuer 가 <code>http://localhost:8180</code> 으로 박힌다. 그 주소는 파드 안에서 <b>파드 자신</b>을 가리키므로 Keycloak 에 닿지 못한다. MinIO 는 OIDC 초기화가 끝나야 admin API 를 열기 때문에, 차트의 버킷 부트스트랩 Job 이 <code>Server not initialized yet</code> 으로 계속 실패하고 <code>installing_minio</code> 에서 설치가 멈춘다(2026-10-17 실측: 18분간 4회 재시도 후 Error). <code>setup-local-domain.sh</code> 를 스택 설치 <b>뒤</b>(5단계)에 돌리면 이미 늦다 — 그 시점에는 닿지 못하는 주소가 도구에 들어간 상태다.</div>
     <div class="callout warn"><b><code>all</code> 대신 <code>up</code>을 쓴다</b><code>runbook_local.sh all</code>은 도중에 실패하면 띄운 것을 전부 내린다. 처음에는 <code>up</code>과 <code>smoke</code>를 따로 돌려야 어디서 막혔는지 남는다.</div>
     <p class="check-title">확인</p>
     <ul class="check">
@@ -606,7 +612,7 @@ sudo security add-trusted-cert -d -r trustRoot \
 kubectl --context $CTX -n $NS get secret gitlab-initial-root-password \
   -o jsonpath='{.data.password}' | base64 -d; echo
 <span class="c"># Argo CD — 사용자 admin</span>
-kubectl --context $CTX -n $NS get secret argocd-initial-admin-secret \
+kubectl --context $CTX -n $NS get secret argocd-secret \
   -o jsonpath='{.data.password}' | base64 -d; echo
 <span class="c"># SonarQube — 관리자 admin. 일반 사용자는 로그인 화면의 Keycloak 버튼으로 들어간다</span>
 kubectl --context $CTX -n $NS get secret nullus-sonarqube-credentials \
@@ -719,7 +725,7 @@ grep 'NULLUS_GITLAB_URL' .runbook-logs/api.log</code></pre></div>
       <tbody>
         <tr><td>앱 이름</td><td><code>demo-api</code></td><td>소문자·숫자·하이픈. GitLab 프로젝트·Deployment·Argo CD 앱·호스트 이름이 된다</td></tr>
         <tr><td>Stack 선택</td><td><code>nullus-gitlab-argocd-sonarqube</code></td><td>스택이 있어야 GitOps 경로가 된다</td></tr>
-        <tr><td>클러스터</td><td><code>kind-nullus-develop</code></td><td>목록에는 target 클러스터만 보인다. 실제 배포는 <b>스택이 있는 kind-nullus-platform</b>으로 간다</td></tr>
+        <tr><td>클러스터</td><td><code>kind-nullus-platform</code></td><td><b>스택이 있는 클러스터</b>를 고른다. 다른 클러스터를 주면 API 가 <code>STACK_CLUSTER_MISMATCH</code> 로 거부한다 — 스택의 Argo CD 는 자기 클러스터에만 배포한다(<code>internal/cicd/domain/deploy_cluster.go</code>)</td></tr>
         <tr><td>네임스페이스</td><td>새 네임스페이스 <code>demo</code></td><td>앱이 배포될 곳</td></tr>
       </tbody>
     </table></div>
@@ -732,12 +738,13 @@ grep 'NULLUS_GITLAB_URL' .runbook-logs/api.log</code></pre></div>
     <div class="callout"><b>"실행"은 GitLab 파이프라인을 만든다</b>화면은 파이프라인을 만든 뒤 Nullus 쪽 "실행"을 한 번 더 부른다. 이 넘김이 GitLab 스택에서는 <code>POST /projects/:id/pipeline</code>로 <code>main</code> 파이프라인을 만들고, 실행 기록의 Trigger CI 단계에 파이프라인 주소를 남긴다. 생성 직후처럼 그 브랜치의 최신 파이프라인(위 2번의 스캐폴딩 커밋)이 아직 돌고 있으면 새로 만들지 않고 그 실행에 붙는다 — 같은 커밋의 배포 잡 둘이 되커밋을 밀면 둘째가 실패한다. 프로젝트가 아직 없으면 "프로비저닝이 끝나지 않았다"로 단계가 실패한다.</div>
     <div class="callout"><b>스택에 SonarQube 가 있으면 <code>sast</code> 단계가 생긴다</b> <span class="badge ok" title="2026-10-10 kind 에서 gitlab-argocd-sonarqube-v1 스택에 파이프라인을 만들어 build · sast · deploy 를 실제로 돌렸다">실측 기록</span> 빌드와 함께 돌아 <code>sonar-scanner</code> 로 소스를 분석하고, Quality Gate 를 통과해야 <code>deploy</code> 가 돈다. 분석 토큰(<code>SONAR_TOKEN</code>, 가려짐)과 정책 변수는 Nullus 가 프로젝트 CI/CD 변수로 넣는다 — 스택 설치가 발급해 둔 토큰이라 따로 만들 것이 없다.</div>
     <details class="fold"><summary>화면 대신 API로 만들기</summary><div>
-    <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>TARGET_ID=$(curl -s $API/api/v1/admin/clusters \
-  | jq -r '.items[] | select(.name=="kind-nullus-develop") | .id')
+    <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code># 스택이 선 클러스터를 쓴다. target 클러스터를 주면 STACK_CLUSTER_MISMATCH 로 거부된다.
+STACK_CLUSTER_ID=$(curl -s $API/api/v1/admin/clusters \
+  | jq -r '.items[] | select(.name=="kind-nullus-platform") | .id')
 
 curl -s -X POST $API/api/v1/cicd/pipelines -H 'Content-Type: application/json' \
   -d "{\"name\":\"$APP\",\"template_id\":\"nullus-sample-backend-v1\",\"app_type\":\"backend\",
-       \"cluster_id\":\"$TARGET_ID\",\"stack_id\":\"$STACK_ID\",\"namespace\":\"$APP_NS\",
+       \"cluster_id\":\"$STACK_CLUSTER_ID\",\"stack_id\":\"$STACK_ID\",\"namespace\":\"$APP_NS\",
        \"port\":8080,\"replicas\":1}" \
   | tee ~/nullus-pipeline.json \
   | jq '{id: .pipeline.id, repository_path, argo_application_created, warnings}'</code></pre></div>
@@ -788,9 +795,10 @@ EOF
 source ~/.nullus-e2e.env; source ~/.nullus-fingerprint.sh
 fingerprint | tee ~/nullus-before.txt</code></pre></div>
     <div class="callout warn"><b>빈 값이 있으면 다음으로 넘어가지 않는다</b><code>image=</code>나 <code>argo=</code> 뒤가 비었으면 수집이 실패한 것이다. 빈 지문끼리 비교하면 "일치"로 보여 복구를 잘못 통과시킨다.</div>
+    <div class="callout warn"><b>잠깐 <code>:bootstrap</code> 태그로 <code>ImagePullBackOff</code> 가 보인다 — 실패가 아니다</b>스캐폴딩 커밋의 <code>deploy/deployment.yaml</code> 은 자리표시자 태그 <code>:bootstrap</code> 을 담고 있고, 그 태그는 레지스트리에 없다. deploy 잡이 실제 태그로 되커밋한 뒤 Argo CD 가 그 커밋을 가져와야 바뀌는데, Argo CD 의 기본 폴링 주기(3분) 안에는 앞 커밋에 <code>Synced</code> 로 앉아 있다. 기다리거나 한 번 밀어 준다. <br><code>kubectl --context $CTX -n $NS annotate applications.argoproj.io $APP argocd.argoproj.io/refresh=hard --overwrite</code></div>
     <p class="check-title">확인</p>
     <ul class="check">
-      <li>앱 이미지 태그가 <code>:bootstrap</code>이 아니라 커밋 SHA다</li>
+      <li>앱 이미지 태그가 <code>:bootstrap</code>이 아니라 커밋 SHA다 — 바로 위의 안내를 먼저 읽는다</li>
       <li>SonarQube 스택이면 GitLab 파이프라인에 <code>build</code> · <code>sast</code> · <code>deploy</code> 가 있고 <code>sast</code> 잡 로그 끝에 <code>QUALITY GATE STATUS: PASSED</code> 가 있다. <code>https://sonarqube.nullus.local</code> 에 앱 이름의 프로젝트가 생겼다. History 의 그 실행에 <b>SAST · Quality Gate passed</b> 가 붙는다</li>
       <li><code>~/nullus-before.txt</code>의 세 항목이 모두 채워져 있다</li>
     </ul>
@@ -852,7 +860,25 @@ SET_ID=$(jq -r .set_id ~/nullus-backup-set.json); echo "export SET_ID=$SET_ID" &
   <div class="step-body">
     <p>스택 네임스페이스를 통째로 지운다. 볼륨까지 함께 사라지므로 백업 없이는 되돌릴 수 없는 상태가 된다. Nullus의 스택 기록과 앱 네임스페이스(<code>demo</code>)는 그대로 남는다.</p>
     <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>kubectl --context $CTX delete namespace $NS --wait=false
+
+# 스택이 자기 네임스페이스에 깐 것들이 그 네임스페이스 삭제를 막는다 — 아래 안내 참고.
+# 삭제 요청을 넣은 뒤 바로 회수한다.
+kubectl --context $CTX delete validatingwebhookconfiguration \
+  externalsecret-validate secretstore-validate --ignore-not-found
+kubectl --context $CTX delete apiservice v1beta1.metrics.k8s.io --ignore-not-found
+
+# 컨트롤러가 사라진 뒤에는 ExternalSecret 의 finalizer 를 떼어 줄 주체가 없다.
+for es in $(kubectl --context $CTX -n $NS get externalsecrets \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+  kubectl --context $CTX -n $NS patch externalsecret "$es" \
+    --type merge -p '{"metadata":{"finalizers":null}}'
+done
+
 kubectl --context $CTX wait --for=delete namespace/$NS --timeout=20m</code></pre></div>
+    <div class="callout warn"><b>이 회수를 하지 않으면 네임스페이스가 <code>Terminating</code> 에서 끝나지 않는다</b>
+      <p>스택은 external-secrets 와 metrics-server 를 <b>자기 네임스페이스에</b> 깐다. 그 둘이 클러스터 범위 자원으로 그 네임스페이스를 가리키기 때문에 순환 의존이 생긴다 — 파드가 먼저 죽으면 남은 자원을 지울 수 없다.</p>
+      <p><code>ValidatingWebhookConfiguration/externalsecret-validate</code> · <code>secretstore-validate</code> 는 <code>failurePolicy=Fail</code> 이고 <code>clientConfig.service</code> 가 <code>external-secrets-webhook.&lt;삭제 중인 NS&gt;.svc</code> 다. 그래서 ExternalSecret 삭제 호출이 웹훅 호출 실패로 거부된다(<code>NamespaceDeletionContentFailure</code>). <code>APIService/v1beta1.metrics.k8s.io</code> 는 <code>metrics-server.&lt;NS&gt;.svc</code> 를 가리켜 discovery 를 깨뜨린다(<code>NamespaceDeletionDiscoveryFailure</code>).</p>
+      <p>웹훅을 치워도 <code>externalsecrets.external-secrets.io/externalsecret-cleanup</code> finalizer 가 ExternalSecret 마다 남는다(이 템플릿에서 14개). 컨트롤러가 이미 사라져 떼어 줄 주체가 없으므로 손으로 비운다. <b>2026-10-17 실측: 이 회수 없이 58분을 기다려도 <code>Terminating</code> 이었고, 회수 뒤 즉시 끝났다.</b></p></div>
     <div class="callout warn"><b>화면의 스택 삭제·<code>stack-down</code>·<code>pipeline-down</code>은 이 시나리오에서 쓰지 않는다</b>
       <p>이 가이드는 네임스페이스 삭제 경로다. 제품 기능으로 클러스터의 마지막 스택을 지우면 cert-manager·metrics-server·GatewayClass·Gateway API CRD·내부 CA까지 회수되고(#284), 그 뒤의 복구는 <b>다른 길</b>이다 — 복구가 cert-manager·metrics-server를 스택 설치기의 같은 단계로 스스로 다시 세운 뒤 백업의 <code>shared_resources</code>로 Gateway CRD·GatewayClass·내부 CA를 되살린다(2026-10-12 실측, 백업복구 설계 §10.2.3). 그 절차는 <a href="./Nullus_백업복구_로컬_테스트_가이드.md">백업복구 로컬 테스트 가이드</a> §4.10에 있다.</p>
       <p>스택 기록도 soft delete되므로 되살리려면 플랫폼 DB까지(<code>full</code>) 복구해야 한다. <code>pipeline-down</code>은 파이프라인 기록을 지운다.</p></div>
@@ -890,7 +916,7 @@ kubectl --context $CTX -n $NS get pods -w</code></pre></div>
     <p class="check-title">확인</p>
     <ul class="check">
       <li><code>schema_check.allowed</code>가 <code>true</code>다</li>
-      <li><code>integrity_report.dangling</code>이 비어 있다(아니면 그 토큰을 다시 등록해야 한다)</li>
+      <li><code>integrity_report.dangling</code>이 비어 있다. <b><code>stack_only</code> 에서는 남는 것이 정상이다</b> — 이 모드는 플랫폼 DB 를 건드리지 않으므로 DB 의 <code>token_sources</code> 행은 백업 뒤에 생긴 것까지 그대로인데 금고는 백업 시점으로 돌아간다. 2026-10-17 실측: 파이프라인·아티팩트 토큰 5건이 남았고, 14단계의 파이프라인 재실행에는 지장이 없었다(러너가 쓰는 CI 변수는 네임스페이스와 함께 복구된다). 그 토큰을 실제로 쓰는 기능이 있으면 다시 등록한다</li>
       <li>스택 파드가 모두 Running이고, PVC에 출처가 남았다: <code>kubectl --context $CTX -n $NS get pvc -o json | jq -r '.items[] | "\(.metadata.name)\t\(.metadata.annotations["backup.nullus.io/restored-from"] // "-")"'</code></li>
     </ul>
   </div>
@@ -929,7 +955,7 @@ done</code></pre></div>
     <ul class="check">
       <li><code>https://gitlab.nullus.local</code>과 <code>https://argocd.nullus.local</code>이 다시 열린다</li>
       <li><code>https://sonarqube.nullus.local</code>에 백업 전 비밀번호로 로그인되고, 부록 B에서 분석했다면 그 프로젝트가 남아 있다 <span class="badge warn" title="SonarQube를 담은 스택의 복구는 리허설 기록이 없다">코드 기준</span></li>
-      <li><code>kubectl --context $CTX -n $NS get deploy,sts -o json | grep -c "$OLD_IP"</code>가 0이다</li>
+      <li><b>주소가 바뀐 경우에만</b> <code>kubectl --context $CTX -n $NS get deploy,sts -o json | grep -c "$OLD_IP"</code>가 0이다. 복구가 ClusterIP 를 그대로 되살렸다면(<code>OLD_IP == NEW_IP</code>, 보통 이쪽이다) 러너·Argo CD 의 <code>hostAliases</code> 가 그 주소를 계속 가리키는 것이 정상이므로 0 이 될 수 없다 — 이 검사는 건너뛴다</li>
     </ul>
   </div>
 </section>
