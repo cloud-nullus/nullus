@@ -861,31 +861,24 @@ SET_ID=$(jq -r .set_id ~/nullus-backup-set.json); echo "export SET_ID=$SET_ID" &
   <div class="step-body">
     <p>스택 네임스페이스를 통째로 지운다. 볼륨까지 함께 사라지므로 백업 없이는 되돌릴 수 없는 상태가 된다. Nullus의 스택 기록과 앱 네임스페이스(<code>demo</code>)는 그대로 남는다.</p>
     <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>kubectl --context $CTX delete namespace $NS --wait=false
-
-# ① 클러스터 범위 자원을 먼저 회수한다 — 이것부터 해야 삭제 호출이 거부되지 않는다.
-kubectl --context $CTX delete validatingwebhookconfiguration \
+kubectl --context $CTX wait --for=delete namespace/$NS --timeout=20m</code></pre></div>
+    <div class="callout"><b>예전 스택은 <code>Terminating</code> 에서 끝나지 않는다 — 아래 회수가 필요하다</b>
+      <p>스택이 external-secrets 와 metrics-server 를 <b>자기 네임스페이스에</b> 깔던 때의 이야기다. 그 둘이 클러스터 범위 자원으로 그 네임스페이스를 가리켜 순환 의존이 생겼다 — 파드가 먼저 죽으면 남은 자원을 지울 수 없다. 세 결함이 겹쳐 있었다: <code>ValidatingWebhookConfiguration</code> 둘이 <code>failurePolicy=Fail</code> 로 <b>DELETE 까지</b> 걸려 있었고(#328), <code>APIService/v1beta1.metrics.k8s.io</code> 가 스택 네임스페이스를 가리켜 discovery 를 깨뜨렸고(#327), ESO 컨트롤러가 지워지는 네임스페이스 안에 있어 <code>externalsecret-cleanup</code> finalizer 를 떼어 줄 주체가 사라졌다(#330).</p>
+      <p><b>지금 설치하는 스택에는 해당하지 않는다.</b> metrics-server 는 <code>kube-system</code>, ESO 는 <code>external-secrets</code> 네임스페이스에 깔리고 웹훅은 <code>failurePolicy=Ignore</code> 다. 2026-10-17 실측: ExternalSecret 14개가 있는 완전한 스택에서 위 두 줄만으로 <b>201초</b>에 끝났다(그 전에는 같은 조건에서 58분·30분·22분을 기다려도 <code>Terminating</code> 이었다).</p>
+      <p>그 세 수정 이전에 깐 스택이 막혀 있으면 이 순서로 회수한다. finalizer 는 <b>파드가 다 사라진 뒤에</b> 비운다 — 컨트롤러가 살아 있는 동안 지우면 다시 붙는다.</p>
+      <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>kubectl --context $CTX delete validatingwebhookconfiguration \
   externalsecret-validate secretstore-validate --ignore-not-found
 kubectl --context $CTX delete apiservice v1beta1.metrics.k8s.io --ignore-not-found
 
-# ② 파드가 다 사라질 때까지 기다린다. 순서가 중요하다 — 아래 안내 참고.
-#    external-secrets 컨트롤러가 살아 있는 동안에는 finalizer 를 지워도 다시 붙는다.
 while [ "$(kubectl --context $CTX -n $NS get pods --no-headers 2>/dev/null | wc -l)" -ne 0 ]; do
   sleep 10
 done
 
-# ③ 그 다음에 finalizer 를 비운다. 이제는 되붙일 주체가 없다.
 for es in $(kubectl --context $CTX -n $NS get externalsecrets \
     -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
   kubectl --context $CTX -n $NS patch externalsecret "$es" \
     --type merge -p '{"metadata":{"finalizers":null}}'
-done
-
-kubectl --context $CTX wait --for=delete namespace/$NS --timeout=20m</code></pre></div>
-    <div class="callout warn"><b>이 회수를 하지 않으면 네임스페이스가 <code>Terminating</code> 에서 끝나지 않는다</b>
-      <p>스택은 external-secrets 와 metrics-server 를 <b>자기 네임스페이스에</b> 깐다. 그 둘이 클러스터 범위 자원으로 그 네임스페이스를 가리키기 때문에 순환 의존이 생긴다 — 파드가 먼저 죽으면 남은 자원을 지울 수 없다.</p>
-      <p><code>ValidatingWebhookConfiguration/externalsecret-validate</code> · <code>secretstore-validate</code> 는 <code>failurePolicy=Fail</code> 이고 <code>clientConfig.service</code> 가 <code>external-secrets-webhook.&lt;삭제 중인 NS&gt;.svc</code> 다. 그래서 ExternalSecret 삭제 호출이 웹훅 호출 실패로 거부된다(<code>NamespaceDeletionContentFailure</code>). <code>APIService/v1beta1.metrics.k8s.io</code> 는 <code>metrics-server.&lt;NS&gt;.svc</code> 를 가리켜 discovery 를 깨뜨린다(<code>NamespaceDeletionDiscoveryFailure</code>).</p>
-      <p>웹훅을 치워도 <code>externalsecrets.external-secrets.io/externalsecret-cleanup</code> finalizer 가 ExternalSecret 마다 남는다(이 템플릿에서 14개). 컨트롤러가 이미 사라져 떼어 줄 주체가 없으므로 손으로 비운다. <b>2026-10-17 실측: 이 회수 없이 58분을 기다려도 <code>Terminating</code> 이었고, 회수 뒤 즉시 끝났다.</b></p>
-      <p><b>finalizer 는 파드가 다 사라진 뒤에 비운다 — 순서를 바꾸면 듣지 않는다.</b> 삭제 요청 직후에는 external-secrets 컨트롤러가 아직 돌고 있어서, finalizer 를 지우는 즉시 <b>다시 붙인다</b>. 그 뒤 컨트롤러가 죽으면 그 finalizer 가 영구히 남는다. 2026-10-17 실측: 삭제 직후에 비웠더니 30분간 <code>Terminating</code> 이었고 ExternalSecret 14개에 finalizer 가 그대로 있었다. 파드가 0 이 된 것을 확인하고 같은 명령을 다시 돌리자 곧바로 <code>NotFound</code> 가 됐다.</p></div>
+done</code></pre></div></div>
     <div class="callout warn"><b>화면의 스택 삭제·<code>stack-down</code>·<code>pipeline-down</code>은 이 시나리오에서 쓰지 않는다</b>
       <p>이 가이드는 네임스페이스 삭제 경로다. 제품 기능으로 클러스터의 마지막 스택을 지우면 cert-manager·metrics-server·GatewayClass·Gateway API CRD·내부 CA까지 회수되고(#284), 그 뒤의 복구는 <b>다른 길</b>이다 — 복구가 cert-manager·metrics-server를 스택 설치기의 같은 단계로 스스로 다시 세운 뒤 백업의 <code>shared_resources</code>로 Gateway CRD·GatewayClass·내부 CA를 되살린다(2026-10-12 실측, 백업복구 설계 §10.2.3). 그 절차는 <a href="./Nullus_백업복구_로컬_테스트_가이드.md">백업복구 로컬 테스트 가이드</a> §4.10에 있다.</p>
       <p>스택 기록도 soft delete되므로 되살리려면 플랫폼 DB까지(<code>full</code>) 복구해야 한다. <code>pipeline-down</code>은 파이프라인 기록을 지운다.</p></div>

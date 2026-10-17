@@ -35,7 +35,7 @@ func (o *Orchestrator) chartSpecForStep(step string) (ChartSpec, bool) {
 			// 떨어지고, 그러면 이 차트가 만드는 cluster-scoped 자원(APIService,
 			// ClusterRole)이 스택 네임스페이스를 가리킨다 — 스택을 지울 때 클러스터의
 			// 모든 네임스페이스 삭제가 교착된다.
-			if spec.Namespace == "" && isSharedClusterScopedStep(step) {
+			if spec.Namespace == "" && stepPinsItsNamespace(step) {
 				if fallback, ok := defaultChartSpecForStep(step); ok {
 					spec.Namespace = fallback.Namespace
 				}
@@ -49,6 +49,24 @@ func (o *Orchestrator) chartSpecForStep(step string) (ChartSpec, bool) {
 	}
 
 	return ChartSpec{}, false
+}
+
+// stepPinsItsNamespace 는 코드가 못박은 네임스페이스를 DB 보다 앞세울 단계다.
+//
+// 스택 네임스페이스에 깔면 그 네임스페이스를 지울 수 없게 되거나(ESO),
+// 클러스터의 모든 네임스페이스 삭제가 교착되는(metrics-server 의 APIService) 것들이다.
+// chartSpecForStep 이 DB 메타데이터를 먼저 보므로, DB 행의 namespace 가 비면 코드의
+// 핀이 그대로 무시된다 — metrics-server 가 실제로 그렇게 뚫렸다(#327).
+//
+// isSharedClusterScopedStep 과 따로 둔다. 그쪽은 "이미 깔려 있으면 단계를 건너뛴다"
+// 는 뜻이라, ESO 를 거기 넣으면 스택별로 꼭 적용해야 하는 SecretStore 까지 건너뛴다.
+func stepPinsItsNamespace(step string) bool {
+	switch step {
+	case stepInstallingCertManager, "installing_metrics_server", "installing_external_secrets":
+		return true
+	default:
+		return false
+	}
 }
 
 func chartSpecFromMetadata(item *domain.HelmStepMetadata) ChartSpec {
@@ -234,8 +252,10 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			ChartName:   ESOChartName,
 			RepoURL:     ESOChartRepo,
 			Version:     ESOChartVersion,
-			Values:      externalSecretsValues(),
-			Wait:        false,
+			// 스택 네임스페이스에 깔면 그 네임스페이스를 지울 수 없다 — ESONamespace 주석 참고.
+			Namespace: ESONamespace,
+			Values:    externalSecretsValues(),
+			Wait:      false,
 		}, true
 	case "installing_argocd":
 		return ChartSpec{
