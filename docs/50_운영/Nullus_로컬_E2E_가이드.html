@@ -611,12 +611,13 @@ sudo security add-trusted-cert -d -r trustRoot \
     <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code><span class="c"># GitLab — 사용자 root</span>
 kubectl --context $CTX -n $NS get secret gitlab-initial-root-password \
   -o jsonpath='{.data.password}' | base64 -d; echo
-<span class="c"># Argo CD — 사용자 admin</span>
+<span class="c"># Argo CD — 사용자 admin. 키는 clearPassword 다(password 키는 없다)</span>
 kubectl --context $CTX -n $NS get secret argocd-secret \
-  -o jsonpath='{.data.password}' | base64 -d; echo
+  -o jsonpath='{.data.clearPassword}' | base64 -d; echo
 <span class="c"># SonarQube — 관리자 admin. 일반 사용자는 로그인 화면의 Keycloak 버튼으로 들어간다</span>
 kubectl --context $CTX -n $NS get secret nullus-sonarqube-credentials \
   -o jsonpath='{.data.admin-password}' | base64 -d; echo</code></pre></div>
+    <div class="callout warn"><b>Argo CD 는 <code>clearPassword</code> 키다</b><code>argocd-secret</code> 에는 <code>password</code> 라는 키가 없다 — 들어 있는 것은 <code>admin.password</code>(bcrypt 해시)와 <code>clearPassword</code>(평문)다. <code>{.data.password}</code> 를 읽으면 빈 값이 나오고, 그 값으로 로그인하면 <code>{"error":"no credentials supplied","code":16}</code> 가 돌아온다. 차트가 만드는 <code>argocd-initial-admin-secret</code> 은 이 스택에 없다(2026-10-17 실측).</div>
     <div class="callout"><b>Secret 이름</b>연결 정보 창과 설치기가 같은 <code>gitlab-initial-root-password</code>(금고 값을 ESO 가 프로비저닝)를 가리키고, GitLab 차트가 이것을 초기 root 비밀번호로 읽는다. <b>이 변경 전에 설치한 스택</b>은 차트가 스스로 만든 <code>gitlab-gitlab-initial-root-password</code>가 실제 비밀번호다 — 로그인이 안 되면 그쪽을 읽는다.</div>
     <p class="check-title">확인</p>
     <ul class="check">
@@ -670,7 +671,7 @@ EOF
 export PATH="$(brew --prefix libpq)/bin:$PATH"     <span class="c"># pg_dump</span>
 ./scripts/runbook_local.sh refresh                 <span class="c"># up 을 --auth=none 으로 띄웠으면 여기도 붙인다</span>
 grep '백업 모듈 준비 완료' .runbook-logs/api.log
-grep 'NULLUS_GITLAB_URL' .runbook-logs/api.log</code></pre></div>
+./scripts/runbook_local.sh status | grep gitlab          <span class="c"># NULLUS_GITLAB_URL 은 런북이 stdout 으로 찍는다</span></code></pre></div>
     <div class="callout"><b>재기동 경로가 셋이어도 환경은 같다</b><code>up</code>·<code>refresh</code>·<code>stack-up --wait</code> 끝의 재기동이 모두 같은 함수(<code>start_api</code>)로 API를 띄운다 — 환경 파일을 읽고 GitLab 포워드를 보장한 뒤 띄우므로 어느 길로 다시 떠도 GitLab 주소와 백업 설정이 빠지지 않는다. 백업 설정이 틀리면 API가 아예 뜨지 않는다(의도된 동작) — <code>logs api</code>에서 이유를 본다.</div>
     <p class="check-title">확인</p>
     <ul class="check">
@@ -861,13 +862,18 @@ SET_ID=$(jq -r .set_id ~/nullus-backup-set.json); echo "export SET_ID=$SET_ID" &
     <p>스택 네임스페이스를 통째로 지운다. 볼륨까지 함께 사라지므로 백업 없이는 되돌릴 수 없는 상태가 된다. Nullus의 스택 기록과 앱 네임스페이스(<code>demo</code>)는 그대로 남는다.</p>
     <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>kubectl --context $CTX delete namespace $NS --wait=false
 
-# 스택이 자기 네임스페이스에 깐 것들이 그 네임스페이스 삭제를 막는다 — 아래 안내 참고.
-# 삭제 요청을 넣은 뒤 바로 회수한다.
+# ① 클러스터 범위 자원을 먼저 회수한다 — 이것부터 해야 삭제 호출이 거부되지 않는다.
 kubectl --context $CTX delete validatingwebhookconfiguration \
   externalsecret-validate secretstore-validate --ignore-not-found
 kubectl --context $CTX delete apiservice v1beta1.metrics.k8s.io --ignore-not-found
 
-# 컨트롤러가 사라진 뒤에는 ExternalSecret 의 finalizer 를 떼어 줄 주체가 없다.
+# ② 파드가 다 사라질 때까지 기다린다. 순서가 중요하다 — 아래 안내 참고.
+#    external-secrets 컨트롤러가 살아 있는 동안에는 finalizer 를 지워도 다시 붙는다.
+while [ "$(kubectl --context $CTX -n $NS get pods --no-headers 2>/dev/null | wc -l)" -ne 0 ]; do
+  sleep 10
+done
+
+# ③ 그 다음에 finalizer 를 비운다. 이제는 되붙일 주체가 없다.
 for es in $(kubectl --context $CTX -n $NS get externalsecrets \
     -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
   kubectl --context $CTX -n $NS patch externalsecret "$es" \
@@ -878,7 +884,8 @@ kubectl --context $CTX wait --for=delete namespace/$NS --timeout=20m</code></pre
     <div class="callout warn"><b>이 회수를 하지 않으면 네임스페이스가 <code>Terminating</code> 에서 끝나지 않는다</b>
       <p>스택은 external-secrets 와 metrics-server 를 <b>자기 네임스페이스에</b> 깐다. 그 둘이 클러스터 범위 자원으로 그 네임스페이스를 가리키기 때문에 순환 의존이 생긴다 — 파드가 먼저 죽으면 남은 자원을 지울 수 없다.</p>
       <p><code>ValidatingWebhookConfiguration/externalsecret-validate</code> · <code>secretstore-validate</code> 는 <code>failurePolicy=Fail</code> 이고 <code>clientConfig.service</code> 가 <code>external-secrets-webhook.&lt;삭제 중인 NS&gt;.svc</code> 다. 그래서 ExternalSecret 삭제 호출이 웹훅 호출 실패로 거부된다(<code>NamespaceDeletionContentFailure</code>). <code>APIService/v1beta1.metrics.k8s.io</code> 는 <code>metrics-server.&lt;NS&gt;.svc</code> 를 가리켜 discovery 를 깨뜨린다(<code>NamespaceDeletionDiscoveryFailure</code>).</p>
-      <p>웹훅을 치워도 <code>externalsecrets.external-secrets.io/externalsecret-cleanup</code> finalizer 가 ExternalSecret 마다 남는다(이 템플릿에서 14개). 컨트롤러가 이미 사라져 떼어 줄 주체가 없으므로 손으로 비운다. <b>2026-10-17 실측: 이 회수 없이 58분을 기다려도 <code>Terminating</code> 이었고, 회수 뒤 즉시 끝났다.</b></p></div>
+      <p>웹훅을 치워도 <code>externalsecrets.external-secrets.io/externalsecret-cleanup</code> finalizer 가 ExternalSecret 마다 남는다(이 템플릿에서 14개). 컨트롤러가 이미 사라져 떼어 줄 주체가 없으므로 손으로 비운다. <b>2026-10-17 실측: 이 회수 없이 58분을 기다려도 <code>Terminating</code> 이었고, 회수 뒤 즉시 끝났다.</b></p>
+      <p><b>finalizer 는 파드가 다 사라진 뒤에 비운다 — 순서를 바꾸면 듣지 않는다.</b> 삭제 요청 직후에는 external-secrets 컨트롤러가 아직 돌고 있어서, finalizer 를 지우는 즉시 <b>다시 붙인다</b>. 그 뒤 컨트롤러가 죽으면 그 finalizer 가 영구히 남는다. 2026-10-17 실측: 삭제 직후에 비웠더니 30분간 <code>Terminating</code> 이었고 ExternalSecret 14개에 finalizer 가 그대로 있었다. 파드가 0 이 된 것을 확인하고 같은 명령을 다시 돌리자 곧바로 <code>NotFound</code> 가 됐다.</p></div>
     <div class="callout warn"><b>화면의 스택 삭제·<code>stack-down</code>·<code>pipeline-down</code>은 이 시나리오에서 쓰지 않는다</b>
       <p>이 가이드는 네임스페이스 삭제 경로다. 제품 기능으로 클러스터의 마지막 스택을 지우면 cert-manager·metrics-server·GatewayClass·Gateway API CRD·내부 CA까지 회수되고(#284), 그 뒤의 복구는 <b>다른 길</b>이다 — 복구가 cert-manager·metrics-server를 스택 설치기의 같은 단계로 스스로 다시 세운 뒤 백업의 <code>shared_resources</code>로 Gateway CRD·GatewayClass·내부 CA를 되살린다(2026-10-12 실측, 백업복구 설계 §10.2.3). 그 절차는 <a href="./Nullus_백업복구_로컬_테스트_가이드.md">백업복구 로컬 테스트 가이드</a> §4.10에 있다.</p>
       <p>스택 기록도 soft delete되므로 되살리려면 플랫폼 DB까지(<code>full</code>) 복구해야 한다. <code>pipeline-down</code>은 파이프라인 기록을 지운다.</p></div>

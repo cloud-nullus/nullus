@@ -29,7 +29,18 @@ func (o *Orchestrator) chartSpecForStep(step string) (ChartSpec, bool) {
 	if o.helmStepMetadataRepo != nil {
 		item, err := o.helmStepMetadataRepo.GetByStep(context.Background(), step)
 		if err == nil && item != nil {
-			return chartSpecFromMetadata(item), true
+			spec := chartSpecFromMetadata(item)
+			// 클러스터 공용 애드온의 네임스페이스는 코드가 못박은 값이 이긴다.
+			// DB 행의 namespace 가 비면 아래 namespace 결정에서 스택 네임스페이스로
+			// 떨어지고, 그러면 이 차트가 만드는 cluster-scoped 자원(APIService,
+			// ClusterRole)이 스택 네임스페이스를 가리킨다 — 스택을 지울 때 클러스터의
+			// 모든 네임스페이스 삭제가 교착된다.
+			if spec.Namespace == "" && isSharedClusterScopedStep(step) {
+				if fallback, ok := defaultChartSpecForStep(step); ok {
+					spec.Namespace = fallback.Namespace
+				}
+			}
+			return spec, true
 		}
 	}
 
