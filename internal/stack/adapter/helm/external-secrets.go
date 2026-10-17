@@ -234,6 +234,162 @@ func (o *Orchestrator) ensureESOServiceAccount(ctx context.Context, namespace st
 	return nil
 }
 
+// esoLegacyReleaseNamespaces 는 #330 이전에 스택 네임스페이스로 깔린 ESO 릴리스의
+// 네임스페이스다. 공용 네임스페이스(새 주인)는 제외한다.
+//
+// 입력은 helm 릴리스 시크릿 목록이다:
+//
+//	kubectl get secret -A -l owner=helm,name=external-secrets \
+//	  -o custom-columns=NS:.metadata.namespace --no-headers
+//
+// 네임스페이스를 가리지 않는다 — 다른 스택의 것이야말로 걷어낼 대상이다.
+func esoLegacyReleaseNamespaces(kubectlOutput string) []string {
+	seen := make(map[string]bool)
+	var out []string
+	for _, line := range strings.Split(kubectlOutput, "\n") {
+		ns := strings.TrimSpace(line)
+		if ns == "" || ns == ESONamespace || seen[ns] {
+			continue
+		}
+		seen[ns] = true
+		out = append(out, ns)
+	}
+	return out
+}
+
+// adoptESOClusterScopedFrom 은 특정 네임스페이스의 ESO 릴리스가 소유한 클러스터 범위
+// 자원을 공용 릴리스로 넘긴다.
+//
+// adoptExistingESOCRDs 에는 "다른 네임스페이스의 릴리스가 아직 살아 있으면 탈취하지
+// 않는다" 는 가드가 있다 — 소유권을 뺏으면 그 스택을 지울 때 자원이 함께 사라지기
+// 때문이다. 그런데 그 릴리스를 **지금 걷어내려는** 시점에는 그 전제가 사라진다.
+// 넘기지 않고 uninstall 하면 helm 이 ClusterRole·ClusterRoleBinding 을 함께 지워
+// 공용 ESO 가 RBAC 을 잃는다(실측: clustersecretstores ... is forbidden).
+func (o *Orchestrator) adoptESOClusterScopedFrom(ctx context.Context, legacyNamespace, releaseName string) {
+	for _, kind := range esoClusterScopedKinds {
+		for _, name := range o.esoOwnedClusterScoped(ctx, kind, releaseName) {
+			owner, err := o.clusterScopedOwnerOf(ctx, kind, name)
+			if err != nil || strings.TrimSpace(owner.ReleaseNamespace) != legacyNamespace {
+				continue
+			}
+			if err := o.patchClusterScopedOwnership(ctx, kind, name, releaseName, ESONamespace); err != nil {
+				slog.Warn("옛 ESO 릴리스의 클러스터 범위 자원 인수 실패 — 그 자원은 남깁니다",
+					"kind", kind, "name", name, "legacy_namespace", legacyNamespace, "error", err)
+			}
+		}
+	}
+}
+
+// removeLegacyESOWorkloads 는 옛 릴리스의 **네임스페이스 범위** 자원만 지운다.
+//
+// helm uninstall 을 쓰지 않는다. uninstall 은 릴리스에 저장된 매니페스트에 적힌
+// 자원을 전부 지우는데, 그 매니페스트에는 ClusterRole·ClusterRoleBinding·웹훅처럼
+// 공용 ESO 가 지금 쓰고 있는 클러스터 범위 자원이 함께 들어 있다. 살아 있는 객체에
+// 소유권을 재주석하거나 helm.sh/resource-policy=keep 을 달아도 막히지 않는다 —
+// helm 은 그 정책도 저장된 매니페스트에서 읽기 때문이다(2026-10-17 실측: 두 방법 모두
+// ClusterRole 이 NotFound 가 됐고 공용 ESO 가 RBAC 을 잃었다).
+//
+// 그래서 네임스페이스 안의 워크로드와 helm 릴리스 기록만 지우고, 클러스터 범위
+// 자원은 손대지 않는다. 소유권은 adoptESOClusterScopedFrom 이 공용 릴리스로 옮겨
+// 다음 설치가 그것을 관리하게 한다.
+func (o *Orchestrator) removeLegacyESOWorkloads(ctx context.Context, namespace string) error {
+	// 차트가 네임스페이스에 만드는 것들. instance 라벨로 이 릴리스의 것만 고른다.
+	if _, err := o.runKubectl(ctx, "delete",
+		"deployment,service,serviceaccount,role,rolebinding,configmap,poddisruptionbudget",
+		"-n", namespace, "-l", "app.kubernetes.io/instance=external-secrets",
+		"--ignore-not-found"); err != nil {
+		return fmt.Errorf("옛 ESO 워크로드 삭제 실패: %w", err)
+	}
+	// helm 릴리스 기록을 지워 다음 설치가 이 네임스페이스를 보지 않게 한다.
+	if _, err := o.runKubectl(ctx, "delete", "secret", "-n", namespace,
+		"-l", "owner=helm,name=external-secrets", "--ignore-not-found"); err != nil {
+		return fmt.Errorf("옛 ESO 릴리스 기록 삭제 실패: %w", err)
+	}
+	return nil
+}
+
+// migrateLegacyESOReleases 는 스택 네임스페이스에 남은 옛 ESO 릴리스를 걷어낸다.
+//
+// #330 이전에 깐 스택은 ESO 를 자기 네임스페이스에 갖고 있다. 공용 ESO 가 서면
+// CRD·검증 웹훅 소유권은 그쪽으로 넘어가지만(adoptExistingESOCRDs) 옛 릴리스의
+// 컨트롤러·웹훅 Deployment 는 그대로 남는다. 남겨 두면 그 스택의 네임스페이스를
+// 지울 때 컨트롤러가 먼저 죽어 ExternalSecret 의 finalizer 가 남고(#330 이 없애려던
+// 교착이 그 스택에만 그대로 남는다), 컨트롤러 둘이 같은 ExternalSecret 을 조정한다.
+//
+// 공용 ESO 가 Ready 가 된 뒤에 부른다 — 걷어내는 동안에도 finalizer 를 처리할
+// 주체가 있어야 한다. helm uninstall 은 차트가 만든 ServiceAccount 까지 지우므로,
+// 그 네임스페이스의 SA 를 다시 세운다(그 스택의 SecretStore 가 그것을 가리킨다).
+//
+// 설치를 막을 이유는 없다 — 실패는 경고로 남기고 계속한다.
+func (o *Orchestrator) migrateLegacyESOReleases(ctx context.Context) {
+	if !looksLikeKubeconfig(o.kubeconfig) {
+		return
+	}
+	out, err := o.runKubectl(ctx, "get", "secret", "-A",
+		"-l", "owner=helm,name=external-secrets",
+		"--no-headers", "-o", "custom-columns=NS:.metadata.namespace")
+	if err != nil {
+		slog.Warn("옛 ESO 릴리스 조회 실패 — 걷어내지 않습니다", "error", err)
+		return
+	}
+
+	migrated := false
+	for _, ns := range esoLegacyReleaseNamespaces(string(out)) {
+		// 먼저 클러스터 범위 자원을 공용 릴리스로 넘긴다 — 넘기지 않고 지우면
+		// helm 이 ClusterRole 까지 함께 지워 공용 ESO 가 RBAC 을 잃는다.
+		o.adoptESOClusterScopedFrom(ctx, ns, "external-secrets")
+
+		if err := o.removeLegacyESOWorkloads(ctx, ns); err != nil {
+			slog.Warn("옛 ESO 릴리스 제거 실패", "namespace", ns, "error", err)
+			continue
+		}
+		// uninstall 이 지운 SA 를 되돌린다. 그 네임스페이스의 SecretStore 는
+		// 이 이름을 가리키고 OpenBao role 도 이 네임스페이스를 묶고 있다.
+		if err := o.ensureESOServiceAccount(ctx, ns); err != nil {
+			slog.Warn("옛 ESO 네임스페이스의 ServiceAccount 복원 실패",
+				"namespace", ns, "error", err)
+			continue
+		}
+		slog.Info("스택 네임스페이스의 옛 ESO 릴리스를 걷어냈습니다 — 공용 오퍼레이터가 대신합니다",
+			"namespace", ns, "operator_namespace", ESONamespace)
+		migrated = true
+	}
+
+	if migrated {
+		o.rerenderSharedESO(ctx)
+	}
+}
+
+// rerenderSharedESO 는 공용 ESO 릴리스를 한 번 더 올려 클러스터 범위 자원을 다시
+// 렌더링한다.
+//
+// 소유권 주석을 넘겨도 ClusterRoleBinding 의 **내용**은 그대로다 — 옛 릴리스가 먼저
+// 설치되면서 subject 가 그 네임스페이스로 렌더링됐기 때문이다. 그대로 두면 공용
+// ESO 의 ServiceAccount 가 묶이지 않아 reconcile 이 forbidden 으로 돈다
+// (2026-10-17 실측: subject 가 ServiceAccount/<옛 네임스페이스>/external-secrets 였다).
+//
+// 소유권이 이미 공용 릴리스로 넘어왔으므로 helm 이 그 자원을 자기 것으로 보고 올바른
+// subject 로 덮어쓴다.
+func (o *Orchestrator) rerenderSharedESO(ctx context.Context) {
+	spec, ok := o.chartSpecForStep("installing_external_secrets")
+	if !ok {
+		return
+	}
+	spec = o.resolveChartSpecForStep("installing_external_secrets", spec)
+	if _, err := o.installer.Install(ctx, port.HelmInstallRequest{
+		ReleaseName: o.releaseNameForSpec(spec),
+		ChartName:   spec.ChartName,
+		RepoURL:     spec.RepoURL,
+		Version:     spec.Version,
+		Namespace:   esoReleaseNamespace(spec),
+		Values:      o.valuesForStep("installing_external_secrets", spec),
+		Wait:        boolPtr(spec.Wait),
+	}); err != nil {
+		slog.Warn("공용 ESO 재렌더링 실패 — 클러스터 범위 RBAC 이 옛 네임스페이스를 가리킬 수 있습니다",
+			"error", err)
+	}
+}
+
 // esoReleaseNamespace 는 ESO 오퍼레이터를 깔 네임스페이스다.
 //
 // 스택 네임스페이스가 아니다. 오퍼레이터가 스택 네임스페이스 안에 있으면 그
@@ -308,6 +464,10 @@ func (o *Orchestrator) InstallExternalSecrets(ctx context.Context, namespace str
 	if err := o.waitForExternalSecrets(ctx, releaseNamespace); err != nil {
 		return err
 	}
+	// #330 이전에 깐 스택의 ESO 를 걷어낸다. 공용 오퍼레이터가 Ready 가 된
+	// 뒤라야 그 사이에도 finalizer 를 처리할 주체가 있다.
+	o.migrateLegacyESOReleases(ctx)
+
 	// SecretStore 가 가리키는 ServiceAccount 는 스택 네임스페이스에 있어야 한다.
 	// 오퍼레이터를 공용 네임스페이스로 옮기면 차트가 만드는 SA 도 거기 생기는데,
 	// 네임스페이스 범위 SecretStore 의 serviceAccountRef 는 다른 네임스페이스를

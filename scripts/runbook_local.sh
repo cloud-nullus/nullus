@@ -262,6 +262,7 @@ Usage:
                                       [--cluster=<ctx-name>] [--domain=<d>] [--wait]
   ./scripts/runbook_local.sh stack-status <stack-id> [--wait]
   ./scripts/runbook_local.sh wire [--stack=<id>]
+  ./scripts/runbook_local.sh eso-migrate
   ./scripts/runbook_local.sh stack-down [--all|<stack-id>]
   ./scripts/runbook_local.sh pipeline-down
   ./scripts/runbook_local.sh all [--seed] [--kind] [--auth=<keycloak|authentik|none>]
@@ -290,6 +291,7 @@ Commands:
                     (Lite = local → 8Gi 노드 하나에 들어가는 크기)
   stack-status <id> 스택 상태 조회. --wait 면 completed/failed 까지 폴링하고 완료 시 배선한다
   wire [--stack=id] kind 의 completed 스택을 호스트·노드에 잇는다 — 노드 /etc/hosts 와 내부 CA
+  eso-migrate      스택 네임스페이스에 남은 옛 ESO 릴리스를 걷어낸다 (공용 오퍼레이터로 이전)
                     (앱 이미지 pull), GitLab 포트포워드 + NULLUS_GITLAB_URL. 화면에서 설치했거나
                     복구로 되살아난 스택에 쓴다. stack-up --wait 는 자동으로 한다
   stack-down [id]   설치된 스택을 제품 삭제 경로(helm uninstall + CRD 정리)로 삭제
@@ -1550,6 +1552,91 @@ sys.exit(1)
 
 # do_wire 는 kind 에 설치된 completed 스택 전부(또는 --stack=<id> 하나)를 배선한다.
 # 화면에서 설치했거나 복구로 되살아난 스택을 위한 명령이다. 다시 돌려도 안전하다.
+# do_eso_migrate 는 스택 네임스페이스에 남은 옛 ESO 릴리스를 걷어낸다.
+#
+# ESO 는 이제 클러스터 공용 네임스페이스(external-secrets)에 하나만 깔린다. 그
+# 이전에 깐 스택은 자기 네임스페이스에 ESO 를 갖고 있어, 그 네임스페이스를 지울 때
+# 컨트롤러가 먼저 죽어 ExternalSecret 의 finalizer 가 남는다 — 네임스페이스가
+# Terminating 에서 끝나지 않는다.
+#
+# 설치 코드는 ESO 단계가 다시 돌 때 이 정리를 함께 한다. 그런데 이미 completed 인
+# 스택은 그 단계를 다시 돌리지 않고, 같은 클러스터의 두 번째 스택은 그 앞 단계
+# (installing_openbao)에서 소유권 충돌로 먼저 막힌다. 그래서 재설치 없이 부를 길을
+# 둔다.
+#
+# 순서가 중요하다. 공용 ESO 가 떠 있는 것을 먼저 확인하고(걷어내는 동안에도
+# finalizer 를 처리할 주체가 있어야 한다), 클러스터 범위 자원 소유권을 공용 릴리스로
+# 넘긴 뒤(넘기지 않고 지우면 helm 이 ClusterRole 까지 함께 지운다) uninstall 하고,
+# helm 이 지운 ServiceAccount 를 복원한다(그 스택의 SecretStore 가 그것을 가리킨다).
+do_eso_migrate() {
+  ensure_dirs
+  local ctx="${KUBE_CONTEXT:-kind-${KIND_PLATFORM_CLUSTER:-nullus-platform}}"
+  local shared_ns="external-secrets"
+
+  if ! kubectl --context "$ctx" get ns "$shared_ns" >/dev/null 2>&1; then
+    echo "[nullus] 공용 ESO 네임스페이스($shared_ns)가 없습니다 — 스택을 먼저 설치하세요."
+    return 1
+  fi
+  local ready
+  ready="$(kubectl --context "$ctx" -n "$shared_ns" get deploy external-secrets \
+    -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)"
+  if [[ -z "$ready" || "$ready" == "0" ]]; then
+    echo "[nullus] 공용 ESO 가 아직 준비되지 않았습니다 — 걷어내지 않습니다."
+    return 1
+  fi
+
+  local legacy
+  legacy="$(kubectl --context "$ctx" get secret -A -l owner=helm,name=external-secrets \
+    --no-headers -o custom-columns=NS:.metadata.namespace 2>/dev/null \
+    | awk -v shared="$shared_ns" 'NF && $1 != shared { print $1 }' | sort -u)"
+  if [[ -z "$legacy" ]]; then
+    echo "[nullus] 걷어낼 옛 ESO 릴리스가 없습니다 (공용 네임스페이스에만 있습니다)."
+    return 0
+  fi
+
+  local ns kind name owner
+  for ns in $legacy; do
+    echo "[nullus] 옛 ESO 릴리스를 걷어냅니다: $ns"
+    # 클러스터 범위 자원 소유권을 공용 릴리스로 넘긴다.
+    for kind in crd clusterrole clusterrolebinding \
+        validatingwebhookconfiguration mutatingwebhookconfiguration; do
+      while read -r name owner; do
+        [[ -z "$name" || "$owner" != "$ns" ]] && continue
+        kubectl --context "$ctx" annotate "$kind" "$name" \
+          "meta.helm.sh/release-name=external-secrets" \
+          "meta.helm.sh/release-namespace=$shared_ns" --overwrite >/dev/null 2>&1 || true
+      done < <(kubectl --context "$ctx" get "$kind" \
+        -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.annotations.meta\.helm\.sh/release-namespace}{"\n"}{end}' 2>/dev/null \
+        | awk 'NF==2')
+    done
+    # helm uninstall 을 쓰지 않는다. uninstall 은 릴리스에 저장된 매니페스트의 자원을
+    # 전부 지우는데, 거기에는 공용 ESO 가 지금 쓰는 ClusterRole·웹훅이 함께 들어 있다.
+    # 살아 있는 객체에 소유권을 재주석하거나 resource-policy=keep 을 달아도 막히지
+    # 않는다 — helm 은 그 정책도 저장된 매니페스트에서 읽는다(2026-10-17 실측).
+    # 네임스페이스 범위 자원과 릴리스 기록만 지운다.
+    kubectl --context "$ctx" -n "$ns" delete \
+      deployment,service,serviceaccount,role,rolebinding,configmap,poddisruptionbudget \
+      -l app.kubernetes.io/instance=external-secrets --ignore-not-found >/dev/null 2>&1 || true
+    kubectl --context "$ctx" -n "$ns" delete secret \
+      -l owner=helm,name=external-secrets --ignore-not-found >/dev/null 2>&1 || true
+    # SecretStore 가 가리키는 ServiceAccount 를 복원한다.
+    kubectl --context "$ctx" -n "$ns" create sa external-secrets >/dev/null 2>&1 || true
+    echo "[nullus]   걷어냈습니다 — 공용 오퍼레이터가 대신합니다: $ns"
+  done
+  # 소유권만 넘겨도 ClusterRoleBinding 의 내용은 그대로다 — 옛 릴리스가 먼저 설치되며
+  # subject 가 그 네임스페이스로 렌더링됐기 때문이다. 공용 릴리스를 한 번 더 올려
+  # 올바른 subject 로 덮어쓴다(소유권이 이미 넘어왔으므로 helm 이 자기 것으로 본다).
+  echo "[nullus] 공용 ESO 를 다시 렌더링합니다 (클러스터 범위 RBAC 보정)"
+  if ! helm --kube-context "$ctx" upgrade --install external-secrets \
+      external-secrets/external-secrets --version 2.7.0 -n "$shared_ns" \
+      --set installCRDs=true --set serviceAccount.create=true \
+      --set serviceAccount.name=external-secrets --set webhook.failurePolicy=Ignore \
+      --timeout 5m >/dev/null 2>&1; then
+    echo "[nullus]   재렌더링 실패 — 'kubectl get clusterrolebinding external-secrets-controller -o yaml' 로 subject 를 확인하세요"
+  fi
+  echo "[nullus] eso-migrate 완료"
+}
+
 do_wire() {
   ensure_dirs
   local only=""
@@ -2016,6 +2103,7 @@ main() {
     stack-up) do_stack_up "$@" ;;
     stack-status) do_stack_status "$@" ;;
     wire) do_wire "$@" ;;
+    eso-migrate) do_eso_migrate ;;
     stack-down) do_stack_down "${1:---all}" ;;
     pipeline-down) do_pipeline_down ;;
     all) do_all "$@" ;;
