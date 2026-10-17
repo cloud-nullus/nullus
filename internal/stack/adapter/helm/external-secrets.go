@@ -41,6 +41,19 @@ func externalSecretsValues() map[string]any {
 			"limits":   map[string]any{"cpu": "200m", "memory": "256Mi"},
 		},
 		"webhook": map[string]any{
+			// 웹훅에 닿지 못하면 통과시킨다. 차트 기본값 Fail 은 네임스페이스를
+			// 지울 수 없게 만든다 — 검증 웹훅이 DELETE 까지 걸려 있고, ESO 가
+			// 스택 네임스페이스에 깔리므로 웹훅 Service 가 가리키는 곳이 바로
+			// 지우려는 네임스페이스다. 파드가 먼저 죽으면 ExternalSecret 삭제가
+			// 웹훅 호출 실패로 거부되고 네임스페이스는 Terminating 에서 끝나지
+			// 않는다(NamespaceDeletionContentFailure).
+			//
+			// 검증이 약해지는 폭은 좁다. Nullus 의 ExternalSecret·SecretStore 는
+			// 제품이 템플릿으로 생성하고(secret-provisioning.go), 설치 경로는
+			// 웹훅 rollout 을 기다린 뒤 apply 한다. 웹훅이 내려간 동안 잘못된
+			// 스펙이 들어와도 ESO 가 status.conditions 에 실패를 적고 Secret 을
+			// 만들지 않으므로 조용히 통과하지 않는다.
+			"failurePolicy": "Ignore",
 			"resources": map[string]any{
 				"requests": map[string]any{"cpu": "50m", "memory": "64Mi"},
 				"limits":   map[string]any{"cpu": "100m", "memory": "128Mi"},
