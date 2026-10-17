@@ -15,7 +15,7 @@
 
 | 구성요소 | 라이선스(참고) | 주의점 |
 |---|---|---|
-| **MinIO** (`minio/*`, minio 차트) | AGPL-3.0 | 네트워크 제공 시 소스 공개 의무 가능. 상용은 별도 상용 라이선스 검토. |
+| **SILO** (`pgsty/silo`, `pgsty/mc`, minio 차트) | AGPL-3.0 | MinIO 서버의 커뮤니티 포크(MinIO Inc. 와 무관). 업스트림 MinIO 저작권 고지를 함께 담는다. **포크로 바꾼 이유는 라이선스가 아니라 배포다** — MinIO 가 Docker Hub 에 이어 quay.io 도 익명 pull 을 막아 받을 수 있는 출처가 없어졌다(2026-10-17 실측). AGPL 의무는 업스트림과 동일하게 남는다: 네트워크 제공 시 소스 공개 의무 가능, 상용은 별도 검토. |
 | **Grafana** (grafana 차트/이미지) | AGPL-3.0 | 〃 (Grafana 8.x 이후 AGPL) |
 | **Loki** (loki 차트) | AGPL-3.0 | 〃 |
 | **GitLab** (`registry.gitlab.com/*` 15종, gitlab 차트) | GitLab 라이선스(MIT/EE 혼재) | CNG/EE 컴포넌트는 소스가용·상용 조건 혼재 → **재배포 가부 별도 확인 필수**. |

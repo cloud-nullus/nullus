@@ -6,8 +6,25 @@ import (
 	"fmt"
 	"strings"
 
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
+
+// minioImageValues 는 "repo:tag" 를 minio 차트의 이미지 values 로 쪼갠다.
+//
+// 차트는 repository 와 tag 를 따로 받는다. 이미지 참조는 공개 상수 하나로
+// 두어야 에어갭 번들 목록·드리프트 검사와 같은 값을 보게 된다.
+func minioImageValues(image string) map[string]any {
+	repository, tag := image, ""
+	if idx := strings.LastIndex(image, ":"); idx > strings.LastIndex(image, "/") {
+		repository, tag = image[:idx], image[idx+1:]
+	}
+	values := map[string]any{"repository": repository}
+	if tag != "" {
+		values["tag"] = tag
+	}
+	return values
+}
 
 // defaultStackNamespace 는 스택 네임스페이스가 정해지지 않았을 때의 기본값이다.
 // 설치 시점에는 valuesForStep 이 실제 네임스페이스로 다시 덮어쓴다.
@@ -134,6 +151,11 @@ func DefaultValues(stepName string) map[string]any {
 	case "installing_minio":
 		return map[string]any{
 			"mode": "standalone",
+			// 차트 5.4.0 의 기본 이미지는 quay.io/minio/{minio,mc} 인데 그 저장소는
+			// 익명 pull 이 막혀 있다(401). 받을 수 있는 포크로 덮는다 —
+			// shareddomain.MinIOServerImage 주석 참고.
+			"image":   minioImageValues(shareddomain.MinIOServerImage),
+			"mcImage": minioImageValues(shareddomain.MinIOClientImage),
 			// rootUser/rootPassword 대신 프로비저닝된 Secret 을 참조한다.
 			"existingSecret": ProvisionedMinIOSecret,
 			"ingress": map[string]any{

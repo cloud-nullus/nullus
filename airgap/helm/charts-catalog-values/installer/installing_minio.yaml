@@ -4,8 +4,14 @@
 consoleIngress:
     enabled: false
 existingSecret: nullus-minio-credentials
+image:
+    repository: docker.io/pgsty/silo
+    tag: RELEASE.2026-10-15T00-00-00Z
 ingress:
     enabled: false
+mcImage:
+    repository: docker.io/pgsty/mc
+    tag: RELEASE.2026-09-16T00-00-00Z
 mode: standalone
 namespace: nullus
 resources:

@@ -31,7 +31,7 @@ import (
 const (
 	// MinIO 는 공식 이미지(quay.io·Docker Hub)를 익명으로 받을 수 없다(401) — 캐시가 없는 CI 에서
 	// 이 테스트가 기동부터 실패한다. bitnami 가 다시 포장한 같은 MinIO 서버를 쓴다. 기동은 이미지가 한다.
-	testImage  = "docker.io/bitnamilegacy/minio:2025.7.23"
+	testImage  = "docker.io/pgsty/silo:RELEASE.2026-10-15T00-00-00Z"
 	testUser   = "nullus-admin"
 	testSecret = "nullus-minio-secret"
 	testBucket = "nullus-backup"

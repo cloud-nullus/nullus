@@ -77,7 +77,7 @@ log "목적지 기동 (클러스터 밖, kind 도커 네트워크)"
 docker rm -f "$STORE" >/dev/null 2>&1 || true
 docker run -d --name "$STORE" --network kind \
   -e "MINIO_ROOT_USER=$STORE_USER" -e "MINIO_ROOT_PASSWORD=$STORE_PASS" \
-  quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z server /data >/dev/null
+  docker.io/pgsty/silo:RELEASE.2026-10-15T00-00-00Z server /data >/dev/null
 
 for i in $(seq 1 30); do
   docker exec "$STORE" mc alias set ext "http://127.0.0.1:9000" "$STORE_USER" "$STORE_PASS" >/dev/null 2>&1 && break

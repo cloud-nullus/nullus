@@ -71,7 +71,7 @@ const (
 	deployName  = "rehearsal-app"
 	appReplicas = int32(2)
 
-	minioImage = "quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z"
+	minioImage = "docker.io/pgsty/silo:RELEASE.2026-10-15T00-00-00Z"
 	helperImg  = "busybox:1.37"
 )
 
