@@ -199,7 +199,7 @@ describe("StackListPage", () => {
     );
     expect(screen.getByAltText("minio logo")).toHaveAttribute(
       "src",
-      "/tool-icons/minio.svg",
+      "/tool-icons/silo.svg",
     );
     fireEvent.error(screen.getByAltText("grafana logo"));
     expect(screen.getByLabelText("grafana logo fallback")).toHaveTextContent(
@@ -230,7 +230,7 @@ describe("StackListPage", () => {
     );
     expect(screen.getByAltText("minio icon")).toHaveAttribute(
       "src",
-      "/tool-icons/minio.svg",
+      "/tool-icons/silo.svg",
     );
   });
 

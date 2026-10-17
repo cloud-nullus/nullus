@@ -119,7 +119,7 @@ done
 #
 # 목록에 있고 반입돼도, 그 이미지가 코드가 시키는 일을 못하면 의미가 없다.
 # imagePullPolicy: Never 라 노드에 있는 것만 쓴다 — 레지스트리로 나가지 못한다.
-MC_IMAGE="$(printf '%s\n' "${IMAGES[@]}" | grep '^quay.io/minio/mc:')"
+MC_IMAGE="$(printf '%s\n' "${IMAGES[@]}" | grep '^docker.io/pgsty/mc:')"
 kubectl create ns "$NS" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
 log "MinIO 기동 (검증 대상)"
@@ -130,7 +130,7 @@ metadata: { name: minio, labels: { app: minio } }
 spec:
   containers:
   - name: minio
-    image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
+    image: docker.io/pgsty/silo:RELEASE.2026-10-15T00-00-00Z
     args: ["server", "/data"]
     env:
     - { name: MINIO_ROOT_USER, value: nullus }

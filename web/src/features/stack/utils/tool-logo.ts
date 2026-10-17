@@ -48,7 +48,9 @@ export function toolLogoURL(toolName: string): string {
     fluentd: "fluentd",
     harbor: "harbor",
     "harbor registry": "harbor",
-    minio: "minio",
+    // 백엔드는 이 슬롯을 계속 minio 로 부른다(호환성 매트릭스·시드). 설치되는
+    // 실물은 MinIO 포크인 SILO 라 마크는 그쪽을 쓴다.
+    minio: "silo",
     openbao: "openbao",
   };
   const slug = map[key] ?? "kubernetes";

@@ -30,7 +30,8 @@ describe("toolLogoURL", () => {
     ["Tempo", "grafana"],
     ["Jaeger", "jaeger"],
     ["Harbor Registry", "harbor"],
-    ["MinIO", "minio"],
+    // 백엔드는 이 슬롯을 minio 로 부르지만 설치되는 실물은 포크인 SILO 다.
+    ["MinIO", "silo"],
     ["OpenBao", "openbao"],
   ])("uses a local icon for %s", (toolName, slug) => {
     expect(toolLogoURL(toolName)).toBe(`/tool-icons/${slug}.svg`);

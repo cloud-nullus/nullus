@@ -85,17 +85,26 @@ func TestRuntimeImages_생성기와_같은_목록을_본다(t *testing.T) {
 		"생성기가 이 이미지를 덧붙이지 않는다 — 목록을 재생성하면 사라진다: %v", missing)
 }
 
-// MinIO 는 Docker Hub 배포를 멈췄다 — docker.io/minio/* 는 태그와 무관하게
-// "pull access denied" 로 거절된다(2026-09-15 kind 새 클러스터 실측, minio/mc:latest 도 같다).
-// 노드에 캐시가 남은 클러스터에서는 드러나지 않다가, 새 클러스터에서 버킷 부트스트랩이
-// ImagePullBackOff 로 설치를 실패시켰다. MinIO 가 계속 게시하는 quay.io 에서 받는다.
-func TestRuntimeImages_MinIO_이미지는_quay_에서_받는다(t *testing.T) {
-	for _, img := range RuntimeImages() {
+// 오브젝트 스토리지 이미지는 받을 수 있는 출처에서만 받는다.
+//
+// MinIO 는 Docker Hub 배포를 멈췄고(docker.io/minio/* 는 태그와 무관하게
+// "pull access denied"), 그 다음 quay.io 저장소도 익명 pull 을 막았다 —
+// 2026-10-17 실측: quay.io/minio/minio · quay.io/minio/mc 가 `latest` 든 고정
+// RELEASE 태그든 401 unauthorized 다. 두 번 다 노드 캐시가 있는 클러스터에서는
+// 드러나지 않다가 새 클러스터에서 ImagePullBackOff 로 설치를 실패시켰다.
+//
+// 그래서 포크(pgsty/silo · pgsty/mc)에서 받는다. 둘 중 하나로 되돌리면 이 테스트가 막는다.
+func TestRuntimeImages_오브젝트스토리지_이미지는_받을수있는_출처에서_받는다(t *testing.T) {
+	unreachable := []string{"minio/", "quay.io/minio/"}
+	for _, img := range append(RuntimeImages(), MinIOServerImage) {
 		repo := strings.TrimPrefix(img, "docker.io/")
-		assert.Falsef(t, strings.HasPrefix(repo, "minio/"),
-			"%s 는 Docker Hub 의 MinIO 이미지다 — quay.io/minio/ 에서 받아야 한다", img)
+		for _, prefix := range unreachable {
+			assert.Falsef(t, strings.HasPrefix(repo, prefix),
+				"%s 는 익명 pull 이 막힌 출처다(%s) — pgsty/ 포크에서 받아야 한다", img, prefix)
+		}
 	}
-	assert.True(t, strings.HasPrefix(MinIOClientImage, "quay.io/minio/mc:"), MinIOClientImage)
+	assert.True(t, strings.HasPrefix(MinIOClientImage, "docker.io/pgsty/mc:"), MinIOClientImage)
+	assert.True(t, strings.HasPrefix(MinIOServerImage, "docker.io/pgsty/silo:"), MinIOServerImage)
 }
 
 func TestRuntimeImages_형식(t *testing.T) {

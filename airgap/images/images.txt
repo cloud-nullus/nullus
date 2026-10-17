@@ -3,7 +3,7 @@
 # Regenerate whenever chart deps or app versions change.
 # Format : <registry>/<repo>:<tag>, one per line. Blank / "#" lines ignored.
 # CI     : MODE=check ./00-generate-images.sh blocks drift.
-# installer-values-sha256: e5b46daae63f0843da47a599f6e84816e9ff403be9f9b0d7f9f5fdda74120b17
+# installer-values-sha256: 428b185472b61cb9a3458d296ad0d737d44e5d024de76dc0a7ce32ab910175c8
 
 # --- Nullus app + chart dependency images (rendered from chart) ---
 busybox:1.37
@@ -65,8 +65,8 @@ quay.io/jetstack/cert-manager-controller:v1.16.3
 quay.io/jetstack/cert-manager-startupapicheck:v1.16.3
 quay.io/jetstack/cert-manager-webhook:v1.16.3
 quay.io/kiwigrid/k8s-sidecar:1.30.0
-quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z
-quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
+docker.io/pgsty/mc:RELEASE.2026-09-16T00-00-00Z
+docker.io/pgsty/silo:RELEASE.2026-10-15T00-00-00Z
 quay.io/openbao/openbao:2.5.5
 quay.io/prometheus-operator/prometheus-operator:v0.80.0
 quay.io/prometheus/alertmanager:v0.28.0
@@ -95,8 +95,6 @@ sonatype/nexus3:3.64.0
 # --- Infra images (not part of helm render) ---
 kindest/node:v1.30.0
 registry:2
-openbao/openbao:2.5.5
-ghcr.io/cloud-nullus/nullus/nullus-jenkins:2.568.3
 
 # --- Runtime manifest images (built by Go code, not by helm) ---
 # Source of truth: internal/shared/domain/runtime_images.go
@@ -109,4 +107,3 @@ docker:27-dind
 ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389
 ghcr.io/gitleaks/gitleaks:v8.30.1
 node:22-alpine
-quay.io/minio/mc:RELEASE.2025-05-21T01-59-54Z

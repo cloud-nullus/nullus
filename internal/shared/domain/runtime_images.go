@@ -21,10 +21,25 @@ package domain
 // **이미지를 새로 참조하게 되면 여기 상수를 만들고 아래 목록에 넣는다.**
 // 그러지 않으면 폐쇄망 설치에서 그 단계가 실패한다.
 const (
+	// 오브젝트 스토리지 이미지는 MinIO 포크인 SILO(pgsty/silo)에서 받는다.
+	//
+	// MinIO 는 Docker Hub 배포를 멈춘 데 이어(docker.io/minio/* 거절) quay.io 저장소도
+	// 익명 pull 을 막았다 — 2026-10-17 실측: quay.io/minio/minio 와 quay.io/minio/mc 가
+	// `latest` 든 고정 RELEASE 태그든 401 unauthorized 다. 받을 수 있는 출처가 없어
+	// 로컬 인프라 기동과 스택 설치(installing_minio)가 처음부터 멈춘다.
+	//
+	// SILO 는 MinIO 서버의 커뮤니티 포크다(AGPL-3.0, MinIO Inc. 와 무관). 라이선스는
+	// 업스트림과 같으므로 AGPL 의무는 그대로다 — 해결되는 것은 "받을 수 없다" 뿐이다.
+	// 데이터 포맷(.minio.sys)·환경변수(MINIO_*)·프로토콜(minio_* 메트릭, x-minio-* 헤더,
+	// /minio/* 경로)을 그대로 유지하므로 설치 코드와 클라이언트는 손대지 않는다.
+	//
+	// MinIOServerImage — 스택 오브젝트 스토리지(installing_minio). 차트 기본값이
+	// quay.io 를 가리키므로 values 로 덮는다.
+	MinIOServerImage = "docker.io/pgsty/silo:RELEASE.2026-10-15T00-00-00Z"
+
 	// MinIOClientImage — GitLab 오브젝트 스토리지 버킷 부트스트랩 Job.
 	// (internal/stack/adapter/helm/object-storage-buckets.go)
-	// MinIO 는 Docker Hub 배포를 멈춰 docker.io/minio/* 가 거절된다. quay.io 에서 받는다.
-	MinIOClientImage = "quay.io/minio/mc:RELEASE.2025-05-21T01-59-54Z"
+	MinIOClientImage = "docker.io/pgsty/mc:RELEASE.2026-09-16T00-00-00Z"
 
 	// CurlImage — Harbor·Nexus 프로비저닝 Job 이 REST API 를 호출한다.
 	// (internal/stack/adapter/helm/{harbor,nexus}-provisioning.go)
