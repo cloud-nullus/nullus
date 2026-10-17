@@ -108,7 +108,7 @@ describe('UAT-1: DevOps Engineer scenario', () => {
     const templateCard = screen.getByRole('heading', { name: 'GitLab All-in-One' })
       .closest('div')!.parentElement!
     fireEvent.click(within(templateCard).getByRole('button', { name: 'View Detail' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Use As Base' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use This Template' }))
 
     expect(mockNavigate).toHaveBeenCalledWith('/stack/install?template=gitlab-allinone-v1')
     expect(useStackConfigStore.getState().draft.selectedTemplateId).toBe('gitlab-allinone-v1')
