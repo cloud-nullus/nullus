@@ -17,13 +17,19 @@ export const templateCards = (page: Page) =>
 export const VIEW_DETAIL = /view detail/i;
 
 /**
- * 상세 모달의 "기본 템플릿으로 사용" 버튼.
+ * 상세 모달의 "이 템플릿 사용" 버튼.
  *
  * en.json 의 stackTemplatePage.actions.useBaseTemplate 값이다. 소스에는 t() 의
  * 인라인 폴백으로 'Use Base Template' 이 적혀 있지만 키가 존재하므로 화면에는
  * 절대 그 문구가 뜨지 않는다 — 폴백을 보고 셀렉터를 쓰면 영원히 0 개가 잡힌다.
+ *
+ * 라벨이 템플릿에 따라 갈린다(#170) — 빈 템플릿만 useEmptyTemplate
+ * ('Start with Empty Base') 이고 나머지는 useBaseTemplate 이다. 목록은
+ * ORDER BY id ASC 라 'empty-template-v1' 이 첫 카드로 와서, 첫 카드를 쓰는
+ * 스펙은 빈 템플릿 라벨을 만난다. 어느 쪽이든 Install 로 가는 같은 버튼이므로
+ * 셋 다 받는다.
  */
-export const USE_AS_BASE = /use (as base|this template)/i;
+export const USE_AS_BASE = /use (as base|this template)|start with empty base/i;
 
 /** 카드 하나의 상세 모달을 연다. */
 export async function openTemplateDetail(page: Page, index = 0) {
