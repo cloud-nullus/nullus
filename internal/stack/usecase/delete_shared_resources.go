@@ -138,6 +138,7 @@ func (uc *DeleteStack) reclaimSharedClusterResources(ctx context.Context, kubeco
 	}
 	for _, step := range []func(context.Context){
 		r.reclaimInternalCA,
+		r.reclaimExternalSecrets,
 		r.reclaimCertManager,
 		r.reclaimMetricsServer,
 		r.reclaimGateway,
@@ -423,6 +424,53 @@ func (r *sharedReclaim) caInjectionUsers(ctx context.Context) ([]string, error) 
 // kube-system 에 깔리므로 스택 정리가 보지 않는다. 릴리스를 지우면 APIService 도 함께 사라진다 — APIService
 // 만 남으면 API discovery 가 실패해 클러스터의 네임스페이스 삭제가 교착된다. 사용자 HPA·VPA 가 있으면
 // 오토스케일이 멈추므로 남긴다. `kubectl top` 같은 직접 조회는 알아낼 수 없다.
+// reclaimExternalSecrets 는 공용 ESO 오퍼레이터를 회수한다.
+//
+// ESO 는 클러스터 공용 네임스페이스에 하나만 깔린다(helm.ESONamespace) — 스택
+// 네임스페이스에 두면 그 네임스페이스를 지울 때 컨트롤러가 먼저 죽어
+// ExternalSecret 의 finalizer 가 영구히 남기 때문이다. 공용으로 옮긴 대신 스택과
+// 함께 사라지지 않으므로 마지막 스택을 지울 때 여기서 회수한다.
+//
+// CRD·웹훅은 건드리지 않는다. 그쪽은 스택 삭제 경로가 "다른 네임스페이스가 쓰는
+// 중인지" 를 보고 판단한다(esoResourcesInUseOutside) — 같은 판단을 두 곳에서
+// 내리면 갈린다.
+func (r *sharedReclaim) reclaimExternalSecrets(ctx context.Context) {
+	const release = "external-secrets"
+	namespaces, ok := r.nullusReleaseNamespaces(ctx, release, "external-secrets")
+	if !ok || len(namespaces) == 0 {
+		return
+	}
+	// 어디서든 ESO 리소스를 쓰고 있으면 남긴다. 오퍼레이터를 지우면 그것들의
+	// finalizer 를 뗄 주체가 사라져 그 네임스페이스가 Terminating 에 갇힌다 —
+	// 이 변경이 없애려던 바로 그 증상이다.
+	var users []string
+	for _, kind := range []string{
+		"externalsecrets.external-secrets.io",
+		"secretstores.external-secrets.io",
+		"clustersecretstores.external-secrets.io",
+	} {
+		if !r.hasCRD(kind) {
+			continue
+		}
+		out, err := r.read(ctx, "get", kind, "-A", "--no-headers",
+			"-o", "custom-columns=NS:.metadata.namespace,NAME:.metadata.name")
+		if err != nil {
+			r.keep(ctx, fmt.Sprintf("%s 목록을 읽지 못해 external-secrets 를 남깁니다: %v", kind, err))
+			return
+		}
+		for _, fields := range kubectlRows(out, 2) {
+			users = append(users, fields[0]+"/"+fields[1])
+		}
+	}
+	if len(users) > 0 {
+		r.keep(ctx, fmt.Sprintf("ExternalSecret·SecretStore 가 남아 있어 external-secrets 를 남깁니다: %s", summarizeRefs(users)))
+		return
+	}
+	if r.uninstall(ctx, release, namespaces, "external-secrets") {
+		r.reclaimed++
+	}
+}
+
 func (r *sharedReclaim) reclaimMetricsServer(ctx context.Context) {
 	release := domain.MetricsServerReleaseName
 	namespaces, ok := r.nullusReleaseNamespaces(ctx, release, "metrics-server")

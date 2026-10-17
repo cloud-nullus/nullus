@@ -18,6 +18,21 @@ const (
 	ESOChartRepo    = "https://charts.external-secrets.io"
 	ESOChartVersion = "2.7.0"
 
+	// ESONamespace 는 ESO 를 깔 클러스터 공용 네임스페이스다.
+	//
+	// 스택 네임스페이스에 깔면 그 네임스페이스를 지울 수 없게 된다. ESO 는 자기가
+	// 만든 ExternalSecret 에 externalsecret-cleanup finalizer 를 붙이고 그것을 뗄 수
+	// 있는 것은 ESO 컨트롤러뿐인데, `kubectl delete namespace` 는 파드와
+	// ExternalSecret 을 병렬로 지운다 — 컨트롤러가 먼저 죽으면 finalizer 가 영구히
+	// 남아 네임스페이스가 Terminating 에서 끝나지 않는다(2026-10-17 실측: 22분 뒤에도
+	// 그대로였고 finalizer 를 손으로 비우니 즉시 끝났다).
+	//
+	// 공용 네임스페이스에 두면 컨트롤러가 스택 네임스페이스보다 오래 살아 finalizer 를
+	// 스스로 뗀다. cert-manager(cert-manager)·metrics-server(kube-system) 가 같은
+	// 이유로 자기 네임스페이스를 못박고 있다. ESO 의 CRD·검증 웹훅도 원래 클러스터에
+	// 하나뿐이라 스택마다 깔 이유가 없었다.
+	ESONamespace = "external-secrets"
+
 	// ESOSecretStoreName 은 스택 네임스페이스에 만드는 SecretStore 이름이다.
 	// 스택이 단일 네임스페이스에 설치되므로 ClusterSecretStore 는 쓰지 않는다.
 	ESOSecretStoreName = "nullus-openbao"
@@ -196,6 +211,59 @@ func (o *Orchestrator) adoptExistingESOCRDs(ctx context.Context, namespace, rele
 	}
 }
 
+// ensureESOServiceAccount 는 ESO 가 OpenBao 에 로그인할 때 쓸 ServiceAccount 를
+// 스택 네임스페이스에 만든다.
+//
+// ESO 컨트롤러는 클러스터 범위 권한으로 어느 네임스페이스의 SA 든 토큰을 요청할 수
+// 있다(ClusterRole external-secrets-controller: serviceaccounts/token create).
+// 토큰을 받은 SA 의 네임스페이스가 OpenBao role 의 bound_service_account_namespaces
+// 와 맞아야 하므로, SA 는 OpenBao 와 같은 스택 네임스페이스에 둔다.
+//
+// 공용 네임스페이스의 SA 로 로그인하면 OpenBao 가 "namespace not authorized" 로
+// 거부한다(2026-10-17 실측).
+func (o *Orchestrator) ensureESOServiceAccount(ctx context.Context, namespace string) error {
+	if !looksLikeKubeconfig(o.kubeconfig) {
+		return nil
+	}
+	manifest := "apiVersion: v1\nkind: ServiceAccount\nmetadata:\n" +
+		"  name: " + OpenBaoESOServiceAccount + "\n" +
+		"  namespace: " + namespace + "\n"
+	if err := o.applyManifest(ctx, namespace, manifest); err != nil {
+		return fmt.Errorf("ESO ServiceAccount 적용 실패: %w", err)
+	}
+	return nil
+}
+
+// esoReleaseNamespace 는 ESO 오퍼레이터를 깔 네임스페이스다.
+//
+// 스택 네임스페이스가 아니다. 오퍼레이터가 스택 네임스페이스 안에 있으면 그
+// 네임스페이스를 지울 때 컨트롤러가 먼저 죽어 ExternalSecret 의 finalizer 를
+// 떼어 줄 주체가 사라진다(ESONamespace 주석 참고). SecretStore 는 스택
+// 네임스페이스에 그대로 둔다 — 그쪽은 스택마다 하나씩 필요하다.
+func esoReleaseNamespace(spec ChartSpec) string {
+	if ns := strings.TrimSpace(spec.Namespace); ns != "" {
+		return ns
+	}
+	return ESONamespace
+}
+
+// esoStackNamespace 는 SecretStore·OpenBao 가 있는 스택 네임스페이스다.
+//
+// 오케스트레이터는 단계마다 "spec.Namespace 가 있으면 그것, 없으면 스택 네임스페이스"
+// 로 네임스페이스를 정해 넘긴다. ESO 차트에 공용 네임스페이스를 못박자 그 값이 이
+// 함수들로 흘러들어와 SecretStore 가 external-secrets 네임스페이스에 만들어졌다 —
+// ESO 는 거기서 스택의 OpenBao 를 찾지 못하고 설치가 멈춘다(2026-10-17 실측).
+//
+// SecretStore 가 오퍼레이터 네임스페이스에 있을 이유는 없으므로, 그 값을 받으면
+// 스택 네임스페이스로 되돌린다.
+func (o *Orchestrator) esoStackNamespace(passed string) string {
+	ns := strings.TrimSpace(passed)
+	if ns == "" || ns == ESONamespace {
+		return o.namespace
+	}
+	return ns
+}
+
 // InstallExternalSecrets 는 ESO 설치 전 과정을 하나의 경로로 묶는다.
 //
 // 차트 설치 → 준비 대기 → SecretStore 적용까지 여기서 처리하므로,
@@ -205,9 +273,8 @@ func (o *Orchestrator) InstallExternalSecrets(ctx context.Context, namespace str
 	if !looksLikeKubeconfig(o.kubeconfig) {
 		return nil
 	}
-	if strings.TrimSpace(namespace) == "" {
-		namespace = o.namespace
-	}
+	// namespace 는 스택 네임스페이스다 — SecretStore 와 OpenBao 가 거기 있다.
+	namespace = o.esoStackNamespace(namespace)
 
 	spec, ok := o.chartSpecForStep("installing_external_secrets")
 	if !ok {
@@ -215,27 +282,39 @@ func (o *Orchestrator) InstallExternalSecrets(ctx context.Context, namespace str
 	}
 	spec = o.resolveChartSpecForStep("installing_external_secrets", spec)
 
+	releaseNamespace := esoReleaseNamespace(spec)
+
 	releaseName := o.releaseNameForSpec(spec)
 	// 이전 릴리스 삭제로 CRD 가 Terminating 상태면 먼저 정리를 기다린다.
 	if err := o.waitForESOCRDsSettled(ctx); err != nil {
 		return err
 	}
 	// 남아 있는 CRD 의 Helm 소유권을 이 릴리스로 인수한 뒤 설치한다.
-	o.adoptExistingESOCRDs(ctx, namespace, releaseName)
+	o.adoptExistingESOCRDs(ctx, releaseNamespace, releaseName)
 
 	if _, err := o.installer.Install(ctx, port.HelmInstallRequest{
 		ReleaseName: releaseName,
 		ChartName:   spec.ChartName,
 		RepoURL:     spec.RepoURL,
 		Version:     spec.Version,
-		Namespace:   namespace,
+		Namespace:   releaseNamespace,
 		Values:      o.valuesForStep("installing_external_secrets", spec),
 		Wait:        boolPtr(spec.Wait),
 	}); err != nil {
 		return fmt.Errorf("ESO 차트 설치 실패: %w", err)
 	}
 
-	if err := o.waitForExternalSecrets(ctx, namespace); err != nil {
+	// 준비 대기는 오퍼레이터가 있는 곳을, SecretStore 는 스택 네임스페이스를 본다.
+	if err := o.waitForExternalSecrets(ctx, releaseNamespace); err != nil {
+		return err
+	}
+	// SecretStore 가 가리키는 ServiceAccount 는 스택 네임스페이스에 있어야 한다.
+	// 오퍼레이터를 공용 네임스페이스로 옮기면 차트가 만드는 SA 도 거기 생기는데,
+	// 네임스페이스 범위 SecretStore 의 serviceAccountRef 는 다른 네임스페이스를
+	// 가리킬 수 없다(ESO 가 권한 상승을 막으려고 막아 둔다 — ClusterSecretStore 만
+	// 허용한다). 그래서 스택마다 같은 이름의 SA 를 둔다. OpenBao 의 role 도 이
+	// 네임스페이스를 묶는다.
+	if err := o.ensureESOServiceAccount(ctx, namespace); err != nil {
 		return err
 	}
 	if err := o.applySecretStore(ctx, namespace); err != nil {
