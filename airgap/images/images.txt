@@ -3,7 +3,7 @@
 # Regenerate whenever chart deps or app versions change.
 # Format : <registry>/<repo>:<tag>, one per line. Blank / "#" lines ignored.
 # CI     : MODE=check ./00-generate-images.sh blocks drift.
-# installer-values-sha256: 428b185472b61cb9a3458d296ad0d737d44e5d024de76dc0a7ce32ab910175c8
+# installer-values-sha256: 0f1c5a2acb4c0493fe01b80bb6820d5e452bdcb61c9fd77aa2bf2bf568dcef56
 
 # --- Nullus app + chart dependency images (rendered from chart) ---
 busybox:1.37
