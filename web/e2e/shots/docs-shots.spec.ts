@@ -1,6 +1,7 @@
 // 문서 사이트용 화면 캡처.
 //
-// 산출물: website/docs/assets/screens/<이름>-{dark,light}.png
+// 산출물: website/docs/assets/screens/<이름>-{dark,light}.png      — 한국어 문서
+//         website/docs/assets/screens/<이름>-{dark,light}.en.png   — 영어 문서
 // 실행:   npm run shots:docs
 //
 // 검증이 아니라 그림을 만드는 스펙이다. 실패해도 CI 를 막지 않게 기본 설정과
@@ -12,11 +13,21 @@
 //
 // 두 테마를 다 찍는 이유: 문서 사이트가 OS 설정에 따라 밝은/어두운 화면을
 // 쓴다. MkDocs Material 의 `#only-light` · `#only-dark` 로 짝을 지어 쓴다.
+//
+// 두 언어를 다 찍는 이유: 문서 사이트가 한국어(원본)와 영어 두 벌이다. 영어판은
+// 본문의 그림 경로를 그대로 두고 i18n 플러그인이 `.en.png` 로 바꿔 끼운다.
+// 영어 화면에는 fixtures-en.ts 가 데이터의 한국어를 영어로 바꿔 넣는다 — 표에
+// 없는 한국어가 나오면 캡처가 실패한다.
 
 import { test, expect, type Page } from '@playwright/test'
 import * as fx from './fixtures'
+import { localizeFixture, localizeText } from './fixtures-en'
 
 type Theme = 'dark' | 'light'
+type Locale = 'ko' | 'en'
+
+/** 앱 배포 화면의 스택 선택 칸 라벨(developerDeployPage.form.stackRequired). */
+const STACK_SELECT: Record<Locale, string> = { ko: 'Stack 선택', en: 'Select Stack' }
 
 const OUT = '../website/docs/assets/screens'
 const ADMIN = { email: 'admin@nullus.dev', password: 'admin123' }
@@ -30,7 +41,7 @@ const SCREENS: {
   /** 화면에 보여야 할 글자. 입력칸의 값이면 `value:` 를 앞에 붙인다. */
   wait?: string
   /** 찍기 전에 화면을 만져야 할 때. 빈 폼보다 채워진 쪽이 문서 그림으로 낫다. */
-  prepare?: (page: Page) => Promise<void>
+  prepare?: (page: Page, locale: Locale) => Promise<void>
 }[] = [
   { name: 'home', path: '/' },
   { name: 'stack-templates', path: '/stack/templates', wait: 'GitLab + Argo CD + SonarQube' },
@@ -48,10 +59,10 @@ const SCREENS: {
     path: '/cicd/developer-deploy',
     as: DEVELOPER,
     // 스택을 골라야 저장소·레지스트리 주소가 채워진다. 빈 폼보다 그 상태가 낫다.
-    prepare: async (page) => {
+    prepare: async (page, locale) => {
       // MUI Select 는 네이티브 <select> 가 아니라 role=combobox 인 div 다.
       // 열어서 항목을 눌러야 선택 상태가 실제로 바뀐다.
-      await page.getByRole('combobox', { name: 'Stack 선택' }).click()
+      await page.getByRole('combobox', { name: STACK_SELECT[locale] }).click()
       await page.getByRole('option', { name: 'nullus-gitlab-argocd-sonarqube' }).click()
       // 누르면 포커스 테두리가 남는다. 그림에 파란 테가 끼지 않게 뗀다.
       await page.locator('body').click({ position: { x: 5, y: 5 } })
@@ -122,7 +133,7 @@ function fixtureFor(pathname: string): unknown | undefined {
  * 서빙하는 소스 모듈까지 가로채 JS 대신 JSON 을 돌려주고, lazy 라우트가
  * "Failed to fetch dynamically imported module" 로 깨진다.
  */
-async function mockApi(page: Page): Promise<void> {
+async function mockApi(page: Page, locale: Locale): Promise<void> {
   await page.route(
     (url) => url.pathname.startsWith('/api/v1/'),
     async (route) => {
@@ -132,7 +143,8 @@ async function mockApi(page: Page): Promise<void> {
         return route.fulfill({ json: { token: 'docs-shot', user: null } })
       }
 
-      const body = fixtureFor(pathname)
+      const fixture = fixtureFor(pathname)
+      const body = locale === 'en' ? localizeFixture(fixture) : fixture
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -143,11 +155,11 @@ async function mockApi(page: Page): Promise<void> {
   )
 }
 
-async function setTheme(page: Page, theme: Theme): Promise<void> {
-  await page.addInitScript((value) => {
-    window.localStorage.setItem('nullus-theme', value)
-    // 문서가 한국어라 화면도 한국어로 찍는다. 기본값은 en 이다.
-    window.localStorage.setItem('nullus-locale', 'ko')
+async function setPreferences(page: Page, theme: Theme, locale: Locale): Promise<void> {
+  await page.addInitScript(([themeValue, localeValue]) => {
+    window.localStorage.setItem('nullus-theme', themeValue)
+    // 문서 언어에 맞춰 화면 언어를 고른다. 앱의 기본값은 en 이다.
+    window.localStorage.setItem('nullus-locale', localeValue)
     // 첫 방문 투어·온보딩 패널이 화면을 덮는다. 본 것으로 표시해 둔다.
     window.localStorage.setItem('nullus-tour-done', 'true')
     window.localStorage.setItem('nullus-onboarding-dismissed', 'true')
@@ -158,7 +170,7 @@ async function setTheme(page: Page, theme: Theme): Promise<void> {
         window.localStorage.setItem(`nullus_skip_connect_${view}_${scope}_v2`, 'true')
       }
     }
-  }, theme)
+  }, [theme, locale] as const)
 }
 
 async function login(page: Page, account: typeof ADMIN): Promise<void> {
@@ -195,62 +207,75 @@ async function stabilize(page: Page): Promise<void> {
 
 test.describe.configure({ mode: 'parallel' })
 
-for (const theme of ['dark', 'light'] as Theme[]) {
-  test.describe(`문서 캡처 — ${theme}`, () => {
-    test.beforeEach(async ({ page }) => {
-      // 시계를 고정한다. 화면 일부가 현재 시각으로 기본값을 만들어(설치 화면의
-      // 스택 이름) 다시 찍을 때마다 그림이 달라진다.
-      await page.clock.setFixedTime(new Date('2026-10-12T09:30:00Z'))
-      await page.setViewportSize({ width: 1440, height: 900 })
-      await setTheme(page, theme)
-      await mockApi(page)
-    })
+// 표가 빠진 한국어 문자열은 화면마다 따로 터지는 것보다 한 번에 보는 편이 낫다.
+test('영어 캡처용 fixture 표에 빠진 한국어가 없다', () => {
+  for (const value of Object.values(fx)) localizeFixture(value)
+})
 
-    test(`login (${theme})`, async ({ page }) => {
-      await page.goto('/login')
-      // 로그인 화면에는 <main> 이 없다 — 폼이 뜨는 것으로 기다린다.
-      await page.waitForSelector('button[type="submit"]', { timeout: 15000 })
-      await stabilize(page)
-      await page.screenshot({ path: `${OUT}/login-${theme}.png` })
-    })
+/** 한국어 문서는 원래 이름 그대로, 영어 문서는 `.en.png` — i18n 플러그인의 규칙이다. */
+function shotPath(name: string, theme: Theme, locale: Locale): string {
+  return `${OUT}/${name}-${theme}${locale === 'en' ? '.en' : ''}.png`
+}
 
-    for (const screen of SCREENS) {
-      test(`${screen.name} (${theme})`, async ({ page }) => {
-        await login(page, screen.as ?? ADMIN)
-        await page.goto(screen.path)
-        await waitForPageContent(page)
-
-        if (screen.prepare) {
-          await screen.prepare(page)
-        }
-
-        if (screen.wait?.startsWith('value:')) {
-          // 입력칸의 값은 getByDisplayValue 로 잡히지 않는 경우가 있다 — 이 화면의
-          // 주소 칸은 disabled 다. 값을 직접 읽어 본다.
-          const needle = screen.wait.slice('value:'.length)
-          await expect
-            .poll(
-              () =>
-                page.evaluate(
-                  (text) =>
-                    Array.from(document.querySelectorAll('input')).some((input) =>
-                      input.value.includes(text),
-                    ),
-                  needle,
-                ),
-              { timeout: 20000 },
-            )
-            .toBe(true)
-        } else if (screen.wait) {
-          // 고정 응답이 실제로 그려졌는지 본다. 빈 화면을 문서에 싣지 않기 위한 장치다.
-          await expect(page.getByText(screen.wait, { exact: false }).first()).toBeVisible({
-            timeout: 20000,
-          })
-        }
-
-        await stabilize(page)
-        await page.screenshot({ path: `${OUT}/${screen.name}-${theme}.png` })
+for (const locale of ['ko', 'en'] as Locale[]) {
+  for (const theme of ['dark', 'light'] as Theme[]) {
+    test.describe(`문서 캡처 — ${locale} ${theme}`, () => {
+      test.beforeEach(async ({ page }) => {
+        // 시계를 고정한다. 화면 일부가 현재 시각으로 기본값을 만들어(설치 화면의
+        // 스택 이름) 다시 찍을 때마다 그림이 달라진다.
+        await page.clock.setFixedTime(new Date('2026-10-12T09:30:00Z'))
+        await page.setViewportSize({ width: 1440, height: 900 })
+        await setPreferences(page, theme, locale)
+        await mockApi(page, locale)
       })
-    }
-  })
+
+      test(`login (${locale} ${theme})`, async ({ page }) => {
+        await page.goto('/login')
+        // 로그인 화면에는 <main> 이 없다 — 폼이 뜨는 것으로 기다린다.
+        await page.waitForSelector('button[type="submit"]', { timeout: 15000 })
+        await stabilize(page)
+        await page.screenshot({ path: shotPath('login', theme, locale) })
+      })
+
+      for (const screen of SCREENS) {
+        test(`${screen.name} (${locale} ${theme})`, async ({ page }) => {
+          await login(page, screen.as ?? ADMIN)
+          await page.goto(screen.path)
+          await waitForPageContent(page)
+
+          if (screen.prepare) {
+            await screen.prepare(page, locale)
+          }
+
+          if (screen.wait?.startsWith('value:')) {
+            // 입력칸의 값은 getByDisplayValue 로 잡히지 않는 경우가 있다 — 이 화면의
+            // 주소 칸은 disabled 다. 값을 직접 읽어 본다.
+            const needle = screen.wait.slice('value:'.length)
+            await expect
+              .poll(
+                () =>
+                  page.evaluate(
+                    (text) =>
+                      Array.from(document.querySelectorAll('input')).some((input) =>
+                        input.value.includes(text),
+                      ),
+                    needle,
+                  ),
+                { timeout: 20000 },
+              )
+              .toBe(true)
+          } else if (screen.wait) {
+            // 고정 응답이 실제로 그려졌는지 본다. 빈 화면을 문서에 싣지 않기 위한 장치다.
+            const text = locale === 'en' ? localizeText(screen.wait) : screen.wait
+            await expect(page.getByText(text, { exact: false }).first()).toBeVisible({
+              timeout: 20000,
+            })
+          }
+
+          await stabilize(page)
+          await page.screenshot({ path: shotPath(screen.name, theme, locale) })
+        })
+      }
+    })
+  }
 }
