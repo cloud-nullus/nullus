@@ -490,9 +490,9 @@ PENDING → VALIDATING → INSTALLING → CONFIGURING → HEALTHCHECK → COMPLE
   - 구독할 수 있는 이벤트는 **5개**다 (`internal/shared/notification/event.go` —
     생산자가 실제로 내는 것만 둔다): `backup_failed` · `backup_partial` ·
     `backup_succeeded`(기본 끔) · `alert_fired` · `alert_resolved`
-  - 여기 적혀 있던 `tool_down` · `high_cpu` · `high_memory` · `storage_warning` ·
-    `pipeline_failure` 는 **구현되지 않았다.** 지금 알림이 가는 것은 백업 결과와,
-    스택 Prometheus 가 올린 **심각(critical) 경보**뿐이다(nullus-plan#87)
+  - 알림이 가는 계기는 둘이다 — **백업 결과**와, 스택 Prometheus 가 올린
+    **심각(critical) 경보**(nullus-plan#87). 도구별 임계값 경보(CPU · 메모리 ·
+    스토리지)는 알림 규칙 평가기가 생길 때 더한다
 - [ ] Alert Rule 편집 시 Edit 팝업에서 DB 최신 값을 단건 조회 후 수정하고, Save 뒤 즉시 목록에 반영
 - [ ] Alert Rule 임계값을 Warning / Critical 2단계로 관리
 

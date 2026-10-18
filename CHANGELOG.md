@@ -218,6 +218,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **README 와 기획 문서를 현재 구현으로 다시 썼다 — "이건 낡았다" 는 주석을 달지 않고 본문을 고쳤다** (`README.md`, `docs/10_제품기획/{Nullus_메뉴체계,Nullus_기능목록}.md`, `docs/20_아키텍처/Nullus_API_설계.md`, `docs/20_개발가이드/{Nullus_CICD 흐름,Nullus_CLI_사용_가이드}.md`, `website/docs/**`): 앞선 작업에서 불일치를 "구현 현황" 블록으로 **표시**해 두었는데, 읽는 사람에게는 본문과 주석을 대조하는 일이 늘어난 것뿐이다. 주석을 걷고 본문을 고쳤다.
+
+  **README.** `GitHub 호환성은 Phase 2 예정` 을 지웠다 — 템플릿 11개로 **GitLab · GitHub + Argo CD · Gitea + Jenkins + Argo CD** 세 조합이 이미 있다. 주요 기능에 파이프라인 보안 게이트(시크릿·SCA·SAST·이미지 스캔) · 알림 채널 · 백업/복구를 더하고, "알림 규칙 관리" 는 화면이 없어 뺐다. **설치 마법사의 Pre-Deploy 게이트 서술을 고쳤다** — 호환성 판정과 리소스 합산은 브라우저가 하고 서버가 배포를 되돌리는 게이트는 켜져 있지 않다(배포 전 Dry Run 으로 확인한다). API 표의 알림 엔드포인트를 `configs` → `channels`·`events`·`test` 로 바꾸고 백업·복구·스택 경보 13행을 더했다. 관측성 그룹에 **역할 검사가 없다**는 사실, Developer 가 `/cicd` 에 쓰기까지 된다는 사실을 역할 표에 적었다. 모듈 6개 → **10개**, `cmd` 1개 → **4개**, DDD 컨텍스트 5개 → **7개**(backup · notification), 프로젝트 구조에 `airgap/` · `website/` 추가. 구현 현황 표에서 F8(호환성 매트릭스 등록은 마이그레이션만) · F10(리소스 예상량은 브라우저 계산)을 사실대로 고치고, Phase 1 이후에 더한 8줄(보안 게이트 · 알림 채널 · 스택 경보 · 백업/복구 · Gitea+Jenkins · 에어갭 · CLI/MCP · 알림 규칙 미구현)을 표로 넣었다. 오브젝트 스토리지 이미지가 `pgsty/silo`(MinIO 의 AGPL 포크)라는 것도 적었다.
+
+  **API 설계 문서.** 2.3~2.6 을 현재 동작으로 다시 썼다 — 응답 봉투(`{data, pagination}`)는 없고 `{items, total}` 이다, `page`·`page_size`·`sort` 를 읽는 엔드포인트는 하나도 없고 `limit`·`offset` 을 받는 다섯 곳만 페이지를 나눈다, 목록 전체에 통하는 공통 필터는 없다, 정렬 파라미터가 없다. 본문의 경로도 실제 라우트로 고쳤다 — `PUT /stacks/:id` → `POST /stacks/:stackId/config`(도구 추가는 `PATCH …/tools`), `GET …/history/:versionId/diff` → `GET …/history/diff?versionA=&versionB=`, `POST …/rollback/:versionId` → `POST …/rollback`(본문 `versionId` 필수, 없으면 400).
+
+  **CI/CD 흐름.** 머리에 세 겹으로 쌓여 있던 "구현 현황 / 추가" 인용 블록을 **0장 "플랫폼이 만드는 파이프라인"** 으로 재구성했다. 단계 이름 6개와 세 조합의 차이(파이프라인 정의 · job 생성 · 러너 자격증명 · 저장소 접근 · 삭제)를 표로 정리하고, GitHub 경로에서 러너가 OpenBao 를 쓰지 않는 이유를 본문에 넣었다.
+
+  **메뉴체계·기능목록·CLI 가이드.** 1장 표의 틀린 세 행(스택 설치의 "5단계", 호환성 매트릭스, 알림 규칙)을 고쳐 "이 장은 초안이라 다르다" 는 경고를 없앴다. 기능목록은 구현되지 않은 이벤트 이름을 열거하는 대신 알림이 가는 두 계기(백업 결과 · 심각 경보)를 적었다. CLI 가이드의 배포 절은 "릴리스에서 받으면 끝 — 아직 아니다" 두 겹을 "지금은 소스에서 빌드한다" 한 줄로 바꿨다.
+
+  **문서 사이트.** 쓰지도 않는 "⚠️·🚫 표식" 설명을 지우고, 홈의 "이 문서를 믿어도 되는 이유" 를 담백한 **출처**·**구현 범위** 두 절로 바꿨다(GitHub Phase 2 서술도 함께 고쳤다). 설계 문서와 대조하던 서술 7곳은 사실만 남겼다 — 예를 들어 "설계 문서는 `manifest.json` 이 버킷의 유일한 평문이라 적지만 다르다" 는 "버킷만 들고 다른 곳에서 복구할 수는 없다" 로, "설계 문서는 감사 로그가 필수라고 적는다" 는 "누가 언제 복구했는지 추적할 수 없다" 로 바꿨다. 화면 문구와 실제 동작이 다른 것(모니터링의 "Changes apply to all users")은 사용자가 겪는 일이라 그대로 뒀다.
+
 - **CI/CD 골든패스를 표로 옮겼다 — 고친 것이 재시작 뒤에도 남고, 카드 순서가 고정된다** (`db/migrations/000099_cicd_golden_paths.{up,down}.sql`, `internal/cicd/adapter/repository/postgres_cicd_golden_path.go`, `internal/cicd/adapter/handler/cicd_golden_path_handler.go`, `internal/cicd/domain/errors.go`, `cmd/api/main.go`): 골든패스 세 건이 Go 코드 안의 고정값이고 저장소가 프로세스 메모리였다. 생성·수정·삭제 API 가 이미 열려 있어 화면은 성공 응답을 받았지만 **API 를 다시 띄우면 전부 되돌아갔다**. 목록도 맵을 돌며 만들어 **요청마다 카드 순서가 바뀌었다**.
 
   새 표 `cicd_golden_paths` 에 종전 세 건(`gitlab-allinone-v1` · `gitlab-argocd-v1` · `github-argocd-v1`)을 도구 버전까지 그대로 시드했다 — 한쪽만 올리면 스택 템플릿(`db/migrations/000059` 이후)과 어긋나므로 버전은 손대지 않았다. `sort_order` 로 카드 순서를 고정해 종전 화면 순서(GitLab All-in-One → GitLab + Argo CD → GitHub + Argo CD)를 유지한다. `id` 로 정렬하면 GitHub 이 맨 앞으로 와 뒤집힌다. stack 모듈의 `golden_path_templates`(스택 설치 조합 11건)와는 **별개 표**다 — 모듈이 자기 표를 소유한다는 규칙에 따라 따로 둔다.
