@@ -218,6 +218,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **CI/CD 골든패스를 표로 옮겼다 — 고친 것이 재시작 뒤에도 남고, 카드 순서가 고정된다** (`db/migrations/000099_cicd_golden_paths.{up,down}.sql`, `internal/cicd/adapter/repository/postgres_cicd_golden_path.go`, `internal/cicd/adapter/handler/cicd_golden_path_handler.go`, `internal/cicd/domain/errors.go`, `cmd/api/main.go`): 골든패스 세 건이 Go 코드 안의 고정값이고 저장소가 프로세스 메모리였다. 생성·수정·삭제 API 가 이미 열려 있어 화면은 성공 응답을 받았지만 **API 를 다시 띄우면 전부 되돌아갔다**. 목록도 맵을 돌며 만들어 **요청마다 카드 순서가 바뀌었다**.
+
+  새 표 `cicd_golden_paths` 에 종전 세 건(`gitlab-allinone-v1` · `gitlab-argocd-v1` · `github-argocd-v1`)을 도구 버전까지 그대로 시드했다 — 한쪽만 올리면 스택 템플릿(`db/migrations/000059` 이후)과 어긋나므로 버전은 손대지 않았다. `sort_order` 로 카드 순서를 고정해 종전 화면 순서(GitLab All-in-One → GitLab + Argo CD → GitHub + Argo CD)를 유지한다. `id` 로 정렬하면 GitHub 이 맨 앞으로 와 뒤집힌다. stack 모듈의 `golden_path_templates`(스택 설치 조합 11건)와는 **별개 표**다 — 모듈이 자기 표를 소유한다는 규칙에 따라 따로 둔다.
+
+  저장 규칙도 실제 저장소와 맞췄다. 같은 `id` 로 또 만들면 조용히 덮어쓰지 않고 **409**(종전 메모리 구현은 덮어썼다), 없는 것을 고치거나 지우면 **404**(`PUT` 이 새로 만들지 않는다), `id`·`name` 이 없으면 **400** 이다. `PUT` 은 내용만 바꾸고 `sort_order` 는 건드리지 않는다.
+
+  **쓰기 권한을 admin·devops 로 좁혔다.** 메모리에 있던 동안에는 developer 가 지워도 재시작하면 돌아왔지만 이제는 영구 삭제다. 읽기는 `/cicd` 그룹 그대로 세 역할 모두에게 열어 둔다. 미들웨어는 `cmd/api/main.go` 가 넘긴다 — cicd 모듈이 auth 모듈을 직접 import 하지 않기 위함이다. `development` 모드에서는 비어 있다(그 모드는 모든 역할 검사를 끈다).
+
+  **화면에는 아직 편집기가 없다** — 추가·수정은 API 나 SQL 로 한다. 문서 사이트의 골든패스 페이지와 권한 표를 이 사실에 맞게 고쳤다.
+
+  테스트 14건: 저장소 통합 4건(testcontainers Postgres 18 — 왕복·시드 3건과 순서·중복 거부·없는 행), 핸들러 10건(목록 순서 유지·생성 후 목록 반영·409·400 둘·404 셋·수정 영속·목록 실패 500·쓰기 가드가 읽기는 통과시키고 쓰기만 막는지·가드 없을 때 종전대로 열리는지).
+
 - **낡은 가이드 세 편을 지금 코드와 대조해 맞췼다** (`docs/guides/cicd-pipeline-kind-deploy-guide.md`, `docs/20_개발가이드/Nullus_템플릿_추가_가이드.md`, `docs/20_개발가이드/Nullus_CLI_사용_가이드.md`): CI/CD kind 배포 가이드의 파이프라인 생성·배포 요청 본문(`git_repo` → `git_repo_url`, 응답 `.pipeline.id`, `deploy` 는 `version` · `deployed_by` · `manifest_types`)과 템플릿 목록을 현재 핸들러와 시드 기준으로 고치고, 스택 통합(`stack_integrated`)과 플랫폼 직접 배포(`emergency_direct`)의 차이를 적었다. 템플릿 추가 가이드에 `planning_profile` · CI/CD 템플릿의 선택 필드(`git_repo_url` 등)를 더하고, 호환성 매트릭스 API 가 등록돼 화면에서도 만들 수 있다는 사실로 고쳤다(404 라는 옛 안내 삭제). CLI 가이드에 **구현 현황 표**를 두어 지금 동작하는 것(`version` · `stack ls`)과 설계만 있는 것을 가르고, `pipeline deploy` 는 스택 통합 파이프라인에 "배포" 명령이 없다는 현재 모델로 다시 적었다. 로컬 E2E 가이드 부록 C 의 마지막 제약(낡은 문서)을 지웠다.
 
 ### Fixed
