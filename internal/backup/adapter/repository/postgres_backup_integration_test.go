@@ -418,3 +418,47 @@ func TestPostgresBackupRepository_백업_세트_왕복(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, none)
 }
+
+// 업그레이드 사전 점검(스택 모듈)이 묻는 "마지막 복구 가능 백업" — 성공했고 네임스페이스
+// 리소스 산출물이 남아 있는 실행만 친다. 보존 정책이 산출물을 지운 실행은 되돌릴 수 없다.
+func TestPostgresBackupRepository_마지막_복구_가능_백업(t *testing.T) {
+	pool, cleanup := setupBackupPostgres(t)
+	t.Cleanup(cleanup)
+	repo := NewPostgresBackupRepository(pool)
+	ctx := context.Background()
+	stackID := "stk_up_" + uuid.NewString()[:8]
+
+	_, found, err := repo.LatestRestorableBackup(ctx, stackID)
+	require.NoError(t, err)
+	assert.False(t, found)
+
+	base := time.Now().UTC().Truncate(time.Microsecond).Add(-3 * time.Hour)
+	finish := func(status domain.Status, at time.Time, stack string, comps ...domain.Component) *domain.BackupRun {
+		run := newRun(seededOrg)
+		run.StackID = stack
+		require.NoError(t, repo.CreateRun(ctx, run))
+		for _, c := range comps {
+			require.NoError(t, repo.AddArtifact(ctx, &domain.Artifact{BackupRunID: run.ID, Component: c,
+				Location: "s3://b/" + string(c), SizeBytes: 1, ChecksumSHA256: "sum", EncryptionKeyID: "k1"}))
+		}
+		run.Status = status
+		run.FinishedAt = &at
+		require.NoError(t, repo.UpdateRun(ctx, run))
+		return run
+	}
+
+	restorable := finish(domain.StatusSucceeded, base, stackID, domain.ComponentNamespaceResources, domain.ComponentPlatformDB)
+	finish(domain.StatusSucceeded, base.Add(time.Hour), stackID, domain.ComponentPlatformDB)               // 네임스페이스 리소스 없음
+	finish(domain.StatusPartial, base.Add(2*time.Hour), stackID, domain.ComponentNamespaceResources)       // 부분 성공
+	finish(domain.StatusSucceeded, base.Add(2*time.Hour), "stk_other", domain.ComponentNamespaceResources) // 다른 스택
+
+	at, found, err := repo.LatestRestorableBackup(ctx, stackID)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.True(t, base.Equal(at), "%s", at)
+
+	require.NoError(t, repo.DeleteArtifacts(ctx, restorable.ID))
+	_, found, err = repo.LatestRestorableBackup(ctx, stackID)
+	require.NoError(t, err)
+	assert.False(t, found, "산출물이 지워진 실행으로는 되돌릴 수 없다")
+}

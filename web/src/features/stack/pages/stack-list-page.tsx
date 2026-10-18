@@ -1,5 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpCircle, Boxes, ChartColumn, ClipboardList, GitBranch, History, Info, Layers, List, Plus, ShieldAlert, SlidersHorizontal, Terminal } from 'lucide-react';
+import { ArrowUpCircle, Boxes, ChartColumn, History, Info, Layers, List, Plus, ShieldAlert, SlidersHorizontal, Terminal } from 'lucide-react';
 import { iconProps } from '../../../components/ui/icon'
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,9 +23,6 @@ import {
 	useImportStackConfig,
 	usePreviewImportStackConfig,
 	useStackHistory,
-	useStackUpgrades,
-	usePreflightUpgrade,
-	useStartUpgrade,
 	useStacks,
 } from "../api/stack-api";
 import { useScopedClusters } from "../../admin/api/admin-api";
@@ -55,20 +52,13 @@ import { StackInfoTab } from "../components/stack-info-tab"
 import { StackWorkloadsTab } from "../components/stack-workloads-tab"
 import { StackConfigTab } from "../components/stack-config-tab"
 import { StackImageScansTab } from "../components/stack-image-scans-tab"
+import { StackVersionUpgradeTab } from "../components/stack-version-upgrade-tab"
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
 import { Badge } from "../../../components/ui/badge"
-import { TOOL_BRAND_GRADIENT } from "../../../lib/tool-brand-colors";
 
 type InnerTab = "info" | "workloads" | "config" | "image-scans" | "monitoring" | "history" | "version-upgrade";
 
-function apiErrorMessage(error: unknown, fallback: string): string {
-	if (error instanceof Error) return error.message;
-	if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
-		return error.message;
-	}
-	return fallback;
-}
 
 
 function StackMonitoringTab({ stackId }: { stackId: string }) {
@@ -170,132 +160,6 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 	);
 }
 
-function StackVersionUpgradeTab({ stackId }: { stackId: string }) {
-	const { t } = useTranslation();
-	const upgrades = useStackUpgrades(stackId);
-	const preflight = usePreflightUpgrade();
-	const startUpgrade = useStartUpgrade();
-	const upgradeItems = (upgrades.data?.items ?? []).map((candidate) => ({
-		name: "Argo CD",
-		iconBg: TOOL_BRAND_GRADIENT.kubernetes,
-		current: `${candidate.current_chart_version} (${candidate.current_app_version || "app unknown"})`,
-		latest: candidate.bundle?.target_chart_version ?? null,
-		tag: candidate.bundle ? `${candidate.bundle.risk_level} risk` : null,
-		tagBg: "color-mix(in srgb, var(--color-warning) 15%, transparent)",
-		tagColor: "var(--color-warning)",
-		upToDate: !candidate.bundle,
-		bundleId: candidate.bundle?.id,
-		blockedReason: candidate.blocked_reason,
-	}));
-	const handleUpgradeClick = async (bundleId?: string) => {
-		if (!bundleId) return;
-		try {
-			const result = await preflight.mutateAsync({ stackId, bundleId });
-			const blocked = result.checks.find((check) => check.status === "blocked");
-			if (blocked) {
-				toast.error(`${blocked.message}${blocked.remediation ? ` — ${blocked.remediation}` : ""}`);
-				return;
-			}
-			const reason = window.prompt(t("stackList.upgrade.reasonPrompt", "업그레이드 사유를 입력하세요."));
-			if (!reason?.trim()) return;
-			const run = await startUpgrade.mutateAsync({ stackId, bundleId, reason: reason.trim() });
-			if (run.status === "succeeded") toast.success(t("stackList.upgrade.success", "업그레이드가 완료되었습니다."));
-			else if (run.status === "rolled_back") toast.warning(t("stackList.upgrade.rolledBack", "실패하여 이전 버전으로 복구했습니다."));
-			else toast.error(run.error || t("stackList.upgrade.failed", "업그레이드에 실패했습니다."));
-		} catch (error) {
-			toast.error(apiErrorMessage(error, t("stackList.upgrade.failed", "업그레이드에 실패했습니다.")));
-		}
-	};
-
-	return (
-		<div>
-			<div className="mb-6 flex flex-wrap items-center gap-3">
-				<div className="h-5 w-1 rounded-full bg-[linear-gradient(135deg,var(--color-primary),var(--color-accent-alt))]" />
-				<h3 className="m-0 text-[14px] font-bold text-[var(--color-text-primary)]">
-					Available Version Upgrades
-				</h3>
-				<span className="rounded-full bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--color-primary)]">
-					{upgradeItems.filter((item) => !item.upToDate && !item.blockedReason).length} updates available
-				</span>
-			</div>
-			{upgrades.isLoading && <div className="mb-3 text-[13px] text-[var(--color-text-secondary)]">Checking installed releases...</div>}
-			{upgrades.isError && <div className="mb-3 rounded-lg border border-[var(--color-danger)] p-4 text-[13px] text-[var(--color-danger)]">Unable to inspect installed releases.</div>}
-			{!upgrades.isLoading && !upgrades.isError && upgradeItems.length === 0 && <div className="mb-3 rounded-lg border border-[var(--color-border-default)] p-4 text-[13px] text-[var(--color-text-secondary)]">No Nullus-managed Argo CD release was found.</div>}
-			<div className="flex flex-col gap-3">
-				{upgradeItems.map((item) => (
-					<div
-						key={item.name}
-						className={cn(
-							"flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4",
-							item.upToDate && "opacity-60",
-						)}
-					>
-						<div className="flex items-center gap-3">
-							<div
-								className="flex h-9 w-9 items-center justify-center rounded-lg"
-								style={{ background: item.iconBg }}
-							>
-								<GitBranch {...iconProps('sm')} className="text-white" />
-							</div>
-							<div>
-								<div className="font-semibold text-[var(--color-text-primary)]">
-									{item.name}
-								</div>
-								{item.upToDate ? (
-									<div className="text-[12px] text-[var(--color-text-secondary)]">
-										Current: {item.current} →{" "}
-										<strong className="text-[var(--color-success)]">No verified update</strong>
-									</div>
-								) : (
-									<div className="text-[12px] text-[var(--color-text-secondary)]">
-										Current: {item.current} → Latest:{" "}
-										<strong className="text-[var(--color-success)]">{item.latest}</strong>
-									</div>
-								)}
-								{item.blockedReason && <div className="text-[12px] text-[var(--color-danger)]">{item.blockedReason}</div>}
-							</div>
-						</div>
-						<div className="flex items-center gap-2.5">
-							{item.upToDate ? (
-								<span className="rounded-full bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--color-success)]">
-									✓ Up to date
-								</span>
-							) : (
-								<>
-									<span
-										className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-										style={{ background: item.tagBg, color: item.tagColor }}
-									>
-										{item.tag}
-									</span>
-									<button
-										type="button"
-										className="flex items-center gap-1.5 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2.5 py-1.5 text-[12px] text-[var(--color-text-primary)]"
-									>
-										<ClipboardList {...iconProps('xs')} /> Changelog
-									</button>
-									<button
-										type="button"
-										disabled={Boolean(item.blockedReason) || preflight.isPending || startUpgrade.isPending}
-										onClick={() => void handleUpgradeClick(item.bundleId)}
-										className="flex items-center gap-1.5 rounded-md bg-[linear-gradient(135deg,var(--color-primary),var(--color-accent-alt))] px-2.5 py-1.5 text-[12px] font-semibold text-white disabled:cursor-wait disabled:opacity-60"
-									>
-										<ArrowUpCircle {...iconProps('xs')} />
-										{preflight.isPending
-											? t("stackList.upgrade.checking", "Checking…")
-											: startUpgrade.isPending
-												? t("stackList.upgrade.running", "Upgrading…")
-												: "Upgrade"}
-									</button>
-								</>
-							)}
-						</div>
-					</div>
-				))}
-			</div>
-		</div>
-	);
-}
 
 const BASE_INNER_TABS: { key: InnerTab; label: string; icon: React.ReactNode }[] = [
 	{ key: "info", label: "Info", icon: <Info {...iconProps('xs')} /> },

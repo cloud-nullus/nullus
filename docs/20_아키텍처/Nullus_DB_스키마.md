@@ -38,6 +38,8 @@
 | `stack_deploy_logs` | Stack | 7 | **미반영** |
 | `stack_helm_step_configs` | Stack | 12 | ○ |
 | `stack_resource_defaults` | Stack | 10 | **미반영** |
+| `upgrade_bundles` | Stack | 16 | ○ (000100 — 검증된 업그레이드 경로, 시드 없음. `Nullus_OSS_업그레이드_설계.md` §12.4) |
+| `stack_upgrade_runs` | Stack | 18 | ○ (000100 — 업그레이드 실행 · 막힌 시도, 스택마다 진행 중은 하나) |
 | `stacks` | Stack | 15 | **미반영** |
 | `token_rotation_events` | Secrets | 8 | ○ |
 | `token_sources` | Secrets | 15 | ○ |

@@ -59,7 +59,7 @@ func (h *HelmInstaller) UpgradeChart(ctx context.Context, req port.ChartUpgradeR
 	return out, nil
 }
 
-func (h *HelmInstaller) RollbackRelease(ctx context.Context, releaseName, namespace string, revision int) error {
+func (h *HelmInstaller) RollbackRelease(_ context.Context, releaseName, namespace string, revision int) error {
 	if revision < 1 {
 		return fmt.Errorf("rollback revision must be positive")
 	}
@@ -72,8 +72,10 @@ func (h *HelmInstaller) RollbackRelease(ctx context.Context, releaseName, namesp
 	rb.Timeout = helmOperationTimeout
 	rb.Wait = true
 	rb.CleanupOnFail = true
+	// Helm 의 Rollback 은 ctx 를 받지 않는다. 되돌리기가 성공했으면 그 사이 ctx 가 끝났어도
+	// 성공이다 — 여기서 ctx.Err() 를 돌려주면 멀쩡히 되돌린 실행이 수동 개입 필요가 된다.
 	if err := rb.Run(releaseName); err != nil {
 		return fmt.Errorf("rollback release %s: %w", releaseName, err)
 	}
-	return ctx.Err()
+	return nil
 }

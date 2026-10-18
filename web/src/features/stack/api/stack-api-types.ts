@@ -33,9 +33,12 @@ export interface ClusterSummary {
   connection_status: ClusterStatus;
 }
 
+// 설치된 OSS 업그레이드 — 검증된 번들(출발 차트 버전 → 대상 차트 버전)만 실행할 수 있다.
 export interface UpgradeBundle {
   id: string;
   tool: string;
+  source_chart_version: string;
+  source_app_version: string;
   target_chart_version: string;
   target_app_version: string;
   risk_level: "low" | "medium" | "high";
@@ -44,18 +47,13 @@ export interface UpgradeBundle {
   requires_backup: boolean;
 }
 
-export interface UpgradeCandidate {
-  tool: string;
-  release_name: string;
-  current_chart_version: string;
-  current_app_version: string;
-  current_revision: number;
-  release_status: string;
-  bundle?: UpgradeBundle;
-  up_to_date: boolean;
-  blocked_reason?: string;
-  checked_at: string;
-}
+export type UpgradeRunStatus =
+  | "blocked"
+  | "upgrading"
+  | "succeeded"
+  | "rolling_back"
+  | "rolled_back"
+  | "manual_intervention_required";
 
 export interface UpgradeCheck {
   name: string;
@@ -66,10 +64,36 @@ export interface UpgradeCheck {
 
 export interface UpgradeRun {
   id: string;
-  status: string;
+  stack_id: string;
+  bundle_id: string;
+  tool: string;
+  status: UpgradeRunStatus;
   current_step: string;
+  requested_by: string;
+  reason: string;
+  source_chart_version: string;
+  target_chart_version: string;
+  previous_revision: number;
+  result_revision?: number;
   checks: UpgradeCheck[];
   error?: string;
+  started_at: string;
+  updated_at: string;
+  finished_at?: string;
+}
+
+// 스택에 실제로 설치된 릴리스. bundle 이 없으면 "검증된 업그레이드 경로 없음" 이지 최신이라는 뜻이 아니다.
+export interface UpgradeCandidate {
+  tool: string;
+  release_name: string;
+  current_chart_version: string;
+  current_app_version: string;
+  current_revision: number;
+  release_status: string;
+  bundle?: UpgradeBundle;
+  blocked_reason?: string;
+  last_run?: UpgradeRun;
+  checked_at: string;
 }
 
 export interface PodMonitoringStatus {

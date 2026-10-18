@@ -125,11 +125,16 @@ const ACTIVE_DEPLOYMENT_STATES = new Set([
   "rolling_back",
 ]);
 
-function createIdempotencyKey(): string {
+/** 업그레이드 요청 하나의 키. 화면이 대화 상자를 열 때 한 번 만들어 재시도에도 같은 키를 보낸다. */
+export function createIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
+export function isUpgradeRunActive(run?: UpgradeRun | null): boolean {
+  return run?.status === "upgrading" || run?.status === "rolling_back";
 }
 
 export function stackListRefetchInterval(
@@ -211,9 +216,9 @@ const stackApiCalls = {
   preflightUpgrade: (stackId: string, bundleId: string) =>
     api.post<{ checks: UpgradeCheck[] }>(`/stacks/${stackId}/upgrades/preflight`, { bundle_id: bundleId }).then((r) => r.data),
 
-  startUpgrade: (stackId: string, bundleId: string, reason: string) =>
+  startUpgrade: (stackId: string, bundleId: string, reason: string, idempotencyKey: string) =>
     api.post<UpgradeRun>(`/stacks/${stackId}/upgrade-runs`, { bundle_id: bundleId, reason }, {
-      headers: { "Idempotency-Key": createIdempotencyKey() },
+      headers: { "Idempotency-Key": idempotencyKey },
     }).then((r) => r.data),
 
   saveDraft: (request: import("../../../types").CreateStackRequest) =>
@@ -572,19 +577,33 @@ export function useStackHistory(stackId: string) {
   });
 }
 
+// 진행 중인 실행이 있으면 5초마다 다시 본다 — 업그레이드는 서버에서 이어지므로 화면을 닫았다
+// 열어도 마지막 실행(last_run)으로 진행 상황이 돌아온다.
 export function useStackUpgrades(stackId: string) {
-  return useQuery({ queryKey: queryKeys.upgrades(stackId), queryFn: () => stackApiCalls.getUpgrades(stackId), enabled: !!stackId });
+  return useQuery({
+    queryKey: queryKeys.upgrades(stackId),
+    queryFn: () => stackApiCalls.getUpgrades(stackId),
+    enabled: !!stackId,
+    refetchInterval: (query) =>
+      query.state.data?.items.some((item) => isUpgradeRunActive(item.last_run)) ? 5_000 : false,
+  });
 }
 
 export function usePreflightUpgrade() {
-  return useMutation({ mutationFn: ({ stackId, bundleId }: { stackId: string; bundleId: string }) => stackApiCalls.preflightUpgrade(stackId, bundleId) });
+  return useMutation({
+    mutationFn: ({ stackId, bundleId }: { stackId: string; bundleId: string }) =>
+      stackApiCalls.preflightUpgrade(stackId, bundleId),
+  });
 }
 
 export function useStartUpgrade() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ stackId, bundleId, reason }: { stackId: string; bundleId: string; reason: string }) => stackApiCalls.startUpgrade(stackId, bundleId, reason),
-    onSuccess: (_run, input) => { void qc.invalidateQueries({ queryKey: queryKeys.upgrades(input.stackId) }); },
+    mutationFn: (input: { stackId: string; bundleId: string; reason: string; idempotencyKey: string }) =>
+      stackApiCalls.startUpgrade(input.stackId, input.bundleId, input.reason, input.idempotencyKey),
+    onSuccess: (_run, input) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.upgrades(input.stackId) });
+    },
   });
 }
 

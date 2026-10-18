@@ -342,18 +342,6 @@ func main() {
 		stackuc.WithReleaseValuesHistory(manageHistoryUC),
 	)
 	releaseValuesHandler := stackhandler.NewReleaseValuesHandler(manageReleaseValuesUC, auditLogger)
-	upgradeRepo := stackrepo.NewPostgresUpgradeRepository(pool)
-	upgradeUC := stackuc.NewUpgradeStack(
-		pgStackRepo,
-		upgradeRepo,
-		kubeconfigProvider,
-		func(kubeconfig []byte) stackport.HelmReleaseManager { return stackhelm.NewHelmInstaller(kubeconfig) },
-		func(kubeconfig []byte) stackport.ChartUpgradeExecutor { return stackhelm.NewHelmInstaller(kubeconfig) },
-	).WithSafetyChecks(
-		stackrepo.NewPostgresUpgradeBackupVerifier(pool, 24*time.Hour),
-		stackhelm.ArgoCDUpgradeHealthVerifier{},
-	)
-	upgradeHandler := stackhandler.NewUpgradeHandler(upgradeUC)
 
 	// CI/CD: postgres repos
 	pgCICDTemplateRepo := cicdrepo.NewPostgresCICDTemplateRepository(pool)
@@ -652,7 +640,6 @@ func main() {
 	historyHandler.RegisterRoutes(stacks)
 	monitoringHandler.RegisterRoutes(stacks)
 	releaseValuesHandler.RegisterRoutes(stacks)
-	upgradeHandler.RegisterRoutes(stacks)
 	resourceHandler.RegisterRoutes(stacks)
 	retryHistoryHandler.RegisterRoutes(stacks)
 	stackImageScanHandler.RegisterRoutes(stacks)
@@ -769,6 +756,25 @@ func main() {
 		slog.Error("백업 모듈 조립 실패", "error", err)
 		os.Exit(1)
 	}
+
+	// 설치된 OSS 업그레이드. 사전 점검이 백업 모듈에 "마지막 복구 가능 백업" 을 묻기 때문에 백업
+	// 모듈 뒤에서 조립한다. 백업이 꺼져 있으면(nil) 백업이 필요한 번들은 막힌다 — 안전 조건을
+	// 완화하지 않는다(설계 §8).
+	var upgradeBackups stackport.UpgradeBackupLookup
+	if backupModule != nil {
+		upgradeBackups = backupModule.Repo
+	}
+	upgradeUC := stackuc.NewUpgradeStack(stackuc.UpgradeStackDeps{
+		Stacks:      pgStackRepo,
+		Runs:        stackrepo.NewPostgresUpgradeRepository(pool),
+		Kubeconfigs: kubeconfigProvider,
+		Releases:    func(kubeconfig []byte) stackport.HelmReleaseManager { return stackhelm.NewHelmInstaller(kubeconfig) },
+		Executors:   func(kubeconfig []byte) stackport.ChartUpgradeExecutor { return stackhelm.NewHelmInstaller(kubeconfig) },
+		Backups:     upgradeBackups,
+		Health:      stackhelm.NewArgoCDUpgradeHealthVerifier(),
+	})
+	upgradeHandler := stackhandler.NewUpgradeHandler(upgradeUC, auditLogger)
+	upgradeHandler.RegisterRoutes(stacks)
 	if backupModule != nil {
 		backupHandler := backuphandler.NewBackupHandler(
 			backupModule, backupModule.Verify, backupModule.Repo, cfg.Platform.Namespace,

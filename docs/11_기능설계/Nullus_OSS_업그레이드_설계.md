@@ -1,6 +1,6 @@
 # Nullus 설치 OSS 업그레이드 요구사항 및 설계
 
-> 상태: Draft
+> 상태: Phase 1 일부 구현 (2026-10-18, nullus#253 을 이어받아 반영 — 구현 범위는 §12)
 > 우선순위: P0 — 검토 항목 중 실사용 임팩트 최대
 > 기준 시나리오: Nullus가 설치한 Argo CD의 안전한 업그레이드
 > 연계: `docs/70_전략/ROADMAP.md` Cycle 2 “Stack 업그레이드 전략”
@@ -235,3 +235,62 @@ MVP에서 제외한다.
 | 강제 예외 | 완전 금지 / 전문가 권한으로 허용 | MVP 금지, 운영 데이터 축적 후 재검토 |
 | 고위험 승인 | 단일 운영자 확인 / 2인 승인 | 1명 조직을 위해 단일 확인 + 강한 감사 기록 |
 | 백업 필수 범위 | 모든 번들 / 고위험만 | 초기에는 모든 번들; 리허설 근거로 완화 가능 |
+
+## 12. 구현 현황 (Phase 1 일부, 2026-10-18)
+
+### 12.1 동작
+
+| 요구사항 | 구현 |
+|---|---|
+| UPG-01 | 후보 조회는 DB 가 아니라 클러스터의 Helm 릴리스(차트 · 앱 버전 · 리비전 · 상태)를 읽는다. 지금은 `argo-cd` 릴리스 하나 |
+| UPG-02 | `upgrade_bundles` 의 `verified` 번들 중 설치된 차트 버전에서 출발하는 것만, 가장 높은 대상 버전 하나를 제안한다. 경로가 없으면 "검증된 업그레이드 경로 없음"(최신이라고 말하지 않는다) |
+| UPG-03 | 대상 차트 · 앱 버전, 위험도, 예상 중단, 릴리스 노트 링크 |
+| UPG-04 (일부) | 사전 점검: 스택 설치 완료 · 진행 중 업그레이드 없음 · 릴리스 `deployed` · 버전 경로 일치 · 백업(번들이 요구할 때) · Helm server-side dry-run. 앞의 것이 막히면 dry-run 은 돌리지 않는다 |
+| UPG-05 (일부) | 같은 스택의 진행 중 업그레이드는 하나뿐이다(부분 유니크 인덱스 — 레플리카 사이에서도). 설치 · 백업/복구와 공유하는 락은 없다(§12.3) |
+| UPG-06 | `helm upgrade --atomic --wait`(30분), 설치 때 넘긴 values 를 새 차트에 그대로 얹는다(`ResetValues` + 사용자 values). 단계(`helm_upgrade` · `health_check` · `rollback`)를 저장한다 |
+| UPG-07 (일부) | Argo CD 의 모든 Deployment · StatefulSet 이 새 세대로 준비됐고, API 서버 이미지 태그가 번들의 대상 앱 버전과 같아야 성공이다(최대 3분 대기) |
+| UPG-08 | 실패하면 `--atomic` 이 이미 되돌렸는지 보고, 아니면 직전 리비전으로 되돌린 뒤 **출발 버전으로 같은 검사**를 한다. 되돌리기나 그 검사가 실패하면 `manual_intervention_required` |
+| UPG-09 | 실행 기록(`stack_upgrade_runs`: 요청자 · 사유 · 전후 버전 · 점검 · 리비전 · 오류)과 감사 로그 `start_stack_upgrade`. 사유는 필수. 막힌 시도도 남긴다 |
+| UPG-10 | `Idempotency-Key` 필수, 같은 키는 같은 실행을 돌려준다(키 조회 뒤 저장 사이의 경합은 유니크 제약이 가린다). 화면은 대화 상자 하나에 키 하나 |
+
+**실행 모델**: 사전 점검은 요청 안에서(수 초), Helm 적용 · 검사 · 되돌리기는 요청 밖 백그라운드에서 한다(요청 ctx 와 분리, 전체 상한 90분). `POST /upgrade-runs` 는 진행 중이면 202, 막혔으면 200(본문 `status: blocked`)이다. 화면은 후보 조회의 `last_run`(진행 중인 실행이 있으면 그것, 없으면 실제로 돈 마지막 실행)을 5초마다 다시 읽어 진행을 보여 준다 — 화면을 닫았다 열어도 이어진다. API 가 작업 중에 죽으면 실행이 진행 중으로 남으므로, **45분 동안 갱신이 없는 진행 중 실행은 `manual_intervention_required` 로 닫는다**(조회 · 사전 점검 때).
+
+**백업 점검**은 백업 모듈의 공개 메서드(`LatestRestorableBackup`)로 묻는다 — 성공했고 네임스페이스 리소스 산출물(위치 · 체크섬)이 남아 있는 실행, 24시간 이내. 백업 기능이 꺼져 있으면 막는다(§8).
+
+### 12.2 실클러스터 리허설 (kind, Argo CD 7.7.16)
+
+| 시나리오 | 결과 |
+|---|---|
+| 백업 없음 | 사전 점검 `backup` 차단, dry-run 생략 |
+| 네임스페이스 리소스 백업 뒤 | 6개 점검 통과(서버 dry-run 약 5초) |
+| 7.7.16 → 7.7.22(v2.13.4) | 202 를 4초에 돌려주고 백그라운드에서 약 1분 20초 뒤 `succeeded`(리비전 3). 워크로드 7개 모두 v2.13.4 로 준비, 설치 values 는 전후 해시가 같다 |
+| 같은 키로 다시 요청 | 같은 실행 |
+| 진행 중 다른 키로 요청 | `blocked`(active_run) 200 |
+| 대상 앱 버전을 일부러 틀린 번들(7.7.22 → 7.7.23) | Helm 성공(리비전 4) → 상태 검사 3분 뒤 실패 → 리비전 3 으로 되돌림 → v2.13.4 로 재검사 통과 → `rolled_back` |
+
+리허설이 찾은 결함 두 건은 고쳤다 — 릴리스 목록이 `pending-*` 를 빠뜨려(Helm `List.All` 은 `SetStateMask()` 를 불러야 반영) 업그레이드 중인 Argo CD 가 사라지고 동시 요청이 404 가 되던 것, 진행 중 실행 대신 그 사이 막힌 시도가 "마지막 실행" 으로 보이던 것.
+
+### 12.3 아직 없는 것
+
+- drift 탐지(DB 기대 설정 vs 실제), Kubernetes 버전 · 아키텍처 · 용량 · CRD · 이미지 가용성 사전 점검(`supported_architectures` 는 저장만 한다)
+- Argo CD `/api/version` · 표본 Application sync · OIDC/저장소 연결 검증 — 지금은 워크로드 준비와 서버 이미지 태그까지
+- 수동 rollback API(`POST /upgrade-runs/{id}/rollback`), Secret 을 가린 매니페스트 diff 표시, 알림 채널 연동
+- 설치 · 설정 적용 · 백업/복구와 공유하는 스택 락 — 지금은 스택이 `completed` 인지와 업그레이드끼리만 배타
+- 번들 배포(release artifact / 서명된 catalog) · 등록 화면 · air-gap 번들
+- 업그레이드한 차트 버전을 스택 설정에 기록하지 않는다. 완료된 스택은 설치 단계를 다시 돌지 않아 지금은 내려가지 않지만, 재설치 경로가 생기면 플랫폼 고정 버전(`domain.ArgoCDChartVersion`)으로 돌아간다
+
+### 12.4 번들 등록 (리허설을 마친 경로만)
+
+마이그레이션은 번들을 넣지 않는다. Phase 0 리허설로 경로를 확인한 뒤 운영자가 직접 넣는다.
+
+```sql
+INSERT INTO upgrade_bundles (id, tool, release_name, chart_name, repo_url,
+  source_chart_version, source_app_version, target_chart_version, target_app_version,
+  risk_level, expected_disruption, release_notes, requires_backup, supported_architectures, status)
+VALUES ('argocd-7.7.16-7.7.22', 'argocd', 'argo-cd', 'argo-cd', 'https://argoproj.github.io/argo-helm',
+  '7.7.16', 'v2.13.3', '7.7.22', 'v2.13.4',
+  'low', 'API 서버 · 컨트롤러가 차례로 재시작(약 1~2분)',
+  'https://github.com/argoproj/argo-cd/releases/tag/v2.13.4', TRUE, '["amd64","arm64"]', 'verified');
+```
+
+`target_app_version` 은 상태 검사가 API 서버 이미지 태그와 비교하는 값이다 — 틀리면 업그레이드는 되돌려진다. 경로를 거둘 때는 `status` 를 `revoked` 로 바꾼다.

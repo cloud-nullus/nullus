@@ -7,9 +7,11 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
+	"github.com/cloud-nullus/draft/internal/stack/port"
 )
 
 type PostgresUpgradeRepository struct{ pool *pgxpool.Pool }
@@ -31,7 +33,7 @@ func (r *PostgresUpgradeRepository) ListVerifiedBundles(ctx context.Context, too
 		return nil, err
 	}
 	defer rows.Close()
-	var out []domain.UpgradeBundle
+	out := []domain.UpgradeBundle{}
 	for rows.Next() {
 		b, err := scanUpgradeBundle(rows)
 		if err != nil {
@@ -46,7 +48,7 @@ func (r *PostgresUpgradeRepository) GetVerifiedBundle(ctx context.Context, id st
 	b, err := scanUpgradeBundle(r.pool.QueryRow(ctx, `SELECT `+upgradeBundleColumns+`
  FROM upgrade_bundles WHERE id=$1 AND status='verified'`, id))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("verified upgrade bundle %q not found", id)
+		return nil, fmt.Errorf("%w: %s", domain.ErrUpgradeBundleNotFound, id)
 	}
 	return b, err
 }
@@ -70,10 +72,12 @@ func scanUpgradeBundle(row rowScanner) (*domain.UpgradeBundle, error) {
 }
 
 const upgradeRunColumns = `id, stack_id, bundle_id, tool, status, current_step,
- requested_by, reason, COALESCE(idempotency_key, ''), source_chart_version,
+ requested_by, reason, idempotency_key, source_chart_version,
  target_chart_version, previous_revision, result_revision, checks, error,
- started_at, finished_at`
+ started_at, updated_at, finished_at`
 
+// CreateRun 은 진행 중 실행의 부분 유니크 인덱스와 Idempotency-Key 유니크 제약으로 동시
+// 요청을 가린다. 어느 제약에 걸렸는지를 도메인 오류로 바꿔 돌려준다.
 func (r *PostgresUpgradeRepository) CreateRun(ctx context.Context, run *domain.UpgradeRun) error {
 	checks, err := json.Marshal(run.Checks)
 	if err != nil {
@@ -82,12 +86,21 @@ func (r *PostgresUpgradeRepository) CreateRun(ctx context.Context, run *domain.U
 	_, err = r.pool.Exec(ctx, `INSERT INTO stack_upgrade_runs (id, stack_id, bundle_id,
  tool, status, current_step, requested_by, reason, idempotency_key,
  source_chart_version, target_chart_version, previous_revision, result_revision,
- checks, error, started_at, finished_at)
- VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),$10,$11,$12,$13,$14,$15,$16,$17)`,
+ checks, error, started_at, updated_at, finished_at)
+ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
 		run.ID, run.StackID, run.BundleID, run.Tool, run.Status, run.CurrentStep,
 		run.RequestedBy, run.Reason, run.IdempotencyKey, run.SourceChartVersion,
 		run.TargetChartVersion, run.PreviousRevision, run.ResultRevision, checks,
-		run.Error, run.StartedAt, run.FinishedAt)
+		run.Error, run.StartedAt, run.UpdatedAt, run.FinishedAt)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		switch pgErr.ConstraintName {
+		case "uq_stack_upgrade_runs_active":
+			return domain.ErrUpgradeInProgress
+		case "uq_stack_upgrade_runs_idempotency":
+			return port.ErrUpgradeIdempotencyConflict
+		}
+	}
 	return err
 }
 
@@ -96,38 +109,49 @@ func (r *PostgresUpgradeRepository) UpdateRun(ctx context.Context, run *domain.U
 	if err != nil {
 		return err
 	}
-	_, err = r.pool.Exec(ctx, `UPDATE stack_upgrade_runs SET status=$2,current_step=$3,
- result_revision=$4,checks=$5,error=$6,finished_at=$7 WHERE id=$1`, run.ID,
-		run.Status, run.CurrentStep, run.ResultRevision, checks, run.Error, run.FinishedAt)
-	return err
+	tag, err := r.pool.Exec(ctx, `UPDATE stack_upgrade_runs SET status=$2, current_step=$3,
+ result_revision=$4, checks=$5, error=$6, updated_at=$7, finished_at=$8 WHERE id=$1`, run.ID,
+		run.Status, run.CurrentStep, run.ResultRevision, checks, run.Error, run.UpdatedAt, run.FinishedAt)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrUpgradeRunNotFound
+	}
+	return nil
 }
 
 func (r *PostgresUpgradeRepository) GetRun(ctx context.Context, stackID, runID string) (*domain.UpgradeRun, error) {
 	run, err := scanUpgradeRun(r.pool.QueryRow(ctx, `SELECT `+upgradeRunColumns+`
  FROM stack_upgrade_runs WHERE stack_id=$1 AND id=$2`, stackID, runID))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("upgrade run not found")
+		return nil, domain.ErrUpgradeRunNotFound
 	}
 	return run, err
 }
 
 func (r *PostgresUpgradeRepository) FindRunByIdempotencyKey(ctx context.Context, stackID, key string) (*domain.UpgradeRun, error) {
-	if key == "" {
-		return nil, nil
-	}
-	run, err := scanUpgradeRun(r.pool.QueryRow(ctx, `SELECT `+upgradeRunColumns+`
- FROM stack_upgrade_runs WHERE stack_id=$1 AND idempotency_key=$2`, stackID, key))
+	return r.optionalRun(ctx, `SELECT `+upgradeRunColumns+`
+ FROM stack_upgrade_runs WHERE stack_id=$1 AND idempotency_key=$2`, stackID, key)
+}
+
+func (r *PostgresUpgradeRepository) ActiveRun(ctx context.Context, stackID string) (*domain.UpgradeRun, error) {
+	return r.optionalRun(ctx, `SELECT `+upgradeRunColumns+`
+ FROM stack_upgrade_runs WHERE stack_id=$1 AND status IN ('upgrading', 'rolling_back')`, stackID)
+}
+
+func (r *PostgresUpgradeRepository) LatestRun(ctx context.Context, stackID, tool string) (*domain.UpgradeRun, error) {
+	return r.optionalRun(ctx, `SELECT `+upgradeRunColumns+`
+ FROM stack_upgrade_runs WHERE stack_id=$1 AND tool=$2 AND status <> 'blocked'
+ ORDER BY started_at DESC LIMIT 1`, stackID, tool)
+}
+
+func (r *PostgresUpgradeRepository) optionalRun(ctx context.Context, query string, args ...any) (*domain.UpgradeRun, error) {
+	run, err := scanUpgradeRun(r.pool.QueryRow(ctx, query, args...))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	return run, err
-}
-
-func (r *PostgresUpgradeRepository) HasActiveRun(ctx context.Context, stackID string) (bool, error) {
-	var found bool
-	err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM stack_upgrade_runs
- WHERE stack_id=$1 AND status IN ('preflighting','upgrading','rolling_back'))`, stackID).Scan(&found)
-	return found, err
 }
 
 func scanUpgradeRun(row rowScanner) (*domain.UpgradeRun, error) {
@@ -136,12 +160,14 @@ func scanUpgradeRun(row rowScanner) (*domain.UpgradeRun, error) {
 	err := row.Scan(&run.ID, &run.StackID, &run.BundleID, &run.Tool, &run.Status,
 		&run.CurrentStep, &run.RequestedBy, &run.Reason, &run.IdempotencyKey,
 		&run.SourceChartVersion, &run.TargetChartVersion, &run.PreviousRevision,
-		&run.ResultRevision, &checks, &run.Error, &run.StartedAt, &run.FinishedAt)
+		&run.ResultRevision, &checks, &run.Error, &run.StartedAt, &run.UpdatedAt, &run.FinishedAt)
 	if err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal(checks, &run.Checks); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode upgrade checks: %w", err)
 	}
 	return &run, nil
 }
+
+var _ port.UpgradeRepository = (*PostgresUpgradeRepository)(nil)
