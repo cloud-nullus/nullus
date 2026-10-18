@@ -621,4 +621,35 @@ describe("DeveloperDeployPage", () => {
       ),
     ).not.toBeNull();
   });
+  // 서버가 `integrations` 키 없이 응답하면 화면이 통째로 죽었다.
+  // 읽는 쪽이 `integrationsData?.integrations.find(...)` 로 **중간만** 옵셔널
+  // 체이닝해서, 응답 객체는 있고 그 키만 없을 때 TypeError 를 던졌다.
+  //
+  // developer 가 로그인하면 바로 오는 화면이라 흰 화면이 그대로 첫인상이 된다.
+  // 설치가 끝나지 않은 스택, 프록시가 돌려주는 다른 모양의 본문에서 실제로 난다.
+  it.each([
+    ["integrations 키가 없을 때", {}],
+    ["integrations 가 null 일 때", { integrations: null }],
+    ["응답이 빈 문자열일 때", ""],
+  ])("스택 연동 응답이 모양을 어겨도 화면은 뜬다 — %s", async (_name, data) => {
+    mockUseStackIntegrations.mockReturnValue({ data });
+
+    renderWithProviders(<DeveloperDeployPage />);
+
+    // 에러 경계로 떨어지지 않고 폼이 그대로 뜬다.
+    expect(screen.getByPlaceholderText("my-awesome-app")).not.toBeNull();
+    expect(screen.getByLabelText("Stack 선택")).not.toBeNull();
+  });
+
+  // 연동을 못 읽으면 주소 앞단만 비고 나머지는 평소대로 쓴다.
+  // (주소가 제대로 올 때 앞단이 채워지는 것은 위의 "prefills ..." 테스트가 지킨다.)
+  it("연동을 못 읽으면 스택 주소 앞단이 비고 화면은 평소대로다", () => {
+    mockUseStackIntegrations.mockReturnValue({ data: {} });
+
+    renderWithProviders(<DeveloperDeployPage />);
+    selectOptionByValue(screen.getByLabelText("Stack 선택"), "stack-1");
+
+    expect(screen.queryAllByDisplayValue("https://gitlab.stack.internal/")).toHaveLength(0);
+    expect(screen.getByLabelText("Source Repository")).not.toBeNull();
+  });
 });
