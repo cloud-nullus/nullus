@@ -1,0 +1,59 @@
+name: Docs Site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'docs/50_운영/Nullus_로컬_E2E_가이드.html'
+      - 'docs/20_아키텍처/Nullus_백업복구_아키텍처.html'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-site
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: website/requirements.txt
+      - run: pip install -r website/requirements.txt
+      # docs/ 에 단독으로 있는 HTML 가이드를 사이트 트리로 가져온다.
+      - run: ./website/stage.sh
+      # --strict: nav 에 적어 둔 문서가 없거나 내부 링크가 깨지면 빌드를 깬다.
+      # 문서 사이트는 링크가 끊기면 쓸 수 없어서 경고로 두지 않는다.
+      - run: mkdocs build --strict
+        working-directory: website
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .site
+
+  deploy:
+    # PR 에서는 빌드만 한다 — 리뷰 전 내용이 공개 사이트로 나가지 않게.
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

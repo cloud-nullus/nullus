@@ -7,6 +7,8 @@ Kubernetes 기반 DevSecOps 자동화 오픈소스 플랫폼
 ![Kubernetes 1.26+](https://img.shields.io/badge/Kubernetes-1.26%2B-326CE5?logo=kubernetes&logoColor=white)
 ![Helm v3](https://img.shields.io/badge/Helm-v3-0F1689?logo=helm&logoColor=white)
 
+**[📖 문서 사이트](https://cloud-nullus.github.io/nullus/)** — 기능별 설명과 사용법, 로컬 E2E 가이드.
+
 **[🚀 라이브 데모](https://cloud-nullus.github.io)** — 설치 없이 화면을 둘러보세요.
 
 **[▶️ 시연 영상](https://www.youtube.com/watch?v=VrTqBKInlNw)** — 클러스터 연결부터 배포까지 여섯 단계를 한 화면에서.
@@ -538,6 +540,7 @@ Apache License 2.0
 
 ## 커뮤니티
 
+- **문서**: [cloud-nullus.github.io/nullus](https://cloud-nullus.github.io/nullus/)
 - **라이브 데모**: [cloud-nullus.github.io](https://cloud-nullus.github.io)
 - **GitHub**: [cloud-nullus/nullus](https://github.com/cloud-nullus/nullus)
 - **Issues**: 기능 요청 및 버그 리포트는 GitHub Issues를 이용
@@ -545,8 +548,11 @@ Apache License 2.0
 
 ## 참고 문서
 
+기능별 설명과 사용법은 **[문서 사이트](https://cloud-nullus.github.io/nullus/)** 에
+정리돼 있습니다. 아래는 저장소 안의 원본 문서입니다.
+
 - [CHANGELOG.md](./CHANGELOG.md) — 변경 이력
-- [ROADMAP.md](./ROADMAP.md) — 개발 로드맵
+- [ROADMAP.md](./docs/70_전략/ROADMAP.md) — 개발 로드맵
 - [CLAUDE.md](./CLAUDE.md) — 아키텍처 원칙 및 개발 규칙
 - [kind E2E 테스트 가이드](./docs/guides/kind-e2e-testing-guide.md) — K8s 클러스터 대상 시나리오 테스트
 - [테스트 수행 가이드](./docs/60_테스트/Nullus_테스트_수행_가이드.md) — 로컬 E2E·반응형 점검·Playwright 수행법

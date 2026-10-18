@@ -1,0 +1,97 @@
+/* Nullus 제품 UI 토큰(web/src/theme/tokens.generated.css)과 같은 색을 쓴다.
+   어두운 바탕이 제품 기본값이라 slate 를 먼저 둔다. */
+:root {
+  --nullus-accent: #4d8cff;
+  --nullus-ok: #2ecc84;
+  --nullus-warn: #f4b000;
+  --nullus-bad: #ff6b74;
+  --nullus-alt: #b39bff;
+
+  --md-primary-fg-color: #4d8cff;
+  --md-primary-fg-color--light: #7aa9ff;
+  --md-primary-fg-color--dark: #2f6fe0;
+  --md-accent-fg-color: #4d8cff;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #0a0b0d;
+  --md-default-fg-color: #ffffff;
+  --md-default-fg-color--light: #a8acb3;
+  --md-default-fg-color--lighter: #8b9098;
+  --md-code-bg-color: #16181c;
+  --md-primary-fg-color: #16181c;
+  --md-footer-bg-color: #16181c;
+  --md-typeset-a-color: #4d8cff;
+}
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #16181c;
+  --md-typeset-a-color: #2f6fe0;
+}
+
+/* 홈 화면의 카드 격자 — 기능 입구를 한눈에 깔아 둔다. */
+.nullus-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.nullus-cards > a {
+  display: block;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 10px;
+  color: inherit !important;
+  text-decoration: none !important;
+  transition: border-color .15s, transform .15s;
+}
+
+.nullus-cards > a:hover {
+  border-color: var(--nullus-accent);
+  transform: translateY(-2px);
+}
+
+.nullus-cards strong {
+  display: block;
+  margin-bottom: .35rem;
+  font-size: 1rem;
+}
+
+.nullus-cards span {
+  display: block;
+  font-size: .8125rem;
+  color: var(--md-default-fg-color--light);
+  line-height: 1.5;
+}
+
+/* 역할 배지 — 기능 문서마다 누가 쓸 수 있는지 머리에 붙인다. */
+.role {
+  display: inline-block;
+  padding: .1rem .5rem;
+  border-radius: 999px;
+  font-size: .75rem;
+  font-weight: 600;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+
+.role-admin { background: rgba(179, 155, 255, .16); color: var(--nullus-alt); }
+.role-devops { background: rgba(77, 140, 255, .16); color: var(--nullus-accent); }
+.role-developer { background: rgba(46, 204, 132, .16); color: var(--nullus-ok); }
+
+/* 화면 경로 표기 */
+.route {
+  font-family: var(--md-code-font-family, monospace);
+  font-size: .8125rem;
+  padding: .1rem .4rem;
+  border-radius: 4px;
+  background: var(--md-code-bg-color);
+}
+
+/* 표를 빽빽하게 — 기능 일람표가 길다. */
+.md-typeset table:not([class]) th,
+.md-typeset table:not([class]) td {
+  padding: .5rem .75rem;
+  font-size: .8125rem;
+}

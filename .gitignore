@@ -67,3 +67,7 @@ scratch/
 
 # 투어 걸음별 확인용 스크린샷. tour-walkthrough.spec.ts 가 매 실행마다 다시 만든다.
 web/e2e/screenshots/tour/
+
+# 문서 사이트 — website/stage.sh 가 docs/ 에서 복사해 온다
+website/docs/guides/*.html
+.site/
