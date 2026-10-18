@@ -6,6 +6,9 @@
 경보와 플랫폼 이벤트를 받을 채널을 등록합니다. 화면 설명 그대로 "백업 실패 같은
 플랫폼 이벤트를 Telegram · 이메일 · Slack 으로 보냅니다".
 
+![알림 채널 목록](../../assets/screens/admin-notifications-light.png#only-light)
+![알림 채널 목록](../../assets/screens/admin-notifications-dark.png#only-dark)
+
 ## 쓸 수 있는 채널 세 가지
 
 | 종류 | 비밀 항목 | 설정 항목 |

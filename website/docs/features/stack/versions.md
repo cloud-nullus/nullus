@@ -7,6 +7,9 @@
 어떤 도구 버전 조합이 검증됐는지 보는 호환성 매트릭스입니다.
 `/stack/versions` 도 같은 화면입니다.
 
+![도구 버전 호환성 매트릭스](../../assets/screens/stack-versions-light.png#only-light)
+![도구 버전 호환성 매트릭스](../../assets/screens/stack-versions-dark.png#only-dark)
+
 ## 표
 
 컬럼이 **GitLab · Argo CD · Prometheus · Grafana · OpenTelemetry · K8s · 상태**

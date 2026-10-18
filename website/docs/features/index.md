@@ -6,6 +6,9 @@
 출처는 `web/src/components/layout/nav-model.tsx`(사이드바),
 `web/src/app/routes.tsx`(라우트와 권한), `web/src/i18n/ko.json`(화면 이름)입니다.
 
+![스택 목록 — 왼쪽에서 고르면 오른쪽에 상세가 열린다](../assets/screens/stack-list-light.png#only-light)
+![스택 목록 — 왼쪽에서 고르면 오른쪽에 상세가 열린다](../assets/screens/stack-list-dark.png#only-dark)
+
 ## 사이드바 메뉴
 
 ### 데브섹옵스 스택

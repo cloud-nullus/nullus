@@ -10,6 +10,9 @@
 `/stack/history` 로 들어오면 보이는 첫 스택으로 자동 이동합니다. 즉 실제로
 머무는 주소에는 스택 ID 가 붙습니다.
 
+![스택의 버전별 변경 이력](../../assets/screens/stack-history-light.png#only-light)
+![스택의 버전별 변경 이력](../../assets/screens/stack-history-dark.png#only-dark)
+
 ## 표 컬럼
 
 | 컬럼 | 내용 |

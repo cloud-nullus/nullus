@@ -6,6 +6,9 @@
 조직 정보와 그 조직이 쓸 수 있는 클러스터 범위를 관리합니다.
 `/admin/organizations` 도 같은 화면입니다.
 
+![조직 정보 화면](../../assets/screens/admin-organization-light.png#only-light)
+![조직 정보 화면](../../assets/screens/admin-organization-dark.png#only-dark)
+
 ## 화면 구성
 
 왼쪽에 조직 목록, 오른쪽에 상세 양식이 있습니다.

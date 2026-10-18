@@ -5,6 +5,9 @@
 
 알려진 제약과 그 우회 방법을 보는 **읽기 전용** 표입니다.
 
+![알려진 이슈 목록](../../assets/screens/admin-known-issues-light.png#only-light)
+![알려진 이슈 목록](../../assets/screens/admin-known-issues-dark.png#only-dark)
+
 ## 표 컬럼
 
 | 컬럼 | 내용 |

@@ -7,6 +7,9 @@
 
 만든 파이프라인을 관리하는 화면입니다. 왼쪽 표, 오른쪽 상세 패널입니다.
 
+![만들어진 파이프라인 목록](../../assets/screens/cicd-list-light.png#only-light)
+![만들어진 파이프라인 목록](../../assets/screens/cicd-list-dark.png#only-dark)
+
 ## 표
 
 컬럼은 **Name · Mode · App Type · Access**(외부 링크) **· Cluster ·

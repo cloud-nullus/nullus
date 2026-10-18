@@ -229,6 +229,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **메뉴체계·기능목록·CLI 가이드.** 1장 표의 틀린 세 행(스택 설치의 "5단계", 호환성 매트릭스, 알림 규칙)을 고쳐 "이 장은 초안이라 다르다" 는 경고를 없앴다. 기능목록은 구현되지 않은 이벤트 이름을 열거하는 대신 알림이 가는 두 계기(백업 결과 · 심각 경보)를 적었다. CLI 가이드의 배포 절은 "릴리스에서 받으면 끝 — 아직 아니다" 두 겹을 "지금은 소스에서 빌드한다" 한 줄로 바꿨다.
 
   **문서 사이트.** 쓰지도 않는 "⚠️·🚫 표식" 설명을 지우고, 홈의 "이 문서를 믿어도 되는 이유" 를 담백한 **출처**·**구현 범위** 두 절로 바꿨다(GitHub Phase 2 서술도 함께 고쳤다). 설계 문서와 대조하던 서술 7곳은 사실만 남겼다 — 예를 들어 "설계 문서는 `manifest.json` 이 버킷의 유일한 평문이라 적지만 다르다" 는 "버킷만 들고 다른 곳에서 복구할 수는 없다" 로, "설계 문서는 감사 로그가 필수라고 적는다" 는 "누가 언제 복구했는지 추적할 수 없다" 로 바꿨다. 화면 문구와 실제 동작이 다른 것(모니터링의 "Changes apply to all users")은 사용자가 겪는 일이라 그대로 뒀다.
+- **문서 사이트에 화면 캡처 42장을 넣었다 — Playwright 가 만든다** (`web/e2e/shots/{docs-shots.spec.ts,fixtures.ts}`, `web/playwright.shots.config.ts` 재사용, `website/docs/assets/screens/`, `website/docs/**`, `website/docs/stylesheets/nullus.css`): 사이트가 글만 있어서 어느 화면 이야기인지 읽어 내야 했다. 화면 **21개 × 밝은·어두운 테마**를 찍어 기능 페이지 19곳, 역할 페이지 3곳, 홈과 기능 한눈 표에 넣었다. MkDocs Material 의 `#only-light`·`#only-dark` 로 짝을 지어, 문서 테마를 바꾸면 그림도 같이 바뀐다.
+
+  **데이터는 고정 응답이다.** 살아 있는 환경을 찍으면 IP·토큰·타임스탬프가 매번 달라져 다시 찍을 때마다 그림이 바뀌고, 백엔드 없이 찍으면 목록이 전부 빈 상태가 된다. `fixtures.ts` 가 스택·템플릿·파이프라인·클러스터·구성원·경보·알림 채널·모니터링 스냅샷을 서버와 같은 모양으로 들고 있고, 스펙이 `/api/v1/**` 만 가로채 돌려준다. 시계도 고정했다 — 설치 화면의 스택 이름이 현재 시각으로 만들어져 분이 바뀌면 그림이 달라진다. 화면 언어는 `ko` 로 고정한다(앱 기본값은 `en`). 모니터링의 "스택 컴포넌트 연결" 패널은 건너뛴 것으로 두어 지표와 차트가 보이게 했다.
+
+  `npm run shots:docs` 로 다시 찍는다. 검증이 아니라 그림을 만드는 스펙이라 CI 기본 경로에는 넣지 않았다(`playwright.shots.config.ts`). 캡처 뒤 팔레트 256색으로 줄여 4.1MB → **1.6MB** 로 담았다.
+
+  **찍다가 결함 하나를 찾았다** — `/api/v1/stacks/{id}/integrations` 응답에 `integrations` 키가 없으면 앱 배포 화면이 `Cannot read properties of undefined (reading 'find')` 로 **흰 화면이 된다**(`developer-deploy-page.tsx:304-312` 가 `integrationsData?.integrations.find` 로 중간 옵셔널 체이닝만 한다). 이번 변경에서는 픽스처로 피했고 코드는 그대로 두었다.
 
 - **CI/CD 골든패스를 표로 옮겼다 — 고친 것이 재시작 뒤에도 남고, 카드 순서가 고정된다** (`db/migrations/000099_cicd_golden_paths.{up,down}.sql`, `internal/cicd/adapter/repository/postgres_cicd_golden_path.go`, `internal/cicd/adapter/handler/cicd_golden_path_handler.go`, `internal/cicd/domain/errors.go`, `cmd/api/main.go`): 골든패스 세 건이 Go 코드 안의 고정값이고 저장소가 프로세스 메모리였다. 생성·수정·삭제 API 가 이미 열려 있어 화면은 성공 응답을 받았지만 **API 를 다시 띄우면 전부 되돌아갔다**. 목록도 맵을 돌며 만들어 **요청마다 카드 순서가 바뀌었다**.
 

@@ -3,6 +3,9 @@
 로그인하면 **스택 템플릿**(`/stack/templates`) 화면으로 들어갑니다. 사이드바에
 11개가 보입니다 — 관리 그룹과 스택 버전 관리만 가려집니다.
 
+![devops 로 로그인하면 열리는 스택 템플릿 화면](../assets/screens/stack-templates-light.png#only-light)
+![devops 로 로그인하면 열리는 스택 템플릿 화면](../assets/screens/stack-templates-dark.png#only-dark)
+
 ## 하는 일
 
 ```mermaid

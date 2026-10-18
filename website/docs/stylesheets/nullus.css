@@ -95,3 +95,19 @@
   padding: .5rem .75rem;
   font-size: .8125rem;
 }
+
+/* 화면 캡처 — 본문 폭에 맞추고 테두리를 둬서 배경과 구분한다.
+   캡처는 1440×900 이라 본문보다 넓다. 축소해 넣는다. */
+.md-typeset img[src*="assets/screens/"] {
+  width: 100%;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 12%);
+  margin: 0.6rem 0 1.2rem;
+}
+
+/* 어두운 화면에서는 그림자가 안 보이고 테두리만 남는다 — 조금 더 밝게. */
+[data-md-color-scheme="slate"] .md-typeset img[src*="assets/screens/"] {
+  border-color: rgb(255 255 255 / 12%);
+  box-shadow: 0 2px 16px rgb(0 0 0 / 40%);
+}

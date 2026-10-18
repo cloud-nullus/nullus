@@ -6,6 +6,9 @@
 스택을 설치할 Kubernetes 클러스터를 등록하고 연결을 확인하는 화면입니다.
 Nullus 를 쓰기 시작할 때 **가장 먼저** 하는 일입니다.
 
+![등록된 클러스터와 연결 상태](../../assets/screens/admin-clusters-light.png#only-light)
+![등록된 클러스터와 연결 상태](../../assets/screens/admin-clusters-dark.png#only-dark)
+
 ## 클러스터 등록하기
 
 1. **Register** 창을 엽니다.

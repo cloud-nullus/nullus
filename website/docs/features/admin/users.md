@@ -15,6 +15,9 @@
     아래에 각각 적어 두었습니다. 지금 사람을 넣는 길은 **이미 있는 사용자를
     이메일로 찾아 구성원으로 추가**하는 것뿐입니다.
 
+![구성원과 역할](../../assets/screens/admin-users-light.png#only-light)
+![구성원과 역할](../../assets/screens/admin-users-dark.png#only-dark)
+
 ## Users 탭
 
 - 이름·이메일 검색, 역할 탭 필터

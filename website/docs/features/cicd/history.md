@@ -7,6 +7,9 @@
 
 배포 기록을 시간순으로 보는 화면입니다.
 
+![파이프라인 배포 이력](../../assets/screens/cicd-history-light.png#only-light)
+![파이프라인 배포 이력](../../assets/screens/cicd-history-dark.png#only-dark)
+
 ## 표 컬럼
 
 | 컬럼 | 내용 |

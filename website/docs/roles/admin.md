@@ -3,6 +3,9 @@
 로그인하면 **조직**(`/admin/organization`) 화면으로 들어갑니다. 사이드바 19개가
 모두 보이고, `/api/v1/admin/**` 전체를 호출할 수 있는 유일한 역할입니다.
 
+![admin 으로 로그인하면 열리는 조직 화면](../assets/screens/admin-organization-light.png#only-light)
+![admin 으로 로그인하면 열리는 조직 화면](../assets/screens/admin-organization-dark.png#only-dark)
+
 ## 처음 세팅하는 순서
 
 1. **[클러스터 관리](../features/admin/clusters.md)** 에서 대상 클러스터를
