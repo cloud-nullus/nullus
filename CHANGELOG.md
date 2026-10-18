@@ -268,6 +268,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **문서 캡처의 앱 배포 화면에서 저장소·레지스트리 주소가 빈 칸으로 찍히던 것** (`web/e2e/shots/{fixtures.ts,docs-shots.spec.ts}`, `website/docs/assets/screens/app-deploy-{light,dark}.png`): 연동 픽스처의 `component_type` 을 `source_repository` · `container_registry` 로 적었는데 서버가 내는 이름은 `code_repository` · `package_registry` · `image_registry` 다(`stack_handler.go:205-209`). 화면이 주소를 못 찾아 앞단이 빈 채로 찍혔다 — 화면이 깨진 것은 아니고 그림만 덜 사실적이었다.
+
+  서버가 내는 다섯 가지로 맞추고, **캡처가 그것을 확인하게 했다.** 앱 배포 캡처는 스택을 고른 뒤 주소 칸에 실제 값이 들어갔는지 보고 통과한다 — 이름이 또 어긋나면 빈 그림이 조용히 실리지 않고 캡처가 실패한다. 값이 `disabled` 입력칸에 있어 `getByDisplayValue` 로는 잡히지 않아, 입력칸 값을 직접 읽어 확인한다.
+
+  그 김에 캡처 전에 화면을 만질 수 있는 `prepare` 단계를 두어, 빈 폼 대신 **스택이 선택된 상태**를 찍는다. MUI Select 는 네이티브 `<select>` 가 아니라 열어서 항목을 눌러야 하고, 누른 뒤에는 포커스 테두리와 드롭다운 잔상이 남아 둘 다 치웠다(목록보다 바깥 래퍼가 늦게 사라진다).
+
+  다시 찍은 42장 중 **33장은 바이트까지 같았다** — 캡처가 결정적이라는 뜻이다.
+
 - **앱 배포 화면이 스택 연동 응답 한 줄 때문에 흰 화면이 되던 것** (`web/src/features/cicd/pages/developer-deploy-page.tsx`): 저장소·레지스트리 주소의 기본값을 읽는 코드가 `integrationsData?.integrations.find(...)` 로 **중간만** 옵셔널 체이닝했다. 응답 객체는 있고 `integrations` 키만 없으면 `Cannot read properties of undefined (reading 'find')` 를 그대로 던지고, 에러 경계가 받아 화면 전체가 사라진다. **developer 가 로그인하면 바로 오는 화면**이라 흰 화면이 그대로 첫인상이 된다 — 설치가 끝나지 않은 스택이나 프록시가 돌려주는 다른 모양의 본문에서 난다.
 
   배열인지까지 확인하고 쓰도록 고쳤다. 연동을 못 읽으면 주소 앞단만 비고 나머지 입력은 평소대로 된다. 문서 사이트의 화면 캡처를 만들다 드러났다 — 고정 응답이 그 키를 빠뜨리자 캡처가 에러 화면으로 찍혔다. 저장소 전체에서 같은 패턴(`?.키.메서드`)을 훑어 다른 곳에는 없는 것을 확인했다.
