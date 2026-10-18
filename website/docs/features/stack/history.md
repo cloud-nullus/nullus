@@ -33,7 +33,7 @@
 
 ## 롤백
 
-!!! danger "롤백 버튼은 지금 동작하지 않습니다"
+!!! warning "롤백 버튼은 지금 동작하지 않습니다"
     프런트엔드가 `{version, preservePVC}` 를 보내는데 서버는 **`versionId`** 를
     요구합니다. 그래서 요청이 `ROLLBACK_REQUEST_INVALID / "versionId is required"`
     로 400 을 받습니다.

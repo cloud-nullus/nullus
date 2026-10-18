@@ -147,6 +147,38 @@ servers:
 | `PIPELINE_DEPLOY_FAILED` | 500 | 파이프라인 배포 실패 |
 | `RATE_LIMIT_EXCEEDED` | 429 | 요청 제한 초과 |
 
+> **구현 현황 (2026-10-18) — 2.3~2.6 은 설계안이고 구현과 다르다.**
+>
+> - **응답 봉투가 없다.** 목록은 `{"items": [...], "total": n}`, 단건은 리소스를
+>   그대로 돌려준다. 아래 `{"data": ..., "pagination": ...}` 모양을 쓰는 엔드포인트는
+>   없다. 에러 응답(2.2)은 설계대로다.
+> - **`page`·`page_size`·`sort` 를 읽는 엔드포인트가 하나도 없다.** `GET /api/v1/stacks`
+>   와 `GET /api/v1/cicd/pipelines` 는 질의 문자열을 **전부 무시**하고 조직의 전체
+>   목록을 돌려준다. 걸러내기와 정렬은 지금 화면이 받아서 한다.
+> - 페이지를 나누는 것은 `limit`·`offset` 을 읽는 다섯 곳뿐이다 — 취약점 목록
+>   (`/stacks/:id/image-scans/.../vulnerabilities`, `/cicd/.../vulnerabilities`),
+>   감사 로그, 백업 이력, 스택 경보, 알림 발송 이력.
+> - 그러므로 2.5 의 `?status=connected&type=pipeline` 같은 예시도 지금은 동작하지
+>   않는다. 실제로 읽는 질의 파라미터는 `limit` · `offset` · `q` · `severity` ·
+>   `fixable` · `class` · `scope` 등 엔드포인트마다 다르다.
+>
+> **경로도 여러 곳이 다르다.** 아래는 코드의 라우터 등록부와 대조해 확인한 것이다.
+>
+> | 이 문서가 적은 것 | 실제 |
+> |---|---|
+> | `PUT /api/v1/stacks/:id` | 그런 라우트 없음 — `PATCH …/{id}/tools` 와 `POST …/{id}/config` |
+> | `GET …/history/:versionId/diff` | `GET …/history/diff?versionA=&versionB=` |
+> | `POST …/rollback/:versionId` | `POST …/rollback`, 본문에 `versionId` 필수 |
+> | `/api/v1/deployments/stacks/…` | 그런 접두사 없음 — `/api/v1/stacks/{id}/deploy` 등 |
+> | `/api/v1/pipelines/…` | `/api/v1/cicd/…` |
+> | `/api/v1/monitoring/…` | `/api/v1/observability/…` |
+> | `/api/v1/clusters/…` · `PUT /clusters/:id` | `/api/v1/admin/clusters/…`, 수정은 **PATCH** |
+> | `PUT /orgs/:orgId/status` | 없음 — 조직 상태는 저장되지 않는다 |
+> | 스택 라우트 40개 | 이미지 스캔 관련 5개가 목록에서 빠져 있다 |
+>
+> 지금 떠 있는 경로는 문서 사이트(`https://cloud-nullus.github.io/nullus/`)의
+> **참고 → API** 가 코드 기준으로 적는다.
+
 ### 2.3 표준 성공 응답 형식
 
 #### 단일 리소스 응답

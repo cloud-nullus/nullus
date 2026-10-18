@@ -717,11 +717,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
-      - run: npm run test -- --run
+      - run: npx vitest run --coverage
 
   # ── Docker 빌드 검증 (push 없음) ─────────────────────────────
   docker-build:

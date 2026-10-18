@@ -53,7 +53,7 @@ nullus mcp serve --allow-write   # 변경 도구까지
 
 토큰이 없으면 서버를 띄우지 않고 **종료 코드 3** 으로 끝납니다.
 
-!!! danger "그때 안내하는 명령이 존재하지 않습니다"
+!!! warning "그때 안내하는 명령이 존재하지 않습니다"
     오류 메시지가 `nullus login` 과 `nullus auth bootstrap issue` 를 안내하지만
     [둘 다 구현되지 않은 명령](cli.md#명령-트리-구현된-전부)입니다. 실제 해법은
     `NULLUS_TOKEN` 환경변수입니다.

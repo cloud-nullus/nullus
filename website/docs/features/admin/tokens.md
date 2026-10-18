@@ -35,7 +35,7 @@
 버튼 묶음 **Rotate · Approve · Pause · Resume · Reveal** 과 **Recent Events**
 목록, 그리고 결과 JSON 블록이 나옵니다.
 
-!!! danger "네 버튼은 상태 글자만 바꿉니다"
+!!! warning "네 버튼은 상태 글자만 바꿉니다"
     `Rotate` · `Approve` · `Pause` · `Resume` 는 **실제로 토큰을 재발급하지
     않습니다.** 상태 값을 새로 쓰고 이벤트 한 줄을 `success` 로 남기는 것이
     전부입니다.

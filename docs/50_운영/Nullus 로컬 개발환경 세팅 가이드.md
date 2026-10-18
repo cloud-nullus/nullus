@@ -241,11 +241,11 @@ cp .env.example .env.dev
 
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
-| `NULLUS_DB_HOST` | `localhost` | 로컬 Docker로 실행 중인 DB 주소. |
-| `NULLUS_DB_PORT` | `5433` | PostgreSQL 호스트 포트. |
-| `NULLUS_DB_NAME` | `nullus` | 애플리케이션용 데이터베이스 이름. |
-| `NULLUS_DB_USER` | `nullus` | DB 관리자 계정. |
-| `NULLUS_DB_PASSWORD` | `nullus_dev` | 개발용 비밀번호 (보안 주의). |
+| `NULLUS_DATABASE_HOST` | `localhost` | 로컬 Docker로 실행 중인 DB 주소. |
+| `NULLUS_DATABASE_PORT` | `5433` | PostgreSQL 호스트 포트. |
+| `NULLUS_DATABASE_NAME` | `nullus` | 애플리케이션용 데이터베이스 이름. |
+| `NULLUS_DATABASE_USER` | `nullus` | DB 관리자 계정. |
+| `NULLUS_DATABASE_PASSWORD` | `nullus_dev` | 개발용 비밀번호 (보안 주의). |
 | `API_PORT` | `8090` | 백엔드 서버가 리스닝할 포트. |
 | `VITE_API_BASE_URL` | `http://localhost:8090/api/v1` | 프론트엔드 API 기본 URL. |
 | `ENCRYPTION_KEY` | `nullus-dev-key-32bytes-padding!!` | kubeconfig 암호화 키. 반드시 32바이트. |
@@ -648,7 +648,7 @@ export const useUIStore = create<UIState>((set) => ({
 
 **Q: WSL2에서 로컬 호스트 접속이 안 됩니다.**
 - **원인**: WSL2는 별도의 가상 IP를 가집니다.
-- **해결**: `.env.dev`에서 `NULLUS_DB_HOST`를 확인하거나, Docker Desktop의 WSL Integration이 켜져 있는지 확인하세요.
+- **해결**: `.env.dev`에서 `NULLUS_DATABASE_HOST`를 확인하거나, Docker Desktop의 WSL Integration이 켜져 있는지 확인하세요.
 
 ### 7.2 데이터베이스 문제
 

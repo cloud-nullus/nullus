@@ -37,7 +37,7 @@ graph LR
 
 ## 막히는 지점
 
-!!! danger "설치 위자드의 드롭다운이 비어 있을 수 있습니다"
+!!! warning "설치 위자드의 드롭다운이 비어 있을 수 있습니다"
     `/stack/install` 은 devops 에게 열려 있지만, 화면이 채워야 할 네 가지가
     **admin 전용 API** 에서 옵니다 — 대상 클러스터 · 네임스페이스 ·
     StorageClass · 조직 리소스 프로파일.

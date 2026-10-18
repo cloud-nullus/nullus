@@ -50,16 +50,14 @@
 대시보드처럼 외부 화면을 이 자리에 붙이는 용도입니다. 관리자가 아니면 `View only`
 배지가 붙습니다.
 
-!!! warning "임베드 탭 설정은 브라우저에만 저장됩니다"
-    화면에는 "Changes apply to all users after saving" 이라고 적혀 있지만, 실제
-    저장 위치는 **그 브라우저의 localStorage** 입니다. 다른 사람이나 다른 기기에는
-    전달되지 않고, 브라우저 데이터를 지우면 함께 사라집니다. 문구가 구현과
-    어긋나 있는 상태입니다.
+!!! warning "탭 설정은 그 브라우저에만 남습니다"
+    화면에는 "Changes apply to all users after saving" 이라고 적혀 있지만 저장
+    위치는 **localStorage** 입니다 — 다른 사람·다른 기기에는 가지 않고 브라우저
+    데이터를 지우면 사라집니다.
 
-!!! warning "CI/CD 탭의 기본 임베드는 공개 데모 주소입니다"
-    CI/CD 탭은 기본 탭으로 `play.grafana.org` 의 공개 데모 대시보드를 자동으로
-    넣습니다. 조직 데이터가 아니므로, 쓰시려면 Manage Tabs 에서 자기 Grafana
-    주소로 바꾸세요.
+    CI/CD 탭에 기본으로 들어가는 임베드는 `play.grafana.org` 의 **공개 데모**
+    대시보드입니다. 조직 데이터가 아니니 Manage Tabs 에서 자기 Grafana 주소로
+    바꾸세요.
 
 ## 지표는 어디서 오나 — Prometheus 가 아닙니다
 
@@ -72,11 +70,10 @@ Kubernetes 에 직접 붙어** 모읍니다.
 | CPU·메모리 사용량 | `kubectl top pod` (metrics-server) |
 | 스토리지 사용량 | kubelet `nodes/{node}/proxy/stats/summary` |
 
-!!! danger "차트의 시계열은 서버에 저장되지 않습니다"
-    `CPU Usage`·`Memory Usage` 같은 추이 차트는 **브라우저가 5초마다 모은 표본**을
-    그린 것입니다. 새로고침하면 비어 있고, 어제 값을 되돌려 볼 수 없습니다.
-    범위 필에 `7d` 가 있지만 7일치 보존 데이터가 있다는 뜻은 아닙니다. 장기
-    추이가 필요하면 스택에 설치된 Grafana 를 직접 쓰세요.
+!!! warning "추이 차트는 보존되지 않습니다"
+    `CPU Usage`·`Memory Usage` 같은 차트는 **브라우저가 5초마다 모은 표본**입니다.
+    새로고침하면 비고, 어제 값은 볼 수 없습니다 — 범위 필의 `7d` 도 7일치 데이터가
+    있다는 뜻이 아닙니다. 장기 추이는 스택에 설치된 Grafana 를 쓰세요.
 
 ## 호출하는 API
 
@@ -89,9 +86,8 @@ Kubernetes 에 직접 붙어** 모읍니다.
 | 파이프라인·배포 | `GET /api/v1/cicd/pipelines`, `GET /api/v1/cicd/deployments` |
 | 앱 파드 사용량·로그 | `GET /api/v1/stacks/{stackId}/workloads`, `GET /api/v1/stacks/{stackId}/workloads/logs?tailLines=` |
 
-!!! warning "developer 는 지표를 못 받을 수 있습니다"
-    이 화면은 developer 에게도 열려 있지만, 화면이 부르는
-    `/api/v1/admin/clusters` 는 **admin 전용**이고 `/api/v1/stacks*` 는
-    **admin·devops 전용**입니다. 인증을 켠 환경에서 developer 가 열면 필터와 지표가
-    403 으로 비어 보입니다. 인증을 끈 개발 모드에서는 동작합니다. 화면 권한과 API
-    권한이 어긋나 있는 상태입니다.
+화면은 developer 에게도 열리지만 위 API 들은 그렇지 않습니다 —
+`/api/v1/admin/clusters` 는 admin 전용, `/api/v1/stacks*` 는 admin·devops 전용입니다.
+그래서 인증을 켠 환경에서 developer 가 열면 **필터와 지표가 403 으로 비어 보입니다**
+(인증을 끈 개발 모드에서는 보입니다). 같은 어긋남을 모아 둔 표는
+[권한](../../reference/rbac.md#화면은-열리는데-데이터가-비는-경우)에 있습니다.

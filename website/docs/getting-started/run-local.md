@@ -67,15 +67,14 @@ Redis · **Keycloak**.
 | `web-dev` · `web-build` · `web-test` | 프런트엔드 |
 | `clean` | `bin/` · `coverage.*` · `web/dist` 삭제 |
 
-!!! warning "문서가 틀리게 적고 있는 것들"
-    - `make build` 는 `dist/` 를 만들지 않습니다. `bin/api` 와
-      `bin/nullus-bootstrap` 둘뿐입니다 (`dist/` 는 프런트엔드 산출물 경로)
-    - `make lint` 는 eslint 를 돌리지 않습니다. 프런트엔드는
-      `cd web && npm run lint`
-    - `make test` 는 "통합 테스트 전체" 가 아닙니다. 빌드 태그가 없어
-      `integration` · `e2e` 테스트가 **빠집니다**
-    - `make test-golden-path` 는 "템플릿 관련 테스트" 가 아니라 kind 클러스터에
-      실제로 배포하는 60분 E2E 입니다
+!!! note "헷갈리기 쉬운 네 가지"
+    - `make build` 는 **Go 바이너리만** 만듭니다 — `bin/api` · `bin/nullus-bootstrap`.
+      프런트엔드 산출물(`web/dist`)은 `make web-build` 입니다. `cmd/nullus`(CLI)는
+      어느 타깃도 빌드하지 않습니다
+    - `make lint` 는 **Go 만** 봅니다. 프런트엔드는 `cd web && npm run lint`
+    - `make test` 는 빌드 태그가 없어 `integration` · `e2e` 테스트가 **빠집니다**.
+      그쪽은 `make test-integration`
+    - `make test-golden-path` 는 kind 클러스터에 실제로 배포하는 **60분** E2E 입니다
 
 ## 프런트엔드 명령
 
@@ -88,14 +87,11 @@ npx vitest run       # 단위 테스트
 npm run e2e          # Playwright (chromium)
 ```
 
-!!! warning "`npm run test` 는 없습니다"
-    `CONTRIBUTING.md` 가 `npm run test -- <파일>` 과 `npm run test -- --watch`
-    를 쓰라고 적지만 그 스크립트가 **없습니다.** `npx vitest run` 또는
-    `npx vitest` 를 쓰세요.
-
-    같은 문서의 `npm run lint:fix` · `npm run eslint -- --fix` ·
-    `npm run prettier -- --write` 도 모두 없는 스크립트입니다. Prettier 는
-    의존성에도 들어 있지 않습니다.
+!!! note "`test` 스크립트는 없습니다"
+    단위 테스트는 `npx vitest run`(watch 는 인수 없이 `npx vitest`)으로 돌립니다.
+    `lint:fix` 도 없어서 자동 수정은 `npx eslint . --fix` 입니다. Prettier 는
+    의존성이 아니라 `npx prettier --write .` 로 받아 씁니다 — CI 의 포맷 검사는
+    자체 prettier 를 씁니다.
 
 그 밖에 있는 스크립트: `preview` · `e2e:visual` · `e2e:visual:update` ·
 `e2e:headed` · `e2e:report` · `e2e:stack-critical` · `e2e:shots` ·
@@ -119,15 +115,15 @@ Kubernetes 에 배포할 때는 **API 가 스스로 돌리지 않습니다.** �
 
 ## 환경변수를 바꿀 때
 
-!!! danger "`.env.example` 의 DB 변수는 읽히지 않습니다"
-    `.env.example` 과 `.env.dev` 에 들어 있는
-    `NULLUS_DB_HOST` · `NULLUS_DB_PORT` · `NULLUS_DB_NAME` · `NULLUS_DB_USER` ·
-    `NULLUS_DB_PASSWORD` · `NULLUS_DB_SSLMODE` 여섯 개는 **코드가 보지
-    않습니다.** 설정 키가 `database.*` 라서 이름이 `NULLUS_DATABASE_*` 여야
-    합니다.
+환경변수 이름은 설정 키를 그대로 따릅니다 — `database.host` 는
+`NULLUS_DATABASE_HOST` 입니다. `.env.example` · `.env.dev` · `Makefile` 이 이
+이름을 씁니다.
 
-    `make run` 이 지금 DB 에 붙는 것은 `configs/config.yaml` 의 기본값이 우연히
-    같은 값이기 때문입니다. **포트나 비밀번호를 바꾸면 조용히 깨집니다.**
+!!! note "옛 `NULLUS_DB_*` 는 먹지 않습니다"
+    `NULLUS_DB_HOST` 처럼 줄여 쓴 이름은 어느 설정 키와도 맞지 않아 **조용히
+    무시됩니다.** 손에 있는 `.env` 가 그 이름을 쓰고 있으면 포트나 비밀번호를
+    바꿔도 반영되지 않습니다 — `NULLUS_DATABASE_*` 로 바꾸세요.
+    (`internal/shared/config/database_env_test.go` 가 두 경우를 함께 고정합니다.)
 
     `NULLUS_MINIO_ENDPOINT` · `_ACCESS_KEY` · `_SECRET_KEY` 세 줄은 설정 구조에
     해당 항목이 아예 없어 완전히 쓰이지 않습니다.

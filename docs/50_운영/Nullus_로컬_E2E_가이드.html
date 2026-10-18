@@ -870,10 +870,8 @@ SET_ID=$(jq -r .set_id ~/nullus-backup-set.json); echo "export SET_ID=$SET_ID" &
     <p>스택 네임스페이스를 통째로 지운다. 볼륨까지 함께 사라지므로 백업 없이는 되돌릴 수 없는 상태가 된다. Nullus의 스택 기록과 앱 네임스페이스(<code>demo</code>)는 그대로 남는다.</p>
     <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>kubectl --context $CTX delete namespace $NS --wait=false
 kubectl --context $CTX wait --for=delete namespace/$NS --timeout=20m</code></pre></div>
-    <div class="callout"><b>예전 스택은 <code>Terminating</code> 에서 끝나지 않는다 — 아래 회수가 필요하다</b>
-      <p>스택이 external-secrets 와 metrics-server 를 <b>자기 네임스페이스에</b> 깔던 때의 이야기다. 그 둘이 클러스터 범위 자원으로 그 네임스페이스를 가리켜 순환 의존이 생겼다 — 파드가 먼저 죽으면 남은 자원을 지울 수 없다. 세 결함이 겹쳐 있었다: <code>ValidatingWebhookConfiguration</code> 둘이 <code>failurePolicy=Fail</code> 로 <b>DELETE 까지</b> 걸려 있었고(#328), <code>APIService/v1beta1.metrics.k8s.io</code> 가 스택 네임스페이스를 가리켜 discovery 를 깨뜨렸고(#327), ESO 컨트롤러가 지워지는 네임스페이스 안에 있어 <code>externalsecret-cleanup</code> finalizer 를 떼어 줄 주체가 사라졌다(#330).</p>
-      <p><b>지금 설치하는 스택에는 해당하지 않는다.</b> metrics-server 는 <code>kube-system</code>, ESO 는 <code>external-secrets</code> 네임스페이스에 깔리고 웹훅은 <code>failurePolicy=Ignore</code> 다. 2026-10-17 실측: ExternalSecret 14개가 있는 완전한 스택에서 위 두 줄만으로 <b>201초</b>에 끝났다(그 전에는 같은 조건에서 58분·30분·22분을 기다려도 <code>Terminating</code> 이었다).</p>
-      <p>그 세 수정 이전에 깐 스택이 막혀 있으면 이 순서로 회수한다. finalizer 는 <b>파드가 다 사라진 뒤에</b> 비운다 — 컨트롤러가 살아 있는 동안 지우면 다시 붙는다.</p>
+    <div class="callout"><b>옛 스택이 <code>Terminating</code> 에서 멈추면</b>
+      <p>지금 설치하는 스택은 위 두 줄로 끝난다 — 2026-10-17 실측, ExternalSecret 14개가 있는 완전한 스택에서 <b>201초</b>. #327·#328·#330 이전에 깐 스택만 막히고, 그때는 아래로 회수한다. finalizer 는 <b>파드가 다 사라진 뒤에</b> 비운다 — 컨트롤러가 살아 있는 동안 지우면 다시 붙는다.</p>
       <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>kubectl --context $CTX delete validatingwebhookconfiguration \
   externalsecret-validate secretstore-validate --ignore-not-found
 kubectl --context $CTX delete apiservice v1beta1.metrics.k8s.io --ignore-not-found
@@ -1133,7 +1131,7 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
 </section>
 
 <footer>
-  main <code>0bbbb25</code>에 SonarQube Keycloak 로그인 변경을 더한 코드(2026-10-10)를 기준으로 스크립트·코드·기존 문서(로컬 테스트 가이드, 백업복구 로컬 테스트 가이드, CHANGELOG)를 대조해 썼다. <span class="badge warn">코드 기준</span> 단계는 아직 이 순서대로 끝까지 돌려 보지 않았다. 진행 체크는 이 브라우저에만 저장된다.
+  main <code>0bbbb25</code>에 SonarQube Keycloak 로그인 변경을 더한 코드(2026-10-10)를 기준으로 스크립트·코드·기존 문서(로컬 테스트 가이드, 백업복구 로컬 테스트 가이드, CHANGELOG)를 대조해 썼다. 그 뒤 컨테이너·클러스터·볼륨·<code>/etc/hosts</code>까지 비운 호스트에서 1단계부터 15단계까지 글자 그대로 다시 돌렸고(2026-10-17), 그때 드러난 결함은 #327 · #328 · #330 · #331 · #332 로 고쳤다. <span class="badge warn">코드 기준</span> 은 그 실행 기록이 아니라 코드를 읽어 쓴 단계라는 표시다. 진행 체크는 이 브라우저에만 저장된다.
 </footer>
 </main>
 </div>

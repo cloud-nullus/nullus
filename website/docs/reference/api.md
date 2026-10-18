@@ -42,10 +42,11 @@
 목록 엔드포인트는 대체로 `{items: [...], total: N}` 입니다.
 
 !!! warning "질의 파라미터를 무시하는 목록이 있습니다"
-    `GET /api/v1/stacks` 는 `status`·`search`·`include_deleted` 를 보내도
-    **읽지 않습니다.** 페이지네이션·필터·정렬을 지원한다고 적은 API 설계 문서는
-    이 점에서 낡았습니다. `GET /api/v1/cicd/pipelines` 도 `status`·`search` 를
-    보지 않습니다.
+    `GET /api/v1/stacks` 와 `GET /api/v1/cicd/pipelines` 는 `status`·`search` 같은
+    값을 보내도 **읽지 않고** 조직의 전체 목록을 돌려줍니다. 걸러내기와 정렬은
+    화면이 받아서 합니다. `page`·`page_size`·`sort` 를 읽는 엔드포인트는 없고,
+    `limit`·`offset` 은 취약점 목록·감사 로그·백업 이력·스택 경보·알림 발송
+    이력에서만 동작합니다.
 
 ## 건강 확인
 
@@ -61,17 +62,7 @@ GET /health
 [API 설계 문서](https://github.com/cloud-nullus/nullus/blob/main/docs/20_%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98/Nullus_API_%EC%84%A4%EA%B3%84.md)에
 있습니다.
 
-!!! warning "그 문서에는 코드와 다른 부분이 있습니다"
-    확인된 것만 적어 둡니다.
-
-    | 문서가 적은 것 | 실제 |
-    |---------------|------|
-    | `PUT /api/v1/stacks/:id` | 그런 라우트 없음. `PATCH …/{id}/tools` 와 `POST …/{id}/config` |
-    | `GET …/history/:versionId/diff` | `GET …/history/diff?versionA=&versionB=` (질의 파라미터) |
-    | `POST …/rollback/:versionId` | `POST …/rollback`, 본문에 `versionId` 필수 |
-    | `/api/v1/deployments/stacks/…` | 그런 접두사 없음. `/api/v1/stacks/{id}/deploy` 등 |
-    | `/api/v1/pipelines/…` | `/api/v1/cicd/…` |
-    | `/api/v1/monitoring/…` | `/api/v1/observability/…` |
-    | `/api/v1/clusters/…`, `PUT /clusters/:id` | `/api/v1/admin/clusters/…`, 수정은 **PATCH** |
-    | `PUT /orgs/:orgId/status` | 없음 — 조직 상태는 저장되지 않습니다 |
-    | 스택 라우트 40개 | 이미지 스캔 관련 5개가 목록에서 빠져 있습니다 |
+그 문서는 설계안이라 경로·응답 형태가 구현과 다른 곳이 있습니다. 어디가 다른지는
+문서 자체의 **"구현 현황"** 블록(2.3 바로 앞)에 표로 정리돼 있습니다. 지금 떠 있는
+경로는 이 사이트의 기능 페이지에서 확인하세요 — 화면마다 "호출하는 API" 를 적어
+두었습니다.

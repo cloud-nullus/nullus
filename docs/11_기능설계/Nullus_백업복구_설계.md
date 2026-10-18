@@ -708,7 +708,7 @@ stack_id TEXT                       -- E1 대상 스택(stk_*). NULL 이면 플�
 set_id UUID                         -- 백업 세트(§6.7). NULL 이면 단독 실행. FK 없음 — 이력 테이블은 어디도 참조하지 않는다
 trigger VARCHAR(20) NOT NULL        -- manual | schedule
 mode VARCHAR(20) NOT NULL           -- full | platform_only | stack_only
-scope TEXT[] NOT NULL               -- {platform_db, keycloak_db, openbao_kv, ns_resources, volumes}
+scope TEXT[] NOT NULL               -- {platform_db, keycloak_db, openbao_kv, shared_resources, ns_resources, volume}
 status VARCHAR(20) NOT NULL         -- pending|running|succeeded|partial|failed
 schema_version INTEGER
 quiesce_started_at TIMESTAMPTZ      -- §3.4 정지 창 — 실제 다운타임 근거
@@ -721,7 +721,7 @@ started_at / finished_at / created_at TIMESTAMPTZ
 -- backup_artifacts : 산출물 1건
 id UUID PK
 backup_run_id UUID NOT NULL REFERENCES backup_runs(id) ON DELETE CASCADE
-component VARCHAR(40) NOT NULL      -- platform_db | keycloak_db | openbao_kv | ns_resources | volume
+component VARCHAR(40) NOT NULL      -- platform_db | keycloak_db | openbao_kv | shared_resources | ns_resources | volume
 resource_name TEXT                  -- component=volume 일 때 PVC 이름
 location TEXT NOT NULL              -- 경로. 값 자체는 담지 않는다
 size_bytes BIGINT

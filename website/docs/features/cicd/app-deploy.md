@@ -25,8 +25,7 @@
 | **Capabilities** | `CI` · `CD` · `Test` · `Security` 체크박스. 기본값은 CI·CD, **Test·Security 는 비활성** |
 | **Phase** | `production` · `qa` · `development`. 기본 production |
 
-!!! warning "Phase 는 서버로 보내지 않습니다"
-    고를 수는 있지만 생성 요청에 실리지 않습니다.
+**Phase** 는 고를 수는 있지만 생성 요청에 실리지 않습니다 — 서버로 가지 않습니다.
 
 ### 코드 체크아웃·빌드 (CI 를 골랐을 때)
 
@@ -91,11 +90,9 @@ Git Clone → Docker Build → Image Load(또는 Image Push)
 GitLab·GitHub·Jenkins 쪽에서 돌기 때문입니다. 그쪽 단계 구성은
 [CI/CD 개요](index.md#파이프라인이-실제로-돌리는-단계)를 보세요.
 
-!!! danger "developer 는 이 화면을 끝까지 채울 수 없습니다"
-    Stack 선택과 Cluster·Namespace 선택이 `GET /api/v1/stacks`(admin·devops) ·
-    `GET /api/v1/admin/clusters`(admin) · `GET /api/v1/admin/clusters/{id}/namespaces`
-    (admin)에서 옵니다. 인증을 켠 환경에서 developer 로 들어가면 **이 선택들이
-    403 으로 비어** 생성까지 가지 못합니다. developer 의 첫 화면인데도 그렇습니다.
-
-    파이프라인 생성·배포 자체는 서버가 developer 에게 허용합니다 — 막히는 건
-    화면을 채우는 데 필요한 조회 API 입니다.
+!!! warning "developer 는 이 화면을 끝까지 채울 수 없습니다"
+    Stack · Cluster · Namespace 선택이 admin·devops 전용 조회 API 에서 옵니다.
+    인증을 켠 환경에서 developer 로 들어가면 **이 선택들이 403 으로 비어** 생성까지
+    가지 못합니다 — developer 의 첫 화면인데도 그렇습니다. 파이프라인 생성·배포
+    자체는 서버가 허용하니, 막히는 것은 화면을 채우는 조회뿐입니다
+    ([권한 표](../../reference/rbac.md#화면은-열리는데-데이터가-비는-경우)).

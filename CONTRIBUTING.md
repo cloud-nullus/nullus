@@ -6,7 +6,7 @@ Nullus에 기여해주셔서 감사합니다! 본 문서는 개발 워크플로�
 
 ### 사전 요구사항
 
-- Go 1.24+
+- Go 1.26+
 - Node.js 22+
 - Docker + Docker Compose
 - Git
@@ -29,7 +29,9 @@ make dev
 cat .env.example
 ```
 
-필요시 `.env` 파일을 생성하여 환경 변수를 커스터마이징할 수 있습니다.
+필요시 `.env.dev` 파일을 만들어 환경 변수를 바꿀 수 있습니다 — `make run` 이 읽는 파일은
+`.env.dev` 입니다(`.env` 가 아닙니다). 변수 이름은 설정 키를 그대로 따릅니다
+(`database.host` → `NULLUS_DATABASE_HOST`).
 
 4. 백엔드 및 프론트엔드 실행:
 ```bash
@@ -141,7 +143,7 @@ Pull Request를 제출하기 전에 다음을 확인하세요:
 - [ ] 테스트 포함
   - 새 기능은 테스트부터 작성 (TDD)
   - 버그 수정 시 재현하는 테스트 먼저 작성
-  - 테스트 커버리지 목표: >70%
+  - 커버리지: CI 게이트는 **49%**(`scripts/check-coverage.sh`, `./internal/...` 기준), v1 GA 목표는 70%
 - [ ] 도메인 용어 일관성
   - PRD/기능분해도의 용어를 코드에 그대로 반영
   - Ubiquitous Language 사용
@@ -192,7 +194,13 @@ make test-cover
 
 #### DB 연동 테스트 (E2E)
 
-`make dev`로 Docker 인프라가 기동 중이어야 합니다.
+`go test ./e2e/` 의 DB 연동 테스트는 `localhost:5433` 에 직접 붙으므로 `make dev` 로
+Docker 인프라가 기동 중이어야 합니다. **DB 가 없으면 실패가 아니라 건너뜁니다** —
+`ok` 로 끝나지만 아무것도 검증하지 않은 것이니, 통과를 믿기 전에 `--- SKIP` 이 없는지
+보세요.
+
+인프라 없이 돌리려면 `make test-integration` 을 씁니다. `integration` 태그가 붙은 쪽은
+testcontainers 로 Postgres 를 직접 띄웁니다.
 
 ```bash
 # 전체 E2E 시나리오 실행
@@ -217,7 +225,9 @@ go test -bench=. -benchmem ./internal/stack/...
 make test-cover
 ```
 
-`coverage.html`이 생성됩니다. 브라우저에서 열어 라인별 커버리지를 확인하세요. 목표: **>70%**.
+`coverage.html`이 생성됩니다. 브라우저에서 열어 라인별 커버리지를 확인하세요.
+
+CI 가 막는 선은 **49%** 입니다(`scripts/check-coverage.sh`, `./internal/...` 만 계산). v1 GA 목표는 70% 이고, 커버리지가 오르면 그 문턱도 함께 올립니다.
 
 #### 예시: Stack 설치 테스트
 
@@ -276,14 +286,18 @@ describe('useInstallStack', () => {
 
 #### 테스트 실행
 
+`package.json` 에 `test` 스크립트는 없습니다 — vitest 를 직접 부릅니다.
+
 ```bash
-make web-test
+make web-test   # = cd web && npx vitest run
+
+cd web
 
 # 특정 파일 테스트
-npm run test -- src/features/stack/hooks/useInstallStack.test.ts
+npx vitest run src/features/stack/hooks/useInstallStack.test.ts
 
-# Watch 모드
-npm run test -- --watch
+# Watch 모드 (인수 없이 실행하면 watch 다)
+npx vitest
 ```
 
 #### 커버리지
@@ -437,13 +451,22 @@ func (s *InstallStackService) Install(ctx context.Context, stack *Stack) error {
 ```bash
 cd web
 
-# ESLint + Prettier
-npm run lint:fix
+# ESLint — 검사
+npm run lint          # = eslint .
 
-# 또는 개별 실행
-npm run eslint -- --fix
-npm run prettier -- --write
+# ESLint — 고칠 수 있는 것은 고친다
+npx eslint . --fix
 ```
+
+Prettier 는 프로젝트 의존성이 **아닙니다**. CI 의 "💅 Format Check" 가 자체
+prettier 로 검사하므로, 로컬에서 맞추려면 `npx` 로 받아 씁니다.
+
+```bash
+cd web
+npx prettier --write .
+```
+
+`lint:fix`·`eslint`·`prettier` 라는 npm 스크립트는 없습니다.
 
 #### 명명 규칙
 
