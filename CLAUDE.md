@@ -7,13 +7,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Nullus Platform — Kubernetes 기반 DevSecOps 자동화 오픈소스 플랫폼 (github.com/cloud-nullus/draft)
 
 - **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS 4 + shadcn/ui
-- **Backend**: Go 1.24+ (Echo v4) + PostgreSQL 18+
-- **Infra**: Helm, Kubernetes 1.26+, Keycloak OIDC
+- **Backend**: Go 1.26+ (Echo v4) + PostgreSQL 17
+- **Infra**: Helm, Kubernetes 1.34+, Keycloak OIDC
 
 ## Repository State
 
-- `docs/` 폴더에 기획 문서 구조화 완료 (PRD v1.3, 아키텍처, UI/UX 등)
-- 애플리케이션 코드는 아직 없음 — 구현 착수 시 아래 원칙을 따를 것
+구현이 진행 중이다. 아래 원칙은 지켜야 할 규칙이지 앞으로 할 일이 아니다.
+
+- **백엔드**: `internal/` 에 모듈 10개 — `stack · cicd · admin · auth · observability · backup · notification · cli · mcp · shared`
+- **프런트엔드**: `web/src/` — 사이드바 화면 19개 + 메뉴 없는 화면 13개
+- **DB**: `db/migrations/` 에 마이그레이션 96개
+- **문서**: `docs/` 는 기획 시점 기준이라 구현과 어긋난 곳이 있다. 현재 동작은
+  `https://cloud-nullus.github.io/nullus/` 의 문서 사이트(`website/`)가 코드 기준으로
+  적고 있다 — 둘이 다르면 **코드가 기준**이다
 
 ---
 
@@ -131,7 +137,7 @@ src/
 - 새 기능 구현 시 반드시 테스트부터 작성한다
 - 버그 수정 시 버그를 재현하는 테스트를 먼저 작성한다
 - Domain 레이어는 100% 단위 테스트, UseCase는 핵심 시나리오 커버
-- 테스트 커버리지 목표: >70% (v1 GA 기준)
+- 테스트 커버리지: CI 게이트 49% (`scripts/check-coverage.sh`), v1 GA 목표 >70%
 - 테스트 파일은 테스트 대상과 같은 디렉토리에 `_test.go` / `.test.ts` 로 둔다
 - 테스트에서 외부 의존(DB, API)은 인터페이스를 통해 모킹한다 — Domain/UseCase 테스트는 DB 없이 실행 가능해야 한다
 

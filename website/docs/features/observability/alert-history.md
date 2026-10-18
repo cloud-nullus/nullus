@@ -59,8 +59,7 @@ GET /api/v1/observability/stack-alerts?state=open|all&limit=200
 조직은 로그인 주체에서, 없으면 `X-Org-ID` 헤더, 그다음 기본 조직 순으로
 결정합니다.
 
-!!! warning "필터 때문에 developer 는 빈 화면을 볼 수 있습니다"
-    경보 목록 자체(`/observability/stack-alerts`)는 **인증만 하면** 역할 제한 없이
-    받을 수 있습니다. 다만 클러스터·스택 필터를 채우려고 부르는
-    `/api/v1/admin/clusters`(admin 전용)와 `/api/v1/stacks`(admin·devops)가 403 이
-    되므로, 인증을 켠 환경에서 developer 는 필터가 비어 보입니다.
+경보 목록 자체(`/observability/stack-alerts`)는 **인증만 하면** 역할 제한 없이
+받을 수 있습니다. 다만 클러스터·스택 필터를 채우는 조회가 admin·devops 전용이라
+developer 에게는 **필터가 비어 보입니다**
+([권한 표](../../reference/rbac.md#화면은-열리는데-데이터가-비는-경우)).

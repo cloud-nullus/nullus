@@ -2,17 +2,14 @@
 
 `nullus` 명령줄 도구입니다.
 
-!!! warning "릴리스에 바이너리가 없습니다"
-    CLI 를 빌드하는 make 타깃도, 릴리스 자산도 없습니다(릴리스에는 SBOM ·
-    취약점 리포트 · 체크섬만 올라갑니다). 지금 CLI 를 얻는 길은 소스에서 직접
-    빌드하는 것뿐입니다.
+## 받는 방법
 
-    ```bash
-    go build ./cmd/nullus
-    ```
+릴리스 자산에 CLI 바이너리가 없고 빌드하는 make 타깃도 없습니다. 소스에서 직접
+빌드합니다.
 
-    CLI 사용 가이드의 "릴리스 아티팩트에서 받아 PATH 에 두면 끝" 은 아직 사실이
-    아닙니다.
+```bash
+go build ./cmd/nullus
+```
 
 ## 명령 트리 (구현된 전부)
 
@@ -29,14 +26,14 @@ nullus
       --allow-write     변경 도구 3종 노출
 ```
 
-!!! danger "가이드에 나오는 명령 상당수가 없습니다"
+!!! warning "`nullus login` 은 없습니다 — 토큰은 환경변수로 넣습니다"
     `login` · `auth bootstrap issue|revoke` · `cluster` · `pipeline` ·
-    `stack deploy|status|logs|rm|rollback|retry|template|config` 는 **등록되지
-    않았습니다.** CLI 가이드와 MCP 가이드가 `nullus login` 으로 시작하라고 적지만
-    그 명령은 없습니다.
+    `stack deploy|status|logs|rm|rollback|retry|template|config` 는 설계만 있고
+    등록되지 않았습니다. OIDC 로그인 **로직**은 라이브러리에 있지만 그걸 부르는
+    명령이 없습니다. 인증은 `NULLUS_TOKEN` 으로 넣으세요.
 
-    OIDC 로그인 **로직** 자체는 라이브러리에 구현돼 있습니다. 그걸 부르는 명령만
-    없습니다. 그래서 인증은 `NULLUS_TOKEN` 환경변수로 넣어야 합니다.
+    서버가 돌려주는 인증 오류 메시지가 `nullus login` 을 안내하는데, 그 명령은
+    아직 없습니다.
 
 ## 설정과 토큰
 

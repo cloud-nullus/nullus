@@ -32,13 +32,13 @@
 
 | 영역 | 기술 |
 |------|------|
-| **Backend** | Go 1.26+ (Echo v4) + PostgreSQL 18+ |
+| **Backend** | Go 1.26+ (Echo v4) + PostgreSQL 17 |
 | **Frontend** | React 19 + TypeScript + Vite + Tailwind CSS 4 + 자체 프리미티브(내부 MUI 9) |
 | **상태 관리** | Zustand 5 |
 | **API 통신** | TanStack Query 5 + Axios |
 | **테스트 (Go)** | `testing`, `testify/mock`, `testcontainers` |
 | **테스트 (FE)** | Vitest + Testing Library + Playwright |
-| **Infra** | Docker Compose (로컬), Helm, Kubernetes 1.26+ |
+| **Infra** | Docker Compose (로컬), Helm, Kubernetes 1.34+ (검증은 kind v1.35.1) |
 
 ### 1.4 아키텍처 원칙
 
@@ -97,8 +97,8 @@ cp .env.example .env.dev
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
 | `ENCRYPTION_KEY` | `nullus-dev-key-32bytes-padding!!` | kubeconfig 암호화 키 (32바이트 필수) |
-| `NULLUS_DB_HOST` | `localhost` | PostgreSQL 호스트 |
-| `NULLUS_DB_PORT` | `5433` | PostgreSQL 포트 |
+| `NULLUS_DATABASE_HOST` | `localhost` | PostgreSQL 호스트 |
+| `NULLUS_DATABASE_PORT` | `5433` | PostgreSQL 포트 |
 
 > `ENCRYPTION_KEY`를 변경하면 기존 DB에 저장된 kubeconfig가 복호화되지 않는다. 클러스터를 다시 등록해야 한다.
 

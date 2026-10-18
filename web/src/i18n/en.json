@@ -130,7 +130,7 @@
     },
     "page": {
       "title": "Stack Install",
-      "description": "Configure your DevSecOps stack with a 5-step workflow."
+      "description": "Configure your DevSecOps stack by moving between tabs — in any order."
     },
     "form": {
       "stackName": "Stack Name",

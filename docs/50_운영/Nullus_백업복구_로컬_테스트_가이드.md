@@ -322,6 +322,7 @@ curl -sX POST localhost:8090/api/v1/admin/backups \
 | `platform_db` | Nullus 메타데이터 (스택·파이프라인·클러스터) | 복구 후 플랫폼이 스택을 모른다 |
 | `keycloak_db` | 계정과 권한 | 복구 후 로그인할 수 없다 |
 | `openbao_kv` | 토큰·자격증명 | 도구들이 서로 인증하지 못한다 |
+| `shared_resources` | 클러스터 공용 자원 (Gateway CRD·GatewayClass·내부 CA) | 복구가 Gateway CR 에서 `no matches for kind` 로 죽는다 |
 | `ns_resources` | 배선 (Deployment·Secret·CRD·ClusterRole·Argo CD Application) | 복구가 `succeeded` 인데 스택이 뜨지 않는다 |
 | `volume` | OSS 내부 데이터 (Git 저장소·빌드 이력·이미지) | **이것만 서비스를 멈춘다** |
 

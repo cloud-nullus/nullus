@@ -486,8 +486,13 @@ PENDING → VALIDATING → INSTALLING → CONFIGURING → HEALTHCHECK → COMPLE
   - Pipeline Status (성공/실패 건수, 성공률, 평균 빌드 시간)
   - Tool Health (각 도구별 Running/Warning/Error 상태)
 - [ ] 핵심 지표 수집 (CPU, Memory, Storage, 파이프라인 성공률)
-- [ ] 알림 연동 기본값 제공 (Slack/Email 중 1개 이상)
-  - 이벤트: tool_down, high_cpu, high_memory, storage_warning, pipeline_failure
+- [x] 알림 연동 기본값 제공 (Slack/Email 중 1개 이상) — Telegram · 이메일(SMTP) · Slack 3종
+  - 구독할 수 있는 이벤트는 **5개**다 (`internal/shared/notification/event.go` —
+    생산자가 실제로 내는 것만 둔다): `backup_failed` · `backup_partial` ·
+    `backup_succeeded`(기본 끔) · `alert_fired` · `alert_resolved`
+  - 여기 적혀 있던 `tool_down` · `high_cpu` · `high_memory` · `storage_warning` ·
+    `pipeline_failure` 는 **구현되지 않았다.** 지금 알림이 가는 것은 백업 결과와,
+    스택 Prometheus 가 올린 **심각(critical) 경보**뿐이다(nullus-plan#87)
 - [ ] Alert Rule 편집 시 Edit 팝업에서 DB 최신 값을 단건 조회 후 수정하고, Save 뒤 즉시 목록에 반영
 - [ ] Alert Rule 임계값을 Warning / Critical 2단계로 관리
 

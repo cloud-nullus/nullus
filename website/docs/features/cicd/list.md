@@ -126,4 +126,4 @@ Pipeline Name 과 템플릿을 고르고 `Cluster / Build / Deploy / Pipeline YA
 
 여기에 `GET /api/v1/admin/clusters`(admin 전용)와 `GET /api/v1/stacks`
 (admin·devops)도 함께 부릅니다 — developer 에게는 403 이라 클러스터·스택 선택이
-비어 보입니다.
+비어 보입니다([권한 표](../../reference/rbac.md#화면은-열리는데-데이터가-비는-경우)).

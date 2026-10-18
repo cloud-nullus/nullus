@@ -11,10 +11,11 @@
 | `nullus version` | ✅ 동작 | |
 | `nullus stack ls [-o json]` | ✅ 동작 | `GET /api/v1/stacks`. 표 또는 CLI 가 소유한 JSON 스키마(id · name · state · cluster_name · namespace · created_at) |
 | 전역 플래그 `--server` · `-o json` | ✅ 동작 | `--server` 가 없으면 `NULLUS_SERVER` env → `~/.nullus/config` |
-| `login` · `auth bootstrap` · `cluster *` · `stack deploy/status/logs/rm/rollback/retry` · `stack template/config` · `compat` · `token-source` · `alert` · `api` · `mcp serve` | ⏳ 설계 | 아래 §3~§8 은 그 설계다 |
+| `nullus mcp serve [--allow-write]` | ✅ 동작 | stdio MCP 서버. 도구 9종(`--allow-write` 로 변경 도구 3종 추가). 리소스·프롬프트는 등록하지 않는다 |
+| `login` · `auth bootstrap` · `cluster *` · `stack deploy/status/logs/rm/rollback/retry` · `stack template/config` · `compat` · `token-source` · `alert` · `api` | ⏳ 설계 | 아래 §3~§8 은 그 설계다 |
 | `pipeline deploy <id>` · `app deploy -f` | ⏳ 설계 — **의미 재정의 필요** | §9 참조. 스택 통합 파이프라인은 CI 가 커밋에 반응해 돌므로 "배포" 명령이 없고, `POST /pipelines/:id/deploy` 는 스택 없는 `emergency_direct` 파이프라인에만 있다 |
 
-지금 쓸 수 있는 것은 `nullus version` 과 `nullus stack ls` 다. 그 밖의 조작은 웹 UI 나 `curl` 로 REST(`/api/v1/*`)를 직접 부른다 — 요청 본문은 각 모듈의 핸들러(`internal/*/adapter/handler`)가 정의한다.
+지금 쓸 수 있는 것은 `nullus version` · `nullus stack ls` · `nullus mcp serve` 다. 그 밖의 조작은 웹 UI 나 `curl` 로 REST(`/api/v1/*`)를 직접 부른다 — 요청 본문은 각 모듈의 핸들러(`internal/*/adapter/handler`)가 정의한다.
 - **설계 근거**: [CLI 컨셉](../11_기능설계/Nullus_CLI_컨셉.md) · [Automation 계약](../11_기능설계/Nullus_CLI_Automation_계약.md) · [stack.yaml 스키마](../11_기능설계/Nullus_Stack_YAML_스키마.md) · [MCP 설계](../11_기능설계/Nullus_MCP_설계.md)
 
 `nullus`는 Nullus 플랫폼의 통합 CLI다. 웹 UI가 "탐색·설정 마법사(노코드)"라면 CLI는 **반복·자동화·헤드리스**를 맡는다 — 두 표면은 같은 `/api/v1/*` REST를 쓰므로 웹에서 만든 것을 CLI로 조작할 수 있고 그 반대도 된다.
@@ -45,6 +46,8 @@ nullus stack deploy -f stack.yaml
 ## 1. 설치
 
 단일 정적 바이너리로 배포된다(다중 OS/arch, air-gap 번들 동봉). 릴리스 아티팩트에서 받아 PATH에 두면 끝 — 런타임 의존성이 없다.
+
+> **아직 그렇지 않다.** CLI 를 빌드하는 make 타깃도, 릴리스 자산도 없다(릴리스에는 SBOM · 취약점 리포트 · 체크섬만 올라간다). 지금은 소스에서 직접 빌드한다 — `go build ./cmd/nullus`.
 
 ```bash
 nullus version        # 설치 확인 (서버 버전과의 호환성 경고도 여기서)
@@ -189,7 +192,7 @@ exit code 규약(§5)은 동일하게 적용된다. WebSocket 엔드포인트는
 ```
 
 - 기본은 **읽기 전용**이다(스택/클러스터/템플릿 조회, 로그 tail). 배포·롤백 같은 변경 tool은 `args`에 `--allow-write`를 추가해야 나타난다 — 팀 공용 설정 파일에는 넣지 않기를 권고
-- 인증은 CLI와 같은 토큰 캐시를 쓴다 — 미리 `nullus login` 해두거나 `NULLUS_TOKEN`을 env에 넣는다
+- 인증은 CLI와 같은 토큰 캐시를 쓴다. `nullus login` 은 **아직 없으므로** 지금은 `NULLUS_TOKEN` 을 env 에 넣는다 (서버가 돌려주는 인증 오류 메시지도 `nullus login` 을 안내하는데, 그 명령은 구현 전이다)
 - 시크릿은 tool 인자로 전달되지 않는다 (SCM PAT는 서버 프로세스의 `NULLUS_SCM_TOKEN` env에서만)
 
 세부 tool 목록과 정책은 [MCP 설계](../11_기능설계/Nullus_MCP_설계.md), 클라이언트 설정·문제 해결은 [MCP 사용 가이드](./Nullus_MCP_사용_가이드.md) 참조.

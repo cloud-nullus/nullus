@@ -218,6 +218,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **낡은 문서를 코드와 맞추고, 그래서 불필요해진 주의 문구를 걷어냈다** (`README.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `.env.example`, `.env.dev`, `Makefile`, `web/src/i18n/{ko,en}.json`, `docs/**`, `website/docs/**`, `internal/shared/config/database_env_test.go`): 문서 사이트를 세우며 찾은 불일치를 **문서 쪽에서** 고쳤다. 사이트에는 "문서가 낡았다" 는 경고가 83개 붙어 있었는데, 원본을 고치면 그 경고는 읽는 사람에게 소음이다.
+
+  **실제로 동작하지 않던 환경변수 9개를 고쳤다.** `.env.example` · `.env.dev` · `Makefile` 의 `run` 타깃이 `NULLUS_DB_HOST` 같은 이름을 쓰는데 설정 키가 `database.*` 라서 **코드가 읽지 않았다** — 포트나 비밀번호를 바꿔 적어도 `configs/config.yaml` 의 기본값으로 붙었고, 그 기본값이 우연히 같아서 드러나지 않았다. 여섯 개를 `NULLUS_DATABASE_*` 로 바꿨고, 어느 설정 키에도 없어 완전히 죽어 있던 `NULLUS_MINIO_*` 세 개는 지우고 실제로 먹는 `NULLUS_BACKUP_DESTINATION_*` 주석으로 대신했다. 먹는 이름과 먹지 않는 이름을 함께 못 박는 테스트를 붙였다. 같은 이름을 쓰던 로컬 개발환경 세팅 가이드와 개발자 온보딩 가이드도 고쳤다.
+
+  **버전 표기**: `Go 1.24+` → **1.26+**(`go.mod` 는 1.26.1), `PostgreSQL 18+` → **17**(차트가 깔는 것은 17.5.0 — 18 은 CI 에서만 쓴다. Bitnami 차트 버전 16.7.21 을 PG 버전으로 읽은 자리도 고쳤다), `Kubernetes 1.26+` → **1.34+**(근거는 `client-go v0.35.2` 의 ±1 마이너 호환 범위다. 차트에 `kubeVersion` 제약이 없어 종전 1.26 표기는 근거가 없었다). 커버리지는 "목표 70%" 만 적던 것을 **CI 게이트 49% + v1 GA 목표 70%** 로 갈라 적었다. `CLAUDE.md` 의 "애플리케이션 코드는 아직 없음" 을 모듈 10개 · 화면 32개 · 마이그레이션 96개의 현재 상태로 바꿨다.
+
+  **없는 명령을 안내하던 것**: `CONTRIBUTING.md` 의 `npm run test` · `lint:fix` · `eslint` · `prettier` 는 **없는 스크립트**다(`npx vitest run` · `npx eslint . --fix` · `npx prettier --write .` 로 고쳤다. Prettier 는 의존성이 아니고 CI 가 자체 prettier 를 쓴다). `.env` 가 아니라 **`.env.dev`** 를 읽는다는 것도 바로잡았다. 인프라 배포 설계의 워크플로 예시도 실제 CI(`npx vitest run --coverage`, Node 22)와 맞췄다. CLI 사용 가이드는 `mcp serve` 를 "설계" 로 적고 있었지만 **구현돼 있고**(도구 9종, stdio), 반대로 "릴리스 아티팩트에서 받으면 끝" 은 아직 사실이 아니다(빌드 타깃·릴리스 자산 없음 — `go build ./cmd/nullus`).
+
+  **메뉴·단계·구성요소**: 메뉴체계 문서가 사이드바 **18개**라고 적던 것을 **19개**로 고치고, 없는 `알림 규칙`(평가되지 않아 내린 화면)을 빼고 **백업 · 알림 채널**을 넣었다. 없어진 별칭 쌍(`alerts`↔`alert-rules`)도 지웠다 — 별칭은 2쌍이다. CI/CD 흐름 문서에 플랫폼이 실제로 렌더하는 단계 이름(`SecretScan → DependencyScan → Build → SAST → ImageScan → Deploy`)을 넣었다 — 본문의 흐름도는 사람이 하는 일이라 단계 이름으로 읽히면 안 된다. 기능목록의 알림 이벤트 목록(`tool_down` · `high_cpu` …)은 **하나도 구현되지 않았다** — 실제 5개로 고쳤다. 백업 구성요소를 **6개**로 고쳤다(`shared_resources` 가 빠져 있었고 `volumes` 는 `volume` 이다). API 설계 문서에는 응답 봉투·페이지네이션·경로가 구현과 다른 지점을 표로 넣었다 — `page`·`page_size`·`sort` 를 읽는 엔드포인트는 **하나도 없다**.
+
+  **화면 문구 한 줄**도 고쳤다. 설치 위자드 부제가 "5단계 워크플로우" 라고 적었지만 구현은 순서 없는 탭 10개다.
+
+  **사이트**: `danger` 를 안전·보안·데이터 손실에만 남겨 27 → 14 개로 줄이고(나머지는 "동작하지 않는다" 는 사실이므로 `warning`), 여러 페이지에 같은 말로 반복되던 "화면은 열리는데 조회 API 권한이 좁아 403 으로 빈다" 를 권한 표 한 곳으로 모아 링크로 바꿨다. 사용자 관리 페이지는 상자 5개를 **2개**로 합쳤다. 주의 문구는 83 → 65 개다. 로컬 E2E 가이드에서는 이미 고친 결함 3건의 내력(#327·#328·#330)을 한 문장으로 줄이고, "아직 이 순서대로 끝까지 돌려 보지 않았다" 는 꼬리말을 2026-10-17 전 구간 실행 기록으로 바꿨다.
+
+  **사이트에 잘못 적은 것 하나를 바로잡았다** — "DB 연동 테스트는 testcontainers 를 쓰므로 `make dev` 가 필요 없다" 고 적었는데, `e2e/db_integration_test.go` 는 빌드 태그가 없어 평소 테스트에 섞여 돌고 `localhost:5433` 에 직접 붙는다. 붙지 못하면 **실패가 아니라 `t.Skip`** 이라 결과가 `ok` 로 보인다. 그 사실을 양쪽에 적었다.
+
 - **낡은 가이드 세 편을 지금 코드와 대조해 맞췼다** (`docs/guides/cicd-pipeline-kind-deploy-guide.md`, `docs/20_개발가이드/Nullus_템플릿_추가_가이드.md`, `docs/20_개발가이드/Nullus_CLI_사용_가이드.md`): CI/CD kind 배포 가이드의 파이프라인 생성·배포 요청 본문(`git_repo` → `git_repo_url`, 응답 `.pipeline.id`, `deploy` 는 `version` · `deployed_by` · `manifest_types`)과 템플릿 목록을 현재 핸들러와 시드 기준으로 고치고, 스택 통합(`stack_integrated`)과 플랫폼 직접 배포(`emergency_direct`)의 차이를 적었다. 템플릿 추가 가이드에 `planning_profile` · CI/CD 템플릿의 선택 필드(`git_repo_url` 등)를 더하고, 호환성 매트릭스 API 가 등록돼 화면에서도 만들 수 있다는 사실로 고쳤다(404 라는 옛 안내 삭제). CLI 가이드에 **구현 현황 표**를 두어 지금 동작하는 것(`version` · `stack ls`)과 설계만 있는 것을 가르고, `pipeline deploy` 는 스택 통합 파이프라인에 "배포" 명령이 없다는 현재 모델로 다시 적었다. 로컬 E2E 가이드 부록 C 의 마지막 제약(낡은 문서)을 지웠다.
 
 ### Fixed

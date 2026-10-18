@@ -2,7 +2,7 @@
 
 **작성일**: 2026-03-22
 **최종 갱신**: 2026-08-31
-**기술 스택**: Go 1.26 (`go.mod`) · Echo v4 · PostgreSQL 18+ · Helm SDK
+**기술 스택**: Go 1.26 (`go.mod`) · Echo v4 · PostgreSQL 17 (차트가 깔는 것, CI 는 18 로도 돌린다) · Helm SDK
 
 > 현재 모듈 구성은 `stack`, `cicd`, `admin`, `observability`, `auth`, `shared`, **`cli`**
 > 7개다. 모듈별 규모와 바운디드 컨텍스트는

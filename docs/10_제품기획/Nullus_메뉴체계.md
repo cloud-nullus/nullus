@@ -6,7 +6,7 @@
 
 ---
 
-## 0. 현행 사이드바 (2026-08-31)
+## 0. 현행 사이드바 (2026-10-18)
 
 `web/src/components/layout/nav-model.tsx` 에서 추출했다(2026-08-11 판에는 `sidebar.tsx` 라고
 적혀 있었으나, 그 뒤 메뉴 정의가 `nav-model.tsx` 로 분리됐다 — 화면 상단 `PageHeader` 도
@@ -26,28 +26,38 @@
 | | CI/CD 목록 | `/cicd/list` | admin, devops, developer |
 | | CI/CD 이력 | `/cicd/history` | admin, devops, developer |
 | **관측성** | 모니터링 대시보드 | `/observability/monitoring` | admin, devops, developer |
-| | 알림 규칙 | `/observability/alerts` | admin, devops |
 | | 알림 이력 | `/observability/alert-history` | admin, devops, developer |
 | **관리** | 조직 | `/admin/organization` | **admin** |
 | | 사용자 관리 | `/admin/users` | **admin** |
 | | 클러스터 관리 | `/admin/clusters` | **admin** |
 | | 알려진 이슈 | `/admin/known-issues` | **admin** |
 | | **토큰 관리** | `/admin/token-management` | **admin** |
+| | **백업** | `/admin/backup` | **admin** |
+| | **알림 채널** | `/admin/notifications` | **admin** |
 
-> 항목 **18개**. 2026-08-11 대비 2개가 늘었다 — **CI/CD 골든패스**, **토큰 관리**.
-> 둘 다 그때 "도달할 수 없는 화면" 으로 기록됐던 것이 배선된 결과다(0.3 참고).
+> 항목 **19개** (스택 6 · CI/CD 4 · 관측성 2 · 관리 7).
+
+**알림 규칙은 사이드바에서 내렸다.** 규칙은 저장만 되고 평가되지 않아, 만들어도 알림이
+오지 않는 화면이었다(nullus-plan#87 — 스택 기본 규칙의 심각 경보만 전달하기로 했다).
+메뉴·라우트·투어에서 빼고 API 만 남겼으며, 그 결정은 `web/src/app/routes.alert-rules.test.tsx`
+가 고정한다. 규칙 편집기가 생길 때 되살린다. 그 자리를 **알림 이력**이 대신한다 — 실제로
+전달된 스택 경보가 거기 쌓인다.
+
+관리 메뉴에 **백업**과 **알림 채널**이 늘었다.
 
 ### 0.1 1장 초안과 달라진 점
 
 - **스택 설치는 사이드바에 없다.** 스택 템플릿에서 템플릿을 고르면 설치 위자드
   (`/stack/install`)로 들어가는 흐름이라 독립 항목을 두지 않았다.
-- 초안에 없던 메뉴 5개가 늘었다 — **OSS 기본 리소스**, **스택 버전 관리**(admin 전용),
-  **알려진 이슈**(admin 전용), **CI/CD 골든패스**, **토큰 관리**(admin 전용).
+- 초안에 없던 메뉴 7개가 늘었다 — **OSS 기본 리소스**, **스택 버전 관리**(admin 전용),
+  **알려진 이슈**(admin 전용), **CI/CD 골든패스**, **토큰 관리**(admin 전용),
+  **백업**(admin 전용), **알림 채널**(admin 전용).
+- 초안에 있던 **알림 규칙**은 빠졌다(위 참고).
 - **초안에는 역할 제한이 없었다.** 실제로는 메뉴마다 노출 역할이 걸려 있고, 라우트에도
   `allowedRoles` 로 한 번 더 막는다.
-- developer 가 보는 것은 **4개**다 — 모니터링 대시보드, 알림 이력, CI/CD 목록, CI/CD 이력.
-  (2026-08-11 판은 "관측성 3개" 라고 적었으나 **알림 규칙은 admin·devops 전용**이라 3개가
-  아니다. 대메뉴가 보여도 그 안의 항목은 역할마다 다르다.)
+- 역할별로 보이는 항목 수는 admin **19개** · devops **11개** · developer **4개** 다.
+  developer 가 보는 넷은 모니터링 대시보드, 알림 이력, CI/CD 목록, CI/CD 이력이다.
+  대메뉴가 보여도 그 안의 항목은 역할마다 다르다.
 
 ### 0.2 메뉴 없이 경로로만 접근하는 화면
 
@@ -60,7 +70,6 @@
 | 스택 설치 로그 | `/stack/logs/:deploymentId` | 배포 진행 화면 |
 | 스택 재시도 이력 | `/stack/deployments/:deploymentId/retry-history` | 배포 진행 화면 |
 | 스택 버전 목록 | `/stack/versions` | `/stack/version` 의 별칭 경로 |
-| 알림 규칙(별칭) | `/observability/alert-rules` | 사이드바의 `/observability/alerts` 와 같은 화면 |
 | 앱 배포(Developer) | `/cicd/developer-deploy` | **developer 로그인 시 기본 랜딩** |
 | 파이프라인 생성 | `/cicd/create` | CI/CD 목록의 생성 버튼 |
 | 파이프라인 로그 | `/cicd/pipelines/:id/logs` | CI/CD 목록·이력 |
@@ -68,9 +77,11 @@
 | 로그인 | `/login` | 미인증 접근 시 리다이렉트 |
 | 404 | `*` | — |
 
-별칭 경로가 3쌍 있다 — `stack/version`↔`stack/versions`,
-`observability/alerts`↔`observability/alert-rules`,
+별칭 경로가 2쌍 있다 — `stack/version`↔`stack/versions`,
 `admin/organization`↔`admin/organizations`. 같은 컴포넌트를 가리키며 사이드바는 앞쪽만 쓴다.
+`observability/alerts`↔`alert-rules` 쌍은 알림 규칙 화면을 내리면서 함께 없어졌다.
+
+라우트는 모두 **32개**다 — 사이드바 19개 + 위 표의 13개(`/login` · `*` 포함).
 
 ### 0.3 도달할 수 없던 화면 4개 — **해소됨 (2026-08-11, PR #133)**
 
@@ -98,6 +109,12 @@
 ---
 
 ## 1. 통일된 메뉴 구조
+
+> **이 장은 초안이다.** 명칭 통일을 위해 쓴 표이고, 실제로 뜨는 메뉴는 0장이다.
+> 아래 표와 구현이 다른 곳 — **스택 설치**는 사이드바에 없고(템플릿에서 들어간다)
+> "5단계" 가 아니라 순서 없는 **탭 10개**다, **알림 규칙**은 화면을 내렸다,
+> **스택 버전 관리**의 호환성 매트릭스는 생성·수정·삭제 라우트가 등록되지 않아
+> 404 다. 0장과 다르면 0장이 맞다.
 
 ### 1.1 사이드바 메뉴 (최상위 → 하위)
 

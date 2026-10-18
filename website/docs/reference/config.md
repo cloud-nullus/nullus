@@ -6,13 +6,13 @@
 
 설정 키 `a.b.c` → 환경변수 **`NULLUS_A_B_C`**.
 
-!!! danger "설정 파일에 없는 키는 환경변수만으로 덮어쓸 수 없습니다"
-    자동 매핑이 **viper 가 아는 키만** 봅니다. 설정 파일에 없는 키는 코드에서
-    따로 묶어 줘야 하고, 그렇지 않으면 환경변수를 넣어도 **조용히 무시**됩니다.
-    백업 봉인 키가 실제로 그 함정에 걸려 기동이 막힌 적이 있습니다.
+!!! warning "설정 파일에 없는 키는 환경변수만으로 덮어쓸 수 없습니다"
+    자동 매핑이 **설정 파일에 있는 키만** 봅니다. 없는 키는 코드에서 따로 묶어
+    줘야 하고, 그러지 않으면 환경변수를 넣어도 **조용히 무시**됩니다 — 백업 봉인
+    키가 그 함정에 걸려 기동이 막힌 적이 있습니다.
 
-    따로 묶여 있는 키: `platform.namespace`, `backup.seal_key`,
-    `backup.destination.secret_key`, `backup.keycloak_database.password`.
+    따로 묶여 있는 키: `platform.namespace` · `backup.seal_key` ·
+    `backup.destination.secret_key` · `backup.keycloak_database.password`.
 
 ## 서버·데이터베이스
 
@@ -29,10 +29,10 @@
 | `NULLUS_DATABASE_MAX_OPEN_CONNS` / `_MAX_IDLE_CONNS` | 25 / 10 |
 | `NULLUS_DATABASE_CONN_MAX_LIFETIME` / `_CONN_MAX_IDLE_TIME` | 5m / 1m |
 
-!!! danger "`NULLUS_DB_*` 가 아니라 `NULLUS_DATABASE_*` 입니다"
-    `.env.example` · `.env.dev` · `Makefile` 의 `run` 타깃 · 로컬 세팅 가이드 ·
-    온보딩 가이드가 모두 `NULLUS_DB_HOST` 같은 이름을 쓰는데 **코드는 읽지
-    않습니다.** Helm 차트와 CI 는 올바른 이름을 씁니다.
+!!! note "옛 `NULLUS_DB_*` 는 먹지 않습니다"
+    `NULLUS_DB_HOST` 처럼 줄여 쓴 이름은 어느 설정 키와도 맞지 않아 무시됩니다.
+    `.env.example` · `.env.dev` · `Makefile` 은 올바른 이름으로 고쳤지만, 전에
+    복사해 둔 `.env` 가 있으면 그쪽을 바꿔야 합니다.
 
 ## 인증
 

@@ -3,8 +3,8 @@
 Kubernetes 기반 DevSecOps 자동화 오픈소스 플랫폼
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-![Go 1.24+](https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&logoColor=white)
-![Kubernetes 1.26+](https://img.shields.io/badge/Kubernetes-1.26%2B-326CE5?logo=kubernetes&logoColor=white)
+![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)
+![Kubernetes 1.34+](https://img.shields.io/badge/Kubernetes-1.34%2B-326CE5?logo=kubernetes&logoColor=white)
 ![Helm v3](https://img.shields.io/badge/Helm-v3-0F1689?logo=helm&logoColor=white)
 
 **[📖 문서 사이트](https://cloud-nullus.github.io/nullus/)** — 기능별 설명과 사용법, 로컬 E2E 가이드.
@@ -76,16 +76,16 @@ Nullus는 이 문제를 해결하기 위해 검증된 OSS 조합을 Golden Path 
 ## 기술 스택
 
 - **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS 4 + shadcn/ui
-- **Backend**: Go 1.24+ (Echo v4) + PostgreSQL 18+
+- **Backend**: Go 1.26+ (Echo v4) + PostgreSQL 17
 - **Auth**: Keycloak OIDC + JWT + 3단계 RBAC (Admin/DevOps/Developer)
-- **Infrastructure**: Docker, Docker Compose, Helm v3, Kubernetes 1.26+, kind (로컬 테스트)
+- **Infrastructure**: Docker, Docker Compose, Helm v3, Kubernetes 1.34+, kind (로컬 테스트 — `kindest/node:v1.35.1`)
 
 ## Quick Start
 
 ### 요구사항
 
 - Docker + Docker Compose
-- Go 1.24+
+- Go 1.26+
 - Node.js 22+
 - kind (K8s 로컬 테스트 시)
 

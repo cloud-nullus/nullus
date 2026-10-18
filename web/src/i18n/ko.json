@@ -130,7 +130,7 @@
     },
     "page": {
       "title": "스택 설치",
-      "description": "5단계 워크플로우로 DevSecOps 스택을 구성하세요."
+      "description": "탭을 눌러 다니며 DevSecOps 스택을 구성하세요. 순서는 없습니다."
     },
     "form": {
       "stackName": "스택 이름",

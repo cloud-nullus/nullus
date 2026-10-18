@@ -70,20 +70,17 @@ CI 의 **PR Convention Check** 가 제목과 본문을 강제합니다.
 | 프런트엔드 단위 테스트 | `cd web && npx vitest run` |
 | 프런트엔드 린트 | `cd web && npm run lint` |
 
-!!! warning "CONTRIBUTING.md 가 틀리게 적은 명령들"
-    - `npm run test` — **없는 스크립트**입니다. `npx vitest run` 을 쓰세요
-    - `npm run lint:fix` · `npm run eslint -- --fix` ·
-      `npm run prettier -- --write` — 셋 다 없습니다. Prettier 는 의존성에도
-      들어 있지 않습니다
-    - "DB 연동 테스트는 `make dev` 로 인프라가 떠 있어야 한다" — 실제 통합
-      테스트는 testcontainers 를 쓰므로 필요 없습니다
-    - "필요시 `.env` 파일을 만들어" — 읽히는 파일은 **`.env.dev`** 입니다
+!!! warning "DB 가 없으면 E2E 테스트는 실패가 아니라 건너뜁니다"
+    `go test ./e2e/` 의 DB 연동 테스트는 태그가 없어 평소 테스트에 섞여 돌고,
+    `localhost:5433` 에 붙지 못하면 **`t.Skip`** 으로 빠집니다. 결과는 `ok` 라
+    통과처럼 보입니다. `make dev` 로 인프라를 띄우거나, 인프라 없이 돌리려면
+    testcontainers 를 쓰는 `make test-integration` 을 쓰세요.
 
 ## 커버리지
 
-!!! note "목표와 실제 게이트가 다릅니다"
-    문서는 **70% 이상**을 목표로 적지만, CI 가 실제로 막는 선은 **49%**
-    (`internal/` 한정)입니다.
+!!! note "게이트와 목표가 다릅니다"
+    CI 가 막는 선은 **49%** 이고(`scripts/check-coverage.sh`, `./internal/...` 만
+    계산), 70% 는 v1 GA 목표입니다.
 
 ## 아키텍처 규칙
 
