@@ -436,48 +436,59 @@ export const COMPATIBILITY = [
   },
 ]
 
-/** 스택 연동 정보. 앱 배포 화면이 저장소·레지스트리 주소의 기본값으로 쓴다. */
+/**
+ * 스택 연동 정보. 앱 배포 화면이 저장소·레지스트리 주소의 기본값으로 쓴다.
+ *
+ * `component_type` 은 서버가 내는 다섯 가지 그대로여야 한다 — 핸들러가
+ * code_repository · package_registry · image_registry · ci_platform · cd_tool
+ * 로 만든다(stack_handler.go). 이름이 다르면 화면이 주소를 못 찾아 앞단이
+ * 빈 채로 열린다. 처음에 source_repository · container_registry 로 적어
+ * 캡처가 그렇게 나왔다.
+ */
 export const STACK_INTEGRATIONS = {
   stack_id: 'stk_7a31c0',
   state: 'completed',
   total: 5,
   integrations: [
     {
-      id: 'int_stk_7a31c0_source_repository', stack_id: 'stk_7a31c0',
-      component_type: 'source_repository', provider: 'GitLab CE',
+      id: 'int_stk_7a31c0_code_repository', stack_id: 'stk_7a31c0',
+      component_type: 'code_repository', provider: 'GitLab CE',
       endpoint: 'https://gitlab.nullus.local', api_endpoint: 'https://gitlab.nullus.local',
       credential_ready: true, health_status: 'ready',
-      provisioning_capabilities: ['repository', 'ci_variables', 'webhook'],
+      provisioning_capabilities: ['repository_select', 'repository_create'],
       metadata: { version: '17.7.2' },
+    },
+    {
+      id: 'int_stk_7a31c0_package_registry', stack_id: 'stk_7a31c0',
+      component_type: 'package_registry', provider: 'GitLab Package Registry',
+      endpoint: 'https://gitlab.nullus.local', api_endpoint: 'https://gitlab.nullus.local',
+      credential_ready: true, health_status: 'ready',
+      provisioning_capabilities: ['artifact_publish', 'sbom_publish', 'test_report_publish'],
+      metadata: { version: '17.7.2' },
+    },
+    {
+      id: 'int_stk_7a31c0_image_registry', stack_id: 'stk_7a31c0',
+      component_type: 'image_registry', provider: 'Harbor',
+      endpoint: 'https://harbor.nullus.local', api_endpoint: 'https://harbor.nullus.local',
+      credential_ready: true, health_status: 'ready',
+      provisioning_capabilities: ['image_push', 'image_pull'],
+      metadata: { version: '2.11.0' },
     },
     {
       id: 'int_stk_7a31c0_ci_platform', stack_id: 'stk_7a31c0',
       component_type: 'ci_platform', provider: 'GitLab CI',
       endpoint: 'https://gitlab.nullus.local', api_endpoint: 'https://gitlab.nullus.local',
       credential_ready: true, health_status: 'ready',
-      provisioning_capabilities: ['pipeline'], metadata: { version: '17.7.2' },
-    },
-    {
-      id: 'int_stk_7a31c0_container_registry', stack_id: 'stk_7a31c0',
-      component_type: 'container_registry', provider: 'Harbor',
-      endpoint: 'https://harbor.nullus.local', api_endpoint: 'https://harbor.nullus.local',
-      credential_ready: true, health_status: 'ready',
-      provisioning_capabilities: ['project', 'robot_account'], metadata: { version: '2.11.0' },
+      provisioning_capabilities: ['workflow_provision', 'pipeline_trigger', 'run_status_read'],
+      metadata: { version: '17.7.2' },
     },
     {
       id: 'int_stk_7a31c0_cd_tool', stack_id: 'stk_7a31c0',
       component_type: 'cd_tool', provider: 'Argo CD',
       endpoint: 'https://argocd.nullus.local', api_endpoint: 'https://argocd.nullus.local',
       credential_ready: true, health_status: 'ready',
-      provisioning_capabilities: ['application', 'repository_credential'],
+      provisioning_capabilities: ['application_provision', 'sync_trigger', 'sync_status_read'],
       metadata: { version: '2.13.2' },
-    },
-    {
-      id: 'int_stk_7a31c0_secret_store', stack_id: 'stk_7a31c0',
-      component_type: 'secret_store', provider: 'OpenBao',
-      endpoint: 'http://nullus-openbao:8200', api_endpoint: 'http://nullus-openbao:8200',
-      credential_ready: true, health_status: 'ready',
-      provisioning_capabilities: ['kv'], metadata: { version: '2.4.1' },
     },
   ],
 }

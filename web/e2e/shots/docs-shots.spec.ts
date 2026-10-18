@@ -23,7 +23,15 @@ const ADMIN = { email: 'admin@nullus.dev', password: 'admin123' }
 const DEVELOPER = { email: 'developer@nullus.dev', password: 'developer123' }
 
 /** 찍을 화면. `as` 는 로그인 계정 — 역할에 따라 사이드바와 랜딩이 달라진다. */
-const SCREENS: { name: string; path: string; as?: typeof DEVELOPER; wait?: string }[] = [
+const SCREENS: {
+  name: string
+  path: string
+  as?: typeof DEVELOPER
+  /** 화면에 보여야 할 글자. 입력칸의 값이면 `value:` 를 앞에 붙인다. */
+  wait?: string
+  /** 찍기 전에 화면을 만져야 할 때. 빈 폼보다 채워진 쪽이 문서 그림으로 낫다. */
+  prepare?: (page: Page) => Promise<void>
+}[] = [
   { name: 'home', path: '/' },
   { name: 'stack-templates', path: '/stack/templates', wait: 'GitLab + Argo CD + SonarQube' },
   { name: 'stack-install', path: '/stack/install' },
@@ -35,7 +43,31 @@ const SCREENS: { name: string; path: string; as?: typeof DEVELOPER; wait?: strin
   { name: 'cicd-golden-paths', path: '/cicd/golden-paths', wait: 'GitLab All-in-One' },
   { name: 'cicd-list', path: '/cicd/list', wait: 'web-frontend' },
   { name: 'cicd-history', path: '/cicd/history' },
-  { name: 'app-deploy', path: '/cicd/developer-deploy', as: DEVELOPER },
+  {
+    name: 'app-deploy',
+    path: '/cicd/developer-deploy',
+    as: DEVELOPER,
+    // 스택을 골라야 저장소·레지스트리 주소가 채워진다. 빈 폼보다 그 상태가 낫다.
+    prepare: async (page) => {
+      // MUI Select 는 네이티브 <select> 가 아니라 role=combobox 인 div 다.
+      // 열어서 항목을 눌러야 선택 상태가 실제로 바뀐다.
+      await page.getByRole('combobox', { name: 'Stack 선택' }).click()
+      await page.getByRole('option', { name: 'nullus-gitlab-argocd-sonarqube' }).click()
+      // 누르면 포커스 테두리가 남는다. 그림에 파란 테가 끼지 않게 뗀다.
+      await page.locator('body').click({ position: { x: 5, y: 5 } })
+      // 드롭다운이 사라지는 중에 찍으면 잔상이 남는다. MUI 는 목록(listbox)보다
+      // 바깥 래퍼(Modal/Popover)가 늦게 사라진다 — 그쪽까지 기다린다.
+      await page.getByRole('listbox').waitFor({ state: 'detached', timeout: 5000 })
+      await page
+        .locator('.MuiPopover-root, .MuiModal-root')
+        .first()
+        .waitFor({ state: 'detached', timeout: 5000 })
+        .catch(() => undefined)
+    },
+    // 주소가 채워진 것까지 본다 — 연동 픽스처의 component_type 이 서버와 어긋나면
+    // 화면은 뜨지만 주소 앞단이 빈 채로 찍힌다.
+    wait: 'value:gitlab.nullus.local',
+  },
   { name: 'monitoring', path: '/observability/monitoring' },
   { name: 'alert-history', path: '/observability/alert-history', wait: 'KubePodCrashLooping' },
   { name: 'admin-organization', path: '/admin/organization' },
@@ -188,7 +220,28 @@ for (const theme of ['dark', 'light'] as Theme[]) {
         await page.goto(screen.path)
         await waitForPageContent(page)
 
-        if (screen.wait) {
+        if (screen.prepare) {
+          await screen.prepare(page)
+        }
+
+        if (screen.wait?.startsWith('value:')) {
+          // 입력칸의 값은 getByDisplayValue 로 잡히지 않는 경우가 있다 — 이 화면의
+          // 주소 칸은 disabled 다. 값을 직접 읽어 본다.
+          const needle = screen.wait.slice('value:'.length)
+          await expect
+            .poll(
+              () =>
+                page.evaluate(
+                  (text) =>
+                    Array.from(document.querySelectorAll('input')).some((input) =>
+                      input.value.includes(text),
+                    ),
+                  needle,
+                ),
+              { timeout: 20000 },
+            )
+            .toBe(true)
+        } else if (screen.wait) {
           // 고정 응답이 실제로 그려졌는지 본다. 빈 화면을 문서에 싣지 않기 위한 장치다.
           await expect(page.getByText(screen.wait, { exact: false }).first()).toBeVisible({
             timeout: 20000,
