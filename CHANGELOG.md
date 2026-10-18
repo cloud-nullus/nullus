@@ -218,6 +218,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **CI/CD 골든패스를 표로 옮겼다 — 고친 것이 재시작 뒤에도 남고, 카드 순서가 고정된다** (`db/migrations/000099_cicd_golden_paths.{up,down}.sql`, `internal/cicd/adapter/repository/postgres_cicd_golden_path.go`, `internal/cicd/adapter/handler/cicd_golden_path_handler.go`, `internal/cicd/domain/errors.go`, `cmd/api/main.go`): 골든패스 세 건이 Go 코드 안의 고정값이고 저장소가 프로세스 메모리였다. 생성·수정·삭제 API 가 이미 열려 있어 화면은 성공 응답을 받았지만 **API 를 다시 띄우면 전부 되돌아갔다**. 목록도 맵을 돌며 만들어 **요청마다 카드 순서가 바뀌었다**.
+
+  새 표 `cicd_golden_paths` 에 종전 세 건(`gitlab-allinone-v1` · `gitlab-argocd-v1` · `github-argocd-v1`)을 도구 버전까지 그대로 시드했다 — 한쪽만 올리면 스택 템플릿(`db/migrations/000059` 이후)과 어긋나므로 버전은 손대지 않았다. `sort_order` 로 카드 순서를 고정해 종전 화면 순서(GitLab All-in-One → GitLab + Argo CD → GitHub + Argo CD)를 유지한다. `id` 로 정렬하면 GitHub 이 맨 앞으로 와 뒤집힌다. stack 모듈의 `golden_path_templates`(스택 설치 조합 11건)와는 **별개 표**다 — 모듈이 자기 표를 소유한다는 규칙에 따라 따로 둔다.
+
+  저장 규칙도 실제 저장소와 맞췄다. 같은 `id` 로 또 만들면 조용히 덮어쓰지 않고 **409**(종전 메모리 구현은 덮어썼다), 없는 것을 고치거나 지우면 **404**(`PUT` 이 새로 만들지 않는다), `id`·`name` 이 없으면 **400** 이다. `PUT` 은 내용만 바꾸고 `sort_order` 는 건드리지 않는다.
+
+  **쓰기 권한을 admin·devops 로 좁혔다.** 메모리에 있던 동안에는 developer 가 지워도 재시작하면 돌아왔지만 이제는 영구 삭제다. 읽기는 `/cicd` 그룹 그대로 세 역할 모두에게 열어 둔다. 미들웨어는 `cmd/api/main.go` 가 넘긴다 — cicd 모듈이 auth 모듈을 직접 import 하지 않기 위함이다. `development` 모드에서는 비어 있다(그 모드는 모든 역할 검사를 끈다).
+
+  **화면에는 아직 편집기가 없다** — 추가·수정은 API 나 SQL 로 한다. 문서 사이트의 골든패스 페이지와 권한 표를 이 사실에 맞게 고쳤다.
+
+  테스트 14건: 저장소 통합 4건(testcontainers Postgres 18 — 왕복·시드 3건과 순서·중복 거부·없는 행), 핸들러 10건(목록 순서 유지·생성 후 목록 반영·409·400 둘·404 셋·수정 영속·목록 실패 500·쓰기 가드가 읽기는 통과시키고 쓰기만 막는지·가드 없을 때 종전대로 열리는지).
 - **낡은 문서를 코드와 맞추고, 그래서 불필요해진 주의 문구를 걷어냈다** (`README.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `.env.example`, `.env.dev`, `Makefile`, `web/src/i18n/{ko,en}.json`, `docs/**`, `website/docs/**`, `internal/shared/config/database_env_test.go`): 문서 사이트를 세우며 찾은 불일치를 **문서 쪽에서** 고쳤다. 사이트에는 "문서가 낡았다" 는 경고가 83개 붙어 있었는데, 원본을 고치면 그 경고는 읽는 사람에게 소음이다.
 
   **실제로 동작하지 않던 환경변수 9개를 고쳤다.** `.env.example` · `.env.dev` · `Makefile` 의 `run` 타깃이 `NULLUS_DB_HOST` 같은 이름을 쓰는데 설정 키가 `database.*` 라서 **코드가 읽지 않았다** — 포트나 비밀번호를 바꿔 적어도 `configs/config.yaml` 의 기본값으로 붙었고, 그 기본값이 우연히 같아서 드러나지 않았다. 여섯 개를 `NULLUS_DATABASE_*` 로 바꿨고, 어느 설정 키에도 없어 완전히 죽어 있던 `NULLUS_MINIO_*` 세 개는 지우고 실제로 먹는 `NULLUS_BACKUP_DESTINATION_*` 주석으로 대신했다. 먹는 이름과 먹지 않는 이름을 함께 못 박는 테스트를 붙였다. 같은 이름을 쓰던 로컬 개발환경 세팅 가이드와 개발자 온보딩 가이드도 고쳤다.

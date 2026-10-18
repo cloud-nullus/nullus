@@ -350,7 +350,7 @@ func main() {
 	// 이미지 스캔 게이트 판정. 대시보드(#65)가 cicd 의 공개 경로로 읽는다.
 	pgImageScanRepo := cicdrepo.NewPostgresImageScanResultRepository(pool)
 	pgSASTResultRepo := cicdrepo.NewPostgresSASTResultRepository(pool)
-	memGoldenPathRepo := cicdrepo.NewMemoryCICDGoldenPathRepository()
+	pgGoldenPathRepo := cicdrepo.NewPostgresCICDGoldenPathRepository(pool)
 	manifestApplier := cicdkube.NewManifestApplier()
 
 	// CI/CD 저장소 프로비저닝 배선.
@@ -460,7 +460,7 @@ func main() {
 		cicduc.WithStackReader(cicdStackReader),
 	)
 	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
-	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(memGoldenPathRepo)
+	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(pgGoldenPathRepo)
 	deletePipelineUC := cicduc.NewDeletePipeline(
 		// CD 도구의 애플리케이션 삭제기는 번들이 공급한다 — 스택마다 다른 도구를
 		// 쓸 수 있고, 그 판단은 스택을 아는 쪽이 해야 한다.
@@ -568,6 +568,10 @@ func main() {
 	// wsAuth 는 /ws/* 전용 체인이다. 브라우저 WebSocket 은 Authorization 헤더를 못
 	// 붙이므로 서브프로토콜로 온 토큰을 헤더로 옮긴 뒤 평소 인증을 태운다.
 	var wsAuth []echo.MiddlewareFunc
+	// goldenPathWriteGuards 는 골든패스의 생성·수정·삭제에만 붙는다. development
+	// 모드에서는 비어 있다 — 그 모드는 권한 검사를 전부 끄는 쪽이므로 여기만 켜 두면
+	// 다른 경로와 어긋난다.
+	var goldenPathWriteGuards []echo.MiddlewareFunc
 	if cfg.Server.Mode == "development" {
 		slog.Info("development mode: auth middleware disabled")
 		admin = v1.Group("/admin", userRateLimit)
@@ -592,6 +596,7 @@ func main() {
 		admin = v1.Group("/admin", authMW, userRateLimit, authmw.RequireRole("admin"))
 		stacks = v1.Group("/stacks", authMW, userRateLimit, authmw.RequireRole("admin", "devops"))
 		cicd = v1.Group("/cicd", authMW, userRateLimit, authmw.RequireRole("admin", "devops", "developer"))
+		goldenPathWriteGuards = []echo.MiddlewareFunc{authmw.RequireRole("admin", "devops")}
 		observability = v1.Group("/observability", authMW, userRateLimit)
 
 		// OIDC 모드에서만 WebSocket 을 보호한다. session 모드의 인증은 클라이언트가
@@ -639,7 +644,10 @@ func main() {
 	retryHistoryHandler.RegisterRoutes(stacks)
 	stackImageScanHandler.RegisterRoutes(stacks)
 	cicdTemplateHandler.RegisterRoutes(cicd)
-	cicdGoldenPathHandler.RegisterRoutes(cicd)
+	// 골든패스를 바꾸는 것은 조직 전체의 설치 선택지를 바꾸는 일이다 — 읽기는 /cicd 의
+	// 세 역할 모두, 쓰기는 admin·devops 만. DB 로 옮기기 전에는 지워도 재시작하면
+	// 돌아왔지만 이제는 영구적이다.
+	cicdGoldenPathHandler.RegisterRoutes(cicd, goldenPathWriteGuards...)
 	pipelineHandler.RegisterRoutes(cicd)
 	// 스택별 파이프라인 조회는 /stacks 그룹 아래에 붙는다. 핸들러는 처음부터 있었는데
 	// 이 호출이 빠져 있어 GET /api/v1/stacks/:stackId/pipelines 가 404 였다.
