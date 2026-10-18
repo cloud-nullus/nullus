@@ -45,9 +45,13 @@ nullus stack deploy -f stack.yaml
 
 ## 1. 설치
 
-단일 정적 바이너리로 배포된다(다중 OS/arch, air-gap 번들 동봉). 릴리스 아티팩트에서 받아 PATH에 두면 끝 — 런타임 의존성이 없다.
+런타임 의존성이 없는 단일 정적 바이너리다. **지금은 소스에서 빌드한다.**
 
-> **아직 그렇지 않다.** CLI 를 빌드하는 make 타깃도, 릴리스 자산도 없다(릴리스에는 SBOM · 취약점 리포트 · 체크섬만 올라간다). 지금은 소스에서 직접 빌드한다 — `go build ./cmd/nullus`.
+```bash
+go build ./cmd/nullus
+```
+
+릴리스 자산으로 올리는 것(다중 OS/arch, air-gap 번들 동봉)은 빌드 타깃과 함께 더한다.
 
 ```bash
 nullus version        # 설치 확인 (서버 버전과의 호환성 경고도 여기서)

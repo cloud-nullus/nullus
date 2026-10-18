@@ -2,50 +2,47 @@
 
 이 문서는 `Gitlab 파이프라인 구성(26)` 디렉토리 기준으로, 세부 구현값을 제외한 **전체 CI/CD 프로세스 흐름**과 **인증/토큰 연계 흐름**을 정리합니다.
 
-> **구현 현황 (2026-08-11)** — GitHub 경로는 이 문서의 토큰 흐름과 다르게 구현됐다.
-> 워크플로는 OpenBao 에 접근하지 않는다. GitHub 에는 리포 범위 토큰 발급 API 가 없어서,
-> 이미지 push 와 매니페스트 되쓰기 모두 Actions 가 주입하는 **내장 `GITHUB_TOKEN`**
-> (`packages: write`, `contents: write`)으로 처리한다. 사용자가 등록한 조직 PAT 는
-> 스택 OpenBao 에 보관되며 **플랫폼 쪽에서만** 쓴다 — 저장소 생성, Argo CD 저장소
-> 자격증명, kubelet 의 GHCR pull 시크릿이다.
->
-> 즉 GitHub 스택에서 아래 표의 "GitHub + OpenBao 사용" 행처럼 러너가 OpenBao 에
-> 로그인하는 단계는 없다. GitLab 경로는 프로젝트 범위 토큰을 발급할 수 있어 문서의
-> 흐름이 그대로 유효하다.
->
-> **추가 (2026-08-31) — Gitea + Jenkins 경로.** 이 문서는 GitLab(+GitHub 보정)만 다루지만,
-> 2026-08-14 부터 세 번째 조합이 있다. 아래가 다르다.
->
-> | 항목 | GitLab 경로(본문) | Gitea + Jenkins 경로 |
-> |------|------------------|---------------------|
-> | 파이프라인 정의 | `.gitlab-ci.yml` | `Jenkinsfile` |
-> | job 생성 | GitLab 프로젝트에 CI 가 딸려온다 | **Jenkins multibranch job 을 플랫폼이 프로비저닝**한다(브랜치 탐색 trait, CSRF crumb 세션 유지) |
-> | 자격증명 | GitLab CI/CD Variables | **JCasC 로 선언**하고 OpenBao → ESO 평면으로 나른다 |
-> | 저장소 접근 | 사용자가 GitLab 계정으로 본다 | 조직·저장소가 private 이고 소유자가 자동화 계정이라, **파이프라인을 만든 사람을 `developers` 팀에 넣어야** 보인다 |
-> | 삭제 | 리포를 지우면 CI 정의도 사라진다 | **job 을 따로 지워야** 한다. 남으면 없어진 리포를 계속 스캔하며 실패한다 |
->
-> 파이프라인 렌더러는 이 때문에 **SCM 축과 CI 축을 분리**한다(`internal/cicd`). 두 축이
-> 한 값에 묶여 있으면 "Gitea + GitLab CI" 같은 조합을 표현할 수 없고, 무엇보다 Gitea
-> 저장소에 `.gitlab-ci.yml` 이 들어가는 사고가 난다.
->
-> 상세는 `docs/20_아키텍처/Nullus_시스템_아키텍처.md` 4.2 와 `CHANGELOG.md` 참고.
->
-> **추가 (2026-10-18) — 플랫폼이 실제로 만드는 단계 이름.** 아래 1)·2) 는 사람이 하는
-> 일을 흐름으로 적은 것이고, Nullus 가 렌더하는 파이프라인의 단계 이름은 따로 있다
-> (`internal/cicd/adapter/scaffold/renderer.go` 의 `PipelineStageNames`).
->
-> | 순서 | 단계 | 생기는 조건 |
-> |------|------|-------------|
-> | 1 | `SecretScan` | 항상 (끄는 것은 스택 스캔 정책) |
-> | 2 | `DependencyScan` | 설치 때 SCA 를 골랐을 때 |
-> | 3 | `Build` | 항상 |
-> | 4 | `SAST` | 설치 때 SAST 를 골랐을 때 |
-> | 5 | `ImageScan` | 설치 때 이미지 스캐너를 골랐을 때 |
-> | 6 | `Deploy` | 항상 |
->
-> 보안 단계는 **빌드 앞뒤에 끼어든다** — 시크릿·의존성 검사는 빌드 전에, SAST·이미지
-> 스캔은 빌드 후에 선다. 러너가 OpenBao 에 로그인하는 `auth` 단계는 **없다**(위 GitHub
-> 보정과 같은 이유로 GitLab 경로에서도 변수 주입으로 처리한다).
+## 0) 플랫폼이 만드는 파이프라인
+
+아래 1)·2) 는 사람이 하는 일을 흐름으로 적은 것이다. Nullus 가 렌더하는 파이프라인의
+단계 이름은 `internal/cicd/adapter/scaffold/renderer.go` 의 `PipelineStageNames` 가
+정한다.
+
+| 순서 | 단계 | 생기는 조건 |
+|------|------|-------------|
+| 1 | `SecretScan` | 항상 (끄는 것은 스택 스캔 정책) |
+| 2 | `DependencyScan` | 설치 때 SCA 를 골랐을 때 |
+| 3 | `Build` | 항상 |
+| 4 | `SAST` | 설치 때 SAST 를 골랐을 때 |
+| 5 | `ImageScan` | 설치 때 이미지 스캐너를 골랐을 때 |
+| 6 | `Deploy` | 항상 |
+
+보안 단계는 **빌드 앞뒤에 끼어든다** — 시크릿·의존성 검사는 빌드 전에, SAST·이미지
+스캔은 빌드 후에 선다. 러너가 OpenBao 에 로그인하는 `auth` 단계는 **없다** — 세 경로
+모두 변수 주입으로 처리한다.
+
+### 조합이 세 가지다
+
+| 항목 | GitLab (본문 기준) | GitHub + Argo CD | Gitea + Jenkins + Argo CD |
+|------|------|------|------|
+| 파이프라인 정의 | `.gitlab-ci.yml` | `.github/workflows/*.yml` | `Jenkinsfile` |
+| job 생성 | GitLab 프로젝트에 CI 가 딸려온다 | 저장소에 워크플로 파일을 넣으면 Actions 가 받는다 | **Jenkins multibranch job 을 플랫폼이 프로비저닝**한다(브랜치 탐색 trait, CSRF crumb 세션 유지) |
+| 러너의 자격증명 | 프로젝트 범위 토큰을 발급해 CI/CD Variables 로 | Actions 가 주입하는 내장 `GITHUB_TOKEN`(`packages: write` · `contents: write`) | **JCasC 로 선언**하고 OpenBao → ESO 평면으로 나른다 |
+| 저장소 접근 | 사용자가 GitLab 계정으로 본다 | 사용자의 GitHub 계정 | 조직·저장소가 private 이고 소유자가 자동화 계정이라, **파이프라인을 만든 사람을 `developers` 팀에 넣어야** 보인다 |
+| 삭제 | 리포를 지우면 CI 정의도 사라진다 | 〃 | **job 을 따로 지워야** 한다. 남으면 없어진 리포를 계속 스캔하며 실패한다 |
+
+**GitHub 경로에서 러너는 OpenBao 에 접근하지 않는다.** GitHub 에는 리포 범위 토큰
+발급 API 가 없어서 이미지 push 와 매니페스트 되쓰기를 모두 내장 `GITHUB_TOKEN` 으로
+한다. 사용자가 등록한 조직 PAT 는 스택 OpenBao 에 보관되며 **플랫폼 쪽에서만** 쓴다 —
+저장소 생성, Argo CD 저장소 자격증명, kubelet 의 GHCR pull 시크릿이다. 그래서 아래
+"GitHub + OpenBao 사용" 행처럼 러너가 OpenBao 에 로그인하는 단계는 없다. GitLab 경로는
+프로젝트 범위 토큰을 발급할 수 있어 본문의 흐름이 그대로 유효하다.
+
+파이프라인 렌더러는 이 때문에 **SCM 축과 CI 축을 분리**한다(`internal/cicd`). 두 축이
+한 값에 묶여 있으면 "Gitea + GitLab CI" 같은 조합을 표현할 수 없고, 무엇보다 Gitea
+저장소에 `.gitlab-ci.yml` 이 들어가는 사고가 난다.
+
+상세는 `docs/20_아키텍처/Nullus_시스템_아키텍처.md` 4.2 와 `CHANGELOG.md` 참고.
 
 ## 1) 전체 CI/CD 파이프라인 프로세스
 
