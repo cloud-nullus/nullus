@@ -1,0 +1,154 @@
+site_name: Nullus 문서
+site_description: 검증된 DevSecOps 스택을 노코드로 Kubernetes에 설치하는 오픈소스 플랫폼
+site_url: https://cloud-nullus.github.io/nullus/
+repo_url: https://github.com/cloud-nullus/nullus
+repo_name: cloud-nullus/nullus
+edit_uri: edit/main/website/docs/
+copyright: Apache License 2.0 로 공개된 오픈소스입니다.
+
+docs_dir: docs
+site_dir: ../.site
+
+theme:
+  name: material
+  language: ko
+  logo: assets/nullus-mark-on-dark.svg
+  favicon: assets/favicon.svg
+  font:
+    text: Inter
+    code: Fira Code
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: 밝은 화면으로
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: 어두운 화면으로
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+    - content.tabs.link
+
+extra_css:
+  - stylesheets/nullus.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+      # 기본 slugify 는 비ASCII 를 버려서 한국어 제목의 앵커가 전부 깨진다.
+      # pymdownx 쪽은 유니코드를 그대로 둔다.
+      slugify: !!python/object/apply:pymdownx.slugs.slugify {kwds: {case: lower}}
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  # 한국어는 띄어쓰기로 끊기므로 영어 토크나이저로도 검색이 된다.
+  # lunr-languages 에 한국어 스테머가 없어 lang: ko 는 쓰지 않는다.
+  - search:
+      lang: en
+      separator: '[\s\-\.\_/]+'
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/cloud-nullus/nullus
+      name: GitHub 저장소
+    - icon: fontawesome/brands/youtube
+      link: https://www.youtube.com/watch?v=VrTqBKInlNw
+      name: 시연 영상
+
+# stage.sh 가 가져오는 단독 HTML 가이드들. nav 에는 소개 페이지만 올린다.
+not_in_nav: |
+  guides/*.html
+
+nav:
+  - 홈: index.md
+  - 시작하기:
+      - getting-started/index.md
+      - 준비물: getting-started/prerequisites.md
+      - 로컬에서 띄우기: getting-started/run-local.md
+      - 처음부터 끝까지 (E2E): getting-started/e2e.md
+  - 기능:
+      - features/index.md
+      - 데브섹옵스 스택:
+          - features/stack/index.md
+          - 스택 템플릿: features/stack/templates.md
+          - 스택 설치: features/stack/install.md
+          - 스택 목록: features/stack/list.md
+          - 스택 이력: features/stack/history.md
+          - 스택 버전: features/stack/versions.md
+          - OSS 기본 리소스: features/stack/oss-defaults.md
+      - CI/CD:
+          - features/cicd/index.md
+          - CI/CD 템플릿: features/cicd/templates.md
+          - 골든패스: features/cicd/golden-paths.md
+          - CI/CD 목록: features/cicd/list.md
+          - CI/CD 이력: features/cicd/history.md
+          - 앱 배포: features/cicd/app-deploy.md
+      - 관측성:
+          - features/observability/index.md
+          - 모니터링 대시보드: features/observability/monitoring.md
+          - 알림 이력: features/observability/alert-history.md
+      - 관리:
+          - features/admin/index.md
+          - 조직: features/admin/organization.md
+          - 사용자 관리: features/admin/users.md
+          - 클러스터 관리: features/admin/clusters.md
+          - 토큰 관리: features/admin/tokens.md
+          - 알려진 이슈: features/admin/known-issues.md
+          - 백업·복구: features/admin/backup.md
+          - 알림 채널: features/admin/notifications.md
+  - 역할별 사용법:
+      - roles/index.md
+      - Admin: roles/admin.md
+      - DevOps: roles/devops.md
+      - Developer: roles/developer.md
+  - 참고:
+      - reference/index.md
+      - 권한 표: reference/rbac.md
+      - 환경 변수: reference/config.md
+      - CLI: reference/cli.md
+      - MCP: reference/mcp.md
+      - API: reference/api.md
+      - 기여하기: reference/contributing.md
