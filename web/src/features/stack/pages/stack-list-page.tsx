@@ -1,5 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpCircle, Boxes, ChartColumn, ClipboardList, GitBranch, History, Info, Layers, List, Plus, ShieldAlert, SlidersHorizontal, Terminal } from 'lucide-react';
+import { ArrowUpCircle, Boxes, ChartColumn, History, Info, Layers, List, Plus, ShieldAlert, SlidersHorizontal, Terminal } from 'lucide-react';
 import { iconProps } from '../../../components/ui/icon'
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -52,12 +52,13 @@ import { StackInfoTab } from "../components/stack-info-tab"
 import { StackWorkloadsTab } from "../components/stack-workloads-tab"
 import { StackConfigTab } from "../components/stack-config-tab"
 import { StackImageScansTab } from "../components/stack-image-scans-tab"
+import { StackVersionUpgradeTab } from "../components/stack-version-upgrade-tab"
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
 import { Badge } from "../../../components/ui/badge"
-import { TOOL_BRAND_GRADIENT } from "../../../lib/tool-brand-colors";
 
 type InnerTab = "info" | "workloads" | "config" | "image-scans" | "monitoring" | "history" | "version-upgrade";
+
 
 
 function StackMonitoringTab({ stackId }: { stackId: string }) {
@@ -159,134 +160,6 @@ function StackHistoryTab({ stack }: { stack: Stack }) {
 	);
 }
 
-const UPGRADE_ITEMS = [
-	{
-		name: "GitLab",
-		iconBg: TOOL_BRAND_GRADIENT.gitlab,
-		current: "v16.7",
-		latest: "v16.9",
-		tag: "Minor Update",
-		tagBg: "color-mix(in srgb, var(--color-warning) 15%, transparent)",
-		tagColor: "var(--color-warning)",
-		upToDate: false,
-	},
-	{
-		name: "Prometheus",
-		iconBg: TOOL_BRAND_GRADIENT.nexus,
-		current: "v2.48.1",
-		latest: "v2.50.1",
-		tag: "Patch Update",
-		tagBg: "color-mix(in srgb, var(--color-success) 15%, transparent)",
-		tagColor: "var(--color-success)",
-		upToDate: false,
-	},
-	{
-		name: "Grafana",
-		iconBg: TOOL_BRAND_GRADIENT.argocd,
-		current: "v10.3",
-		latest: "v10.4",
-		tag: "Minor Update",
-		tagBg: "color-mix(in srgb, var(--color-warning) 15%, transparent)",
-		tagColor: "var(--color-warning)",
-		upToDate: false,
-	},
-	{
-		name: "Argo CD",
-		iconBg: TOOL_BRAND_GRADIENT.kubernetes,
-		current: "v2.9.3",
-		latest: null,
-		tag: null,
-		tagBg: "",
-		tagColor: "",
-		upToDate: true,
-	},
-];
-
-function StackVersionUpgradeTab() {
-	const { t } = useTranslation();
-	const handleUpgradeClick = () => {
-		toast.info(t("stackList.toast.upgradeInProgress", "개발중인 기능입니다."));
-	};
-
-	return (
-		<div>
-			<div className="mb-6 flex flex-wrap items-center gap-3">
-				<div className="h-5 w-1 rounded-full bg-[linear-gradient(135deg,var(--color-primary),var(--color-accent-alt))]" />
-				<h3 className="m-0 text-[14px] font-bold text-[var(--color-text-primary)]">
-					Available Version Upgrades
-				</h3>
-				<span className="rounded-full bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--color-primary)]">
-					3 updates available
-				</span>
-			</div>
-			<div className="flex flex-col gap-3">
-				{UPGRADE_ITEMS.map((item) => (
-					<div
-						key={item.name}
-						className={cn(
-							"flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4",
-							item.upToDate && "opacity-60",
-						)}
-					>
-						<div className="flex items-center gap-3">
-							<div
-								className="flex h-9 w-9 items-center justify-center rounded-lg"
-								style={{ background: item.iconBg }}
-							>
-								<GitBranch {...iconProps('sm')} className="text-white" />
-							</div>
-							<div>
-								<div className="font-semibold text-[var(--color-text-primary)]">
-									{item.name}
-								</div>
-								{item.upToDate ? (
-									<div className="text-[12px] text-[var(--color-text-secondary)]">
-										Current: {item.current} →{" "}
-										<strong className="text-[var(--color-success)]">Up to date</strong>
-									</div>
-								) : (
-									<div className="text-[12px] text-[var(--color-text-secondary)]">
-										Current: {item.current} → Latest:{" "}
-										<strong className="text-[var(--color-success)]">{item.latest}</strong>
-									</div>
-								)}
-							</div>
-						</div>
-						<div className="flex items-center gap-2.5">
-							{item.upToDate ? (
-								<span className="rounded-full bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--color-success)]">
-									✓ Up to date
-								</span>
-							) : (
-								<>
-									<span
-										className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-										style={{ background: item.tagBg, color: item.tagColor }}
-									>
-										{item.tag}
-									</span>
-									<button
-										type="button"
-										className="flex items-center gap-1.5 rounded-md border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_4%,_transparent)] px-2.5 py-1.5 text-[12px] text-[var(--color-text-primary)]"
-									>
-										<ClipboardList {...iconProps('xs')} /> Changelog
-									</button>
-									<button
-										type="button"
-										onClick={handleUpgradeClick}
-										className="flex items-center gap-1.5 rounded-md bg-[linear-gradient(135deg,var(--color-primary),var(--color-accent-alt))] px-2.5 py-1.5 text-[12px] font-semibold text-white"
-									>
-										<ArrowUpCircle {...iconProps('xs')} /> Upgrade
-									</button>
-								</>
-							)}
-						</div>
-					</div>
-				))}
-			</div>
-		</div>
-	);
-}
 
 const BASE_INNER_TABS: { key: InnerTab; label: string; icon: React.ReactNode }[] = [
 	{ key: "info", label: "Info", icon: <Info {...iconProps('xs')} /> },
@@ -400,7 +273,7 @@ function StackDetailPanel({
 				{innerTab === "image-scans" && <StackImageScansTab stackId={stack.id} />}
 				{innerTab === "monitoring" && canShowMonitoring && <StackMonitoringTab stackId={stack.id} />}
 				{innerTab === "history" && <StackHistoryTab stack={stack} />}
-				{innerTab === "version-upgrade" && <StackVersionUpgradeTab />}
+				{innerTab === "version-upgrade" && <StackVersionUpgradeTab stackId={stack.id} />}
 			</div>
 		</div>
 	);

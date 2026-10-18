@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -125,6 +126,29 @@ func (r *PostgresBackupRepository) ListRuns(ctx context.Context, orgID string, l
 		out = append(out, run)
 	}
 	return out, rows.Err()
+}
+
+// LatestRestorableBackup 은 스택의 마지막 복구 가능 백업이 끝난 시각이다 — 성공했고
+// 네임스페이스 리소스 산출물(위치 · 체크섬)이 남아 있는 실행만 친다. 보존 정책이 산출물을
+// 지운 실행은 되돌릴 수 없으므로 빠진다. 스택 모듈의 업그레이드 사전 점검이 이것을 묻는다
+// (stack port.UpgradeBackupLookup) — 백업 테이블은 이 모듈만 읽는다.
+func (r *PostgresBackupRepository) LatestRestorableBackup(ctx context.Context, stackID string) (time.Time, bool, error) {
+	var finished time.Time
+	err := r.pool.QueryRow(ctx,
+		`SELECT b.finished_at FROM backup_runs b
+		  WHERE b.stack_id = $1 AND b.status = $2 AND b.finished_at IS NOT NULL
+		    AND EXISTS (SELECT 1 FROM backup_artifacts a
+		                 WHERE a.backup_run_id = b.id AND a.component = $3
+		                   AND a.location <> '' AND a.checksum_sha256 <> '')
+		  ORDER BY b.finished_at DESC LIMIT 1`,
+		stackID, string(domain.StatusSucceeded), string(domain.ComponentNamespaceResources)).Scan(&finished)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("latest restorable backup: %w", err)
+	}
+	return finished, true, nil
 }
 
 // ListRunsBySet 은 한 세트의 실행을 만든 순서로 준다 — 플랫폼이 먼저다(domain.PlanBackupSet 의 순서).

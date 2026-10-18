@@ -1023,9 +1023,6 @@
     }
   },
   "stackList": {
-    "toast": {
-      "upgradeInProgress": "개발중인 기능입니다."
-    },
     "title": "스택 목록",
     "description": "배포된 DevSecOps 스택 목록",
     "actions": {
@@ -1175,6 +1172,57 @@
         "status": "상태"
       },
       "summaryScanner": "스캐너 {{scanner}} · 취약점 DB {{db}}"
+    },
+    "upgrade": {
+      "title": "버전 업그레이드",
+      "available": "업그레이드 가능 {{count}}건",
+      "loading": "설치된 릴리스를 확인하는 중…",
+      "loadError": "설치된 릴리스를 확인하지 못했습니다.",
+      "empty": "Nullus 가 관리하는 업그레이드 대상 릴리스가 없습니다.",
+      "current": "현재",
+      "noVerifiedPath": "검증된 업그레이드 경로 없음",
+      "noVerifiedPathHint": "실클러스터 리허설을 거친 경로만 제공합니다.",
+      "risk": {
+        "low": "위험 낮음",
+        "medium": "위험 보통",
+        "high": "위험 높음"
+      },
+      "releaseNotes": "릴리스 노트",
+      "action": "업그레이드",
+      "dialogTitle": "{{tool}} 업그레이드",
+      "disruption": "예상 중단",
+      "preflightTitle": "사전 점검",
+      "preflightRunning": "사전 점검 중…",
+      "preflightFailed": "사전 점검을 실행하지 못했습니다.",
+      "reasonLabel": "사유",
+      "reasonPlaceholder": "왜 업그레이드하나요? 감사 로그에 남습니다.",
+      "start": "업그레이드 시작",
+      "started": "업그레이드를 시작했습니다. 이 화면을 떠나도 서버에서 계속됩니다.",
+      "failed": "업그레이드를 시작하지 못했습니다.",
+      "checks": {
+        "stack_state": "스택 상태",
+        "active_run": "다른 업그레이드",
+        "release_status": "Helm 릴리스",
+        "version_path": "버전 경로",
+        "backup": "백업",
+        "helm_dry_run": "Helm dry-run"
+      },
+      "steps": {
+        "preflight": "사전 점검",
+        "helm_upgrade": "Helm 적용 중",
+        "health_check": "상태 검사 중",
+        "rollback": "되돌리는 중",
+        "complete": "완료"
+      },
+      "run": {
+        "upgrading": "업그레이드 중 — {{step}}",
+        "rolling_back": "되돌리는 중 — {{step}}",
+        "failed": "업그레이드가 적용되지 않았습니다 — 릴리스는 그대로입니다",
+        "succeeded": "업그레이드 완료 {{from}} → {{to}}",
+        "rolled_back": "실패해 {{from}} 로 되돌렸습니다",
+        "manual_intervention_required": "수동 개입 필요",
+        "blocked": "마지막 시도가 사전 점검에서 막혔습니다"
+      }
     }
   },
   "deploy": {

@@ -3517,8 +3517,7 @@
         "stackList.table.createdAt",
         "stackList.table.stackName",
         "stackList.table.status",
-        "stackList.title",
-        "stackList.toast.upgradeInProgress"
+        "stackList.title"
       ],
       "fallbacks": [
         "All Clusters",
@@ -3559,8 +3558,7 @@
         "Stack restored.",
         "Status",
         "Terminating",
-        "Upload a stack export file to review and apply it.",
-        "개발중인 기능입니다."
+        "Upload a stack export file to review and apply it."
       ],
       "labels": [
         "Argo CD",
@@ -3582,10 +3580,7 @@
       ],
       "jsxText": [
         "&nbsp;🕐",
-        "3 updates available",
         "Available Version Upgrades",
-        "Changelog",
-        "Current:",
         "History",
         "Loading history...",
         "No history found for this stack yet.",
@@ -3593,11 +3588,8 @@
         "Open Logs",
         "Reason:",
         "Retry History",
-        "Up to date",
         "Upgrade",
-        "v",
-        "→ Latest:",
-        "✓ Up to date"
+        "v"
       ],
       "testIds": []
     },

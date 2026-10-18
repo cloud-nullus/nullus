@@ -79,7 +79,10 @@ func (h *HelmInstaller) ListReleases(ctx context.Context, namespace string) ([]p
 	}
 
 	client := action.NewList(cfg)
+	// All 은 SetStateMask() 를 불러야 마스크에 반영된다. 빠뜨리면 기본값(deployed | failed)이
+	// 남아 업그레이드 · 설치 중(pending-*)인 릴리스가 목록에서 사라진다.
 	client.All = true
+	client.SetStateMask()
 	releases, err := client.Run()
 	if err != nil {
 		return nil, fmt.Errorf("list releases in %s: %w", namespace, err)

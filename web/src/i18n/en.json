@@ -1023,9 +1023,6 @@
     }
   },
   "stackList": {
-    "toast": {
-      "upgradeInProgress": "This feature is under development."
-    },
     "title": "Stack List",
     "description": "Deployed DevSecOps stack list",
     "retry": {
@@ -1175,6 +1172,57 @@
         "status": "Status"
       },
       "summaryScanner": "Scanner {{scanner}} · Vulnerability DB {{db}}"
+    },
+    "upgrade": {
+      "title": "Available Version Upgrades",
+      "available": "{{count}} available",
+      "loading": "Checking installed releases…",
+      "loadError": "Could not inspect installed releases.",
+      "empty": "No upgradable release managed by Nullus was found.",
+      "current": "Current",
+      "noVerifiedPath": "No verified upgrade path",
+      "noVerifiedPathHint": "Only paths rehearsed on a real cluster are offered.",
+      "risk": {
+        "low": "Low risk",
+        "medium": "Medium risk",
+        "high": "High risk"
+      },
+      "releaseNotes": "Release notes",
+      "action": "Upgrade",
+      "dialogTitle": "Upgrade {{tool}}",
+      "disruption": "Expected disruption",
+      "preflightTitle": "Preflight checks",
+      "preflightRunning": "Running preflight checks…",
+      "preflightFailed": "Preflight could not run.",
+      "reasonLabel": "Reason",
+      "reasonPlaceholder": "Why are you upgrading? It is recorded in the audit log.",
+      "start": "Start upgrade",
+      "started": "Upgrade started. It continues on the server even if you leave this page.",
+      "failed": "Could not start the upgrade.",
+      "checks": {
+        "stack_state": "Stack state",
+        "active_run": "Other upgrades",
+        "release_status": "Helm release",
+        "version_path": "Version path",
+        "backup": "Backup",
+        "helm_dry_run": "Helm dry-run"
+      },
+      "steps": {
+        "preflight": "preflight",
+        "helm_upgrade": "applying the Helm upgrade",
+        "health_check": "verifying health",
+        "rollback": "rolling back",
+        "complete": "complete"
+      },
+      "run": {
+        "upgrading": "Upgrading — {{step}}",
+        "rolling_back": "Rolling back — {{step}}",
+        "failed": "Upgrade did not apply — the release is unchanged",
+        "succeeded": "Upgraded {{from}} → {{to}}",
+        "rolled_back": "Failed and rolled back to {{from}}",
+        "manual_intervention_required": "Manual intervention required",
+        "blocked": "Last attempt was blocked by preflight"
+      }
     }
   },
   "deploy": {

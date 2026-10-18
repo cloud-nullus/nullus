@@ -756,6 +756,30 @@ func main() {
 		slog.Error("백업 모듈 조립 실패", "error", err)
 		os.Exit(1)
 	}
+
+	// 설치된 OSS 업그레이드. 사전 점검이 백업 모듈에 "마지막 복구 가능 백업" 을 묻기 때문에 백업
+	// 모듈 뒤에서 조립한다. 백업이 꺼져 있으면(nil) 백업이 필요한 번들은 막힌다 — 안전 조건을
+	// 완화하지 않는다(설계 §8).
+	var upgradeBackups stackport.UpgradeBackupLookup
+	if backupModule != nil {
+		upgradeBackups = backupModule.Repo
+	}
+	// 업그레이드는 요청 밖에서 이어진다. 그 수명은 API 프로세스에 묶는다 — 종료 때 취소해 Helm 이
+	// --atomic 으로 스스로 되돌리게 한다(아래 종료 처리).
+	upgradeCtx, stopUpgrades := context.WithCancel(context.Background())
+	defer stopUpgrades()
+	upgradeUC := stackuc.NewUpgradeStack(stackuc.UpgradeStackDeps{
+		Context:     upgradeCtx,
+		Stacks:      pgStackRepo,
+		Runs:        stackrepo.NewPostgresUpgradeRepository(pool),
+		Kubeconfigs: kubeconfigProvider,
+		Releases:    func(kubeconfig []byte) stackport.HelmReleaseManager { return stackhelm.NewHelmInstaller(kubeconfig) },
+		Executors:   func(kubeconfig []byte) stackport.ChartUpgradeExecutor { return stackhelm.NewHelmInstaller(kubeconfig) },
+		Backups:     upgradeBackups,
+		Health:      stackhelm.NewArgoCDUpgradeHealthVerifier(),
+	})
+	upgradeHandler := stackhandler.NewUpgradeHandler(upgradeUC, auditLogger)
+	upgradeHandler.RegisterRoutes(stacks)
 	if backupModule != nil {
 		backupHandler := backuphandler.NewBackupHandler(
 			backupModule, backupModule.Verify, backupModule.Repo, cfg.Platform.Namespace,
@@ -856,6 +880,14 @@ func main() {
 
 	if err := e.Shutdown(ctx); err != nil {
 		slog.Error("server shutdown error", "error", err)
+	}
+	// 진행 중인 업그레이드를 취소하고 잠시 기다린다. 기다리는 사이 끝나지 않으면 실행은 박동이 끊겨
+	// 5분 뒤 수동 개입 필요로 닫힌다(domain.UpgradeHeartbeatTimeout).
+	stopUpgrades()
+	upgradeWait, cancelUpgradeWait := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancelUpgradeWait()
+	if err := upgradeUC.Wait(upgradeWait); err != nil {
+		slog.Warn("upgrade jobs still running at shutdown", "error", err)
 	}
 	slog.Info("server stopped")
 }
