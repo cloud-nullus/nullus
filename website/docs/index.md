@@ -54,15 +54,21 @@ graph LR
 | ⑤ 파이프라인을 만든다 | `/cicd/create` | [CI/CD 목록](features/cicd/list.md) |
 | ⑥ 상태를 본다 | `/observability/monitoring` | [모니터링 대시보드](features/observability/monitoring.md) |
 
-## 이 문서를 믿어도 되는 이유
+## 출처
 
-여기 적힌 화면 경로·권한·버튼·API 는 **기획 문서가 아니라 저장소의 코드에서**
-뽑았습니다. 화면 목록은 `web/src/app/routes.tsx` 와
-`web/src/components/layout/nav-model.tsx`, 화면 이름은 `web/src/i18n/ko.json`,
-API 경로는 Go 라우터 등록부가 출처입니다. 코드와 어긋나는 서술을 찾으면
-[이슈로 알려 주세요](https://github.com/cloud-nullus/nullus/issues).
+화면 경로·권한·버튼·API 는 저장소의 코드에서 뽑았습니다 — 화면 목록은
+`web/src/app/routes.tsx` 와 `web/src/components/layout/nav-model.tsx`, 화면 이름은
+`web/src/i18n/ko.json`, API 경로는 Go 라우터 등록부입니다. 어느 페이지에서나 우측
+상단 연필 아이콘으로 그 문서의 원본을 열 수 있습니다.
 
-!!! warning "구현 범위"
-    스택 자동화는 **GitLab 기반 흐름을 중심으로** 구현돼 있습니다. GitHub 호환은
-    Phase 2 과제이고, CI/CD 영역은 안정화를 계속 진행하고 있습니다. 아직 동작하지
-    않거나 화면에 노출되지 않은 기능은 각 문서에 그렇게 적어 두었습니다.
+틀린 곳을 찾으면 [이슈로 알려 주세요](https://github.com/cloud-nullus/nullus/issues).
+
+## 구현 범위
+
+스택 템플릿은 11개이고 세 조합을 지원합니다 — **GitLab**(All-in-One · Argo CD ·
+Harbor · Nexus · SonarQube · OTel), **GitHub + Argo CD**(저장소·Actions·GHCR 을
+외부 서비스로 쓰고 클러스터에는 Argo CD 와 모니터링만 설치), **Gitea + Jenkins +
+Argo CD**(Lite 포함). 가장 많이 검증된 경로는 GitLab 이고, CI/CD 영역은 안정화를
+계속 진행하고 있습니다.
+
+아직 동작하지 않거나 화면에 노출되지 않은 기능은 각 페이지에 적어 두었습니다.

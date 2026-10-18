@@ -18,7 +18,7 @@
 
 ## 이 문서의 출처
 
-이 사이트의 내용은 기획 문서가 아니라 **저장소의 코드**에서 뽑았습니다.
+이 사이트의 내용은 **저장소의 코드**에서 뽑았습니다.
 
 | 무엇 | 출처 |
 |------|------|
@@ -31,8 +31,4 @@
 | 기본 데이터 | `db/migrations/` |
 | 버전 | `go.mod`, `web/package.json`, `.github/workflows/`, `Dockerfile` |
 
-문서 안의 "⚠️"·"🚫" 표시는 **코드가 기획 문서나 화면 문구와 어긋나는 지점**을
-가리킵니다. 그런 경우 이 사이트는 **코드 쪽을 적었습니다.**
-
-코드와 다른 서술을 찾으면
-[이슈로 알려 주세요](https://github.com/cloud-nullus/nullus/issues).
+틀린 곳을 찾으면 [이슈로 알려 주세요](https://github.com/cloud-nullus/nullus/issues).
