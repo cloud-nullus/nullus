@@ -59,11 +59,15 @@ API 는 그룹 단위로 역할을 검사합니다. **여기가 진짜 경계입
 | 관리 | `/api/v1/admin/**` | **admin 만** |
 | 스택 | `/api/v1/stacks/**` | admin · devops |
 | CI/CD | `/api/v1/cicd/**` | admin · devops · developer |
+| 골든패스 쓰기 | `POST`·`PUT`·`DELETE /api/v1/cicd/golden-paths` | admin · devops |
 | 관측성 | `/api/v1/observability/**` | **역할 검사 없음** (인증만) |
 | 로그인 | `POST /api/v1/auth/login` | 인증 전 |
 
 역할 검사는 **계층이 아니라 명단**입니다 — admin 도 명단에 적혀 있어야
 통과합니다.
+
+골든패스만 그룹보다 좁습니다. 조직 전체가 고르는 설치 조합이라 읽기는 CI/CD
+그룹 그대로 열어 두고, 바꾸는 쪽은 admin·devops 로 좁혀 두었습니다.
 
 !!! danger "관측성 그룹은 역할을 보지 않습니다"
     알림 규칙 생성·수정·삭제까지 **인증한 모든 역할**이 호출할 수 있습니다.
