@@ -12,6 +12,9 @@
     없습니다. 순서 없이 눌러 다니는 **탭 10개**이고 진행 표시(스테퍼)도
     없습니다. 아무 탭에서나 **배포**를 누를 수 있습니다.
 
+![탭으로 구성을 채우는 설치 화면](../../assets/screens/stack-install-light.png#only-light)
+![탭으로 구성을 채우는 설치 화면](../../assets/screens/stack-install-dark.png#only-dark)
+
 ## 탭이 아니라 먼저 채우는 것 — 머리 카드
 
 탭 위에 항상 붙어 있는 카드입니다. 여기가 실제 필수 입력입니다.

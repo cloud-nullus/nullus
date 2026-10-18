@@ -11,6 +11,9 @@
     사이드바 라벨은 "OSS 기본 리소스" 인데, 화면 제목·브레드크럼·컬럼 머리글·버튼은
     `OSS Default Resource` 처럼 영문이 박혀 있습니다.
 
+![도구별 CPU·메모리 기본값](../../assets/screens/stack-oss-defaults-light.png#only-light)
+![도구별 CPU·메모리 기본값](../../assets/screens/stack-oss-defaults-dark.png#only-dark)
+
 ## 쓰는 법
 
 1. `Search by category / tool / name...` 으로 도구를 찾습니다.

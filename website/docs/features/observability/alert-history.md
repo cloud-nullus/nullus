@@ -9,6 +9,9 @@
 스택마다 Prometheus 가 기본 규칙으로 평가한 결과이고 발생·해제는 알림 채널로도
 갑니다.
 
+![스택 Prometheus 가 올린 경보 이력](../../assets/screens/alert-history-light.png#only-light)
+![스택 Prometheus 가 올린 경보 이력](../../assets/screens/alert-history-dark.png#only-dark)
+
 ## 쓰는 법
 
 1. 위쪽 필터에서 클러스터·스택을 좁힙니다(선택).

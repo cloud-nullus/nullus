@@ -6,6 +6,9 @@
 
 검증된 OSS 조합을 카드로 늘어놓고, 하나를 골라 설치로 들어가는 화면입니다.
 
+![검증된 조합을 카드로 고르는 스택 템플릿 화면](../../assets/screens/stack-templates-light.png#only-light)
+![검증된 조합을 카드로 고르는 스택 템플릿 화면](../../assets/screens/stack-templates-dark.png#only-dark)
+
 ## 쓰는 법
 
 1. 카드를 훑어보거나 `템플릿 검색...` 으로 좁힙니다.

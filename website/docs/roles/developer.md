@@ -8,6 +8,9 @@
 | CI/CD | CI/CD 목록 · CI/CD 이력 |
 | 관측성 | 모니터링 대시보드 · 알림 이력 |
 
+![developer 로 로그인하면 바로 열리는 앱 배포 화면. 사이드바 항목이 4개다](../assets/screens/app-deploy-light.png#only-light)
+![developer 로 로그인하면 바로 열리는 앱 배포 화면. 사이드바 항목이 4개다](../assets/screens/app-deploy-dark.png#only-dark)
+
 ## 하는 일
 
 1. **[앱 배포](../features/cicd/app-deploy.md)** 에서 앱 이름·저장소·클러스터·

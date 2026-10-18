@@ -20,7 +20,8 @@
     "e2e:report": "playwright show-report",
     "responsive:audit": "node scripts/responsive-audit.mjs",
     "responsive:audit:check": "node scripts/responsive-audit.mjs --check",
-    "e2e:shots": "playwright test --config=playwright.shots.config.ts"
+    "e2e:shots": "playwright test --config=playwright.shots.config.ts",
+    "shots:docs": "playwright test --config=playwright.shots.config.ts e2e/shots/docs-shots.spec.ts"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

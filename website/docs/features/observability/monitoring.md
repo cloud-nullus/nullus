@@ -8,6 +8,9 @@
 클러스터·스택·앱의 상태를 한 화면에서 봅니다. 먼저 **클러스터나 스택을 고르면**
 그에 맞는 탭이 열립니다.
 
+![스택을 고른 모니터링 대시보드](../../assets/screens/monitoring-light.png#only-light)
+![스택을 고른 모니터링 대시보드](../../assets/screens/monitoring-dark.png#only-dark)
+
 ## 쓰는 법
 
 1. 화면 맨 위 **클러스터** 또는 **스택** 드롭다운에서 볼 대상을 고릅니다. 아무것도

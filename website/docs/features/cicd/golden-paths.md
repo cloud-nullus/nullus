@@ -11,6 +11,9 @@
     사이드바 라벨은 "골든패스" 인데 화면 제목은 `CI/CD Golden Path` 로 박혀
     있습니다.
 
+![도구 조합이 정해진 골든패스 카드](../../assets/screens/cicd-golden-paths-light.png#only-light)
+![도구 조합이 정해진 골든패스 카드](../../assets/screens/cicd-golden-paths-dark.png#only-dark)
+
 ## 쓰는 법
 
 1. 카드를 훑거나 검색으로 좁힙니다.

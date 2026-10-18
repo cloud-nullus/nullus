@@ -9,6 +9,9 @@
     사이드바 라벨은 "토큰 관리" 인데 화면 제목은 `OpenBao Token Management`
     입니다.
 
+![토큰 소스와 회전 상태](../../assets/screens/admin-token-management-light.png#only-light)
+![토큰 소스와 회전 상태](../../assets/screens/admin-token-management-dark.png#only-dark)
+
 ## 토큰 출처란
 
 플랫폼이 사용자를 대신해 관리하는 비밀 하나를 가리키는 행입니다.

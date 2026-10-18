@@ -6,6 +6,9 @@
 
 파이프라인 기본 템플릿을 고르는 화면입니다.
 
+![파이프라인 템플릿 목록](../../assets/screens/cicd-templates-light.png#only-light)
+![파이프라인 템플릿 목록](../../assets/screens/cicd-templates-dark.png#only-dark)
+
 ## 쓰는 법
 
 1. 카드를 훑거나 검색으로 좁힙니다(이름·설명 대상).

@@ -15,6 +15,9 @@
     합니다. 2·3 은 같은 영역을 공유하고, **4(테스트)와 5(보안)는 아예 렌더되지
     않습니다** — 해당 기능이 코드에서 영구 비활성이기 때문입니다.
 
+![developer 로 로그인했을 때의 앱 배포 화면 — 사이드바 항목이 4개다](../../assets/screens/app-deploy-light.png#only-light)
+![developer 로 로그인했을 때의 앱 배포 화면 — 사이드바 항목이 4개다](../../assets/screens/app-deploy-dark.png#only-dark)
+
 ## 채우는 것
 
 ### 기본 정보

@@ -21,6 +21,9 @@ hide:
 
 </div>
 
+![스택 템플릿 화면 — 검증된 도구 조합을 카드로 고른다](assets/screens/stack-templates-light.png#only-light)
+![스택 템플릿 화면 — 검증된 도구 조합을 카드로 고른다](assets/screens/stack-templates-dark.png#only-dark)
+
 ## 무엇을 해결하나
 
 여러 프로젝트가 동시에 돌아가면 프로젝트마다 Kubernetes 클러스터에 파이프라인을
