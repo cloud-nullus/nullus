@@ -21,6 +21,20 @@ Nullus Platform — Kubernetes 기반 DevSecOps 자동화 오픈소스 플랫폼
   `https://cloud-nullus.github.io/nullus/` 의 문서 사이트(`website/`)가 코드 기준으로
   적고 있다 — 둘이 다르면 **코드가 기준**이다
 
+### 문서 사이트는 한국어·영어 두 벌이다
+
+`website/docs/` 의 페이지는 한국어 `X.md` 가 원본이고 영어판 `X.en.md` 가 같은 자리에 있다
+(mkdocs-static-i18n, 영어는 `/en/` 아래). 문서를 새로 쓰거나 고칠 때는 **영어판을 기본으로 함께 쓴다.**
+
+- 한국어를 고치는 같은 변경에서 영어판도 고친다. `website/check_i18n.py` 가 짝 없는 페이지와
+  제목 구조·그림 수가 어긋난 페이지를 CI 에서 막는다 — 문장만 고친 차이는 못 잡으니 직접 맞춘다
+- 영어판의 화면 문구는 `web/src/i18n/en.json` 의 실제 영어 UI 문구를 인용한다(앱 기본 언어가 영어다)
+- 페이지 링크는 한국어 파일명(`list.md`)으로 건다 — 플러그인이 영어판으로 바꾼다. 제목 앵커는
+  영어 제목의 슬러그를 쓴다(`mkdocs build --strict` 가 깨진 앵커를 잡는다)
+- nav 에 한국어 제목을 더하면 `website/mkdocs.yml` 의 `nav_translations` 에도 더한다
+- 화면 캡처는 `npm run shots:docs`(web)가 `*.png` 와 `*.en.png` 를 함께 찍는다. 캡처 fixture 에
+  한국어 문자열을 더하면 `web/e2e/shots/fixtures-en.ts` 에 영어를 더한다(빠지면 캡처가 실패한다)
+
 ---
 
 ## Architecture Principles

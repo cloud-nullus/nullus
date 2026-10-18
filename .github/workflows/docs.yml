@@ -35,6 +35,9 @@ jobs:
       - run: pip install -r website/requirements.txt
       # docs/ 에 단독으로 있는 HTML 가이드를 사이트 트리로 가져온다.
       - run: ./website/stage.sh
+      # 한국어(원본)와 영어판이 짝을 이루는지 본다. i18n 플러그인은 영어판이
+      # 없으면 한국어로 대신 보여 줘서 빌드만으로는 빠진 번역이 드러나지 않는다.
+      - run: python3 website/check_i18n.py
       # --strict: nav 에 적어 둔 문서가 없거나 내부 링크가 깨지면 빌드를 깬다.
       # 문서 사이트는 링크가 끊기면 쓸 수 없어서 경고로 두지 않는다.
       - run: mkdocs build --strict

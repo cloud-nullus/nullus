@@ -88,6 +88,87 @@ plugins:
   - search:
       lang: en
       separator: '[\s\-\.\_/]+'
+  # 영어판은 같은 자리에 `.en.md` 로 둔다(`index.md` ↔ `index.en.md`). 한국어가
+  # 원본이라 루트(/)에 그대로 두고 영어는 /en/ 아래에 짓는다 — 지금까지 나간
+  # 링크가 그대로 산다. 그림도 같은 규칙이라 `home-dark.en.png` 가 있으면 영어판은
+  # 본문을 고치지 않아도 그쪽을 쓴다.
+  #
+  # fallback_to_default 를 끄지 않는 이유: 끄면 영어판이 빠진 페이지가 nav 에서
+  # 소리 없이 사라진다. 짝이 맞는지는 check-i18n.sh 가 CI 에서 따로 막는다.
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      # 켜 두면 검색 언어에 ko 를 더한다. 위 search 설정(lang: en)을 그대로 쓴다 —
+      # 영어판은 그대로 검색되고, 한국어 검색 동작은 지금과 같다.
+      reconfigure_search: false
+      languages:
+        - locale: ko
+          name: 한국어
+          default: true
+          build: true
+        - locale: en
+          name: English
+          build: true
+          site_name: Nullus Docs
+          site_description: Open-source platform that installs a verified DevSecOps stack on Kubernetes without writing code
+          copyright: Open source, released under the Apache License 2.0.
+          theme:
+            palette:
+              - toggle:
+                  name: Switch to light mode
+              - toggle:
+                  name: Switch to dark mode
+          extra:
+            social:
+              - icon: fontawesome/brands/github
+                link: https://github.com/cloud-nullus/nullus
+                name: GitHub repository
+              - icon: fontawesome/brands/youtube
+                link: https://www.youtube.com/watch?v=VrTqBKInlNw
+                name: Demo video
+          # nav 의 제목은 한국어로 적혀 있다. 영어판은 이 표로 바꾼다 — nav 에
+          # 제목을 더하면 여기에도 더한다(check-i18n.sh 가 빠진 것을 잡는다).
+          nav_translations:
+            홈: Home
+            시작하기: Getting started
+            준비물: Prerequisites
+            로컬에서 띄우기: Run locally
+            처음부터 끝까지 (E2E): End to end (E2E)
+            기능: Features
+            데브섹옵스 스택: DevSecOps Stack
+            스택 템플릿: Stack Template
+            스택 설치: Stack Install
+            스택 목록: Stack List
+            스택 이력: Stack History
+            스택 버전: Stack Version
+            OSS 기본 리소스: OSS Default Resource
+            CI/CD 템플릿: CI/CD Template
+            골든패스: Golden Paths
+            CI/CD 목록: CI/CD List
+            CI/CD 이력: CI/CD History
+            앱 배포: App Deploy
+            관측성: Observability
+            모니터링 대시보드: Monitoring Dashboard
+            알림 이력: Alert History
+            관리: Admin
+            조직: Organization
+            사용자 관리: User Management
+            클러스터 관리: Cluster Management
+            토큰 관리: Token Management
+            알려진 이슈: Known Issues
+            백업·복구: Backup & Restore
+            알림 채널: Notification Channels
+            역할별 사용법: By role
+            참고: Reference
+            권한 표: Permissions
+            환경 변수: Environment variables
+            기여하기: Contributing
+
+# 번역에서 가장 쉽게 깨지는 것이 다른 페이지의 제목 앵커다(영어 제목은 슬러그가
+# 다르다). 기본값(info)으로는 --strict 가 못 잡아 경고로 올린다.
+validation:
+  anchors: warn
 
 extra:
   social:

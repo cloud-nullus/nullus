@@ -33,9 +33,10 @@ DevOps 엔지니어가 **검증된 CI/CD 도구 조합을 고르고**, 웹 UI �
 
 ## 구현 범위를 먼저 알아 두세요
 
-!!! warning "GitLab 중심으로 구현돼 있습니다"
-    스택 자동화는 GitLab 기반 흐름이 기준입니다. GitHub 호환은 다음 단계
-    과제이고, CI/CD 영역은 안정화를 계속 진행하고 있습니다.
+!!! warning "GitLab 경로가 가장 많이 검증돼 있습니다"
+    스택 자동화는 GitLab 기반 흐름이 기준입니다. GitHub + Argo CD, Gitea +
+    Jenkins + Argo CD 조합도 템플릿으로 있지만 검증은 GitLab 쪽이 가장 많고,
+    CI/CD 영역은 안정화를 계속 진행하고 있습니다.
 
 !!! warning "기본 인증 모드는 운영에 쓸 수 없습니다"
     설정하지 않으면 인증 모드가 `session` 인데, 이 모드는 **서버가 요청 헤더의
