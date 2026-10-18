@@ -147,105 +147,74 @@ servers:
 | `PIPELINE_DEPLOY_FAILED` | 500 | 파이프라인 배포 실패 |
 | `RATE_LIMIT_EXCEEDED` | 429 | 요청 제한 초과 |
 
-> **구현 현황 (2026-10-18) — 2.3~2.6 은 설계안이고 구현과 다르다.**
->
-> - **응답 봉투가 없다.** 목록은 `{"items": [...], "total": n}`, 단건은 리소스를
->   그대로 돌려준다. 아래 `{"data": ..., "pagination": ...}` 모양을 쓰는 엔드포인트는
->   없다. 에러 응답(2.2)은 설계대로다.
-> - **`page`·`page_size`·`sort` 를 읽는 엔드포인트가 하나도 없다.** `GET /api/v1/stacks`
->   와 `GET /api/v1/cicd/pipelines` 는 질의 문자열을 **전부 무시**하고 조직의 전체
->   목록을 돌려준다. 걸러내기와 정렬은 지금 화면이 받아서 한다.
-> - 페이지를 나누는 것은 `limit`·`offset` 을 읽는 다섯 곳뿐이다 — 취약점 목록
->   (`/stacks/:id/image-scans/.../vulnerabilities`, `/cicd/.../vulnerabilities`),
->   감사 로그, 백업 이력, 스택 경보, 알림 발송 이력.
-> - 그러므로 2.5 의 `?status=connected&type=pipeline` 같은 예시도 지금은 동작하지
->   않는다. 실제로 읽는 질의 파라미터는 `limit` · `offset` · `q` · `severity` ·
->   `fixable` · `class` · `scope` 등 엔드포인트마다 다르다.
->
-> **경로도 여러 곳이 다르다.** 아래는 코드의 라우터 등록부와 대조해 확인한 것이다.
->
-> | 이 문서가 적은 것 | 실제 |
-> |---|---|
-> | `PUT /api/v1/stacks/:id` | 그런 라우트 없음 — `PATCH …/{id}/tools` 와 `POST …/{id}/config` |
-> | `GET …/history/:versionId/diff` | `GET …/history/diff?versionA=&versionB=` |
-> | `POST …/rollback/:versionId` | `POST …/rollback`, 본문에 `versionId` 필수 |
-> | `/api/v1/deployments/stacks/…` | 그런 접두사 없음 — `/api/v1/stacks/{id}/deploy` 등 |
-> | `/api/v1/pipelines/…` | `/api/v1/cicd/…` |
-> | `/api/v1/monitoring/…` | `/api/v1/observability/…` |
-> | `/api/v1/clusters/…` · `PUT /clusters/:id` | `/api/v1/admin/clusters/…`, 수정은 **PATCH** |
-> | `PUT /orgs/:orgId/status` | 없음 — 조직 상태는 저장되지 않는다 |
-> | 스택 라우트 40개 | 이미지 스캔 관련 5개가 목록에서 빠져 있다 |
->
-> 지금 떠 있는 경로는 문서 사이트(`https://cloud-nullus.github.io/nullus/`)의
-> **참고 → API** 가 코드 기준으로 적는다.
-
 ### 2.3 표준 성공 응답 형식
 
-#### 단일 리소스 응답
+응답 봉투를 쓰지 않는다. 단건은 리소스를 그대로 돌려준다.
 
 ```json
 {
-  "data": {
-    "id": "org_a1b2c3d4",
-    "name": "Nullus 팀",
-    "slug": "nullus-team",
-    "status": "active",
-    "created_at": "2026-03-14T09:00:00Z"
-  }
+  "id": "org_a1b2c3d4",
+  "name": "Nullus 팀",
+  "slug": "nullus-team",
+  "created_at": "2026-03-14T09:00:00Z"
 }
 ```
 
-#### 목록 응답 (페이지네이션 포함)
+목록은 `items` 와 `total` 두 키다.
 
 ```json
 {
-  "data": [
+  "items": [
     { "id": "cls_001", "name": "production-gke" },
     { "id": "cls_002", "name": "staging-eks" }
   ],
-  "pagination": {
-    "page": 1,
-    "page_size": 20,
-    "total_items": 42,
-    "total_pages": 3,
-    "has_next": true,
-    "has_prev": false
-  }
+  "total": 2
 }
 ```
 
+`total` 은 **이번 응답에 담긴 개수**다. 조직의 목록을 전부 돌려주므로 전체 개수와
+같고, 페이지를 나누지 않는다.
+
 ### 2.4 페이지네이션
 
-모든 목록 API는 커서 기반 또는 오프셋 기반 페이지네이션을 지원합니다. Phase 1에서는 오프셋 기반을 사용합니다.
+대부분의 목록은 **페이지를 나누지 않는다.** `page` · `page_size` · `sort` 를 읽는
+엔드포인트는 없다. 많은 양을 돌려주는 다섯 곳만 `limit` · `offset` 을 받는다.
 
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `page` | `integer` | `1` | 페이지 번호 (1부터 시작) |
-| `page_size` | `integer` | `20` | 페이지당 항목 수 (최대 100) |
+| 엔드포인트 | 기본 `limit` |
+|---|---|
+| `GET /stacks/:id/image-scans/:scanId/vulnerabilities` | 취약점 목록 |
+| `GET /cicd/pipelines/:id/image-scans/:scanId/vulnerabilities` | 〃 |
+| `GET /admin/audit-logs` | 감사 로그 |
+| `GET /admin/backups` | 백업 이력 |
+| `GET /observability/stack-alerts` · `/admin/notifications/history` | 경보 · 발송 이력 |
 
 ```
-GET /api/v1/admin/clusters?page=2&page_size=10
+GET /api/v1/admin/audit-logs?limit=50&offset=100
 ```
+
+목록이 커져 페이지를 나눠야 하면 `limit`·`offset` 을 쓴다 — `page`·`page_size` 를
+새로 들이지 않는다. 두 가지 규약이 섞이면 화면이 어느 쪽인지 매번 확인해야 한다.
 
 ### 2.5 필터링
 
-쿼리 파라미터로 필터링합니다. 리소스별로 지원하는 필터가 다릅니다.
+서버가 거르는 것은 엔드포인트마다 다르고, 목록 전체에 통하는 공통 필터는 없다.
+`GET /api/v1/stacks` 와 `GET /api/v1/cicd/pipelines` 는 **질의 문자열을 읽지 않고**
+조직의 전체 목록을 돌려준다 — 화면의 검색·상태 필터는 받은 목록을 브라우저에서
+거른다.
+
+서버가 실제로 읽는 질의 파라미터는 이런 것들이다.
 
 ```
-GET /api/v1/admin/clusters?status=connected&type=pipeline
-GET /api/v1/cicd/pipelines?status=running&template_id=web-backend-v1
-GET /api/v1/cicd/deployments?status=success
+GET /api/v1/stacks/:id/image-scans/:scanId/vulnerabilities?severity=CRITICAL&fixable=true&q=openssl
+GET /api/v1/admin/clusters/:id/namespaces
+GET /api/v1/stacks/:id/history/diff?versionA=3&versionB=5
 ```
 
 ### 2.6 정렬
 
-`sort` 파라미터로 정렬합니다. `-` 접두사는 내림차순을 의미합니다.
-
-```
-GET /api/v1/admin/clusters?sort=-created_at
-GET /api/v1/stacks?sort=name
-GET /api/v1/cicd/deployments?sort=-deployed_at
-```
+정렬 파라미터가 없다. 목록의 순서는 서버가 정한다 — 대체로 `created_at DESC` 이고,
+골든패스처럼 보여 줄 순서가 정해진 것은 전용 열(`sort_order`)로 고정한다. 화면에서
+열 머리를 눌러 바꾸는 정렬은 브라우저가 한다.
 
 ### 2.7 공통 요청 헤더
 
@@ -1265,15 +1234,15 @@ DevSecOps Stack 설정(노코드 UI 5단계 워크플로우) 관리를 담당합
 
 ---
 
-#### PUT /api/v1/stacks/:id
+#### POST /api/v1/stacks/:stackId/config
 
-스택 설정 수정
+스택 설정 저장. 도구를 더하는 것은 `PATCH /api/v1/stacks/:stackId/tools` 다.
 
 - **릴리스**: Alpha
 - **인증**: 필요
 - **권한**: Admin, DevOps Engineer
 
-**요청**: 변경할 필드만 포함 (PATCH 시맨틱)
+**요청**: 변경할 필드만 포함
 
 ```json
 {
@@ -1330,9 +1299,9 @@ DevSecOps Stack 설정(노코드 UI 5단계 워크플로우) 관리를 담당합
 
 ---
 
-#### GET /api/v1/stacks/:id/history/:versionId/diff
+#### GET /api/v1/stacks/:stackId/history/diff?versionA=&versionB=
 
-특정 버전과 이전 버전 간 diff 조회
+두 버전 사이의 diff 조회. 비교할 두 버전을 질의 파라미터로 받는다(정수).
 
 - **릴리스**: v1
 - **인증**: 필요
@@ -1358,9 +1327,10 @@ DevSecOps Stack 설정(노코드 UI 5단계 워크플로우) 관리를 담당합
 
 ---
 
-#### POST /api/v1/stacks/:id/rollback/:versionId
+#### POST /api/v1/stacks/:stackId/rollback
 
-특정 버전으로 스택 설정 롤백
+특정 버전으로 스택 설정 롤백. 돌아갈 버전은 **본문의 `versionId`** 로 보낸다 —
+없으면 `400 ROLLBACK_REQUEST_INVALID` 다.
 
 - **릴리스**: v1
 - **인증**: 필요
@@ -1369,6 +1339,7 @@ DevSecOps Stack 설정(노코드 UI 5단계 워크플로우) 관리를 담당합
 **요청**:
 ```json
 {
+  "versionId": "ver_7",
   "reason": "v3 적용 후 Argo CD 동기화 오류 발생"
 }
 ```
@@ -3119,8 +3090,8 @@ components:
 | 24 | GET | `/api/v1/stacks/:id` | 스택 상세 | Alpha |
 | 25 | PUT | `/api/v1/stacks/:id` | 스택 수정 | Alpha |
 | 26 | GET | `/api/v1/stacks/:id/history` | 변경 이력 | v1 |
-| 27 | GET | `/api/v1/stacks/:id/history/:versionId/diff` | 버전 diff | v1 |
-| 28 | POST | `/api/v1/stacks/:id/rollback/:versionId` | 버전 롤백 | v1 |
+| 27 | GET | `/api/v1/stacks/:stackId/history/diff?versionA=&versionB=` | 버전 diff | v1 |
+| 28 | POST | `/api/v1/stacks/:stackId/rollback` (본문 `versionId`) | 버전 롤백 | v1 |
 | 29 | GET | `/api/v1/stacks/templates` | Golden Path 목록 | Alpha |
 | 30 | GET | `/api/v1/stacks/templates/:id` | Golden Path 상세 | Alpha |
 | 31 | GET | `/api/v1/stacks/compatibility` | 호환성 매트릭스 | Alpha |
