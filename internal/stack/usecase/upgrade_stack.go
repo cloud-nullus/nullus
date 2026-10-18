@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,11 +19,14 @@ import (
 var upgradeToolByRelease = map[string]string{"argo-cd": domain.UpgradeToolArgoCD}
 
 const (
-	// upgradeExecutionTimeout 은 백그라운드 실행 전체의 상한이다 — 업그레이드와 되돌리기가
-	// 각각 Helm 대기 시간을 다 쓸 수 있다.
-	upgradeExecutionTimeout = 2 * domain.UpgradeStepMaxDuration
+	// upgradeExecutionTimeout 은 백그라운드 실행 전체의 상한이다. Helm 호출 한 번이 훅 · 대기 ·
+	// --atomic 되돌리기로 각각 30분까지 쓸 수 있고, 그 뒤 명시적 되돌리기와 상태 검사 두 번이 온다.
+	upgradeExecutionTimeout = 3 * time.Hour
 	// upgradePersistTimeout 은 상태 저장 한 번의 상한이다. 실행 ctx 가 끝났어도 결과는 남긴다.
 	upgradePersistTimeout = 10 * time.Second
+	// upgradePersistAttempts 는 상태 저장의 시도 횟수다 — 끝 상태를 잃으면 성공한 실행이 박동
+	// 끊김으로 "중단" 이 된다.
+	upgradePersistAttempts = 3
 )
 
 type UpgradeExecutorFactory func(kubeconfig []byte) port.ChartUpgradeExecutor
@@ -41,12 +45,22 @@ type UpgradeStackDeps struct {
 	NewID        func() string
 	// Launch 는 실행을 요청 밖으로 넘긴다. 기본은 goroutine 이다.
 	Launch func(job func())
-	Logger *slog.Logger
+	// Context 는 API 프로세스의 수명이다. 종료 때 취소되면 Helm 이 --atomic 으로 스스로 되돌리기
+	// 시작하고, 실행은 사람에게 넘긴다. 요청 ctx 와는 묶지 않는다 — 화면을 닫아도 이어진다.
+	Context context.Context
+	// HeartbeatInterval 은 실행 중 박동 주기다(기본 1분). domain.UpgradeHeartbeatTimeout 보다 짧아야 한다.
+	HeartbeatInterval time.Duration
+	// RetryBackoff 는 상태 저장 재시도의 첫 대기다(기본 1초, 두 배씩).
+	RetryBackoff time.Duration
+	Logger       *slog.Logger
 }
 
 // UpgradeStack 은 검증된 번들로 설치된 OSS 를 올린다. 사전 점검은 요청 안에서, Helm 적용 ·
 // 상태 검사 · 되돌리기는 요청 밖에서 한다 — 화면을 닫아도 서버에서 끝난다.
-type UpgradeStack struct{ d UpgradeStackDeps }
+type UpgradeStack struct {
+	d    UpgradeStackDeps
+	jobs sync.WaitGroup
+}
 
 func NewUpgradeStack(d UpgradeStackDeps) *UpgradeStack {
 	if d.Now == nil {
@@ -61,10 +75,34 @@ func NewUpgradeStack(d UpgradeStackDeps) *UpgradeStack {
 	if d.BackupMaxAge <= 0 {
 		d.BackupMaxAge = 24 * time.Hour
 	}
+	if d.Context == nil {
+		d.Context = context.Background()
+	}
+	if d.HeartbeatInterval <= 0 {
+		d.HeartbeatInterval = time.Minute
+	}
+	if d.RetryBackoff <= 0 {
+		d.RetryBackoff = time.Second
+	}
 	if d.Logger == nil {
 		d.Logger = slog.Default()
 	}
 	return &UpgradeStack{d: d}
+}
+
+// Wait 는 백그라운드 실행이 끝나기를 ctx 가 끝날 때까지 기다린다 — API 종료 처리에서 부른다.
+func (uc *UpgradeStack) Wait(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		uc.jobs.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 type resolvedUpgrade struct {
@@ -237,11 +275,14 @@ func (uc *UpgradeStack) Start(ctx context.Context, in StartUpgradeInput) (*domai
 		return nil, domain.ErrUpgradeIdempotencyKeyRequired
 	}
 	// 재시도(같은 키)는 클러스터를 다시 보지 않고 처음 실행을 돌려준다(UPG-10).
+	if len(in.IdempotencyKey) > domain.MaxUpgradeIdempotencyKeyLength {
+		return nil, domain.ErrUpgradeIdempotencyKeyInvalid
+	}
 	if uc.d.Runs != nil {
 		if prior, err := uc.d.Runs.FindRunByIdempotencyKey(ctx, strings.TrimSpace(in.StackID), in.IdempotencyKey); err != nil {
 			return nil, err
 		} else if prior != nil {
-			return uc.closeIfStale(ctx, prior), nil
+			return uc.replay(ctx, prior, in.BundleID)
 		}
 	}
 	r, bundle, release, err := uc.resolveBundle(ctx, in.StackID, in.BundleID)
@@ -267,7 +308,7 @@ func (uc *UpgradeStack) Start(ctx context.Context, in StartUpgradeInput) (*domai
 			// 같은 키의 다른 요청이 먼저 저장했다. 그 실행이 답이다.
 			prior, findErr := uc.d.Runs.FindRunByIdempotencyKey(ctx, r.stack.ID, in.IdempotencyKey)
 			if findErr == nil && prior != nil {
-				return prior, nil
+				return uc.replay(ctx, prior, in.BundleID)
 			}
 		}
 		return nil, err
@@ -276,17 +317,65 @@ func (uc *UpgradeStack) Start(ctx context.Context, in StartUpgradeInput) (*domai
 		return run, nil
 	}
 
+	// 돌려준 실행은 응답이 직렬화하므로 백그라운드는 사본을 쓴다.
 	job := *run
-	bg := context.WithoutCancel(ctx)
+	uc.jobs.Add(1)
 	uc.d.Launch(func() {
-		execCtx, cancel := context.WithTimeout(bg, upgradeExecutionTimeout)
+		defer uc.jobs.Done()
+		execCtx, cancel := context.WithTimeout(uc.d.Context, upgradeExecutionTimeout)
 		defer cancel()
+		stopHeartbeat := uc.heartbeat(execCtx, job.ID)
+		defer stopHeartbeat()
 		uc.execute(execCtx, r, bundle, release, values, &job)
 	})
 	return run, nil
 }
 
+// replay 는 같은 키의 재시도에 처음 실행을 돌려준다. 다른 번들이면 재시도가 아니다.
+func (uc *UpgradeStack) replay(ctx context.Context, prior *domain.UpgradeRun, bundleID string) (*domain.UpgradeRun, error) {
+	if prior.BundleID != strings.TrimSpace(bundleID) {
+		return nil, domain.ErrUpgradeIdempotencyKeyReused
+	}
+	return uc.closeIfStale(ctx, prior), nil
+}
+
+// heartbeat 는 실행이 끝날 때까지 박동(updated_at)을 남긴다. 실행이 다른 곳에서 닫혔으면 멈춘다.
+func (uc *UpgradeStack) heartbeat(ctx context.Context, runID string) (stop func()) {
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(uc.d.HeartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), upgradePersistTimeout)
+				err := uc.d.Runs.Heartbeat(saveCtx, runID, uc.d.Now())
+				cancel()
+				if errors.Is(err, domain.ErrUpgradeRunClosed) {
+					return
+				}
+				if err != nil {
+					uc.d.Logger.Warn("upgrade heartbeat", "run_id", runID, "error", err)
+				}
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		wg.Wait()
+	}
+}
+
 // execute 는 Helm 적용 → 상태 검사 → (실패 시) 되돌리기 → 되돌린 상태 검사를 한다.
+// 실행이 다른 곳에서 닫혔으면(save 가 false) 거기서 멈춘다 — 닫힌 실행을 되살리거나 그 사이
+// 시작된 다른 작업 위로 되돌리지 않는다.
 func (uc *UpgradeStack) execute(ctx context.Context, r *resolvedUpgrade, bundle *domain.UpgradeBundle, release *port.ReleaseInfo, values map[string]any, run *domain.UpgradeRun) {
 	result, err := r.executor.UpgradeChart(ctx, chartUpgradeRequest(bundle, release, r.namespace, values, false))
 	if err != nil {
@@ -294,7 +383,9 @@ func (uc *UpgradeStack) execute(ctx context.Context, r *resolvedUpgrade, bundle 
 		return
 	}
 	run.EnterHealthCheck(result.Revision, uc.d.Now())
-	uc.persist(ctx, run)
+	if !uc.save(ctx, run) {
+		return
+	}
 	if result.Status != "deployed" {
 		uc.recover(ctx, r, bundle, release, run, fmt.Errorf("Helm 릴리스 상태가 %s 다", result.Status))
 		return
@@ -304,45 +395,79 @@ func (uc *UpgradeStack) execute(ctx context.Context, r *resolvedUpgrade, bundle 
 		return
 	}
 	run.Succeed(uc.d.Now())
-	uc.persist(ctx, run)
+	uc.save(ctx, run)
 }
 
-// recover 는 실패한 업그레이드를 직전 리비전으로 되돌리고, 출발 버전으로 살아 있는지 확인한다.
-// Helm --atomic 이 이미 되돌려 놓았으면 또 되돌리지 않는다. 어느 쪽이든 확인이 안 되면 사람에게 넘긴다.
+// recover 는 실패한 업그레이드를 릴리스의 지금 모양을 보고 처리한다. 이 실행이 만든 리비전일 때만
+// 직전 리비전으로 되돌린다 — 다른 작업(값 편집 · 복구)이 잡고 있는 릴리스를 되돌리면 그 작업을 지운다.
+// 되돌렸으면 출발 버전으로 같은 상태 검사를 한다. 확신할 수 없으면 사람에게 넘긴다.
 func (uc *UpgradeStack) recover(ctx context.Context, r *resolvedUpgrade, bundle *domain.UpgradeBundle, release *port.ReleaseInfo, run *domain.UpgradeRun, cause error) {
-	run.BeginRollback(cause, uc.d.Now())
-	uc.persist(ctx, run)
+	now := uc.d.Now
+	manual := func(reason string, args ...any) {
+		run.RequireManualIntervention(fmt.Errorf("%v — "+reason, append([]any{cause}, args...)...), now())
+		uc.save(ctx, run)
+	}
+	// API 종료 · 시간 초과. Helm --atomic 이 스스로 되돌리는 중일 수 있어 그 위에서 또 되돌리지 않는다.
+	if ctx.Err() != nil {
+		manual("API 종료 또는 시간 초과로 중단됐다. Helm --atomic 이 되돌렸는지 확인하라")
+		return
+	}
 	ns := releaseNamespace(release, r.namespace)
-
-	if !uc.restoredByAtomic(ctx, r, release, run) {
-		if err := r.executor.RollbackRelease(ctx, release.ReleaseName, ns, run.PreviousRevision); err != nil {
-			run.RequireManualIntervention(fmt.Errorf("되돌리기 실패: %w", err), uc.d.Now())
-			uc.persist(ctx, run)
+	current, err := uc.currentRelease(ctx, r, release.ReleaseName)
+	switch {
+	case err != nil:
+		manual("릴리스 상태를 확인하지 못해 되돌리지 않았다: %v", err)
+		return
+	case current.Status == "deployed" && current.ChartVersion == run.SourceChartVersion && current.Revision <= run.PreviousRevision:
+		// Helm 이 릴리스를 건드리기 전에 실패했다(차트 내려받기 실패 등) — 되돌릴 것이 없다.
+		run.Fail(cause, now())
+		uc.save(ctx, run)
+		return
+	case current.Status == "deployed" && current.ChartVersion == run.SourceChartVersion:
+		// --atomic 이 이미 출발 버전으로 되돌렸다. 살아 있는지만 본다.
+		run.BeginRollback(cause, now())
+		if !uc.save(ctx, run) {
 			return
 		}
+	case current.Revision > run.PreviousRevision && current.ChartVersion == run.TargetChartVersion &&
+		(current.Status == "deployed" || current.Status == "failed"):
+		// 이 실행이 만든 리비전이다.
+		run.BeginRollback(cause, now())
+		if !uc.save(ctx, run) {
+			return
+		}
+		if err := r.executor.RollbackRelease(ctx, release.ReleaseName, ns, run.PreviousRevision); err != nil {
+			run.RequireManualIntervention(fmt.Errorf("되돌리기 실패: %w", err), now())
+			uc.save(ctx, run)
+			return
+		}
+	default:
+		manual("릴리스가 예상 밖 상태라(%s, 리비전 %d, 차트 %s) 되돌리지 않았다. 다른 작업이 진행 중일 수 있다",
+			current.Status, current.Revision, current.ChartVersion)
+		return
 	}
 	source := *bundle
 	source.TargetChartVersion, source.TargetAppVersion = bundle.SourceChartVersion, bundle.SourceAppVersion
 	if err := uc.d.Health.Verify(ctx, r.kubeconfig, ns, source); err != nil {
-		run.RequireManualIntervention(fmt.Errorf("되돌린 뒤 상태 검사 실패: %w", err), uc.d.Now())
-		uc.persist(ctx, run)
+		run.RequireManualIntervention(fmt.Errorf("되돌린 뒤 상태 검사 실패: %w", err), now())
+		uc.save(ctx, run)
 		return
 	}
-	run.RolledBack(uc.d.Now())
-	uc.persist(ctx, run)
+	run.RolledBack(now())
+	uc.save(ctx, run)
 }
 
-func (uc *UpgradeStack) restoredByAtomic(ctx context.Context, r *resolvedUpgrade, release *port.ReleaseInfo, run *domain.UpgradeRun) bool {
+func (uc *UpgradeStack) currentRelease(ctx context.Context, r *resolvedUpgrade, name string) (*port.ReleaseInfo, error) {
 	releases, err := r.releases.ListReleases(ctx, r.namespace)
 	if err != nil {
-		return false
+		return nil, err
 	}
-	for _, rel := range releases {
-		if rel.ReleaseName == release.ReleaseName {
-			return rel.Status == "deployed" && rel.ChartVersion == run.SourceChartVersion
+	for i := range releases {
+		if releases[i].ReleaseName == name {
+			return &releases[i], nil
 		}
 	}
-	return false
+	return nil, fmt.Errorf("%w: %s", domain.ErrUpgradeReleaseNotFound, name)
 }
 
 // GetRun 은 실행 하나를 돌려준다. 오래 갱신이 없는 진행 중 실행은 중단으로 닫는다.
@@ -357,22 +482,50 @@ func (uc *UpgradeStack) GetRun(ctx context.Context, stackID, runID string) (*dom
 	return uc.closeIfStale(ctx, run), nil
 }
 
+// closeIfStale 은 박동이 끊긴 진행 중 실행을 중단으로 닫는다. 그 사이 박동이 들어와 닫지 못했으면
+// 지금 상태를 다시 읽어 돌려준다.
 func (uc *UpgradeStack) closeIfStale(ctx context.Context, run *domain.UpgradeRun) *domain.UpgradeRun {
-	if run == nil || !run.Stale(uc.d.Now()) {
+	now := uc.d.Now()
+	if run == nil || !run.Stale(now) {
 		return run
 	}
-	run.Interrupt(uc.d.Now())
-	uc.persist(ctx, run)
+	closed := *run
+	closed.Interrupt(now)
+	ok, err := uc.d.Runs.CloseStaleRun(ctx, &closed, now.Add(-domain.UpgradeHeartbeatTimeout))
+	if err != nil {
+		uc.d.Logger.Error("close stale upgrade run", "run_id", run.ID, "error", err)
+		return run
+	}
+	if ok {
+		return &closed
+	}
+	if fresh, err := uc.d.Runs.GetRun(ctx, run.StackID, run.ID); err == nil {
+		return fresh
+	}
 	return run
 }
 
-// persist 는 실행 ctx 가 끝났어도 상태를 남긴다. 실패는 로그만 — 실행 자체를 되돌릴 수는 없다.
-func (uc *UpgradeStack) persist(ctx context.Context, run *domain.UpgradeRun) {
-	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), upgradePersistTimeout)
-	defer cancel()
-	if err := uc.d.Runs.UpdateRun(saveCtx, run); err != nil {
-		uc.d.Logger.Error("persist upgrade run", "run_id", run.ID, "status", run.Status, "error", err)
+// save 는 실행 ctx 가 끝났어도 상태를 남긴다. 일시 오류는 다시 시도한다. 실행이 다른 곳에서
+// 닫혔으면 false — 호출자는 거기서 멈춘다.
+func (uc *UpgradeStack) save(ctx context.Context, run *domain.UpgradeRun) bool {
+	var err error
+	for attempt := 0; attempt < upgradePersistAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(uc.d.RetryBackoff << (attempt - 1))
+		}
+		saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), upgradePersistTimeout)
+		err = uc.d.Runs.UpdateRun(saveCtx, run)
+		cancel()
+		if err == nil {
+			return true
+		}
+		if errors.Is(err, domain.ErrUpgradeRunClosed) {
+			uc.d.Logger.Warn("upgrade run was closed elsewhere — stopping", "run_id", run.ID, "status", run.Status)
+			return false
+		}
 	}
+	uc.d.Logger.Error("persist upgrade run", "run_id", run.ID, "status", run.Status, "error", err)
+	return true
 }
 
 func (uc *UpgradeStack) resolveBundle(ctx context.Context, stackID, bundleID string) (*resolvedUpgrade, *domain.UpgradeBundle, *port.ReleaseInfo, error) {

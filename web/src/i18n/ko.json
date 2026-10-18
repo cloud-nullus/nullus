@@ -1217,6 +1217,7 @@
       "run": {
         "upgrading": "업그레이드 중 — {{step}}",
         "rolling_back": "되돌리는 중 — {{step}}",
+        "failed": "업그레이드가 적용되지 않았습니다 — 릴리스는 그대로입니다",
         "succeeded": "업그레이드 완료 {{from}} → {{to}}",
         "rolled_back": "실패해 {{from}} 로 되돌렸습니다",
         "manual_intervention_required": "수동 개입 필요",

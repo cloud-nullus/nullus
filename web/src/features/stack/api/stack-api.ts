@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../lib/api";
 import {
@@ -114,6 +115,7 @@ const queryKeys = {
     filter: VulnerabilityListFilter,
   ) => ["stacks", "image-scan-vulnerabilities", stackId, digest, filter] as const,
   upgrades: (stackId: string) => ["stacks", "upgrades", stackId] as const,
+  upgradeRun: (stackId: string, runId: string) => ["stacks", "upgrade-runs", stackId, runId] as const,
 };
 
 const ACTIVE_DEPLOYMENT_STATES = new Set([
@@ -212,6 +214,9 @@ const stackApiCalls = {
 
   getUpgrades: (stackId: string) =>
     api.get<{ items: UpgradeCandidate[] }>(`/stacks/${stackId}/upgrades`).then((r) => r.data),
+
+  getUpgradeRun: (stackId: string, runId: string) =>
+    api.get<UpgradeRun>(`/stacks/${stackId}/upgrade-runs/${runId}`).then((r) => r.data),
 
   preflightUpgrade: (stackId: string, bundleId: string) =>
     api.post<{ checks: UpgradeCheck[] }>(`/stacks/${stackId}/upgrades/preflight`, { bundle_id: bundleId }).then((r) => r.data),
@@ -577,16 +582,33 @@ export function useStackHistory(stackId: string) {
   });
 }
 
-// 진행 중인 실행이 있으면 5초마다 다시 본다 — 업그레이드는 서버에서 이어지므로 화면을 닫았다
-// 열어도 마지막 실행(last_run)으로 진행 상황이 돌아온다.
+// 후보는 클러스터의 Helm 릴리스를 읽는다(무겁다). 주기적으로 다시 읽지 않는다 — 진행 중인 실행은
+// useUpgradeRunProgress 가 실행 하나(DB)만 폴링한다. 화면을 닫았다 열어도 last_run 으로 이어진다.
 export function useStackUpgrades(stackId: string) {
   return useQuery({
     queryKey: queryKeys.upgrades(stackId),
     queryFn: () => stackApiCalls.getUpgrades(stackId),
     enabled: !!stackId,
-    refetchInterval: (query) =>
-      query.state.data?.items.some((item) => isUpgradeRunActive(item.last_run)) ? 5_000 : false,
   });
+}
+
+// 진행 중인 실행을 5초마다 다시 읽어 가장 새 상태를 돌려준다. 끝나면 후보를 한 번 다시 읽는다 —
+// 설치된 버전이 바뀌었을 수 있다.
+export function useUpgradeRunProgress(stackId: string, run?: UpgradeRun): UpgradeRun | undefined {
+  const qc = useQueryClient();
+  const active = isUpgradeRunActive(run);
+  const query = useQuery({
+    queryKey: queryKeys.upgradeRun(stackId, run?.id ?? ""),
+    queryFn: () => stackApiCalls.getUpgradeRun(stackId, run?.id ?? ""),
+    enabled: !!stackId && active,
+    refetchInterval: (q) => (isUpgradeRunActive(q.state.data ?? run) ? 5_000 : false),
+  });
+  const latest = active && query.data?.id === run?.id ? query.data : run;
+  const finished = active && !!query.data && !isUpgradeRunActive(query.data);
+  useEffect(() => {
+    if (finished) void qc.invalidateQueries({ queryKey: queryKeys.upgrades(stackId) });
+  }, [finished, qc, stackId]);
+  return latest;
 }
 
 export function usePreflightUpgrade() {

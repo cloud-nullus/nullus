@@ -187,4 +187,45 @@ func TestPostgresUpgradeRepository_Integration(t *testing.T) {
 		err := repo.CreateRun(ctx, newUpgradeRunFor(stackID, "same", now))
 		assert.ErrorIs(t, err, port.ErrUpgradeIdempotencyConflict)
 	})
+
+	// 진행 중일 때만 쓴다 — 중단으로 닫힌 실행을 뒤늦은 백그라운드 쓰기가 되살리지 않는다.
+	t.Run("끝난 실행은 갱신되지 않는다", func(t *testing.T) {
+		stackID := createUpgradeTestStack(t, ctx, pool)
+		t0 := time.Now().UTC().Truncate(time.Microsecond)
+		run := newUpgradeRunFor(stackID, "k", t0)
+		require.NoError(t, repo.CreateRun(ctx, run))
+		require.NoError(t, repo.Heartbeat(ctx, run.ID, t0.Add(time.Minute)))
+
+		closed := *run
+		closed.Interrupt(t0.Add(time.Hour))
+		ok, err := repo.CloseStaleRun(ctx, &closed, t0.Add(30*time.Second))
+		require.NoError(t, err)
+		assert.False(t, ok, "박동이 기준보다 나중이면 닫지 않는다")
+
+		ok, err = repo.CloseStaleRun(ctx, &closed, t0.Add(2*time.Minute))
+		require.NoError(t, err)
+		assert.True(t, ok)
+		got, err := repo.GetRun(ctx, stackID, run.ID)
+		require.NoError(t, err)
+		assert.Equal(t, domain.UpgradeStatusManual, got.Status)
+
+		run.Succeed(t0.Add(2 * time.Hour))
+		assert.ErrorIs(t, repo.UpdateRun(ctx, run), domain.ErrUpgradeRunClosed)
+		assert.ErrorIs(t, repo.Heartbeat(ctx, run.ID, t0.Add(3*time.Hour)), domain.ErrUpgradeRunClosed)
+		got, err = repo.GetRun(ctx, stackID, run.ID)
+		require.NoError(t, err)
+		assert.Equal(t, domain.UpgradeStatusManual, got.Status, "닫힌 실행은 그대로다")
+
+		ghost := newUpgradeRunFor(stackID, "ghost", t0)
+		assert.ErrorIs(t, repo.UpdateRun(ctx, ghost), domain.ErrUpgradeRunNotFound)
+	})
+
+	t.Run("변경 없이 실패한 실행도 저장된다", func(t *testing.T) {
+		stackID := createUpgradeTestStack(t, ctx, pool)
+		t0 := time.Now().UTC()
+		run := newUpgradeRunFor(stackID, "f", t0)
+		require.NoError(t, repo.CreateRun(ctx, run))
+		run.Fail(assert.AnError, t0)
+		require.NoError(t, repo.UpdateRun(ctx, run))
+	})
 }

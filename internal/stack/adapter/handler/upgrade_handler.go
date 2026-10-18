@@ -133,8 +133,12 @@ func upgradeError(c echo.Context, err error) error {
 		return errorResponse(c, http.StatusNotFound, "UPGRADE_NOT_FOUND", err.Error())
 	case errors.Is(err, domain.ErrUpgradeInProgress):
 		return errorResponse(c, http.StatusConflict, "UPGRADE_IN_PROGRESS", err.Error())
-	case errors.Is(err, domain.ErrUpgradeReasonRequired), errors.Is(err, domain.ErrUpgradeIdempotencyKeyRequired):
+	case errors.Is(err, domain.ErrUpgradeReasonRequired),
+		errors.Is(err, domain.ErrUpgradeIdempotencyKeyRequired),
+		errors.Is(err, domain.ErrUpgradeIdempotencyKeyInvalid):
 		return errorResponse(c, http.StatusBadRequest, "UPGRADE_INVALID", err.Error())
+	case errors.Is(err, domain.ErrUpgradeIdempotencyKeyReused):
+		return errorResponse(c, http.StatusUnprocessableEntity, "UPGRADE_IDEMPOTENCY_KEY_REUSED", err.Error())
 	default:
 		return errorResponse(c, http.StatusInternalServerError, "UPGRADE_FAILED", err.Error())
 	}

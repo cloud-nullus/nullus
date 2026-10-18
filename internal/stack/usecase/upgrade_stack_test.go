@@ -3,6 +3,7 @@ package usecase_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,11 +24,15 @@ type upgradeReleases struct {
 	releases []port.ReleaseInfo
 	values   map[string]any
 	valueErr error
+	listErr  error
 }
 
 func (f *upgradeReleases) ListReleases(context.Context, string) ([]port.ReleaseInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
 	return append([]port.ReleaseInfo(nil), f.releases...), nil
 }
 
@@ -53,10 +58,15 @@ type upgradeExecutor struct {
 	dryRunErr   error
 	upgradeErr  error
 	resultState string
-	// atomicRestored 면 업그레이드 실패 때 Helm --atomic 이 이미 되돌려 놓은 것처럼 릴리스를 바꾼다.
-	atomicRestored bool
-	rollbacks      []int
-	rollbackErr    error
+	// 업그레이드 실패 때 릴리스가 남는 모양. 기본은 대상 차트로 failed(리비전 4).
+	atomicRestored bool // Helm --atomic 이 이미 출발 버전으로 되돌려 놓았다(리비전 5)
+	untouched      bool // Helm 이 릴리스를 건드리기 전에 실패했다(리비전 3 그대로)
+	pendingAfter   bool // 다른 작업이 릴리스를 잡고 있다(pending-upgrade)
+	listErrAfter   error
+	// block 이 있으면 업그레이드가 그 채널이 닫힐 때까지 멈춘다.
+	block       chan struct{}
+	rollbacks   []int
+	rollbackErr error
 }
 
 func (f *upgradeExecutor) UpgradeChart(ctx context.Context, req port.ChartUpgradeRequest) (*port.ChartUpgradeResult, error) {
@@ -66,11 +76,21 @@ func (f *upgradeExecutor) UpgradeChart(ctx context.Context, req port.ChartUpgrad
 	}
 	f.upgrades = append(f.upgrades, req)
 	f.upgradeCtx = append(f.upgradeCtx, ctx.Err())
+	if f.block != nil {
+		<-f.block
+	}
 	if f.upgradeErr != nil {
-		if f.atomicRestored {
+		switch {
+		case f.atomicRestored:
 			f.releases.set("deployed", "7.7.16", 5)
-		} else {
+		case f.untouched:
+		case f.pendingAfter:
+			f.releases.set("pending-upgrade", "7.7.16", 4)
+		default:
 			f.releases.set("failed", req.Version, 4)
+		}
+		if f.listErrAfter != nil {
+			f.releases.listErr = f.listErrAfter
 		}
 		return nil, f.upgradeErr
 	}
@@ -94,10 +114,14 @@ func (f *upgradeExecutor) RollbackRelease(_ context.Context, _ string, _ string,
 type upgradeHealth struct {
 	verified []domain.UpgradeBundle
 	errs     []error
+	during   func()
 }
 
 func (f *upgradeHealth) Verify(_ context.Context, _ []byte, _ string, b domain.UpgradeBundle) error {
 	f.verified = append(f.verified, b)
+	if f.during != nil {
+		f.during()
+	}
 	if len(f.errs) == 0 {
 		return nil
 	}
@@ -124,6 +148,9 @@ type memUpgradeRepo struct {
 	updates   int
 	// beforeCreate 는 저장 직전에 한 번 돈다 — 다른 요청이 먼저 저장한 경합을 흉내 낸다.
 	beforeCreate func()
+	// updateErrs 는 UpdateRun 이 차례로 돌려줄 일시 오류다.
+	updateErrs []error
+	heartbeats int
 }
 
 func clone(r *domain.UpgradeRun) *domain.UpgradeRun { c := *r; return &c }
@@ -174,13 +201,60 @@ func (m *memUpgradeRepo) UpdateRun(_ context.Context, run *domain.UpgradeRun) er
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.updates++
+	if len(m.updateErrs) > 0 {
+		err := m.updateErrs[0]
+		m.updateErrs = m.updateErrs[1:]
+		return err
+	}
 	for i, r := range m.runs {
 		if r.ID == run.ID {
+			if !r.Active() {
+				return domain.ErrUpgradeRunClosed
+			}
 			m.runs[i] = clone(run)
 			return nil
 		}
 	}
 	return domain.ErrUpgradeRunNotFound
+}
+
+func (m *memUpgradeRepo) Heartbeat(_ context.Context, runID string, at time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, r := range m.runs {
+		if r.ID == runID {
+			if !r.Active() {
+				return domain.ErrUpgradeRunClosed
+			}
+			r.UpdatedAt = at
+			m.heartbeats++
+			return nil
+		}
+	}
+	return domain.ErrUpgradeRunNotFound
+}
+
+func (m *memUpgradeRepo) CloseStaleRun(_ context.Context, run *domain.UpgradeRun, staleBefore time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, r := range m.runs {
+		if r.ID == run.ID && r.Active() && r.UpdatedAt.Before(staleBefore) {
+			m.runs[i] = clone(run)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// interrupt 는 다른 레플리카가 이 실행을 중단으로 닫은 것을 흉내 낸다.
+func (m *memUpgradeRepo) interrupt(id string, at time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, r := range m.runs {
+		if r.ID == id {
+			r.Interrupt(at)
+		}
+	}
 }
 
 func (m *memUpgradeRepo) GetRun(_ context.Context, stackID, runID string) (*domain.UpgradeRun, error) {
@@ -273,7 +347,13 @@ func newUpgradeFixture(t *testing.T) *upgradeFixture {
 	f.health = &upgradeHealth{}
 	f.repo = &memUpgradeRepo{bundles: []domain.UpgradeBundle{argoBundle("b-18", "7.7.18"), argoBundle("b-20", "7.7.20")}}
 	f.backups = &upgradeBackups{finishedAt: upNow.Add(-time.Hour), found: true}
-	f.uc = usecase.NewUpgradeStack(usecase.UpgradeStackDeps{
+	f.uc = f.rebuild(nil)
+	return f
+}
+
+// rebuild 는 같은 가짜들로 유스케이스를 다시 조립한다. 바꿀 것만 change 에서 고친다.
+func (f *upgradeFixture) rebuild(change func(d *usecase.UpgradeStackDeps)) *usecase.UpgradeStack {
+	d := usecase.UpgradeStackDeps{
 		Stacks:       f.stacks,
 		Runs:         f.repo,
 		Kubeconfigs:  fakeKubeconfigProvider{},
@@ -284,8 +364,12 @@ func newUpgradeFixture(t *testing.T) *upgradeFixture {
 		Health:       f.health,
 		Now:          func() time.Time { return f.now },
 		Launch:       func(job func()) { f.launched = append(f.launched, job) },
-	})
-	return f
+		RetryBackoff: time.Nanosecond,
+	}
+	if change != nil {
+		change(&d)
+	}
+	return usecase.NewUpgradeStack(d)
 }
 
 // runLaunched 는 백그라운드로 넘긴 실행을 지금 돌린다.
@@ -399,7 +483,7 @@ func TestUpgradeStack_Candidates_LastRunSkipsBlockedAttempts(t *testing.T) {
 func TestUpgradeStack_Candidates_ClosesStaleRun(t *testing.T) {
 	f := newUpgradeFixture(t)
 	run := f.start(t, "k1")
-	f.now = f.now.Add(domain.UpgradeStepMaxDuration + time.Minute)
+	f.now = f.now.Add(domain.UpgradeHeartbeatTimeout + time.Minute)
 
 	items, err := f.uc.Candidates(context.Background(), "stk_1")
 	require.NoError(t, err)
@@ -561,7 +645,7 @@ func TestUpgradeStack_Start_SameIdempotencyKeyReturnsSameRun(t *testing.T) {
 // 키를 조회한 뒤 저장하기 전에 같은 키의 요청이 먼저 저장했으면, DB 가 가리고 그 실행을 돌려준다.
 func TestUpgradeStack_Start_IdempotencyRaceReturnsWinner(t *testing.T) {
 	f := newUpgradeFixture(t)
-	winner := &domain.UpgradeRun{ID: "winner", StackID: "stk_1", Tool: domain.UpgradeToolArgoCD,
+	winner := &domain.UpgradeRun{ID: "winner", StackID: "stk_1", BundleID: "b-20", Tool: domain.UpgradeToolArgoCD,
 		IdempotencyKey: "k1", Status: domain.UpgradeStatusUpgrading, UpdatedAt: upNow}
 	f.repo.beforeCreate = func() { f.repo.runs = append(f.repo.runs, winner) }
 
@@ -696,8 +780,150 @@ func TestUpgradeStack_GetRun(t *testing.T) {
 	_, err = f.uc.GetRun(context.Background(), "stk_1", "nope")
 	assert.ErrorIs(t, err, domain.ErrUpgradeRunNotFound)
 
-	f.now = f.now.Add(domain.UpgradeStepMaxDuration + time.Minute)
+	f.now = f.now.Add(domain.UpgradeHeartbeatTimeout + time.Minute)
 	got, err = f.uc.GetRun(context.Background(), "stk_1", run.ID)
 	require.NoError(t, err)
 	assert.Equal(t, domain.UpgradeStatusManual, got.Status, "오래 갱신 없는 실행은 중단으로 닫힌다")
+}
+
+// ── 되돌리기 판단 · 수명 · 저장 (독립 리뷰 반영) ─────────────────────────────
+
+// Helm 이 릴리스를 건드리기 전에 실패했으면(차트 내려받기 실패 등) 되돌릴 것이 없다 — 되돌리기를
+// 부르면 직전 리비전으로 새 리비전을 하나 더 만들 뿐이다.
+func TestUpgradeStack_Execute_FailureBeforeTouchingReleaseIsFailedWithoutRollback(t *testing.T) {
+	f := newUpgradeFixture(t)
+	f.exec.upgradeErr = errors.New("locate chart argo-cd: not found")
+	f.exec.untouched = true
+
+	run := f.start(t, "k1")
+	f.runLaunched()
+
+	stored := f.repo.stored(run.ID)
+	assert.Equal(t, domain.UpgradeStatusFailed, stored.Status)
+	assert.Contains(t, stored.Error, "locate chart")
+	assert.Empty(t, f.exec.rollbacks)
+	assert.Empty(t, f.health.verified)
+}
+
+// 실패 뒤 릴리스를 다른 작업(값 편집 · 복구)이 잡고 있으면 되돌리지 않는다 — 되돌리기가 그 작업을 지운다.
+func TestUpgradeStack_Execute_PendingReleaseAfterFailureIsNotRolledBack(t *testing.T) {
+	f := newUpgradeFixture(t)
+	f.exec.upgradeErr = errors.New("another operation (install/upgrade/rollback) is in progress")
+	f.exec.pendingAfter = true
+
+	run := f.start(t, "k1")
+	f.runLaunched()
+
+	stored := f.repo.stored(run.ID)
+	assert.Equal(t, domain.UpgradeStatusManual, stored.Status)
+	assert.Contains(t, stored.Error, "pending-upgrade")
+	assert.Empty(t, f.exec.rollbacks)
+}
+
+func TestUpgradeStack_Execute_UnknownReleaseStateIsNotRolledBack(t *testing.T) {
+	f := newUpgradeFixture(t)
+	f.exec.upgradeErr = errors.New("upgrade failed")
+	f.exec.listErrAfter = errors.New("connection refused")
+
+	run := f.start(t, "k1")
+	f.runLaunched()
+
+	assert.Equal(t, domain.UpgradeStatusManual, f.repo.stored(run.ID).Status)
+	assert.Empty(t, f.exec.rollbacks)
+}
+
+// API 가 종료되면(수명 ctx 취소) Helm 은 --atomic 으로 스스로 되돌리기 시작한다. 그 위에서 또
+// 되돌리지 않고 사람에게 넘긴다.
+func TestUpgradeStack_Execute_ShutdownHandsOverWithoutRollback(t *testing.T) {
+	f := newUpgradeFixture(t)
+	life, stop := context.WithCancel(context.Background())
+	f.uc = f.rebuild(func(d *usecase.UpgradeStackDeps) { d.Context = life })
+	f.exec.upgradeErr = context.Canceled
+
+	run := f.start(t, "k1")
+	stop()
+	f.runLaunched()
+
+	stored := f.repo.stored(run.ID)
+	assert.Equal(t, domain.UpgradeStatusManual, stored.Status)
+	assert.Contains(t, stored.Error, "종료")
+	assert.Empty(t, f.exec.rollbacks)
+}
+
+// 다른 곳이 실행을 중단으로 닫았으면 백그라운드는 거기서 멈춘다 — 닫힌 실행을 되살리거나,
+// 그 사이 시작된 새 실행 위로 되돌리기를 하지 않는다.
+func TestUpgradeStack_Execute_StopsWhenRunWasClosedElsewhere(t *testing.T) {
+	f := newUpgradeFixture(t)
+	run := f.start(t, "k1")
+	f.health.errs = []error{errors.New("not ready")}
+	f.health.during = func() { f.repo.interrupt(run.ID, upNow.Add(time.Hour)) }
+
+	f.runLaunched()
+
+	stored := f.repo.stored(run.ID)
+	assert.Equal(t, domain.UpgradeStatusManual, stored.Status)
+	assert.Contains(t, stored.Error, "중단")
+	assert.Empty(t, f.exec.rollbacks, "닫힌 실행은 더 손대지 않는다")
+}
+
+// 실행 중에는 박동을 남긴다 — Helm 이 오래 걸려도 다른 레플리카가 중단으로 닫지 않는다.
+func TestUpgradeStack_Execute_SendsHeartbeatsWhileHelmRuns(t *testing.T) {
+	f := newUpgradeFixture(t)
+	f.uc = f.rebuild(func(d *usecase.UpgradeStackDeps) {
+		d.HeartbeatInterval = time.Millisecond
+		d.Launch = nil // 진짜 goroutine
+	})
+	f.exec.block = make(chan struct{})
+
+	run := f.start(t, "k1")
+	require.Eventually(t, func() bool {
+		f.repo.mu.Lock()
+		defer f.repo.mu.Unlock()
+		return f.repo.heartbeats >= 3
+	}, time.Second, time.Millisecond)
+	close(f.exec.block)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, f.uc.Wait(ctx))
+	assert.Equal(t, domain.UpgradeStatusSucceeded, f.repo.stored(run.ID).Status)
+}
+
+// 끝 상태 저장이 잠깐 실패해도 다시 시도한다 — 성공한 업그레이드가 박동 끊김으로 "중단" 이 되지 않게.
+func TestUpgradeStack_Execute_RetriesTransientPersistFailure(t *testing.T) {
+	f := newUpgradeFixture(t)
+	run := f.start(t, "k1")
+	f.repo.updateErrs = []error{errors.New("conn reset"), errors.New("conn reset")}
+
+	f.runLaunched()
+	assert.Equal(t, domain.UpgradeStatusSucceeded, f.repo.stored(run.ID).Status)
+}
+
+func TestUpgradeStack_Start_RejectsKeyReusedForAnotherBundle(t *testing.T) {
+	f := newUpgradeFixture(t)
+	f.start(t, "k1")
+	_, err := f.uc.Start(context.Background(), usecase.StartUpgradeInput{StackID: "stk_1", BundleID: "b-18", Reason: "x", IdempotencyKey: "k1"})
+	assert.ErrorIs(t, err, domain.ErrUpgradeIdempotencyKeyReused)
+}
+
+func TestUpgradeStack_Start_RejectsOversizedKeyBeforeTouchingCluster(t *testing.T) {
+	f := newUpgradeFixture(t)
+	_, err := f.uc.Start(context.Background(), usecase.StartUpgradeInput{StackID: "stk_1", BundleID: "b-20", Reason: "x",
+		IdempotencyKey: strings.Repeat("k", domain.MaxUpgradeIdempotencyKeyLength+1)})
+	assert.ErrorIs(t, err, domain.ErrUpgradeIdempotencyKeyInvalid)
+	assert.Empty(t, f.exec.dryRuns)
+}
+
+// 진짜 goroutine 경로 — 돌려준 실행과 백그라운드 사본이 엉키지 않는지 -race 로 본다.
+func TestUpgradeStack_Start_RealBackgroundPath(t *testing.T) {
+	f := newUpgradeFixture(t)
+	f.uc = f.rebuild(func(d *usecase.UpgradeStackDeps) { d.Launch = nil })
+
+	run := f.start(t, "k1")
+	assert.Equal(t, domain.UpgradeStatusUpgrading, run.Status)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, f.uc.Wait(ctx))
+	assert.Equal(t, domain.UpgradeStatusUpgrading, run.Status, "돌려준 실행은 백그라운드가 바꾸지 않는다")
+	assert.Equal(t, domain.UpgradeStatusSucceeded, f.repo.stored(run.ID).Status)
 }

@@ -15,6 +15,7 @@ import {
   usePreflightUpgrade,
   useStackUpgrades,
   useStartUpgrade,
+  useUpgradeRunProgress,
 } from '../api/stack-api'
 import type { UpgradeBundle, UpgradeCandidate, UpgradeCheck, UpgradeRun } from '../api/stack-api-types'
 
@@ -34,6 +35,7 @@ const CHECK_TONE: Record<UpgradeCheck['status'], StatusTone> = { pass: 'success'
 const RUN_TONE: Record<UpgradeRun['status'], StatusTone> = {
   upgrading: 'running',
   rolling_back: 'running',
+  failed: 'warning',
   succeeded: 'success',
   rolled_back: 'warning',
   manual_intervention_required: 'error',
@@ -81,7 +83,7 @@ export function StackVersionUpgradeTab({ stackId }: { stackId: string }) {
 
       <div className="flex flex-col gap-3">
         {items.map((item) => (
-          <UpgradeRow key={item.release_name} item={item} onUpgrade={() => setSelected(item)} />
+          <UpgradeRow key={item.release_name} stackId={stackId} item={item} onUpgrade={() => setSelected(item)} />
         ))}
       </div>
 
@@ -97,10 +99,11 @@ export function StackVersionUpgradeTab({ stackId }: { stackId: string }) {
   )
 }
 
-function UpgradeRow({ item, onUpgrade }: { item: UpgradeCandidate; onUpgrade: () => void }) {
+function UpgradeRow({ stackId, item, onUpgrade }: { stackId: string; item: UpgradeCandidate; onUpgrade: () => void }) {
   const { t } = useTranslation()
   const bundle = item.bundle
-  const running = isUpgradeRunActive(item.last_run)
+  const lastRun = useUpgradeRunProgress(stackId, item.last_run)
+  const running = isUpgradeRunActive(lastRun)
 
   return (
     <div
@@ -130,7 +133,7 @@ function UpgradeRow({ item, onUpgrade }: { item: UpgradeCandidate; onUpgrade: ()
             <div className="text-[12px] text-[var(--color-text-secondary)]">{t('stackList.upgrade.noVerifiedPathHint')}</div>
           )}
           {item.blocked_reason && <div className="text-[12px] text-[var(--color-error)]">{item.blocked_reason}</div>}
-          {item.last_run && <LastRunLine run={item.last_run} />}
+          {lastRun && <LastRunLine run={lastRun} />}
         </div>
       </div>
       {bundle && (

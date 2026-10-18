@@ -1217,6 +1217,7 @@
       "run": {
         "upgrading": "Upgrading — {{step}}",
         "rolling_back": "Rolling back — {{step}}",
+        "failed": "Upgrade did not apply — the release is unchanged",
         "succeeded": "Upgraded {{from}} → {{to}}",
         "rolled_back": "Failed and rolled back to {{from}}",
         "manual_intervention_required": "Manual intervention required",

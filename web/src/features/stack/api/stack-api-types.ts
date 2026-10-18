@@ -50,6 +50,7 @@ export interface UpgradeBundle {
 export type UpgradeRunStatus =
   | "blocked"
   | "upgrading"
+  | "failed"
   | "succeeded"
   | "rolling_back"
   | "rolled_back"

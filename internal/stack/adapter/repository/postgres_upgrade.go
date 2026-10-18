@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -104,21 +105,56 @@ func (r *PostgresUpgradeRepository) CreateRun(ctx context.Context, run *domain.U
 	return err
 }
 
+const activeUpgradeStatuses = `('upgrading', 'rolling_back')`
+
 func (r *PostgresUpgradeRepository) UpdateRun(ctx context.Context, run *domain.UpgradeRun) error {
 	checks, err := json.Marshal(run.Checks)
 	if err != nil {
 		return err
 	}
 	tag, err := r.pool.Exec(ctx, `UPDATE stack_upgrade_runs SET status=$2, current_step=$3,
- result_revision=$4, checks=$5, error=$6, updated_at=$7, finished_at=$8 WHERE id=$1`, run.ID,
+ result_revision=$4, checks=$5, error=$6, updated_at=$7, finished_at=$8
+ WHERE id=$1 AND status IN `+activeUpgradeStatuses, run.ID,
 		run.Status, run.CurrentStep, run.ResultRevision, checks, run.Error, run.UpdatedAt, run.FinishedAt)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return domain.ErrUpgradeRunNotFound
+	return r.closedOrMissing(ctx, run.ID, tag.RowsAffected())
+}
+
+func (r *PostgresUpgradeRepository) Heartbeat(ctx context.Context, runID string, at time.Time) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE stack_upgrade_runs SET updated_at=$2
+ WHERE id=$1 AND status IN `+activeUpgradeStatuses, runID, at)
+	if err != nil {
+		return err
 	}
-	return nil
+	return r.closedOrMissing(ctx, runID, tag.RowsAffected())
+}
+
+func (r *PostgresUpgradeRepository) CloseStaleRun(ctx context.Context, run *domain.UpgradeRun, staleBefore time.Time) (bool, error) {
+	tag, err := r.pool.Exec(ctx, `UPDATE stack_upgrade_runs SET status=$2, current_step=$3,
+ error=$4, updated_at=$5, finished_at=$6
+ WHERE id=$1 AND status IN `+activeUpgradeStatuses+` AND updated_at < $7`,
+		run.ID, run.Status, run.CurrentStep, run.Error, run.UpdatedAt, run.FinishedAt, staleBefore)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// closedOrMissing 은 조건부 UPDATE 가 한 행도 바꾸지 못한 이유를 가른다.
+func (r *PostgresUpgradeRepository) closedOrMissing(ctx context.Context, runID string, affected int64) error {
+	if affected > 0 {
+		return nil
+	}
+	var exists bool
+	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM stack_upgrade_runs WHERE id=$1)`, runID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return domain.ErrUpgradeRunClosed
+	}
+	return domain.ErrUpgradeRunNotFound
 }
 
 func (r *PostgresUpgradeRepository) GetRun(ctx context.Context, stackID, runID string) (*domain.UpgradeRun, error) {

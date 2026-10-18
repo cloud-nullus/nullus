@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,19 +138,37 @@ func TestUpgradeRun_ManualInterventionKeepsBothCauses(t *testing.T) {
 }
 
 // API 가 작업 중에 죽으면 실행은 "진행 중" 으로 남아 그 스택의 업그레이드를 영원히 막는다.
-// 마지막 갱신 뒤 한 단계의 최대 시간이 지나면 중단된 것으로 본다.
-func TestUpgradeRun_StaleActiveRunIsInterrupted(t *testing.T) {
+// 실행 중인 프로세스는 1분마다 심장 박동(updated_at)을 남기므로, 박동이 끊긴 지 5분이면 죽은 것이다.
+// Helm 호출 한 번이 훅 · 대기 · 되돌리기로 1시간 넘게 걸려도 박동이 이어지는 한 닫히지 않는다.
+func TestUpgradeRun_StaleWhenHeartbeatStops(t *testing.T) {
 	run := newRun(t, passing())
-	assert.False(t, run.Stale(upgradeT0.Add(UpgradeStepMaxDuration)))
-	assert.True(t, run.Stale(upgradeT0.Add(UpgradeStepMaxDuration+time.Second)))
+	assert.False(t, run.Stale(upgradeT0.Add(UpgradeHeartbeatTimeout)))
+	assert.True(t, run.Stale(upgradeT0.Add(UpgradeHeartbeatTimeout+time.Second)))
 
-	run.Interrupt(upgradeT0.Add(UpgradeStepMaxDuration + time.Second))
+	run.Interrupt(upgradeT0.Add(UpgradeHeartbeatTimeout + time.Second))
 	assert.Equal(t, UpgradeStatusManual, run.Status)
 	assert.Contains(t, run.Error, "중단")
 
 	done := newRun(t, passing())
 	done.Succeed(upgradeT0)
 	assert.False(t, done.Stale(upgradeT0.Add(24*time.Hour)), "끝난 실행은 중단될 수 없다")
+}
+
+// Helm 이 릴리스를 건드리기 전에 실패했으면(차트 내려받기 실패, 다른 작업이 잠금 중) 되돌린 것이
+// 아니다 — 아무것도 바뀌지 않았다.
+func TestUpgradeRun_FailWithoutChange(t *testing.T) {
+	run := newRun(t, passing())
+	run.Fail(errors.New("another operation is in progress"), upgradeT0.Add(time.Minute))
+	assert.Equal(t, UpgradeStatusFailed, run.Status)
+	assert.True(t, run.Terminal())
+	assert.Contains(t, run.Error, "another operation")
+	require.NotNil(t, run.FinishedAt)
+}
+
+func TestNewUpgradeRun_RejectsOversizedIdempotencyKey(t *testing.T) {
+	_, err := NewUpgradeRun(NewUpgradeRunInput{ID: "r", StackID: "s", Bundle: argoBundle("b", "7.7.20"), Reason: "x",
+		IdempotencyKey: strings.Repeat("k", MaxUpgradeIdempotencyKeyLength+1), Now: upgradeT0})
+	assert.ErrorIs(t, err, ErrUpgradeIdempotencyKeyInvalid)
 }
 
 func TestEvaluateUpgradeBackup(t *testing.T) {

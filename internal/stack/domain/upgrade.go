@@ -24,9 +24,12 @@ const (
 )
 
 // 실행 상태. upgrading · rolling_back 은 진행 중이고, 나머지는 끝난 상태다.
+// failed 는 Helm 이 릴리스를 건드리기 전에 실패한 것(아무것도 바뀌지 않음), rolled_back 은
+// 바뀌었다가 출발 버전으로 돌아온 것이다.
 const (
 	UpgradeStatusBlocked     = "blocked"
 	UpgradeStatusUpgrading   = "upgrading"
+	UpgradeStatusFailed      = "failed"
 	UpgradeStatusSucceeded   = "succeeded"
 	UpgradeStatusRollingBack = "rolling_back"
 	UpgradeStatusRolledBack  = "rolled_back"
@@ -49,18 +52,27 @@ const (
 	UpgradeCheckBlocked = "blocked"
 )
 
-// UpgradeStepMaxDuration 은 한 단계가 갱신 없이 걸릴 수 있는 최대 시간이다. Helm 의 대기
-// 시간(30분)에 여유를 더했다. 이보다 오래 갱신이 없는 진행 중 실행은 API 가 작업 중에 죽은
-// 것으로 본다 — 그대로 두면 그 스택의 업그레이드가 영원히 막힌다.
-const UpgradeStepMaxDuration = 45 * time.Minute
+// UpgradeHeartbeatTimeout 은 진행 중 실행의 심장 박동(updated_at)이 끊긴 채 버틸 수 있는 시간이다.
+// 실행 중인 프로세스는 1분마다 박동을 남긴다 — Helm 호출 한 번이 훅 · 대기 · 되돌리기로 한 시간을
+// 넘겨도 닫히지 않는다. 박동이 이보다 오래 없으면 API 가 작업 중에 죽은 것으로 보고 닫는다 — 그대로
+// 두면 그 스택의 업그레이드가 영원히 막힌다.
+const UpgradeHeartbeatTimeout = 5 * time.Minute
+
+// MaxUpgradeIdempotencyKeyLength 는 Idempotency-Key 의 최대 길이다(UUID 는 36자).
+const MaxUpgradeIdempotencyKeyLength = 128
 
 var (
 	ErrUpgradeReasonRequired         = errors.New("업그레이드 사유가 필요하다")
 	ErrUpgradeIdempotencyKeyRequired = errors.New("Idempotency-Key 가 필요하다")
-	ErrUpgradeInProgress             = errors.New("이 스택에서 다른 업그레이드가 진행 중이다")
-	ErrUpgradeBundleNotFound         = errors.New("검증된 업그레이드 번들이 없다")
-	ErrUpgradeRunNotFound            = errors.New("업그레이드 실행이 없다")
-	ErrUpgradeReleaseNotFound        = errors.New("업그레이드할 Helm 릴리스가 없다")
+	ErrUpgradeIdempotencyKeyInvalid  = fmt.Errorf("Idempotency-Key 는 %d 자 이하여야 한다", MaxUpgradeIdempotencyKeyLength)
+	// ErrUpgradeIdempotencyKeyReused 는 같은 키가 다른 번들의 실행에 이미 쓰였을 때다 — 재시도가 아니다.
+	ErrUpgradeIdempotencyKeyReused = errors.New("이 Idempotency-Key 는 다른 업그레이드에 이미 쓰였다")
+	// ErrUpgradeRunClosed 는 진행 중이 아닌 실행을 바꾸려 할 때다 — 다른 곳(중단 처리)이 이미 닫았다.
+	ErrUpgradeRunClosed       = errors.New("업그레이드 실행이 이미 끝났다")
+	ErrUpgradeInProgress      = errors.New("이 스택에서 다른 업그레이드가 진행 중이다")
+	ErrUpgradeBundleNotFound  = errors.New("검증된 업그레이드 번들이 없다")
+	ErrUpgradeRunNotFound     = errors.New("업그레이드 실행이 없다")
+	ErrUpgradeReleaseNotFound = errors.New("업그레이드할 Helm 릴리스가 없다")
 )
 
 type UpgradeBundle struct {
@@ -198,6 +210,9 @@ func NewUpgradeRun(in NewUpgradeRunInput) (*UpgradeRun, error) {
 	if strings.TrimSpace(in.IdempotencyKey) == "" {
 		return nil, ErrUpgradeIdempotencyKeyRequired
 	}
+	if len(in.IdempotencyKey) > MaxUpgradeIdempotencyKeyLength {
+		return nil, ErrUpgradeIdempotencyKeyInvalid
+	}
 	run := &UpgradeRun{ID: in.ID, StackID: in.StackID, BundleID: in.Bundle.ID, Tool: in.Bundle.Tool,
 		Status: UpgradeStatusUpgrading, CurrentStep: UpgradeStepHelmUpgrade,
 		RequestedBy: in.RequestedBy, Reason: strings.TrimSpace(in.Reason), IdempotencyKey: in.IdempotencyKey,
@@ -220,9 +235,9 @@ func (r *UpgradeRun) Active() bool {
 
 func (r *UpgradeRun) Terminal() bool { return !r.Active() }
 
-// Stale 은 진행 중인데 한 단계의 최대 시간보다 오래 갱신이 없는 실행이다.
+// Stale 은 진행 중인데 심장 박동이 끊긴 실행이다.
 func (r *UpgradeRun) Stale(now time.Time) bool {
-	return r.Active() && now.Sub(r.UpdatedAt) > UpgradeStepMaxDuration
+	return r.Active() && now.Sub(r.UpdatedAt) > UpgradeHeartbeatTimeout
 }
 
 func (r *UpgradeRun) EnterHealthCheck(revision int, now time.Time) {
@@ -231,6 +246,12 @@ func (r *UpgradeRun) EnterHealthCheck(revision int, now time.Time) {
 
 func (r *UpgradeRun) Succeed(now time.Time) {
 	r.Status, r.CurrentStep = UpgradeStatusSucceeded, UpgradeStepComplete
+	r.finish(now)
+}
+
+// Fail 은 Helm 이 릴리스를 바꾸기 전에 실패한 실행을 닫는다 — 되돌릴 것이 없다.
+func (r *UpgradeRun) Fail(cause error, now time.Time) {
+	r.Status, r.Error = UpgradeStatusFailed, cause.Error()
 	r.finish(now)
 }
 

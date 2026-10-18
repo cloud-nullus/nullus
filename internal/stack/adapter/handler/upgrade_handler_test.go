@@ -142,6 +142,8 @@ func TestUpgradeHandler_ErrorMapping(t *testing.T) {
 		{domain.ErrUpgradeInProgress, http.StatusConflict},
 		{domain.ErrUpgradeReasonRequired, http.StatusBadRequest},
 		{domain.ErrUpgradeIdempotencyKeyRequired, http.StatusBadRequest},
+		{domain.ErrUpgradeIdempotencyKeyInvalid, http.StatusBadRequest},
+		{domain.ErrUpgradeIdempotencyKeyReused, http.StatusUnprocessableEntity},
 		{errors.New("kubeconfig 를 읽지 못했다"), http.StatusInternalServerError},
 	}
 	for _, tc := range cases {

@@ -4,6 +4,7 @@ import type { UpgradeCandidate, UpgradeCheck, UpgradeRun } from '../api/stack-ap
 import { StackVersionUpgradeTab } from './stack-version-upgrade-tab'
 
 const mockUseStackUpgrades = vi.fn()
+const mockProgress = vi.fn()
 const mockPreflight = vi.fn()
 const mockStart = vi.fn()
 
@@ -13,6 +14,8 @@ vi.mock('../api/stack-api', async () => {
     isUpgradeRunActive: actual.isUpgradeRunActive,
     createIdempotencyKey: actual.createIdempotencyKey,
     useStackUpgrades: (...args: unknown[]) => mockUseStackUpgrades(...args),
+    // 진행 중 실행은 클러스터가 아니라 실행 하나(DB)를 폴링한다. 기본은 받은 실행 그대로.
+    useUpgradeRunProgress: (stackId: string, run?: UpgradeRun) => mockProgress(stackId, run) ?? run,
     usePreflightUpgrade: () => ({ mutateAsync: mockPreflight, isPending: false }),
     useStartUpgrade: () => ({ mutateAsync: mockStart, isPending: false }),
   }
@@ -77,6 +80,7 @@ function withItems(items: UpgradeCandidate[]) {
 
 beforeEach(() => {
   mockUseStackUpgrades.mockReset()
+  mockProgress.mockReset()
   mockPreflight.mockReset()
   mockStart.mockReset()
 })
@@ -135,6 +139,31 @@ describe('StackVersionUpgradeTab', () => {
     render(<StackVersionUpgradeTab stackId="stk_1" />)
     expect(screen.getByText(/Upgrading — verifying health/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Upgrade' })).toBeDisabled()
+  })
+
+  // 진행 중일 때는 후보(클러스터 Helm 조회)를 다시 읽지 않고, 실행 하나를 폴링한 결과를 보여 준다.
+  it('shows the polled progress of the running upgrade', () => {
+    const started = run({ current_step: 'helm_upgrade' })
+    withItems([candidate({ last_run: started })])
+    mockProgress.mockReturnValue(run({ current_step: 'health_check' }))
+    render(<StackVersionUpgradeTab stackId="stk_1" />)
+    expect(mockProgress).toHaveBeenCalledWith('stk_1', started)
+    expect(screen.getByText(/Upgrading — verifying health/)).toBeInTheDocument()
+  })
+
+  it('re-enables Upgrade once the polled run has finished', () => {
+    withItems([candidate({ last_run: run() })])
+    mockProgress.mockReturnValue(run({ status: 'succeeded', current_step: 'complete' }))
+    render(<StackVersionUpgradeTab stackId="stk_1" />)
+    expect(screen.getByRole('button', { name: 'Upgrade' })).toBeEnabled()
+  })
+
+  // 릴리스를 건드리기 전에 실패했으면 되돌린 것이 아니다 — 아무것도 바뀌지 않았다.
+  it('reports an upgrade that did not apply', () => {
+    withItems([candidate({ last_run: run({ status: 'failed', current_step: 'helm_upgrade', error: 'locate chart failed' }) })])
+    render(<StackVersionUpgradeTab stackId="stk_1" />)
+    expect(screen.getByText(/did not apply/)).toBeInTheDocument()
+    expect(screen.getByText(/locate chart failed/)).toBeInTheDocument()
   })
 
   it('reports a rolled back run with its cause', () => {

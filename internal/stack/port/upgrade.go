@@ -19,7 +19,13 @@ type UpgradeRepository interface {
 	// CreateRun 은 진행 중 실행이 이미 있으면 domain.ErrUpgradeInProgress, 같은 키의 실행이
 	// 있으면 ErrUpgradeIdempotencyConflict 를 돌려준다. 동시에 들어온 요청은 DB 가 가린다.
 	CreateRun(ctx context.Context, run *domain.UpgradeRun) error
+	// UpdateRun 과 Heartbeat 는 실행이 아직 진행 중일 때만 쓴다. 이미 끝났으면(중단 처리가 닫음)
+	// domain.ErrUpgradeRunClosed — 백그라운드 작업은 거기서 멈춘다. 없으면 domain.ErrUpgradeRunNotFound.
 	UpdateRun(ctx context.Context, run *domain.UpgradeRun) error
+	Heartbeat(ctx context.Context, runID string, at time.Time) error
+	// CloseStaleRun 은 진행 중이고 박동이 staleBefore 보다 오래된 실행만 run 의 상태로 닫는다.
+	// 그 사이 박동이 들어왔으면 닫지 않고 false 다.
+	CloseStaleRun(ctx context.Context, run *domain.UpgradeRun, staleBefore time.Time) (bool, error)
 	// GetRun 은 없으면 domain.ErrUpgradeRunNotFound.
 	GetRun(ctx context.Context, stackID, runID string) (*domain.UpgradeRun, error)
 	// FindRunByIdempotencyKey 와 아래 조회는 없으면 (nil, nil) 이다.

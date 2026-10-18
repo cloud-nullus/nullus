@@ -26,14 +26,14 @@ CREATE TABLE upgrade_bundles (
 CREATE INDEX idx_upgrade_bundles_path ON upgrade_bundles(tool, source_chart_version, status);
 
 -- stack_upgrade_runs 는 실행 하나다 — 막힌 시도까지 감사 기록으로 남긴다.
--- updated_at 은 단계가 바뀔 때마다 갱신한다. 진행 중인데 오래 갱신이 없으면 API 가 작업 중에
--- 죽은 것으로 보고 수동 개입 필요로 닫는다(domain.UpgradeStepMaxDuration).
+-- updated_at 은 실행 중인 프로세스의 심장 박동이다(1분마다). 진행 중인데 박동이 끊기면 API 가
+-- 작업 중에 죽은 것으로 보고 수동 개입 필요로 닫는다(domain.UpgradeHeartbeatTimeout).
 CREATE TABLE stack_upgrade_runs (
     id TEXT PRIMARY KEY,
     stack_id VARCHAR(100) NOT NULL REFERENCES stacks(id) ON DELETE CASCADE,
     bundle_id TEXT NOT NULL REFERENCES upgrade_bundles(id),
     tool TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('blocked', 'upgrading', 'succeeded', 'rolling_back', 'rolled_back', 'manual_intervention_required')),
+    status TEXT NOT NULL CHECK (status IN ('blocked', 'upgrading', 'failed', 'succeeded', 'rolling_back', 'rolled_back', 'manual_intervention_required')),
     current_step TEXT NOT NULL,
     requested_by TEXT NOT NULL,
     reason TEXT NOT NULL,
