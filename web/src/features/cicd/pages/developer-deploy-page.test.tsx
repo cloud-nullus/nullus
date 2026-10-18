@@ -80,7 +80,7 @@ function completeRequiredFields() {
   fireEvent.change(screen.getByPlaceholderText("my-awesome-app"), {
     target: { value: "demo-app" },
   });
-  selectOptionByValue(screen.getByLabelText("Stack 선택"), "stack-1");
+  selectOptionByValue(screen.getByLabelText("Select Stack"), "stack-1");
   fireEvent.change(screen.getByLabelText("Source Repository"), {
     target: { value: "owner/demo-app.git" },
   });
@@ -183,11 +183,11 @@ describe("DeveloperDeployPage", () => {
     renderWithProviders(<DeveloperDeployPage />);
 
     await waitFor(() => {
-      expect(selectedLabel(screen.getByLabelText("Stack 선택"))).toBe(
+      expect(selectedLabel(screen.getByLabelText("Select Stack"))).toBe(
         "app-stack",
       );
     });
-    expect(optionLabels(screen.getByLabelText("Stack 선택"))).not.toContain(
+    expect(optionLabels(screen.getByLabelText("Select Stack"))).not.toContain(
       "Manual Input",
     );
     expect(screen.getByLabelText("Source Repository")).toHaveValue(
@@ -220,7 +220,7 @@ describe("DeveloperDeployPage", () => {
     renderWithProviders(<DeveloperDeployPage />);
 
     expect(screen.getAllByTestId("required-dot")).toHaveLength(12);
-    expect(screen.getByLabelText("Stack 선택")).not.toBeNull();
+    expect(screen.getByLabelText("Select Stack")).not.toBeNull();
     expect(screen.queryByLabelText("Stack (Optional)")).toBeNull();
     expect(screen.getByLabelText("Service URL")).not.toBeNull();
   });
@@ -295,7 +295,7 @@ describe("DeveloperDeployPage", () => {
   it("uses the selected stacks code repository endpoint as the code URL prefix", () => {
     renderWithProviders(<DeveloperDeployPage />);
 
-    selectOptionByValue(screen.getByLabelText("Stack 선택"), "stack-1");
+    selectOptionByValue(screen.getByLabelText("Select Stack"), "stack-1");
     fireEvent.change(screen.getByLabelText("Source Repository"), {
       target: { value: "owner/demo-app/main/src" },
     });
@@ -343,7 +343,7 @@ describe("DeveloperDeployPage", () => {
     fireEvent.change(screen.getByPlaceholderText("my-awesome-app"), {
       target: { value: "demo-app" },
     });
-    selectOptionByValue(screen.getByLabelText("Stack 선택"), "stack-1");
+    selectOptionByValue(screen.getByLabelText("Select Stack"), "stack-1");
     fireEvent.change(screen.getByLabelText("Source Repository"), {
       target: { value: "owner/demo-app.git" },
     });
@@ -407,7 +407,7 @@ describe("DeveloperDeployPage", () => {
   it("leaves the cluster choice open when the selected stack has no cluster", async () => {
     renderWithProviders(<DeveloperDeployPage />);
 
-    selectOptionByValue(screen.getByLabelText("Stack 선택"), "stack-1");
+    selectOptionByValue(screen.getByLabelText("Select Stack"), "stack-1");
 
     const clusterSelect = screen.getByLabelText("Cluster");
     await waitFor(() => {
@@ -420,7 +420,7 @@ describe("DeveloperDeployPage", () => {
     mockUseStackIntegrations.mockReturnValue({ data: { integrations: [] } });
     renderWithProviders(<DeveloperDeployPage />);
 
-    selectOptionByValue(screen.getByLabelText("Stack 선택"), "stack-1");
+    selectOptionByValue(screen.getByLabelText("Select Stack"), "stack-1");
 
     expect(screen.getByLabelText("Source Repository")).not.toBeNull();
   });
@@ -638,7 +638,7 @@ describe("DeveloperDeployPage", () => {
 
     // 에러 경계로 떨어지지 않고 폼이 그대로 뜬다.
     expect(screen.getByPlaceholderText("my-awesome-app")).not.toBeNull();
-    expect(screen.getByLabelText("Stack 선택")).not.toBeNull();
+    expect(screen.getByLabelText("Select Stack")).not.toBeNull();
   });
 
   // 연동을 못 읽으면 주소 앞단만 비고 나머지는 평소대로 쓴다.
@@ -647,7 +647,7 @@ describe("DeveloperDeployPage", () => {
     mockUseStackIntegrations.mockReturnValue({ data: {} });
 
     renderWithProviders(<DeveloperDeployPage />);
-    selectOptionByValue(screen.getByLabelText("Stack 선택"), "stack-1");
+    selectOptionByValue(screen.getByLabelText("Select Stack"), "stack-1");
 
     expect(screen.queryAllByDisplayValue("https://gitlab.stack.internal/")).toHaveLength(0);
     expect(screen.getByLabelText("Source Repository")).not.toBeNull();
