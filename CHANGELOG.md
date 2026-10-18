@@ -249,6 +249,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **앱 배포 화면이 스택 연동 응답 한 줄 때문에 흰 화면이 되던 것** (`web/src/features/cicd/pages/developer-deploy-page.tsx`): 저장소·레지스트리 주소의 기본값을 읽는 코드가 `integrationsData?.integrations.find(...)` 로 **중간만** 옵셔널 체이닝했다. 응답 객체는 있고 `integrations` 키만 없으면 `Cannot read properties of undefined (reading 'find')` 를 그대로 던지고, 에러 경계가 받아 화면 전체가 사라진다. **developer 가 로그인하면 바로 오는 화면**이라 흰 화면이 그대로 첫인상이 된다 — 설치가 끝나지 않은 스택이나 프록시가 돌려주는 다른 모양의 본문에서 난다.
+
+  배열인지까지 확인하고 쓰도록 고쳤다. 연동을 못 읽으면 주소 앞단만 비고 나머지 입력은 평소대로 된다. 문서 사이트의 화면 캡처를 만들다 드러났다 — 고정 응답이 그 키를 빠뜨리자 캡처가 에러 화면으로 찍혔다. 저장소 전체에서 같은 패턴(`?.키.메서드`)을 훑어 다른 곳에는 없는 것을 확인했다.
+
+  테스트 4건: `integrations` 키 없음 · `null` · 응답이 빈 문자열일 때 화면이 뜨는지, 연동을 못 읽을 때 주소 앞단이 비는지. 주소가 제대로 올 때 앞단이 채워지는 것은 기존 테스트가 지킨다.
+
 - **로컬 E2E 가이드 — `NULLUS_LOCAL_DOMAIN` 이 2단계 한 번으로 끝나는 것처럼 읽히던 것** (`docs/50_운영/Nullus_로컬_E2E_가이드.html`): 컨테이너 · 클러스터 · 볼륨 · 호스트 `/etc/hosts` 까지 비운 환경에서 가이드를 글자 그대로 다시 돌려(5차) 결함 2건을 찾았다. 앞선 리허설들은 이전 실행이 `/etc/hosts` 에 남긴 줄과 셸에 남은 환경 변수 덕에 둘 다 가려져 있었다.
 
   **① 2단계가 호스트 `/etc/hosts` 를 넣으라고 하지 않았다.** `up` 이 `NULLUS_LOCAL_DOMAIN` 을 보고 API · 포털의 OIDC issuer 를 `http://keycloak.<도메인>:8180/realms/nullus` 로 잡는데, `setup-local-domain.sh` 가 넣는 것은 클러스터 안 CoreDNS 뿐이다. 호스트 쪽은 그 스크립트의 `--apply-hosts`(또는 출력되는 `sudo` 명령)가 넣는데 가이드 어디에도 없었다. 실측: 넣기 전 `curl http://keycloak.nullus.local:8180/...` → `000 Could not resolve host`, `localhost:8180` → `200` — 3단계가 "로그인으로 넘어간다" 고 적은 그 주소를 브라우저가 찾지 못하는 상태다. 넣은 뒤 같은 주소가 `200`, 로그인 3/3. 5단계의 `port-forward-gateway.sh --hosts` 는 도구 이름만 다루고 `keycloak.<도메인>` 은 포함하지 않아 대신 쓸 수 없다. 2단계를 `--apply-hosts` 로 고치고 경고를 달았다.

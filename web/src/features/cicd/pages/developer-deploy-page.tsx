@@ -300,18 +300,21 @@ export function DeveloperDeployPage() {
       ),
     [namespaces],
   );
-  const codeRepositoryEndpoint =
-    integrationsData?.integrations.find(
-      (integration) => integration.component_type === "code_repository",
+  // 연동 목록이 없을 수도 있다 — 설치가 끝나지 않은 스택, 프록시가 돌려주는
+  // 다른 모양의 본문. 배열인지까지 보고 쓴다. `integrationsData?.integrations.find`
+  // 처럼 중간만 옵셔널 체이닝하면 응답 객체는 있고 그 키만 없을 때 그대로 던지고,
+  // developer 의 첫 화면이 통째로 흰 화면이 된다.
+  const integrations = Array.isArray(integrationsData?.integrations)
+    ? integrationsData.integrations
+    : [];
+  const endpointOf = (componentType: string) =>
+    integrations.find(
+      (integration) => integration.component_type === componentType,
     )?.endpoint ?? "";
-  const artifactRepositoryEndpoint =
-    integrationsData?.integrations.find(
-      (integration) => integration.component_type === "package_registry",
-    )?.endpoint ?? "";
-  const imageRegistryEndpoint =
-    integrationsData?.integrations.find(
-      (integration) => integration.component_type === "image_registry",
-    )?.endpoint ?? "";
+
+  const codeRepositoryEndpoint = endpointOf("code_repository");
+  const artifactRepositoryEndpoint = endpointOf("package_registry");
+  const imageRegistryEndpoint = endpointOf("image_registry");
   const stackGitBaseUrl =
     selectedStackId && codeRepositoryEndpoint
       ? `${codeRepositoryEndpoint.replace(/\/+$/, "")}/`
