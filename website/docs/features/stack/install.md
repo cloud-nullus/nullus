@@ -60,6 +60,30 @@ Gateway TLS · 설치 파일 생성 상태 · YAML/values 검증 · 리소스 �
 `Run Dry Run` 버튼은 "마지막 실행 시각"만 찍습니다 — 검사 자체는 값이 바뀔 때마다
 다시 계산됩니다.
 
+### 오브젝트 스토리지는 구현체를 고릅니다
+
+Storage 탭의 **Object Storage → Storage Provider** 에서 스택 안에 세울 S3 호환
+스토리지를 고릅니다. 새로 만드는 스토리지(통합 생성)는 아래 둘 중 하나입니다.
+
+| 구현체 | 라이선스 | 설치되는 것 | 웹 콘솔 |
+|--------|----------|-------------|---------|
+| **MinIO** | AGPL-3.0 — 이미지는 커뮤니티 포크 SILO(`pgsty/silo`) | 릴리스 `nullus-minio`(standalone) | `minio.<도메인>`(Keycloak 로그인) |
+| **SeaweedFS** | Apache-2.0 | 릴리스 `nullus-seaweedfs`(all-in-one — master·volume·filer·S3 게이트웨이가 파드 하나) | 없음 — S3 API 뿐 |
+
+GitLab(아티팩트 · LFS · 업로드 · 패키지 · Pages · Container Registry)은 **S3 계약만**
+봅니다 — 엔드포인트 · 액세스 키 · 시크릿 키 · 리전 · path-style. 그래서 구현체를 바꿔도
+템플릿은 그대로 서고, 호환성 매트릭스도 이 칸으로 조합을 가르지 않습니다. 버킷도 벤더
+CLI 없이 S3 `CreateBucket` 을 HTTP 로 직접 만듭니다. 자격은 다른 비밀값처럼 스택 금고
+(OpenBao)에서 생성되고, 연결 정보 화면이 고른 구현체의 엔드포인트와 Secret 을 안내합니다.
+
+- 템플릿이 SeaweedFS 를 고르면 Storage 탭에도 그대로 실립니다.
+- SeaweedFS 데이터 볼륨 크기는 Storage 탭의 사이즈(small 50Gi · medium 100Gi · large 300Gi)를 따릅니다.
+- 이름 없이 저장된 기존 스택과 알아보지 못하는 이름은 예전처럼 MinIO 로 섭니다.
+
+!!! warning "설치한 뒤에는 구현체를 바꾸지 마십시오"
+    데이터를 옮기는 기능이 없습니다. 이미 선 스택에서 바꾸면 새 스토리지는 비어 있고,
+    GitLab 은 기존 아티팩트 · 업로드 · 이미지를 찾지 못합니다.
+
 ## 배포
 
 **배포** 버튼은 아래 중 하나라도 걸리면 눌리지 않습니다.
