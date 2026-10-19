@@ -77,12 +77,12 @@ These bypass the config loader; the code reads them directly.
 | **`ENCRYPTION_KEY`** | Encrypts and decrypts kubeconfigs and tokens. **Exactly 32 bytes** | None — runtime 500 if empty |
 | `OPENBAO_ADDR` / `OPENBAO_TOKEN` | Global OpenBao, local only | Registered only when both are set |
 | `NULLUS_GITLAB_URL` / `NULLUS_GITEA_URL` / `NULLUS_JENKINS_URL` | Override tool addresses | Empty |
-| `NULLUS_HELM_OCI_REGISTRY` | Air-gapped OCI registry | Empty |
+| `NULLUS_HELM_OCI_REGISTRY` | Air-gapped OCI registry. The installed-image scan also pulls images from this host (the same registry the nodes' containerd mirrors use) | Empty |
 | `NULLUS_TELEGRAM_API_URL` | For notification tests | Empty |
 | `NULLUS_STACK_ALERT_INTERVAL` | Alert collection interval | 1m (`off` or `0` turns it off) |
 | `TOKEN_ROTATION_INTERVAL` | Token rotation check interval | **5m** |
 | `CICD_RUN_SYNC_INTERVAL` | CI run sync interval | **10m** |
-| `STACK_IMAGE_RESCAN_INTERVAL` | Image rescan interval | **24h** |
+| `STACK_IMAGE_RESCAN_INTERVAL` | Installed-image rescan interval (air-gapped installs included). Newly found fixable CRITICALs go out as the `stack_cve_found` notification | **24h** |
 | `NULLUS_SCM_GROUP` | GitLab group for pipelines | **`nullus`** |
 | `NULLUS_DEFAULT_ORG_ID` | Default organization ID | Fixed UUID in code |
 

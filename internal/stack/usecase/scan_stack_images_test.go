@@ -192,7 +192,7 @@ func TestScanStackImages_Execute_SkipsWithReason(t *testing.T) {
 		want   domain.ImageScanSkipReason
 	}{
 		{"스캐너를 고르지 않은 스택", imageScanStack("stk_1", false), false, domain.ImageScanReasonScannerNotInstalled},
-		{"에어갭 플랫폼", imageScanStack("stk_1", true), true, domain.ImageScanReasonAirgap},
+		{"스캐너를 고르지 않은 에어갭 스택", imageScanStack("stk_1", false), true, domain.ImageScanReasonScannerNotInstalled},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -275,11 +275,12 @@ func TestScanStackImages_Report(t *testing.T) {
 	assert.Equal(t, domain.ImageScanStateScanned, report.Status)
 	assert.Len(t, report.Items, 1)
 
-	// 에어갭 플랫폼에서는 남은 결과가 있어도 스캔하지 않는 스택으로 보인다.
+	// 에어갭 플랫폼도 결과를 보이고, 반입한 DB 기준이라는 표시를 붙인다.
 	report, err = newScanStackImagesUC(stacks, &fakeImageScanner{}, results, true).Report(context.Background(), "stk_1")
 	require.NoError(t, err)
-	assert.Equal(t, domain.ImageScanStateNotScanned, report.Status)
-	assert.Empty(t, report.Items)
+	assert.Equal(t, domain.ImageScanStateScanned, report.Status)
+	assert.Len(t, report.Items, 1)
+	assert.True(t, report.Airgap)
 }
 
 func TestScanStackImages_Report_UnknownStack(t *testing.T) {
@@ -316,13 +317,22 @@ func TestScanStackImages_RescanStale_OnlyStaleOrNeverScanned(t *testing.T) {
 	assert.ElementsMatch(t, []string{"ns-stk_old", "ns-stk_never"}, scanner.namespaces())
 }
 
-// 에어갭 플랫폼은 주기 재스캔도 하지 않는다.
-func TestScanStackImages_RescanAll_NothingOnAirgap(t *testing.T) {
-	scanner := &fakeImageScanner{}
-	uc := newScanStackImagesUC([]*domain.Stack{imageScanStack("stk_1", true)}, scanner, newFakeImageScanResults(), true)
+// 에어갭 플랫폼도 설치 이미지를 스캔하고(내부 레지스트리 · 반입한 DB), 보고서에 에어갭이라고 남긴다 —
+// 화면이 DB 기준일을 함께 보인다.
+func TestScanStackImages_Airgap_ScansAndMarksReport(t *testing.T) {
+	scanner := &fakeImageScanner{scans: []domain.StackImageScan{{
+		Image: "redis:7", ImageDigest: "sha256:r", Status: domain.ImageScanStatusScanned, ScannedAt: time.Now(),
+	}}}
+	results := newFakeImageScanResults()
+	uc := newScanStackImagesUC([]*domain.Stack{imageScanStack("stk_1", true)}, scanner, results, true)
 
-	assert.Zero(t, uc.RescanAll(context.Background()))
-	assert.Empty(t, scanner.namespaces())
+	assert.Equal(t, 1, uc.RescanAll(context.Background()))
+	assert.Equal(t, []string{"ns-stk_1"}, scanner.namespaces())
+
+	report, err := uc.Report(context.Background(), "stk_1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.ImageScanStateScanned, report.Status)
+	assert.True(t, report.Airgap)
 }
 
 // 스택 스캔은 스택이 쓰는 클러스터 공용 구성요소를 함께 넘긴다.

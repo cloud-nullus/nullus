@@ -60,10 +60,10 @@ func TestScanStackImages_Vulnerabilities_UnknownImage(t *testing.T) {
 
 // 스캔하지 않는 스택은 목록도 없다. 이유를 그대로 돌려준다.
 func TestScanStackImages_Vulnerabilities_NotScannedStack(t *testing.T) {
-	uc := newScanStackImagesUC([]*domain.Stack{imageScanStack("stk_1", true)}, &fakeImageScanner{}, newFakeImageScanResults(), true)
+	uc := newScanStackImagesUC([]*domain.Stack{imageScanStack("stk_1", false)}, &fakeImageScanner{}, newFakeImageScanResults(), false)
 
 	page, err := uc.Vulnerabilities(context.Background(), "stk_1", "sha256:p", shareddomain.VulnerabilityFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, shareddomain.VulnerabilityListUnavailable, page.Status)
-	assert.Equal(t, string(domain.ImageScanReasonAirgap), page.Reason)
+	assert.Equal(t, string(domain.ImageScanReasonScannerNotInstalled), page.Reason)
 }

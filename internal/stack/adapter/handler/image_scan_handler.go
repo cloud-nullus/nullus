@@ -84,9 +84,11 @@ type stackImageScanItem struct {
 }
 
 type stackImageScanResponse struct {
-	StackID       string                       `json:"stack_id"`
-	Status        string                       `json:"status"`
-	Reason        string                       `json:"reason"`
+	StackID string `json:"stack_id"`
+	Status  string `json:"status"`
+	Reason  string `json:"reason"`
+	// Airgap 이면 취약점 DB 가 번들을 반입한 날짜 기준이다.
+	Airgap        bool                         `json:"airgap"`
 	LastScannedAt *time.Time                   `json:"last_scanned_at"`
 	Summary       *shareddomain.SeverityCounts `json:"summary"`
 	Items         []stackImageScanItem         `json:"items"`
@@ -115,6 +117,7 @@ func (h *ImageScanHandler) GetImageScans(c echo.Context) error {
 		StackID:       report.StackID,
 		Status:        string(report.Status),
 		Reason:        string(report.Reason),
+		Airgap:        report.Airgap,
 		LastScannedAt: report.LastScannedAt,
 		Summary:       report.Summary,
 		Items:         make([]stackImageScanItem, 0, len(report.Items)),

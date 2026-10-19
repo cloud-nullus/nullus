@@ -375,8 +375,10 @@ export interface StackImageScanItem {
 export interface StackImageScanReport {
   stackId: string;
   status: StackImageScanStatus;
-  /** not_scanned 인 이유. "scanner_not_installed" | "airgap" | "" */
+  /** not_scanned 인 이유. "scanner_not_installed" | "airgap"(옛 응답) | "" */
   reason: string;
+  /** 에어갭 설치의 결과다. 취약점 DB 가 번들을 반입한 날짜 기준이다. */
+  airgap: boolean;
   lastScannedAt?: string;
   /** 수정 버전이 없는 취약점까지 포함한 합계. 스캔하지 않았으면 없다. */
   summary?: VulnerabilityCounts;

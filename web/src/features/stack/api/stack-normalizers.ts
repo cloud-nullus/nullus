@@ -580,6 +580,7 @@ export function normalizeStackImageScanReport(raw: unknown): StackImageScanRepor
     stackId: String(report.stack_id ?? ''),
     status: STACK_IMAGE_SCAN_STATUSES.has(status) ? (status as StackImageScanStatus) : 'not_scanned',
     reason: typeof report.reason === 'string' ? report.reason : '',
+    airgap: report.airgap === true,
     lastScannedAt: optionalScanString(report.last_scanned_at),
     summary: normalizeVulnerabilityCounts(report.summary),
     items,

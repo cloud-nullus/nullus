@@ -49,6 +49,7 @@ describe('normalizeStackImageScanReport', () => {
     const report = normalizeStackImageScanReport(scannedResponse)
 
     expect(report.stackId).toBe('stk_6da6f2e5f32c')
+    expect(report.airgap).toBe(false)
     expect(report.status).toBe('scanned')
     expect(report.lastScannedAt).toBe('2026-09-14T01:02:03Z')
     expect(report.summary).toEqual({ critical: 1, high: 10, medium: 40, low: 30, unknown: 2 })

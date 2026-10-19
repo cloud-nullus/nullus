@@ -56,8 +56,10 @@ type KubectlFunc func(ctx context.Context, kubeconfig []byte, args ...string) (s
 
 // Scanner 는 port.InstalledImageScanner 구현이다.
 type Scanner struct {
-	kubectl      KubectlFunc
-	image        string
+	kubectl KubectlFunc
+	image   string
+	// mirror 는 에어갭 내부 레지스트리의 호스트다(파드가 부르는 이름). 비면 에어갭이 아니다.
+	mirror       string
 	jobTimeout   time.Duration
 	pollInterval time.Duration
 	now          func() time.Time
@@ -71,6 +73,15 @@ func WithKubectl(fn KubectlFunc) Option { return func(s *Scanner) { s.kubectl = 
 
 // WithClock 은 스캔 시각의 출처를 바꾼다(테스트용).
 func WithClock(fn func() time.Time) Option { return func(s *Scanner) { s.now = fn } }
+
+// WithMirrorRegistry 는 에어갭 내부 레지스트리에서 이미지를 받게 한다.
+//
+// 에어갭 노드는 containerd 미러로 이미지를 받아서, 파드의 imageID 는 원래 레지스트리 이름이다. 스캔
+// Job 의 trivy client 는 그 이름으로 받을 수 없으므로 번들이 올린 경로로 바꾸고, plain HTTP 레지스트리를
+// 허용하며, Java DB 도 같은 레지스트리의 미러에서 받는다. host 가 비면 아무것도 바꾸지 않는다.
+func WithMirrorRegistry(host string) Option {
+	return func(s *Scanner) { s.mirror = strings.TrimSpace(host) }
+}
 
 // WithPollInterval 은 Job 완료를 확인하는 간격을 바꾼다(테스트용).
 func WithPollInterval(d time.Duration) Option { return func(s *Scanner) { s.pollInterval = d } }
@@ -117,11 +128,16 @@ func (s *Scanner) ScanInstalledImages(ctx context.Context, kubeconfig []byte, na
 		images[i].Namespace = ns
 	}
 	images = append(images, s.sharedImages(ctx, kubeconfig, arch, shared, images)...)
+	if s.mirror != "" {
+		for i := range images {
+			images[i].Ref = mirrorRef(images[i].Ref, s.mirror)
+		}
+	}
 	if len(images) == 0 {
 		return nil, fmt.Errorf("네임스페이스 %s 에서 digest 가 확정된 실행 중 이미지를 찾지 못했습니다", ns)
 	}
 
-	manifest := scanJobManifest(ns, s.image, shareddomain.TrivyServerEndpoint(ns), images, s.jobTimeout)
+	manifest := scanJobManifest(ns, s.image, shareddomain.TrivyServerEndpoint(ns), images, s.jobTimeout, s.mirrorEnv())
 	path, cleanup, err := writeTemp(manifest)
 	if err != nil {
 		return nil, err
@@ -435,7 +451,31 @@ var (
 //
 // 이미지 참조는 셸 스크립트에 들어간다. 파드 상태에서 온 값이라도 모양이 맞지 않으면
 // 넣지 않는다 — 그 이미지는 결과가 없어 실패로 남는다.
-func scanJobManifest(namespace, image, server string, images []installedImage, timeout time.Duration) string {
+// mirrorEnv 는 에어갭 스캔 Job 에 더할 환경이다 — plain HTTP 내부 레지스트리, Java DB 미러.
+func (s *Scanner) mirrorEnv() map[string]string {
+	if s.mirror == "" {
+		return nil
+	}
+	return map[string]string{
+		"TRIVY_INSECURE":           "true",
+		"TRIVY_JAVA_DB_REPOSITORY": shareddomain.TrivyJavaDBRepository(s.mirror),
+	}
+}
+
+// mirrorRef 는 원래 레지스트리의 참조를 에어갭 내부 레지스트리의 경로로 바꾼다. 번들 푸시
+// (airgap/scripts/12-push-to-registry.sh 의 compute_target)처럼 레지스트리 호스트만 바꾸고, 호스트가
+// 없는 Docker Hub 이름은 library/ 를 붙인다.
+func mirrorRef(ref, host string) string {
+	path := ref
+	if first, rest, ok := strings.Cut(ref, "/"); ok && (strings.ContainsAny(first, ".:") || first == "localhost") {
+		path = rest
+	} else if !strings.Contains(strings.SplitN(ref, "@", 2)[0], "/") {
+		path = "library/" + ref
+	}
+	return host + "/" + path
+}
+
+func scanJobManifest(namespace, image, server string, images []installedImage, timeout time.Duration, extraEnv map[string]string) string {
 	var targets strings.Builder
 	for _, img := range images {
 		if !safeRef.MatchString(img.Ref) || !safePlatform.MatchString(img.Platform) {
@@ -471,7 +511,7 @@ spec:
           value: %q
         - name: NULLUS_TRIVY_TEMPLATE
           value: %q
-        resources:
+%s        resources:
           requests:
             cpu: 100m
             memory: 256Mi
@@ -483,7 +523,21 @@ spec:
         - |
 %s
 `, jobName, namespace, managedByValue, int(timeout.Seconds()), managedByValue, image, server, vulnTemplate,
-		indent(script, 10))
+		envLines(extraEnv), indent(script, 10))
+}
+
+// envLines 는 컨테이너 env 항목이다. 순서를 고정한다 — 같은 입력이 같은 매니페스트를 낸다.
+func envLines(env map[string]string) string {
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		fmt.Fprintf(&b, "        - name: %s\n          value: %q\n", k, env[k])
+	}
+	return b.String()
 }
 
 // scanScript 는 스캔 Job 이 이미지를 하나씩 스캔하는 셸 스크립트다.

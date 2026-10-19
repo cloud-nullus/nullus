@@ -39,7 +39,9 @@ type ImageScanSkipReason string
 
 const (
 	ImageScanReasonScannerNotInstalled ImageScanSkipReason = "scanner_not_installed"
-	ImageScanReasonAirgap              ImageScanSkipReason = "airgap"
+	// ImageScanReasonAirgap 은 에어갭 설치라 스캔하지 않던 때의 이유다. 이제 만들지 않지만, 화면이 옛
+	// 응답을 읽을 수 있게 남긴다.
+	ImageScanReasonAirgap ImageScanSkipReason = "airgap"
 )
 
 // StackImageScan 은 스택이 돌리는 이미지 하나의 스캔 결과다.
@@ -90,9 +92,11 @@ type StackImageVulnerabilities struct {
 
 // StackImageScanReport 는 스택 하나의 설치 이미지 스캔 보고서다.
 type StackImageScanReport struct {
-	StackID       string
-	Status        ImageScanState
-	Reason        ImageScanSkipReason
+	StackID string
+	Status  ImageScanState
+	Reason  ImageScanSkipReason
+	// Airgap 은 에어갭 설치의 결과라는 뜻이다. 취약점 DB 가 번들을 반입한 날짜 기준이다.
+	Airgap        bool
 	LastScannedAt *time.Time
 	// Summary 는 스캔에 성공한 이미지의 건수 합이다.
 	Summary *shareddomain.SeverityCounts
@@ -110,12 +114,9 @@ func HasImageScanner(sel ToolSelection) bool {
 // ImageScanSkipReasonFor 는 스택의 설치 이미지를 스캔하지 않는 이유다.
 // 빈 값이면 스캔할 수 있다.
 //
-// 에어갭이 먼저다 — 스캐너가 있어도 이미지를 받을 외부 레지스트리에 닿지 못하고,
-// 취약점 DB 는 사람이 넣은 만큼만 새것이다.
-func ImageScanSkipReasonFor(cfg StackConfig, airgap bool) ImageScanSkipReason {
-	if airgap {
-		return ImageScanReasonAirgap
-	}
+// 에어갭 설치도 스캔한다 — 이미지는 내부 레지스트리(번들이 올린 경로)에서 받고, 취약점 DB 는 번들이
+// 반입한 것을 쓴다. DB 가 반입한 날짜에 멈춰 있으므로 보고서가 그것을 밝힌다(StackImageScanReport.Airgap).
+func ImageScanSkipReasonFor(cfg StackConfig) ImageScanSkipReason {
 	if !HasImageScanner(cfg.Security.ImageScanner) {
 		return ImageScanReasonScannerNotInstalled
 	}

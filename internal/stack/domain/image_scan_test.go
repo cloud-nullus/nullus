@@ -22,14 +22,14 @@ func TestImageScanSkipReasonFor(t *testing.T) {
 		ImageScanner: ToolSelection{Name: "trivy", Version: "external", Enabled: true},
 	}}
 
-	assert.Equal(t, ImageScanSkipReason(""), ImageScanSkipReasonFor(trivyStackConfig(), false))
-	assert.Equal(t, ImageScanReasonScannerNotInstalled, ImageScanSkipReasonFor(StackConfig{}, false))
+	assert.Equal(t, ImageScanSkipReason(""), ImageScanSkipReasonFor(trivyStackConfig()))
+	assert.Equal(t, ImageScanReasonScannerNotInstalled, ImageScanSkipReasonFor(StackConfig{}))
 	// 외부 스캐너는 스택 안에 서지 않는다 — 스캔 Job 이 붙을 서버가 없다.
-	assert.Equal(t, ImageScanReasonScannerNotInstalled, ImageScanSkipReasonFor(external, false))
-	// 에어갭 설치는 스캐너가 있어도 스캔하지 않는다. 이미지를 받을 외부 레지스트리에
-	// 닿지 못하고, DB 도 사람이 넣은 만큼만 새것이다.
-	assert.Equal(t, ImageScanReasonAirgap, ImageScanSkipReasonFor(trivyStackConfig(), true))
-	assert.Equal(t, ImageScanReasonAirgap, ImageScanSkipReasonFor(StackConfig{}, true))
+	assert.Equal(t, ImageScanReasonScannerNotInstalled, ImageScanSkipReasonFor(external))
+	// 에어갭 설치도 스캐너가 있으면 스캔한다 — 이미지를 내부 레지스트리에서 받고, DB 는 번들이 반입한
+	// 것을 쓴다(DB 기준일을 함께 보인다). 스캐너가 없으면 이유는 같다.
+	assert.Equal(t, ImageScanSkipReason(""), ImageScanSkipReasonFor(trivyStackConfig()))
+	assert.Equal(t, ImageScanReasonScannerNotInstalled, ImageScanSkipReasonFor(StackConfig{}))
 }
 
 func TestHasImageScanner(t *testing.T) {

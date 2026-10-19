@@ -105,13 +105,14 @@ func TestImageScanHandler_Scanned(t *testing.T) {
 
 // 스캔하지 않는 스택도 같은 모양으로 답한다. items 는 null 이 아니라 빈 목록이다.
 func TestImageScanHandler_NotScanned(t *testing.T) {
-	report := domain.BuildImageScanReport("stk_1", domain.ImageScanReasonAirgap, nil)
+	report := domain.BuildImageScanReport("stk_1", domain.ImageScanReasonScannerNotInstalled, nil)
 
 	code, body := getImageScans(t, fakeImageScanReporter{report: &report}, time.Now())
 
 	require.Equal(t, http.StatusOK, code)
 	assert.Equal(t, "not_scanned", body["status"])
-	assert.Equal(t, "airgap", body["reason"])
+	assert.Equal(t, "scanner_not_installed", body["reason"])
+	assert.Equal(t, false, body["airgap"])
 	assert.Equal(t, []any{}, body["items"])
 	assert.Nil(t, body["summary"])
 	assert.Nil(t, body["last_scanned_at"])
@@ -158,4 +159,18 @@ func TestImageScanHandler_Vulnerabilities_UnknownImage(t *testing.T) {
 	code, body := getImageVulnerabilities(t, fakeImageScanReporter{vulnErr: usecase.ErrStackImageScanNotFound}, "?digest=sha256:nope")
 	assert.Equal(t, http.StatusNotFound, code)
 	assert.Equal(t, "IMAGE_SCAN_NOT_FOUND", body["error"].(map[string]any)["code"])
+}
+
+// 에어갭 스캔 결과는 번들이 반입한 DB 기준이다 — 화면이 그것을 밝히도록 표시를 싣는다.
+func TestImageScanHandler_MarksAirgap(t *testing.T) {
+	now := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
+	report := domain.BuildImageScanReport("stk_1", "", []domain.StackImageScan{
+		{Image: "redis:7", ImageDigest: "sha256:r", Status: domain.ImageScanStatusScanned, ScannedAt: now},
+	})
+	report.Airgap = true
+
+	code, body := getImageScans(t, fakeImageScanReporter{report: &report}, now)
+
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, true, body["airgap"])
 }

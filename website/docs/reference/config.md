@@ -76,12 +76,12 @@
 | **`ENCRYPTION_KEY`** | kubeconfig·토큰 암복호. **정확히 32바이트** | 없음 — 비면 런타임 500 |
 | `OPENBAO_ADDR` / `OPENBAO_TOKEN` | 로컬 전용 전역 OpenBao | 둘 다 있어야 등록 |
 | `NULLUS_GITLAB_URL` / `NULLUS_GITEA_URL` / `NULLUS_JENKINS_URL` | 도구 주소 덮어쓰기 | 빈 값 |
-| `NULLUS_HELM_OCI_REGISTRY` | 에어갭 OCI 레지스트리 | 빈 값 |
+| `NULLUS_HELM_OCI_REGISTRY` | 에어갭 OCI 레지스트리. 설치 이미지 스캔도 이 호스트에서 이미지를 받는다(노드의 containerd 미러와 같은 레지스트리) | 빈 값 |
 | `NULLUS_TELEGRAM_API_URL` | 알림 테스트용 | 빈 값 |
 | `NULLUS_STACK_ALERT_INTERVAL` | 경보 수집 주기 | 1m (`off`·`0` 이면 끔) |
 | `TOKEN_ROTATION_INTERVAL` | 토큰 회전 점검 주기 | **5m** |
 | `CICD_RUN_SYNC_INTERVAL` | CI 실행 동기화 주기 | **10m** |
-| `STACK_IMAGE_RESCAN_INTERVAL` | 이미지 재스캔 주기 | **24h** |
+| `STACK_IMAGE_RESCAN_INTERVAL` | 설치 이미지 재스캔 주기(에어갭 포함). 새로 발견된 수정판 있는 CRITICAL 은 알림 `stack_cve_found` 로 간다 | **24h** |
 | `NULLUS_SCM_GROUP` | 파이프라인용 GitLab 그룹 | **`nullus`** |
 | `NULLUS_DEFAULT_ORG_ID` | 기본 조직 ID | 코드의 고정 UUID |
 
