@@ -377,6 +377,7 @@ func (uc *ProvisionPipelineRepository) applyArgoApplication(
 		if nsManifest, nsErr := kube.RenderNamespace(destNamespace); nsErr == nil {
 			manifests = append(manifests, nsManifest)
 			if pullSecret, psErr := kube.RenderImagePullSecret(kube.ImagePullSecretSpec{
+				AppName:      app,
 				Namespace:    destNamespace,
 				RegistryHost: appOut.ImageTarget.Host,
 				Username:     pullSecretUsername(bundle),

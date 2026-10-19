@@ -480,3 +480,25 @@ func TestRender_OmitsStackLabelWhenNoStack(t *testing.T) {
 		assert.NotContains(t, f.Content, "nullus.io/stack-id", "%s", f.Path)
 	}
 }
+
+// Deployment 는 앱 자신의 pull 자격증명을 참조한다. 이름이 네임스페이스에 하나면 같은 네임스페이스의
+// 다른 앱이 덮어써 이 앱의 pull 이 막힌다.
+func TestRender_DeploymentReferencesAppPullSecret(t *testing.T) {
+	files, err := Render(baseInput())
+	require.NoError(t, err)
+
+	var d struct {
+		Spec struct {
+			Template struct {
+				Spec struct {
+					ImagePullSecrets []struct {
+						Name string `json:"name"`
+					} `json:"imagePullSecrets"`
+				} `json:"spec"`
+			} `json:"template"`
+		} `json:"spec"`
+	}
+	require.NoError(t, yaml.Unmarshal([]byte(fileMap(t, files)["deploy/deployment.yaml"]), &d))
+	require.Len(t, d.Spec.Template.Spec.ImagePullSecrets, 1)
+	assert.Equal(t, "nullus-registry-myapp", d.Spec.Template.Spec.ImagePullSecrets[0].Name)
+}

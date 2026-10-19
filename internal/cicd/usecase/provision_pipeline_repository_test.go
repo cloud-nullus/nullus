@@ -114,6 +114,7 @@ func TestProvisionPipelineRepository_AppliesArgoCDApplication(t *testing.T) {
 	joined := strings.Join(applier.applied, "\n---\n")
 	assert.Contains(t, joined, "argocd.argoproj.io/secret-type: repository")
 	assert.Contains(t, joined, "kubernetes.io/dockerconfigjson")
+	assert.Contains(t, joined, "name: nullus-registry-myapp", "pull 자격증명은 앱마다 따로다")
 	assert.Contains(t, joined, "kind: Namespace")
 
 	manifest := applier.applied[3]
