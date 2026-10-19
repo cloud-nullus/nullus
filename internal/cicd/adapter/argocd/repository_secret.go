@@ -24,6 +24,12 @@ type RepositorySecretSpec struct {
 	Password      string
 }
 
+// RepositorySecretName 은 앱의 Argo CD 저장소 자격증명 Secret 이름이다.
+// 파이프라인을 지울 때 같은 이름으로 찾아 회수한다.
+func RepositorySecretName(app string) string {
+	return "nullus-repo-" + strings.TrimSpace(app)
+}
+
 // RenderRepositorySecret 은 Argo CD 저장소 자격증명 Secret 을 만든다.
 //
 // Application 만 만들고 자격증명을 주지 않으면 private 저장소에서
@@ -51,7 +57,7 @@ func RenderRepositorySecret(spec RepositorySecretSpec) (string, error) {
 		"kind":       "Secret",
 		"metadata": map[string]any{
 			// 앱마다 이름이 달라야 서로의 자격증명을 덮어쓰지 않는다.
-			"name":      "nullus-repo-" + app,
+			"name":      RepositorySecretName(app),
 			"namespace": ns,
 			"labels": map[string]any{
 				repositorySecretTypeLabel:      "repository",

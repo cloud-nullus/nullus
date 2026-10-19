@@ -84,6 +84,17 @@ Stack**(없거나 `삭제됨`) **· Status · Last Deployed** 입니다.
 이미지. 저장소를 고르면 `owner/repo` 경로를 정확히 입력해야 확인 버튼이
 열립니다. 지우지 못한 것은 배너로 알려 줍니다.
 
+**클러스터 리소스**를 고르면 Argo CD Application 과 배포된 워크로드에 더해, 파이프라인을
+만들 때 플랫폼이 넣은 Secret 두 개도 지웁니다 — 앱 네임스페이스의 이미지 pull
+자격증명(`nullus-registry-<앱>`)과 Argo CD 네임스페이스의 저장소 자격증명
+(`nullus-repo-<앱>`). 플랫폼 표시(`app.kubernetes.io/managed-by=nullus-cicd`)가 없는
+Secret 은 이름이 같아도 남깁니다. 앱 네임스페이스 자체는 지우지 않습니다.
+
+!!! warning "Gitea · Jenkins 스택의 파이프라인 자격증명은 남습니다"
+    이 스택들은 스택 네임스페이스에 ExternalSecret `nullus-ci-<앱>` 을 하나 더 넣고,
+    OpenBao 에 그 값을 둡니다. 삭제는 이것들을 지우지 않습니다 — ExternalSecret 과
+    ESO 가 만든 Secret, OpenBao 의 항목을 직접 지워야 합니다.
+
 ## 파이프라인 생성 화면
 
 <span class="route">/cicd/create</span>

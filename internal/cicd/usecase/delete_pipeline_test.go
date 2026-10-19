@@ -270,6 +270,94 @@ func TestDeletePipeline_KeepsRecordWhenWorkloadCleanupFails(t *testing.T) {
 	assert.Empty(t, repo.deleted)
 }
 
+type fakeSecretDeleter struct {
+	calls []string
+	err   error
+	// failOn 은 이 이름의 Secret 에서만 실패한다.
+	failOn string
+}
+
+func (f *fakeSecretDeleter) DeleteManagedSecret(_ context.Context, _ []byte, namespace, name string) error {
+	if f.err != nil || (f.failOn != "" && f.failOn == name) {
+		return assert.AnError
+	}
+	f.calls = append(f.calls, namespace+"/"+name)
+	return nil
+}
+
+// 파이프라인을 만들 때 플랫폼이 넣은 Secret 두 개 — 앱 네임스페이스의 이미지 pull
+// 자격증명과 CD 도구 네임스페이스의 저장소 자격증명 — 도 클러스터 리소스다.
+// 앱마다 이름이 달라 남겨 두면 파이프라인을 지울 때마다 하나씩 쌓인다.
+func TestDeletePipeline_DeletesPlatformSecretsWithClusterResources(t *testing.T) {
+	uc, repo, _, _, _ := deleteFixture(t)
+	secrets := &fakeSecretDeleter{}
+	uc.WithSecretDeleter(secrets)
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"apps/nullus-registry-myapp", "devsecops/nullus-repo-myapp"}, secrets.calls)
+	assert.Equal(t, []string{"pip_1"}, repo.deleted)
+}
+
+// 클러스터 리소스를 고르지 않으면 Application 이 남는다 — 그것이 쓰는 자격증명도 남긴다.
+func TestDeletePipeline_KeepsPlatformSecretsWithoutClusterResources(t *testing.T) {
+	uc, _, _, _, _ := deleteFixture(t)
+	secrets := &fakeSecretDeleter{}
+	uc.WithSecretDeleter(secrets)
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteRepository: true,
+	})
+	require.NoError(t, err)
+
+	assert.Empty(t, secrets.calls)
+}
+
+// Secret 을 지우지 못하면 레코드를 남겨 다시 시도할 수 있게 한다.
+func TestDeletePipeline_KeepsRecordWhenSecretCleanupFails(t *testing.T) {
+	uc, repo, _, _, _ := deleteFixture(t)
+	uc.WithSecretDeleter(&fakeSecretDeleter{err: assert.AnError})
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+	require.Error(t, err)
+	assert.Empty(t, repo.deleted)
+}
+
+// 둘째 Secret(저장소 자격증명)만 실패해도 레코드를 남긴다 — 다시 시도하면 첫째는
+// 이미 없어 성공으로 넘어가고 둘째부터 이어진다.
+func TestDeletePipeline_KeepsRecordWhenRepositorySecretCleanupFails(t *testing.T) {
+	uc, repo, _, _, _ := deleteFixture(t)
+	secrets := &fakeSecretDeleter{failOn: "nullus-repo-myapp"}
+	uc.WithSecretDeleter(secrets)
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+	require.Error(t, err)
+	assert.Equal(t, []string{"apps/nullus-registry-myapp"}, secrets.calls)
+	assert.Empty(t, repo.deleted)
+}
+
+// 저장된 이름에 공백이 섞여 있어도 만들 때와 같은 이름을 찾는다 — 생성은 이름을
+// 다듬어 Secret 을 만든다. 다른 이름을 찾으면 "이미 없음" 으로 성공해 조용히 남는다.
+func TestDeletePipeline_TrimsAppNameForPlatformSecrets(t *testing.T) {
+	uc, repo, _, _, _ := deleteFixture(t)
+	repo.pipeline.Name = " myapp "
+	secrets := &fakeSecretDeleter{}
+	uc.WithSecretDeleter(secrets)
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"apps/nullus-registry-myapp", "devsecops/nullus-repo-myapp"}, secrets.calls)
+}
+
 // 배선되지 않으면 종전대로 Argo CD 경로만 정리한다.
 func TestDeletePipeline_WorkloadCleanupIsOptional(t *testing.T) {
 	uc, repo, _, argo, _ := deleteFixture(t)
@@ -413,6 +501,23 @@ func TestDeletePipeline_DeletesRecordWhenStackIsGone(t *testing.T) {
 	// 저장소와 이미지가 사라진 줄 안다.
 	require.NotEmpty(t, out.Warnings)
 	assert.Contains(t, out.Warnings[0], "직접 지워야")
+}
+
+// 스택이 사라지면 CD 도구의 네임스페이스를 모른다. 앱 네임스페이스의 pull 자격증명은
+// 지우고, 저장소 자격증명은 남긴다 — 그것은 스택을 지울 때 함께 치워진다.
+func TestDeletePipeline_StackGoneDeletesOnlyPullSecret(t *testing.T) {
+	repo := &fakePipelineRepo{pipeline: deletablePipeline()}
+	secrets := &fakeSecretDeleter{}
+	uc := NewDeletePipeline(repo, unavailableStackFactory{}, &fakeKubeconfigProvider{}).
+		WithSecretDeleter(secrets)
+
+	_, err := uc.Execute(context.Background(), DeletePipelineInput{
+		PipelineID: "pip_1", DeleteClusterResources: true,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"apps/nullus-registry-myapp"}, secrets.calls)
+	assert.NotEmpty(t, repo.deleted)
 }
 
 // 스택에 묶인 파이프라인의 Application 과 워크로드는 스택 클러스터에 있다.
