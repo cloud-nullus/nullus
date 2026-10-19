@@ -104,7 +104,8 @@ describe('StackImageScansTab', () => {
     expect(container.textContent).not.toMatch(/\b0\b/)
   })
 
-  it('폐쇄망 설치는 설치 이미지를 스캔하지 않는다고 설명한다', () => {
+  // 지금은 에어갭도 스캔한다. 사유 airgap 은 옛 서버의 응답에만 있다 — 그것도 "취약점 없음" 으로 읽히지 않게 설명한다.
+  it('옛 서버의 사유 airgap(스캔하지 않음)을 설명한다', () => {
     mockReport(report({ status: 'not_scanned', reason: 'airgap', summary: undefined, lastScannedAt: undefined }))
 
     render(<StackImageScansTab stackId="stk_1" />)
