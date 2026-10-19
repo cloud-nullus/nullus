@@ -33,6 +33,8 @@ const resourceStatusRunning = "running"
 
 // PipelineHandler handles HTTP requests for pipeline operations.
 type PipelineHandler struct {
+	// repositories 는 스택의 앱 저장소 자리를 알려 준다. nil 이면 조회가 501 을 돌려준다.
+	repositories port.RepositoryLocator
 	// imageScans 는 스캔 결과 조회용이다. nil 이면 조회가 503 을 돌려준다.
 	imageScans port.ImageScanResultRepository
 	// sastResults 는 소스 정적 분석 결과 조회용이다. nil 이면 조회가 503 을 돌려준다.
@@ -72,6 +74,12 @@ type PipelineHandler struct {
 }
 
 // WithManifestApplier 는 직접 배포의 적용 경로를 배선한다.
+// WithRepositoryLocator 는 스택의 앱 저장소 자리 조회를 배선한다.
+func (h *PipelineHandler) WithRepositoryLocator(l port.RepositoryLocator) *PipelineHandler {
+	h.repositories = l
+	return h
+}
+
 func (h *PipelineHandler) WithManifestApplier(a port.ManifestApplier) *PipelineHandler {
 	h.applier = a
 	return h
@@ -166,6 +174,7 @@ func (h *PipelineHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/deployments", h.ListDeployments)
 	g.GET("/deployments/:id", h.GetDeployment)
 	g.GET("/app-templates", h.ListAppTemplates)
+	g.GET("/repository-location", h.GetRepositoryLocation)
 	g.POST("/deploy-app", h.DeployApp)
 }
 
@@ -276,6 +285,29 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 		resp["warnings"] = out.Warnings
 	}
 	return c.JSON(http.StatusCreated, resp)
+}
+
+// GetRepositoryLocation handles GET /api/v1/cicd/repository-location?stack_id=.
+//
+// 스택에 묶인 파이프라인의 앱 저장소는 언제나 <그룹>/<앱 이름> 으로 만들어진다. 앱 배포 화면이 그 주소를
+// 미리 보여 주는 데 쓴다 — 전에는 화면이 저장소 경로를 입력받았지만 서버가 그 값을 쓰지 않았다.
+func (h *PipelineHandler) GetRepositoryLocation(c echo.Context) error {
+	if h.repositories == nil {
+		return errorResponse(c, http.StatusNotImplemented, "REPOSITORY_LOCATION_UNAVAILABLE", "저장소 자리 조회가 배선되지 않았습니다")
+	}
+	stackID := strings.TrimSpace(c.QueryParam("stack_id"))
+	if stackID == "" {
+		return errorResponse(c, http.StatusBadRequest, "STACK_ID_REQUIRED", "stack_id 가 필요합니다")
+	}
+	loc, err := h.repositories.RepositoryLocation(c.Request().Context(), stackID)
+	if err != nil {
+		if errors.Is(err, port.ErrStackToolsUnavailable) {
+			return errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", err.Error())
+		}
+		// 스택은 있지만 저장소 자리를 정할 수 없다(GitHub 연동 미설정 · 지원하지 않는 SCM).
+		return errorResponse(c, http.StatusUnprocessableEntity, "REPOSITORY_LOCATION_UNKNOWN", err.Error())
+	}
+	return c.JSON(http.StatusOK, loc)
 }
 
 // createPipelineErrorStatus 는 파이프라인 생성 실패를 상태 코드와 오류 코드로 옮긴다.

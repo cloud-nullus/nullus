@@ -18,6 +18,7 @@ const mockUseStackIntegrations = vi.fn();
 const mockCreatePipeline = vi.fn();
 const mockUseDeployPipeline = vi.fn();
 const mockDeployPipeline = vi.fn();
+const mockUseRepositoryLocation = vi.fn();
 
 vi.mock("react-router-dom", async () => {
   const actual =
@@ -31,6 +32,7 @@ vi.mock("../api/cicd-api", () => ({
   useCicdTemplates: () => mockUseCicdTemplates(),
   useCreatePipeline: () => mockUseCreatePipeline(),
   useDeployPipeline: () => mockUseDeployPipeline(),
+  useRepositoryLocation: (stackId: string) => mockUseRepositoryLocation(stackId),
 }));
 
 vi.mock("../../admin/api/admin-api", () => ({
@@ -102,6 +104,10 @@ describe("DeveloperDeployPage", () => {
     mockCreatePipeline.mockReset();
 
     mockUseCicdTemplates.mockReturnValue({ data: templates });
+    mockUseRepositoryLocation.mockReset();
+    mockUseRepositoryLocation.mockReturnValue({
+      data: { platform: "gitlab", groupPath: "nullus", webBaseUrl: "https://gitlab.stack.internal" },
+    });
     mockUseCreatePipeline.mockReturnValue({
       mutateAsync: mockCreatePipeline,
       isPending: false,
@@ -174,8 +180,9 @@ describe("DeveloperDeployPage", () => {
         "starter",
       );
     });
+    // 스택에 묶이면 저장소는 서버가 <그룹>/<앱 이름> 으로 만든다 — 그 주소를 보여 준다.
     expect(screen.getByLabelText("Source Repository")).toHaveValue(
-      "root/spring-sample.git",
+      "https://gitlab.stack.internal/nullus/starter",
     );
   });
 
@@ -220,7 +227,27 @@ describe("DeveloperDeployPage", () => {
     expect(screen.queryByText("Imports the template source")).toBeNull();
   });
 
-  it("selects the first stack and fills stack path defaults", async () => {
+  it("selects the first stack and shows where the repository will be created", async () => {
+    renderWithProviders(<DeveloperDeployPage />);
+
+    await waitFor(() => {
+      expect(selectedLabel(screen.getByLabelText("Select Stack"))).toBe(
+        "app-stack",
+      );
+    });
+    // 앱 이름을 넣기 전에는 자리만 보여 준다.
+    expect(screen.getByLabelText("Source Repository")).toHaveValue("");
+    expect(screen.getByLabelText("Source Repository")).toHaveAttribute(
+      "placeholder",
+      "https://gitlab.stack.internal/nullus/<app>",
+    );
+    expect(screen.getByLabelText("Deploy YAML Repository")).toHaveValue(
+      "root/spring-sample/deploy",
+    );
+  });
+
+  it("selects the first stack and fills stack path defaults when the repository location is unknown", async () => {
+    mockUseRepositoryLocation.mockReturnValue({ data: undefined });
     renderWithProviders(<DeveloperDeployPage />);
 
     await waitFor(() => {
@@ -333,7 +360,9 @@ describe("DeveloperDeployPage", () => {
     });
   });
 
-  it("uses the selected stacks code repository endpoint as the code URL prefix", () => {
+  // 저장소 자리를 모르는 구성(조회 API 가 없거나 실패)에서는 예전처럼 경로를 입력받는다.
+  it("uses the selected stacks code repository endpoint as the code URL prefix when the repository location is unknown", () => {
+    mockUseRepositoryLocation.mockReturnValue({ data: undefined });
     renderWithProviders(<DeveloperDeployPage />);
 
     selectOptionByValue(screen.getByLabelText("Select Stack"), "stack-1");
@@ -378,7 +407,8 @@ describe("DeveloperDeployPage", () => {
     );
   });
 
-  it("allows review and create with a repository URL assembled from the selected stack", async () => {
+  it("allows review and create with a repository URL assembled from the selected stack when the repository location is unknown", async () => {
+    mockUseRepositoryLocation.mockReturnValue({ data: undefined });
     renderWithProviders(<DeveloperDeployPage />);
 
     fireEvent.change(screen.getByPlaceholderText("my-awesome-app"), {
@@ -399,6 +429,56 @@ describe("DeveloperDeployPage", () => {
         }),
       );
     });
+  });
+
+  // 스택 모드에서는 저장소 경로를 입력받지 않는다. 서버는 그 값을 쓰지 않고 언제나 <그룹>/<앱 이름> 으로
+  // 만들었다 — 입력한 주소와 실제 저장소가 달랐다. 실제로 만들어질 주소를 보여 준다.
+  it("shows the repository the pipeline will create instead of asking for a path", () => {
+    renderWithProviders(<DeveloperDeployPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("my-awesome-app"), {
+      target: { value: "demo-app" },
+    });
+    selectOptionByValue(screen.getByLabelText("Select Stack"), "stack-1");
+
+    expect(mockUseRepositoryLocation).toHaveBeenCalledWith("stack-1");
+    const source = screen.getByLabelText("Source Repository");
+    expect(source).toHaveValue("https://gitlab.stack.internal/nullus/demo-app");
+    expect(source).toHaveAttribute("readonly");
+    expect(
+      screen.getByText(
+        "Creating the pipeline creates this repository. If a repository with that name already exists, it is used as is.",
+      ),
+    ).not.toBeNull();
+    expect(screen.getByLabelText("Dockerfile Repository")).toHaveValue(
+      "Dockerfile at the repository root",
+    );
+    expect(screen.getByLabelText("Image Registry")).toHaveValue(
+      "Chosen by the platform in the stack registry",
+    );
+    expect(screen.getByLabelText("Dockerfile Repository")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("Image Registry")).toHaveAttribute("readonly");
+  });
+
+  it("creates the pipeline with the repository the platform will make", async () => {
+    renderWithProviders(<DeveloperDeployPage />);
+
+    fireEvent.change(screen.getByPlaceholderText("my-awesome-app"), {
+      target: { value: "demo-app" },
+    });
+    selectOptionByValue(screen.getByLabelText("Select Stack"), "stack-1");
+
+    expect(await screen.findByText("demo-app-deployment.yaml")).not.toBeNull();
+    fireEvent.click(submitButton());
+    await waitFor(() => {
+      expect(mockCreatePipeline).toHaveBeenCalled();
+    });
+    const request = mockCreatePipeline.mock.calls[0][0];
+    expect(request.gitRepoUrl).toBe("https://gitlab.stack.internal/nullus/demo-app");
+    expect(request.stackId).toBe("stack-1");
+    // 쓰이지 않는 값은 보내지 않는다 — Dockerfile 은 저장소 루트, 이미지 경로는 서버가 레지스트리로 정한다.
+    expect(request.dockerfilePath).toBe("");
+    expect(request.envVars).not.toHaveProperty("IMAGE_REGISTRY_URL");
   });
 
   // 스택에 묶인 파이프라인의 앱은 스택의 Argo CD 가 스택 클러스터에 올린다.

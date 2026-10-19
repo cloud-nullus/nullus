@@ -17,6 +17,7 @@ import {
   useCicdTemplates,
   useCreatePipeline,
   useDeployPipeline,
+  useRepositoryLocation,
 } from "../api/cicd-api";
 import type { AppType } from "../api/cicd-api";
 import { StepSection, labelStyleClass } from "../components/deploy-ui";
@@ -328,18 +329,36 @@ export function DeveloperDeployPage() {
     selectedStackId && imageRegistryEndpoint
       ? `${imageRegistryEndpoint.replace(/\/+$/, "")}/`
       : "";
-  const gitUrl =
-    selectedStackId && stackGitBaseUrl
+  // 스택에 묶인 파이프라인의 앱 저장소는 서버가 <그룹>/<앱 이름> 으로 만든다. 그 자리를 알면 경로를 입력받지
+  // 않고 실제로 만들어질 주소를 보여 준다 — 전에는 입력을 받았지만 서버가 그 값을 쓰지 않아 입력한 주소와
+  // 실제 저장소가 달랐다. 자리를 모르면(조회 API 가 없는 서버 등) 예전처럼 입력받는다.
+  const { data: repositoryLocation } = useRepositoryLocation(selectedStackId);
+  const repositoryPreview = Boolean(selectedStackId && repositoryLocation?.groupPath);
+  const repositoryWebBase = (
+    repositoryLocation?.webBaseUrl || stackGitBaseUrl
+  ).replace(/\/+$/, "");
+  const plannedRepositoryUrl =
+    repositoryPreview && form.appName.trim()
+      ? [repositoryWebBase, repositoryLocation?.groupPath, form.appName.trim()]
+          .filter(Boolean)
+          .join("/")
+      : "";
+  const gitUrl = repositoryPreview
+    ? plannedRepositoryUrl
+    : selectedStackId && stackGitBaseUrl
       ? repoName.trim()
         ? `${stackGitBaseUrl}${repoName}`
         : ""
       : form.gitUrl;
+  // 저장소 자리를 알 때는 보내지 않는다 — CI 는 저장소 루트의 Dockerfile 로 빌드하고, 이미지 경로는 서버가
+  // 스택 레지스트리로 정한다(그 값을 덮어쓴다).
   const dockerfileUrl =
-    selectedStackId && stackGitBaseUrl && buildRepositoryPath.trim()
+    !repositoryPreview && selectedStackId && stackGitBaseUrl && buildRepositoryPath.trim()
       ? `${stackGitBaseUrl}${buildRepositoryPath.trim()}`
       : "";
-  const imageRegistryUrl =
-    selectedStackId && imageRegistryBaseUrl && imageRegistryPath.trim()
+  const imageRegistryUrl = repositoryPreview
+    ? ""
+    : selectedStackId && imageRegistryBaseUrl && imageRegistryPath.trim()
       ? `${imageRegistryBaseUrl}${imageRegistryPath.trim()}`
       : imageRegistryPath.trim();
   const repositoryUrl =
@@ -618,7 +637,7 @@ export function DeveloperDeployPage() {
         templateId: selectedTemplateId || undefined,
         stackId: selectedStackId || undefined,
         gitRepoUrl: gitUrl,
-        dockerfilePath: dockerfileUrl || data.dockerfilePath,
+        dockerfilePath: repositoryPreview ? "" : dockerfileUrl || data.dockerfilePath,
         dockerContext: data.dockerContext,
         executionMode,
         envVars: {
@@ -900,15 +919,34 @@ export function DeveloperDeployPage() {
                       )}
                       <RequiredDot />
                     </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input value={stackGitBaseUrl} disabled />
-                      <Input
-                        id="deploy-code-repository"
-                        placeholder={DEFAULT_REPOSITORY_PATH}
-                        value={repoName}
-                        onChange={(event) => setRepoName(event.target.value)}
-                      />
-                    </div>
+                    {repositoryPreview ? (
+                      <>
+                        <Input
+                          id="deploy-code-repository"
+                          readOnly
+                          value={plannedRepositoryUrl}
+                          placeholder={[repositoryWebBase, repositoryLocation?.groupPath, "<app>"]
+                            .filter(Boolean)
+                            .join("/")}
+                        />
+                        <p className="m-0 mt-1 text-xs leading-[1.5] text-[var(--color-text-muted)]">
+                          {t(
+                            "developerDeployPage.form.plannedRepositoryHint",
+                            "Creating the pipeline creates this repository. If a repository with that name already exists, it is used as is.",
+                          )}
+                        </p>
+                      </>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input value={stackGitBaseUrl} disabled />
+                        <Input
+                          id="deploy-code-repository"
+                          placeholder={DEFAULT_REPOSITORY_PATH}
+                          value={repoName}
+                          onChange={(event) => setRepoName(event.target.value)}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -927,7 +965,16 @@ export function DeveloperDeployPage() {
                           "Dockerfile Repository",
                         )}
                       </label>
-                      {selectedStackId && stackGitBaseUrl ? (
+                      {repositoryPreview ? (
+                        <Input
+                          id="deploy-dockerfile-repository"
+                          readOnly
+                          value={t(
+                            "developerDeployPage.form.dockerfileAtRoot",
+                            "Dockerfile at the repository root",
+                          )}
+                        />
+                      ) : selectedStackId && stackGitBaseUrl ? (
                         <div className="grid grid-cols-2 gap-2">
                           <Input value={stackGitBaseUrl} disabled />
                           <Input
@@ -968,7 +1015,16 @@ export function DeveloperDeployPage() {
                         "Image Registry",
                       )}
                     </label>
-                    {selectedStackId && imageRegistryBaseUrl ? (
+                    {repositoryPreview ? (
+                      <Input
+                        id="deploy-image-registry"
+                        readOnly
+                        value={t(
+                          "developerDeployPage.form.imageRegistryByPlatform",
+                          "Chosen by the platform in the stack registry",
+                        )}
+                      />
+                    ) : selectedStackId && imageRegistryBaseUrl ? (
                       <div className="grid grid-cols-2 gap-2">
                         <Input value={imageRegistryBaseUrl} disabled />
                         <Input

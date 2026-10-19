@@ -16,6 +16,7 @@ import type {
   PipelineSASTResult,
   SASTMetrics,
   SASTQualityGateStatus,
+  RepositoryLocation,
   TemplateSource,
   VulnerabilityListFilter,
   VulnerabilityListResult,
@@ -131,6 +132,7 @@ const queryKeys = {
   deployments: (filters?: Record<string, unknown>) =>
     ["cicd", "deployments", filters] as const,
   appTemplates: () => ["cicd", "appTemplates"] as const,
+  repositoryLocation: (stackId: string) => ["cicd", "repository-location", stackId] as const,
   pipelineResources: (pipelineId: string) =>
     ["cicd", "pipelineResources", pipelineId] as const,
   pipelineImageScans: (pipelineId: string, deploymentsUpdatedAt: number) =>
@@ -330,6 +332,18 @@ export const cicdApiCalls = {
     if (hasCI) return "ci";
     if (hasCD) return "cd";
     return "ci_cd";
+  },
+
+  // 스택에 묶인 파이프라인의 앱 저장소는 서버가 <그룹>/<앱 이름> 으로 만든다. 그 자리를 읽는다.
+  getRepositoryLocation: async (stackId: string): Promise<RepositoryLocation> => {
+    const raw = await api
+      .get<any>("/cicd/repository-location", { params: { stack_id: stackId } })
+      .then((r) => r.data);
+    return {
+      platform: String(raw?.platform ?? ""),
+      groupPath: String(raw?.group_path ?? ""),
+      webBaseUrl: String(raw?.web_base_url ?? ""),
+    };
   },
 
   getTemplates: async () => {
@@ -954,6 +968,18 @@ export function usePipelineScanVulnerabilities(
     placeholderData: placeholderFromSameSource<VulnerabilityListResult>(
       queryKeys.pipelineScanVulnerabilitiesSource(pipelineId, scanId),
     ),
+  });
+}
+
+// useRepositoryLocation 은 스택의 앱 저장소 자리를 읽는다. 실패하면(조회 API 가 없는 서버 등) 화면은
+// 예전처럼 저장소 경로를 입력받는다 — 다시 시도하지 않는다.
+export function useRepositoryLocation(stackId: string) {
+  return useQuery({
+    queryKey: queryKeys.repositoryLocation(stackId),
+    queryFn: () => cicdApiCalls.getRepositoryLocation(stackId),
+    enabled: stackId.trim().length > 0,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
   });
 }
 

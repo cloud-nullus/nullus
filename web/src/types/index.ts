@@ -583,6 +583,14 @@ export interface PipelineResource {
   serviceUrls?: string[];
 }
 
+// 스택에 묶인 파이프라인의 앱 저장소 자리다. 저장소는 <groupPath>/<앱 이름> 으로 만들어진다.
+export interface RepositoryLocation {
+  platform: string;
+  groupPath: string;
+  // 브라우저가 여는 SCM 주소다. 모르면 빈 문자열이다.
+  webBaseUrl: string;
+}
+
 // 템플릿이 새 저장소로 가져오는 외부 원본이다. 파이프라인을 만들 때 이 커밋의 파일을 복사하며,
 // 그 뒤로는 원본을 따라가지 않는다.
 export interface TemplateSource {
