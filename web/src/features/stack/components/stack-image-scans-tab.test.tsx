@@ -369,6 +369,8 @@ describe('StackImageScansTab — 공용 구성요소', () => {
     const badges = screen.getAllByText('Shared')
     expect(badges).toHaveLength(1)
     expect(badges[0].getAttribute('title')).toContain('cert-manager')
+    // 툴팁에만 두면 키보드 · 스크린 리더 사용자가 어느 네임스페이스인지 알 수 없다.
+    expect(screen.getByText(/Cluster-wide component outside the stack namespace \(namespace cert-manager\)/)).toBeInTheDocument()
   })
 })
 
