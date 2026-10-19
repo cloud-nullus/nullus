@@ -930,10 +930,12 @@ func TestUpgradeStack_Start_RealBackgroundPath(t *testing.T) {
 
 // ── 번들이 고치는 CVE (nullus-plan#78) ───────────────────────────────
 
+// releaseVulns 는 릴리스별 스캔 결과다. 키가 없는 릴리스는 스캔한 적이 없다.
 type releaseVulns map[string]map[string]bool
 
-func (r releaseVulns) VulnerabilityIDsByRelease(_ context.Context, _, release string) (map[string]bool, error) {
-	return r[release], nil
+func (r releaseVulns) VulnerabilityIDsByRelease(_ context.Context, _, release string) (map[string]bool, bool, error) {
+	ids, scanned := r[release]
+	return ids, scanned, nil
 }
 
 // 업그레이드 번들은 고치는 CVE 목록을 가진다. 후보는 그중 이 스택의 그 릴리스 이미지에서 실제로
@@ -951,7 +953,29 @@ func TestUpgradeStack_Candidates_ShowsCVEsTheBundleFixes(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, []string{"CVE-A", "CVE-B"}, items[0].FixesFound)
+	assert.True(t, items[0].FixesChecked)
 	assert.Equal(t, []string{"CVE-Z", "CVE-B", "CVE-A"}, items[0].Bundle.FixesCVEs)
+}
+
+// 스캔했는데 고치는 CVE 가 하나도 없으면 "이 스택엔 없다" 고 말할 수 있다. 스캔한 적이 없으면 그렇게 말하면
+// 안 된다 — 확인했는지를 따로 싣는다.
+func TestUpgradeStack_Candidates_ChecksOnlyWhenReleaseScanned(t *testing.T) {
+	f := newUpgradeFixture(t)
+	bundle := argoBundle("b-20", "7.7.20")
+	bundle.FixesCVEs = []string{"CVE-A"}
+	f.repo.bundles = []domain.UpgradeBundle{bundle}
+
+	uc := f.rebuild(func(d *usecase.UpgradeStackDeps) { d.Vulnerabilities = releaseVulns{"argo-cd": {}} })
+	items, err := uc.Candidates(context.Background(), "stk_1")
+	require.NoError(t, err)
+	assert.Empty(t, items[0].FixesFound)
+	assert.True(t, items[0].FixesChecked, "스캔한 릴리스에 없다")
+
+	uc = f.rebuild(func(d *usecase.UpgradeStackDeps) { d.Vulnerabilities = releaseVulns{"gitlab": {"CVE-A": true}} })
+	items, err = uc.Candidates(context.Background(), "stk_1")
+	require.NoError(t, err)
+	assert.Empty(t, items[0].FixesFound)
+	assert.False(t, items[0].FixesChecked, "argo-cd 를 스캔한 결과가 없다")
 }
 
 // 스캔 결과를 볼 수 없으면 번들의 목록만 보이고, 발견 여부는 비운다.
@@ -964,12 +988,13 @@ func TestUpgradeStack_Candidates_NoScanLookup(t *testing.T) {
 	items, err := f.uc.Candidates(context.Background(), "stk_1")
 	require.NoError(t, err)
 	assert.Empty(t, items[0].FixesFound)
+	assert.False(t, items[0].FixesChecked)
 }
 
 type failingVulns struct{}
 
-func (failingVulns) VulnerabilityIDsByRelease(context.Context, string, string) (map[string]bool, error) {
-	return nil, errors.New("db down")
+func (failingVulns) VulnerabilityIDsByRelease(context.Context, string, string) (map[string]bool, bool, error) {
+	return nil, false, errors.New("db down")
 }
 
 // 스캔 결과를 읽지 못해도 후보 목록은 막지 않는다.
@@ -985,4 +1010,5 @@ func TestUpgradeStack_Candidates_ScanLookupFails(t *testing.T) {
 	require.Len(t, items, 1)
 	require.NotNil(t, items[0].Bundle)
 	assert.Empty(t, items[0].FixesFound)
+	assert.False(t, items[0].FixesChecked)
 }

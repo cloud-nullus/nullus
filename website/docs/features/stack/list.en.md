@@ -58,7 +58,9 @@ shortcut goes straight to `/stack/install`.
     If the bundle lists the CVEs the upgrade fixes and some of them are in this stack's
     current **Image Vulnerabilities** scan, the row shows **Fixes N CVE(s) found in this
     stack** and the dialog lists those CVEs under **CVEs this upgrade fixes in this stack**.
-    If none of the CVEs it fixes are in this stack, the row says so.
+    If the scan has none of the CVEs it fixes, the row says so; if that release of this stack
+    has not been scanned yet (no scanner, for example), the row shows only how many CVEs the
+    upgrade fixes.
 
 ## Add Tools
 

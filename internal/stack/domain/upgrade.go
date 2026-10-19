@@ -174,9 +174,12 @@ type UpgradeCandidate struct {
 	Bundle              *UpgradeBundle `json:"bundle,omitempty"`
 	BlockedReason       string         `json:"blocked_reason,omitempty"`
 	// FixesFound 는 번들이 고치는 CVE 중 이 스택의 그 릴리스 이미지에서 지금 발견된 것이다.
-	FixesFound []string    `json:"fixes_found,omitempty"`
-	LastRun    *UpgradeRun `json:"last_run,omitempty"`
-	CheckedAt  time.Time   `json:"checked_at"`
+	FixesFound []string `json:"fixes_found,omitempty"`
+	// FixesChecked 는 그 릴리스의 스캔 결과로 확인했는지다. 거짓이면 FixesFound 가 비어도 "이 스택엔
+	// 없다" 가 아니다(스캐너가 없거나 아직 스캔하지 않았거나 읽지 못했다).
+	FixesChecked bool        `json:"fixes_checked,omitempty"`
+	LastRun      *UpgradeRun `json:"last_run,omitempty"`
+	CheckedAt    time.Time   `json:"checked_at"`
 }
 
 func NewUpgradeCandidate(tool, releaseName, chartVersion, appVersion string, revision int, releaseStatus string, bundle *UpgradeBundle, now time.Time) UpgradeCandidate {

@@ -143,11 +143,13 @@ func TestPostgresStackImageScanRepository_VulnerabilityIDsByRelease(t *testing.T
 			Vulnerabilities: []shareddomain.ImageVulnerability{vuln("CVE-SHARED", "critical")}},
 	}))
 
-	ids, err := repo.VulnerabilityIDsByRelease(ctx, stackID, "argo-cd")
+	ids, scanned, err := repo.VulnerabilityIDsByRelease(ctx, stackID, "argo-cd")
 	require.NoError(t, err)
+	assert.True(t, scanned)
 	assert.Equal(t, map[string]bool{"CVE-A": true, "CVE-B": true, "CVE-C": true}, ids)
 
-	ids, err = repo.VulnerabilityIDsByRelease(ctx, stackID, "keycloak")
+	ids, scanned, err = repo.VulnerabilityIDsByRelease(ctx, stackID, "keycloak")
 	require.NoError(t, err)
-	assert.Empty(t, ids, "스캔에 없는 릴리스")
+	assert.False(t, scanned, "스캔에 없는 릴리스는 모른다")
+	assert.Empty(t, ids)
 }

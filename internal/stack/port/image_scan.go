@@ -40,7 +40,8 @@ type CompletedStackLister interface {
 }
 
 // ReleaseVulnerabilityLookup 은 스택의 설치 이미지 스캔 결과에서 한 릴리스의 이미지가 가진 CVE 다.
-// 업그레이드 후보가 "이 업그레이드가 지금 있는 CVE 를 고치는가" 를 보이는 데 쓴다.
+// 업그레이드 후보가 "이 업그레이드가 지금 있는 CVE 를 고치는가" 를 보이는 데 쓴다. scanned 는 그 릴리스의
+// 이미지 중 취약점 목록을 저장한 것이 있는지 — 거짓이면 "없다" 가 아니라 "모른다" 다.
 type ReleaseVulnerabilityLookup interface {
-	VulnerabilityIDsByRelease(ctx context.Context, stackID, release string) (map[string]bool, error)
+	VulnerabilityIDsByRelease(ctx context.Context, stackID, release string) (ids map[string]bool, scanned bool, err error)
 }

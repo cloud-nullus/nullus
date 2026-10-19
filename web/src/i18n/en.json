@@ -1213,6 +1213,7 @@
       "failed": "Could not start the upgrade.",
       "fixesFound": "Fixes {{count}} CVE(s) found in this stack",
       "fixesNotFound": "Fixes {{count}} known CVE(s) — none in this stack's last image scan",
+      "fixesKnown": "Fixes {{count}} known CVE(s)",
       "fixesTitle": "CVEs this upgrade fixes in this stack",
       "checks": {
         "stack_state": "Stack state",

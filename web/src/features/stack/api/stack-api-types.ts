@@ -97,6 +97,8 @@ export interface UpgradeCandidate {
   blocked_reason?: string;
   // fixes_cves 중 이 스택의 그 릴리스 이미지에서 지금 발견된 것.
   fixes_found?: string[];
+  // 그 릴리스의 스캔 결과로 확인했는지. 아니면 fixes_found 가 비어도 "없다" 가 아니라 "모른다" 다.
+  fixes_checked?: boolean;
   last_run?: UpgradeRun;
   checked_at: string;
 }

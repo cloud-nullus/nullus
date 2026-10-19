@@ -291,11 +291,17 @@ MVP에서 제외한다.
 ```sql
 INSERT INTO upgrade_bundles (id, tool, release_name, chart_name, repo_url,
   source_chart_version, source_app_version, target_chart_version, target_app_version,
-  risk_level, expected_disruption, release_notes, requires_backup, supported_architectures, status)
+  risk_level, expected_disruption, release_notes, requires_backup, supported_architectures, status,
+  fixes_cves)
 VALUES ('argocd-7.7.16-7.7.22', 'argocd', 'argo-cd', 'argo-cd', 'https://argoproj.github.io/argo-helm',
   '7.7.16', 'v2.13.3', '7.7.22', 'v2.13.4',
   'low', 'API 서버 · 컨트롤러가 차례로 재시작(약 1~2분)',
-  'https://github.com/argoproj/argo-cd/releases/tag/v2.13.4', TRUE, '["amd64","arm64"]', 'verified');
+  'https://github.com/argoproj/argo-cd/releases/tag/v2.13.4', TRUE, '["amd64","arm64"]', 'verified',
+  '["CVE-2025-XXXXX"]');
 ```
+
+`fixes_cves`(000105)는 이 업그레이드가 고치는 CVE 다 — 대상 버전의 릴리스 노트 · 보안 공지와, 리허설 클러스터에서
+업그레이드 전후 설치 이미지 스캔을 비교해 적는다. 업그레이드 후보는 그중 이 스택의 그 릴리스 이미지에서 지금 발견된
+것을 `fixes_found` 로 보인다(설치 OSS CVE 대응 정책 §6). 비워 두면 화면은 CVE 를 말하지 않는다.
 
 `target_app_version` 은 상태 검사가 API 서버 이미지 태그와 비교하는 값이다 — 틀리면 업그레이드는 되돌려진다. 경로를 거둘 때는 `status` 를 `revoked` 로 바꾼다.

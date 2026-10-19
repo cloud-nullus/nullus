@@ -211,27 +211,37 @@ func (r *PostgresStackImageScanRepository) ReleaseCVENotices(ctx context.Context
 	return nil
 }
 
-// VulnerabilityIDsByRelease 는 스택의 한 릴리스가 설치한 이미지에서 지금 발견된 취약점 ID 다. 업그레이드
-// 대상이 아닌 공용 구성요소는 같은 이름의 릴리스라도 뺀다.
-func (r *PostgresStackImageScanRepository) VulnerabilityIDsByRelease(ctx context.Context, stackID, release string) (map[string]bool, error) {
+// VulnerabilityIDsByRelease 는 스택의 한 릴리스가 설치한 이미지에서 지금 발견된 취약점 ID 와, 그 릴리스의
+// 이미지 중 취약점 목록을 저장한 것이 있는지다. 업그레이드 대상이 아닌 공용 구성요소는 같은 이름의
+// 릴리스라도 뺀다.
+func (r *PostgresStackImageScanRepository) VulnerabilityIDsByRelease(ctx context.Context, stackID, release string) (map[string]bool, bool, error) {
+	var scanned bool
+	if err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM stack_image_scans
+		WHERE stack_id = $1 AND release_name = $2 AND NOT shared AND vulnerabilities_recorded)`,
+		stackID, release).Scan(&scanned); err != nil {
+		return nil, false, fmt.Errorf("query release scans: %w", err)
+	}
+	if !scanned {
+		return map[string]bool{}, false, nil
+	}
 	rows, err := r.pool.Query(ctx, `
 		SELECT DISTINCT v.vulnerability_id
 		FROM stack_image_vulnerabilities v
 		JOIN stack_image_scans s ON s.stack_id = v.stack_id AND s.image_digest = v.image_digest
 		WHERE s.stack_id = $1 AND s.release_name = $2 AND NOT s.shared`, stackID, release)
 	if err != nil {
-		return nil, fmt.Errorf("query release vulnerabilities: %w", err)
+		return nil, false, fmt.Errorf("query release vulnerabilities: %w", err)
 	}
 	defer rows.Close()
 	ids := map[string]bool{}
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("scan vulnerability id: %w", err)
+			return nil, false, fmt.Errorf("scan vulnerability id: %w", err)
 		}
 		ids[id] = true
 	}
-	return ids, rows.Err()
+	return ids, true, rows.Err()
 }
 
 // ListVulnerabilities 는 이미지 하나의 저장된 취약점 목록이다.

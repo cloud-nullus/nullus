@@ -247,6 +247,7 @@ describe('StackVersionUpgradeTab', () => {
       candidate({
         bundle: { ...bundle, fixes_cves: ['CVE-2025-1', 'CVE-2025-2', 'CVE-2025-3'] },
         fixes_found: ['CVE-2025-1', 'CVE-2025-2'],
+        fixes_checked: true,
       }),
     ])
     mockPreflight.mockResolvedValue({ checks: passing })
@@ -262,10 +263,19 @@ describe('StackVersionUpgradeTab', () => {
   })
 
   it('says when the CVEs the upgrade fixes are not in this stack', () => {
-    withItems([candidate({ bundle: { ...bundle, fixes_cves: ['CVE-2025-1'] } })])
+    withItems([candidate({ bundle: { ...bundle, fixes_cves: ['CVE-2025-1'] }, fixes_checked: true })])
     render(<StackVersionUpgradeTab stackId="stk_1" />)
 
     expect(screen.getByText("Fixes 1 known CVE(s) — none in this stack's last image scan")).toBeInTheDocument()
+  })
+
+  // 스캐너가 없거나 아직 스캔하지 않았으면 "이 스택엔 없다" 가 아니라 모르는 것이다.
+  it('does not claim the CVEs are absent when this stack was not scanned', () => {
+    withItems([candidate({ bundle: { ...bundle, fixes_cves: ['CVE-2025-1', 'CVE-2025-2'] } })])
+    render(<StackVersionUpgradeTab stackId="stk_1" />)
+
+    expect(screen.getByText('Fixes 2 known CVE(s)')).toBeInTheDocument()
+    expect(screen.queryByText(/none in this stack/)).not.toBeInTheDocument()
   })
 
   it('says nothing about CVEs when the bundle lists none', () => {

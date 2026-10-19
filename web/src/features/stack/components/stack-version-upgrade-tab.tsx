@@ -132,7 +132,7 @@ function UpgradeRow({ stackId, item, onUpgrade }: { stackId: string; item: Upgra
           {!bundle && (
             <div className="text-[12px] text-[var(--color-text-secondary)]">{t('stackList.upgrade.noVerifiedPathHint')}</div>
           )}
-          {bundle && <CVEFixesLine bundle={bundle} found={item.fixes_found ?? []} />}
+          {bundle && <CVEFixesLine bundle={bundle} found={item.fixes_found ?? []} checked={item.fixes_checked ?? false} />}
           {item.blocked_reason && <div className="text-[12px] text-[var(--color-error)]">{item.blocked_reason}</div>}
           {lastRun && <LastRunLine run={lastRun} />}
         </div>
@@ -163,9 +163,10 @@ function UpgradeRow({ stackId, item, onUpgrade }: { stackId: string; item: Upgra
   )
 }
 
-// 번들이 고치는 CVE 중 이 스택에서 발견된 것이 있으면 업그레이드할 이유로 먼저 보인다. 고치는 것이
-// 이 스택에 없으면 그렇다고 말한다 — 번들이 아무것도 적지 않았으면 말하지 않는다.
-function CVEFixesLine({ bundle, found }: { bundle: UpgradeBundle; found: string[] }) {
+// 번들이 고치는 CVE 중 이 스택에서 발견된 것이 있으면 업그레이드할 이유로 먼저 보인다. 이 스택의 스캔
+// 결과로 확인했는데 없으면 그렇다고 말하고, 확인하지 못했으면(스캐너 없음 · 아직 스캔 전) 고치는 수만
+// 말한다. 번들이 아무것도 적지 않았으면 말하지 않는다.
+function CVEFixesLine({ bundle, found, checked }: { bundle: UpgradeBundle; found: string[]; checked: boolean }) {
   const { t } = useTranslation()
   const known = bundle.fixes_cves?.length ?? 0
   if (found.length > 0) {
@@ -178,7 +179,9 @@ function CVEFixesLine({ bundle, found }: { bundle: UpgradeBundle; found: string[
   }
   if (known === 0) return null
   return (
-    <div className="text-[12px] text-[var(--color-text-secondary)]">{t('stackList.upgrade.fixesNotFound', { count: known })}</div>
+    <div className="text-[12px] text-[var(--color-text-secondary)]">
+      {t(checked ? 'stackList.upgrade.fixesNotFound' : 'stackList.upgrade.fixesKnown', { count: known })}
+    </div>
   )
 }
 

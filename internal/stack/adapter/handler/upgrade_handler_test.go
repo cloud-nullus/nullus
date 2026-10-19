@@ -158,7 +158,7 @@ func TestUpgradeHandler_ListCandidates_CarriesCVEFixes(t *testing.T) {
 	svc := &stubUpgrades{candidates: []domain.UpgradeCandidate{{
 		Tool: "argocd", CurrentChartVersion: "7.7.16", CheckedAt: time.Now(),
 		Bundle:     &domain.UpgradeBundle{ID: "b-20", FixesCVEs: []string{"CVE-A", "CVE-B"}},
-		FixesFound: []string{"CVE-A"},
+		FixesFound: []string{"CVE-A"}, FixesChecked: true,
 	}}}
 	rec := serveUpgrade(t, svc, nil, http.MethodGet, "/api/v1/stacks/stk_1/upgrades", "", nil)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -167,11 +167,13 @@ func TestUpgradeHandler_ListCandidates_CarriesCVEFixes(t *testing.T) {
 			Bundle struct {
 				FixesCVEs []string `json:"fixes_cves"`
 			} `json:"bundle"`
-			FixesFound []string `json:"fixes_found"`
+			FixesFound   []string `json:"fixes_found"`
+			FixesChecked bool     `json:"fixes_checked"`
 		} `json:"items"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
 	require.Len(t, out.Items, 1)
 	assert.Equal(t, []string{"CVE-A", "CVE-B"}, out.Items[0].Bundle.FixesCVEs)
 	assert.Equal(t, []string{"CVE-A"}, out.Items[0].FixesFound)
+	assert.True(t, out.Items[0].FixesChecked)
 }
