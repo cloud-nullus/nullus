@@ -72,7 +72,7 @@ Dockerfile 이 더 들어가는 차이뿐입니다.
     `deployment.yaml`·`service.yaml`·`ingress.yaml` 셋을 가져오려 하는데, 세 번째
     파일은 생성되지 않으므로 항상 404 가 납니다.
 
-## 기본으로 들어 있는 템플릿 4개
+## 기본으로 들어 있는 템플릿 6개
 
 `pipeline_templates` 테이블에 마이그레이션으로 들어갑니다.
 
@@ -82,6 +82,11 @@ Dockerfile 이 더 들어가는 차이뿐입니다.
 | `batch-job-v1` | Batch Job Pipeline | batch | `Build`, `Deploy` |
 | `nullus-sample-backend-v1` | Nullus Sample App — Backend | backend | `GitClone`, `DockerBuild`, `ImageLoad`, `Deploy` |
 | `nullus-sample-frontend-v1` | Nullus Sample App — Frontend | web | 〃 |
+| `egovframe-boot-sample-v1` | eGovFrame Boot Sample (Spring Boot) | backend | `Build`, `Deploy` |
+| `egovframe-web-sample-v1` | eGovFrame Web Sample (JSP) | backend | 〃 |
+
+전자정부 표준프레임워크 두 개는 파이프라인을 만들 때 원본 저장소를 가져옵니다 —
+[CI/CD 템플릿](templates.md#원본을-가져오는-템플릿)에 적어 두었습니다.
 
 !!! note "템플릿의 stages 는 실제 단계보다 적게 적혀 있습니다"
     시드가 만들어질 때 SecretScan 을 끈 상태로 계산돼서, 기록된 `stages` 가 실제로

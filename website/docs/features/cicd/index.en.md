@@ -74,7 +74,7 @@ up when the pipeline is created.
     tries to fetch three files — `deployment.yaml`, `service.yaml`, and
     `ingress.yaml` — but the third is never generated, so it always returns 404.
 
-## The four built-in templates
+## The six built-in templates
 
 Migrations insert them into the `pipeline_templates` table.
 
@@ -84,6 +84,11 @@ Migrations insert them into the `pipeline_templates` table.
 | `batch-job-v1` | Batch Job Pipeline | batch | `Build`, `Deploy` |
 | `nullus-sample-backend-v1` | Nullus Sample App — Backend | backend | `GitClone`, `DockerBuild`, `ImageLoad`, `Deploy` |
 | `nullus-sample-frontend-v1` | Nullus Sample App — Frontend | web | Same as above |
+| `egovframe-boot-sample-v1` | eGovFrame Boot Sample (Spring Boot) | backend | `Build`, `Deploy` |
+| `egovframe-web-sample-v1` | eGovFrame Web Sample (JSP) | backend | Same as above |
+
+The two eGovFrame templates import their source repository when a pipeline is created —
+see [CI/CD Template](templates.md#templates-that-import-a-source).
 
 !!! note "Template stages list fewer stages than actually run"
     The seed data was computed with SecretScan turned off, so the recorded `stages`
