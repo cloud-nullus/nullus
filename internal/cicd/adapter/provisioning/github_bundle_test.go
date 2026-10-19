@@ -208,3 +208,19 @@ func TestFor_GitHubBundleCanTriggerCI(t *testing.T) {
 
 	assert.NotNil(t, bundle.CITrigger)
 }
+
+// github.com 은 사설 클러스터의 Argo CD 에 닿지 못한다 — webhook 은 걸지 않고 첫 비교만 확인한다.
+func TestFor_GitHubBundleChecksFirstComparisonWithoutWebhook(t *testing.T) {
+	apiURL := stubGitHubAPI(t, "")
+	f := NewBundleFactory(&fakeStackReader{summary: githubStack()}, &fakeTokenIssuer{}, Options{}).
+		WithGitHub(&fakeTokenIssuer{token: "ghp"}, &fakeConnectionReader{
+			conn: &port.SCMConnection{Owner: "acme", APIBaseURL: apiURL},
+		})
+
+	bundle, err := f.For(context.Background(), "stk_gh")
+	require.NoError(t, err)
+
+	assert.NotNil(t, bundle.CDRefresher)
+	assert.Nil(t, bundle.CDWebhooks)
+	assert.Empty(t, bundle.CDWebhookURL)
+}

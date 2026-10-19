@@ -107,6 +107,35 @@ commit. That push run appears a few seconds after the commit, so when the branch
 the trigger waits up to 20 seconds for it (GitLab CI · GitHub Actions). Two runs of the same commit would
 both push a deploy commit to the same branch, and one of them would fail.
 
+When the CI deploy stage commits the new image tag back, Argo CD syncs that commit and the app changes.
+Argo CD checks repositories every 3 minutes by default, so on its own the deploy would land up to
+3 minutes after that commit. Creating a pipeline therefore also does the following.
+
+- **GitLab stacks get a push webhook on the repository.** It targets the stack's Argo CD server
+  (`http://argo-cd-argocd-server.<stack namespace>.svc:80/api/webhook`). GitLab blocks webhooks to
+  in-cluster addresses by default, so only port 80 of that one host is added to the admin allowlist
+  (Admin → Settings → Network → Outbound requests, *Local IP addresses and domain names that hooks and
+  integrations can access*). Requests to the whole local network stay disabled, and entries an admin
+  added are kept. GitLab caches its settings for up to a minute, so for the first pipeline on a stack
+  the webhook is retried in the background once the allowlist has propagated (up to 2 minutes). In a
+  local run Argo CD synced 1–2 seconds after the deploy commit (85 seconds without the webhook).
+  - If the webhook cannot be added (permissions, settings), the create response carries no warning;
+    it is only logged on the server. The deploy still happens, just later, and the screen stops
+    instead of running when there are warnings.
+  - [Refreshing the definition](list.md) also adds the webhook again. Pipelines created before this
+    feature, or whose background retry was cut off by an API restart, get it by refreshing the definition.
+- **GitHub and Gitea stacks get no webhook.** github.com cannot reach Argo CD in a private cluster, and
+  Gitea's default (`webhook.ALLOWED_HOST_LIST=external`) blocks private addresses — a setting that can
+  only be changed at install time. New commits are picked up by Argo CD's regular check (3 minutes).
+- **Every stack checks the first comparison.** When the repository credential and the Application are
+  applied together, Argo CD can run its first comparison before it sees the credential and end with
+  `authentication required`; left alone, it stays that way until the next regular check. For up to
+  20 seconds after creation the platform watches the Application and, on a comparison error, asks Argo CD
+  to read again (`argocd.argoproj.io/refresh` annotation). If it still fails after two retries — a
+  credential or path problem — the create response carries a warning, and the screen stops instead of
+  running when there are warnings (step 4 above). If Argo CD has not finished comparing within 20
+  seconds, the platform moves on without a warning rather than guessing.
+
 !!! warning "developer cannot fill this screen to the end"
     The Stack, Cluster, and Namespace pickers are populated from lookup APIs that
     only admin and devops may call. In an environment with authentication enabled,

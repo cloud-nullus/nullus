@@ -271,16 +271,20 @@ func (f *BundleFactory) gitLabBundle(
 		WithWebBaseURL(toolWebBaseURL("gitlab", summary.AccessDomain))
 
 	bundle := &port.SCMBundle{
-		Provisioner:                  client,
-		Pipeline:                     client,
-		CIBuilds:                     runs,
-		CIArtifacts:                  runs,
-		CITrigger:                    trigger,
-		Registry:                     resolver,
-		Platform:                     port.SCMPlatformGitLab,
-		GroupPath:                    f.opts.GroupPath,
-		CDNamespace:                  namespace,
-		CDApplications:               kube.NewArgoApplicationDeleter(),
+		Provisioner:    client,
+		Pipeline:       client,
+		CIBuilds:       runs,
+		CIArtifacts:    runs,
+		CITrigger:      trigger,
+		Registry:       resolver,
+		Platform:       port.SCMPlatformGitLab,
+		GroupPath:      f.opts.GroupPath,
+		CDNamespace:    namespace,
+		CDApplications: kube.NewArgoApplicationDeleter(),
+		CDRefresher:    kube.NewArgoApplicationRefresher(),
+		// GitLab 은 같은 클러스터 안에 있어 커밋을 Argo CD 에 바로 알릴 수 있다.
+		CDWebhooks:                   client,
+		CDWebhookURL:                 argoWebhookURL(namespace),
 		ClusterID:                    summary.ClusterID,
 		AccessDomain:                 summary.AccessDomain,
 		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
@@ -417,8 +421,11 @@ func (f *BundleFactory) gitHubBundle(
 		GroupPath:       conn.Owner,
 		RepoAccessToken: token,
 		// Argo CD 는 여전히 클러스터 안에 있다.
-		CDNamespace:            strings.TrimSpace(summary.Namespace),
-		CDApplications:         kube.NewArgoApplicationDeleter(),
+		CDNamespace:    strings.TrimSpace(summary.Namespace),
+		CDApplications: kube.NewArgoApplicationDeleter(),
+		// github.com 은 사설 클러스터의 Argo CD 에 닿지 못해 webhook 을 걸지 않는다 —
+		// 새 커밋은 Argo CD 의 정기 확인으로 반영된다. 첫 비교 확인은 똑같이 필요하다.
+		CDRefresher:            kube.NewArgoApplicationRefresher(),
 		ClusterID:              summary.ClusterID,
 		AccessDomain:           summary.AccessDomain,
 		ImageScannerEndpoint:   summary.ImageScannerEndpoint,
@@ -493,7 +500,10 @@ func (f *BundleFactory) giteaBundle(
 		CDNamespace:     namespace,
 		// 지금은 모든 스택이 Argo CD 를 쓴다. 다른 CD 도구를 들이면 그 도구의
 		// CDApplicationDeleter 구현체를 여기서 갈아 끼운다.
-		CDApplications:               kube.NewArgoApplicationDeleter(),
+		CDApplications: kube.NewArgoApplicationDeleter(),
+		// Gitea 는 기본 설정(webhook.ALLOWED_HOST_LIST=external)이 사설망 주소로의 webhook
+		// 을 막고, 그 설정은 설치 때 app.ini 로만 바꿀 수 있어 아직 webhook 을 걸지 않는다.
+		CDRefresher:                  kube.NewArgoApplicationRefresher(),
 		ClusterID:                    summary.ClusterID,
 		AccessDomain:                 summary.AccessDomain,
 		ImageScannerEndpoint:         summary.ImageScannerEndpoint,
@@ -672,6 +682,23 @@ func platformFor(name string) port.SCMPlatform {
 		return port.SCMPlatformGitea
 	}
 	return ""
+}
+
+// argoServerService 는 스택이 설치한 Argo CD 서버의 Service 이름이다.
+//
+// 스택 모듈이 정한다(domain/gateway_backends.go 의 argocd 백엔드). 모듈 간 직접 import 가
+// 금지돼 값을 따로 들고 있으므로, 갈라지면 webhook 이 닿지 않고 새 커밋이 정기 확인
+// (3분)에야 반영된다.
+const argoServerService = "argo-cd-argocd-server"
+
+// argoWebhookURL 은 SCM 이 커밋을 알릴 Argo CD 의 webhook 주소다.
+//
+// 클러스터 안 주소를 쓴다 — webhook 을 보내는 SCM 파드가 같은 클러스터에 있고, 바깥
+// 도메인(argocd.<도메인>)은 클러스터 안에서 풀리지 않을 수 있다. `.svc` 까지만 적어
+// 클러스터 도메인(cluster.local)을 가정하지 않는다. 스택의 Argo CD 서버는 insecure 모드라
+// 80 포트가 평문이고, 포트를 적어 SCM 허용 목록도 그 포트로만 연다.
+func argoWebhookURL(namespace string) string {
+	return fmt.Sprintf("http://%s.%s.svc:80/api/webhook", argoServerService, namespace)
 }
 
 // giteaBaseURL 은 클러스터 내부 Gitea 주소다.

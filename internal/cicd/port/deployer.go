@@ -92,3 +92,13 @@ type ClusterTarget struct {
 type ClusterTargetProvider interface {
 	GetTarget(ctx context.Context, clusterID string) (*ClusterTarget, error)
 }
+
+// CDApplicationRefresher 는 방금 만든 애플리케이션의 첫 비교가 저장소를 읽었는지 보고,
+// 못 읽었으면 CD 도구에 다시 읽게 한다.
+//
+// 플랫폼은 저장소 자격증명과 애플리케이션을 한 번에 적용한다. CD 도구가 둘을 서로
+// 다른 감시로 받으면 자격증명이 보이기 전에 첫 비교를 돌려 실패하고, 다음 정기
+// 확인까지 그 상태로 남는다. 다시 읽게 해도 실패하면 그 이유를 돌려준다.
+type CDApplicationRefresher interface {
+	EnsureFirstComparison(ctx context.Context, kubeconfig []byte, namespace, name string) error
+}

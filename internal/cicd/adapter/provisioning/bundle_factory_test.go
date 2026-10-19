@@ -293,6 +293,17 @@ func TestFor_GitLabBundleCanTriggerCI(t *testing.T) {
 	assert.NotNil(t, bundle.CITrigger)
 }
 
+// Argo CD 는 정기 확인(3분)으로만 새 커밋을 안다. GitLab 스택은 같은 클러스터의 Argo CD
+// 서버로 커밋을 바로 알리고, 새 Application 의 첫 비교도 확인한다.
+func TestFor_GitLabBundleNotifiesArgoCDOfCommits(t *testing.T) {
+	bundle, err := newFactory(t, gitlabStack(), &fakeTokenIssuer{token: "t"}).For(context.Background(), "stk_1")
+	require.NoError(t, err)
+
+	assert.NotNil(t, bundle.CDWebhooks)
+	assert.Equal(t, "http://argo-cd-argocd-server.devsecops.svc:80/api/webhook", bundle.CDWebhookURL)
+	assert.NotNil(t, bundle.CDRefresher)
+}
+
 // 로컬에서 GitLab 스택이 여럿이면 포트포워드도 여럿이다. 주소 하나로는 한 스택밖에
 // 못 가리키고, 다른 스택의 번들은 엉뚱한 GitLab 에 인증을 시도해 토큰을 돌린다.
 // "네임스페이스=주소" 목록이면 스택마다 제 주소를 쓴다.

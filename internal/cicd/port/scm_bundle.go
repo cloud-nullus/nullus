@@ -57,6 +57,13 @@ type SCMBundle struct {
 	// CDApplications 는 CD 도구가 배포한 애플리케이션을 지우는 수단이다.
 	// 지원하지 않는 도구에서는 nil 이며, 호출부는 그것을 밝히고 넘어간다.
 	CDApplications CDApplicationDeleter
+	// CDRefresher 는 방금 만든 애플리케이션의 첫 비교를 확인한다. 지원하지 않으면 nil.
+	CDRefresher CDApplicationRefresher
+	// CDWebhooks / CDWebhookURL 은 저장소가 새 커밋을 CD 도구에 바로 알리게 하는
+	// 수단과 주소다. 비어 있으면 CD 도구는 정기 확인(Argo CD 기본 3분)으로만 새
+	// 커밋을 안다 — CI 가 배포 태그를 되커밋해도 그만큼 늦게 배포된다.
+	CDWebhooks   SCMWebhookProvisioner
+	CDWebhookURL string
 
 	// OrgMembers 는 사람을 조직에 넣는 수단이다. 지원하지 않으면 nil.
 	//

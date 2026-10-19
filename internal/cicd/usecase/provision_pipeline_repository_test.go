@@ -291,3 +291,159 @@ func TestProvisionPipelineRepository_ImportsTemplateSource(t *testing.T) {
 	require.NotNil(t, out.ImportedSource)
 	assert.Equal(t, egovBootSource().Commit, out.ImportedSource.Commit)
 }
+
+type fakeCDRefresher struct {
+	calls []string
+	err   error
+}
+
+func (f *fakeCDRefresher) EnsureFirstComparison(_ context.Context, _ []byte, namespace, name string) error {
+	f.calls = append(f.calls, namespace+"/"+name)
+	return f.err
+}
+
+type fakeCDWebhooks struct {
+	calls []string
+	err   error
+	// errs 가 있으면 호출마다 차례로 돌려준다(다 쓰면 err).
+	errs []error
+}
+
+func (f *fakeCDWebhooks) EnsureWebhook(_ context.Context, projectID, targetURL, _ string) error {
+	f.calls = append(f.calls, projectID+" -> "+targetURL)
+	if len(f.errs) > 0 {
+		err := f.errs[0]
+		f.errs = f.errs[1:]
+		return err
+	}
+	return f.err
+}
+
+// repoUCWithBundle 은 뒤에서 하는 재시도를 기다리지 않고 바로 돌리는 유스케이스를 만든다.
+func repoUCWithBundle(bundle *port.SCMBundle, applier *fakeApplier) *ProvisionPipelineRepository {
+	uc := NewProvisionPipelineRepository(&fakeBundleFactory{bundle: bundle}, applier, &fakeKubeconfigProvider{})
+	uc.runAsync = func(f func()) { f() }
+	uc.cdWebhookRetryInterval = 0
+	return uc
+}
+
+// 자격증명 Secret 과 Application 을 한 번에 적용하면 Argo CD 가 Secret 을 보기 전에
+// 첫 비교를 돌려 "authentication required" 로 끝날 수 있다(2026-10-19 실측). 그대로
+// 두면 다음 정기 확인(3분)까지 동기화되지 않으므로, 만든 직후 첫 비교를 확인한다.
+func TestProvisionPipelineRepository_EnsuresFirstArgoComparison(t *testing.T) {
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), gitlabResolver())
+	refresher := &fakeCDRefresher{}
+	bundle.CDRefresher = refresher
+
+	out, err := repoUCWithBundle(bundle, &fakeApplier{}).Execute(context.Background(), repoInput())
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"devsecops/myapp"}, refresher.calls, "Application 은 CD 네임스페이스에 있다")
+	assert.True(t, out.ArgoApplicationCreated)
+	for _, w := range out.Warnings {
+		assert.NotContains(t, w, "Argo CD 가 저장소")
+	}
+}
+
+// 다시 읽게 해도 못 읽으면 진짜 문제다(자격증명 · 경로). 생성은 마치되 이유를 알린다.
+func TestProvisionPipelineRepository_WarnsWhenArgoCannotReadRepository(t *testing.T) {
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), gitlabResolver())
+	bundle.CDRefresher = &fakeCDRefresher{err: errors.New("authentication required")}
+
+	out, err := repoUCWithBundle(bundle, &fakeApplier{}).Execute(context.Background(), repoInput())
+	require.NoError(t, err)
+
+	assert.True(t, out.ArgoApplicationCreated)
+	joined := strings.Join(out.Warnings, "\n")
+	assert.Contains(t, joined, "Argo CD 가 저장소를 아직 읽지 못했습니다")
+	assert.Contains(t, joined, "authentication required")
+}
+
+// CD 도구는 폴링(Argo CD 기본 3분)으로만 새 커밋을 안다. CI 가 배포 태그를 되커밋해도
+// 최대 3분 늦게 배포된다 — 저장소가 커밋을 바로 알리게 webhook 을 건다.
+func TestProvisionPipelineRepository_RegistersCDWebhook(t *testing.T) {
+	scm := newFakeSCM()
+	bundle := newBundle(scm, newFakePipelineConfig(), gitlabResolver())
+	hooks := &fakeCDWebhooks{}
+	bundle.CDWebhooks = hooks
+	bundle.CDWebhookURL = "http://argo-cd-argocd-server.devsecops.svc.cluster.local/api/webhook"
+
+	out, err := repoUCWithBundle(bundle, &fakeApplier{}).Execute(context.Background(), repoInput())
+	require.NoError(t, err)
+
+	require.Len(t, hooks.calls, 1)
+	assert.Equal(t, out.Project.ID+" -> http://argo-cd-argocd-server.devsecops.svc.cluster.local/api/webhook", hooks.calls[0])
+}
+
+// webhook 을 못 걸어도 배포는 된다 — 늦을 뿐이다. 생성 경고로 돌려주면 화면이 자동 실행을
+// 멈추고, 권한처럼 되풀이되는 실패면 그 스택의 모든 생성이 멈춘다. 서버 로그에만 남긴다.
+func TestProvisionPipelineRepository_CDWebhookFailureDoesNotBlockAutoRun(t *testing.T) {
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), gitlabResolver())
+	bundle.CDWebhooks = &fakeCDWebhooks{err: errors.New("403 forbidden")}
+	bundle.CDWebhookURL = "http://argo/api/webhook"
+
+	out, err := repoUCWithBundle(bundle, &fakeApplier{}).Execute(context.Background(), repoInput())
+	require.NoError(t, err)
+
+	assert.True(t, out.ArgoApplicationCreated)
+	assert.NotContains(t, strings.Join(out.Warnings, "\n"), "webhook")
+	assert.NotContains(t, strings.Join(out.Warnings, "\n"), "정기 확인")
+}
+
+// 정의 갱신은 Application 은 건드리지 않지만 webhook 은 다시 보장한다 — 이 기능 전에 만든
+// 파이프라인이 정의 갱신으로 webhook 을 얻는다.
+func TestProvisionPipelineRepository_RefreshDefinitionEnsuresCDWebhook(t *testing.T) {
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), gitlabResolver())
+	hooks := &fakeCDWebhooks{}
+	bundle.CDWebhooks, bundle.CDWebhookURL = hooks, "http://argo/api/webhook"
+	applier := &fakeApplier{}
+	input := repoInput()
+	input.RefreshDefinitionOnly = true
+
+	_, err := repoUCWithBundle(bundle, applier).Execute(context.Background(), input)
+	require.NoError(t, err)
+
+	assert.Len(t, hooks.calls, 1)
+	assert.Empty(t, applier.applied, "Application 은 다시 적용하지 않는다")
+}
+
+// Application 을 만들지 못했으면 확인할 것도, 알릴 곳도 없다.
+func TestProvisionPipelineRepository_SkipsCDFollowUpsWhenArgoApplyFails(t *testing.T) {
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), gitlabResolver())
+	refresher, hooks := &fakeCDRefresher{}, &fakeCDWebhooks{}
+	bundle.CDRefresher, bundle.CDWebhooks, bundle.CDWebhookURL = refresher, hooks, "http://argo/api/webhook"
+
+	out, err := repoUCWithBundle(bundle, &fakeApplier{err: errors.New("argocd crd missing")}).Execute(context.Background(), repoInput())
+	require.NoError(t, err)
+
+	assert.False(t, out.ArgoApplicationCreated)
+	assert.Empty(t, refresher.calls)
+	assert.Empty(t, hooks.calls)
+}
+
+// GitLab 은 애플리케이션 설정을 프로세스마다 최대 1분 캐시한다. 허용 목록을 막 바꾼 직후의
+// 생성은 옛 설정으로 검사돼 거부된다(2026-10-19 실측 "Invalid url given"). 생성 요청을
+// 붙잡지 않고 뒤에서 다시 건다 — CI 의 배포 되커밋은 몇 분 뒤라 그 전에 걸린다.
+func TestProvisionPipelineRepository_RetriesCDWebhookInBackgroundWhilePending(t *testing.T) {
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), gitlabResolver())
+	hooks := &fakeCDWebhooks{errs: []error{port.ErrWebhookTargetPending, port.ErrWebhookTargetPending}}
+	bundle.CDWebhooks, bundle.CDWebhookURL = hooks, "http://argo/api/webhook"
+
+	out, err := repoUCWithBundle(bundle, &fakeApplier{}).Execute(context.Background(), repoInput())
+	require.NoError(t, err)
+
+	assert.Len(t, hooks.calls, 3, "두 번 거부된 뒤 세 번째에 걸린다")
+	assert.NotContains(t, strings.Join(out.Warnings, "\n"), "정기 확인", "곧 걸릴 것이므로 경고하지 않는다")
+}
+
+// 뒤에서 하는 재시도에도 끝이 있다.
+func TestProvisionPipelineRepository_CDWebhookRetryIsBounded(t *testing.T) {
+	bundle := newBundle(newFakeSCM(), newFakePipelineConfig(), gitlabResolver())
+	hooks := &fakeCDWebhooks{err: port.ErrWebhookTargetPending}
+	bundle.CDWebhooks, bundle.CDWebhookURL = hooks, "http://argo/api/webhook"
+
+	_, err := repoUCWithBundle(bundle, &fakeApplier{}).Execute(context.Background(), repoInput())
+	require.NoError(t, err)
+
+	assert.Len(t, hooks.calls, 1+cdWebhookRetryAttempts)
+}
