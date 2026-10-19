@@ -39,8 +39,8 @@ func (r *PostgresStackImageScanRepository) ReplaceForStack(ctx context.Context, 
 		INSERT INTO stack_image_scans (
 			stack_id, image_digest, image, release_name, workloads, status, error,
 			counts, fixable_counts, scanner, scanner_version, db_updated_at, scanned_at,
-			vulnerabilities_recorded
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'trivy', $10, $11, $12, $13)
+			vulnerabilities_recorded, exposed, exposed_hosts
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'trivy', $10, $11, $12, $13, $14, $15)
 		ON CONFLICT (stack_id, image_digest) DO NOTHING`
 	for _, s := range scans {
 		workloads := s.Workloads
@@ -59,9 +59,18 @@ func (r *PostgresStackImageScanRepository) ReplaceForStack(ctx context.Context, 
 		if err != nil {
 			return err
 		}
+		hosts := s.ExposedHosts
+		if hosts == nil {
+			hosts = []string{}
+		}
+		hostsJSON, err := json.Marshal(hosts)
+		if err != nil {
+			return fmt.Errorf("marshal exposed hosts: %w", err)
+		}
 		if _, err := tx.Exec(ctx, q,
 			stackID, s.ImageDigest, s.Image, s.Release, workloadsJSON, string(s.Status), s.Error,
 			counts, fixable, s.ScannerVersion, s.DBUpdatedAt, s.ScannedAt, s.VulnerabilitiesRecorded,
+			s.Exposed, hostsJSON,
 		); err != nil {
 			return fmt.Errorf("insert stack image scan (%s): %w", s.ImageDigest, err)
 		}
@@ -99,7 +108,8 @@ func (r *PostgresStackImageScanRepository) ReplaceForStack(ctx context.Context, 
 func (r *PostgresStackImageScanRepository) ListByStack(ctx context.Context, stackID string) ([]domain.StackImageScan, error) {
 	const q = `
 		SELECT stack_id, image_digest, image, release_name, workloads, status, error,
-			counts, fixable_counts, scanner_version, db_updated_at, scanned_at, vulnerabilities_recorded
+			counts, fixable_counts, scanner_version, db_updated_at, scanned_at, vulnerabilities_recorded,
+			exposed, exposed_hosts
 		FROM stack_image_scans
 		WHERE stack_id = $1
 		ORDER BY image_digest`
@@ -116,14 +126,22 @@ func (r *PostgresStackImageScanRepository) ListByStack(ctx context.Context, stac
 			status                string
 			workloads             []byte
 			counts, fixableCounts []byte
+			hosts                 []byte
 		)
 		if err := rows.Scan(&s.StackID, &s.ImageDigest, &s.Image, &s.Release, &workloads, &status, &s.Error,
-			&counts, &fixableCounts, &s.ScannerVersion, &s.DBUpdatedAt, &s.ScannedAt, &s.VulnerabilitiesRecorded); err != nil {
+			&counts, &fixableCounts, &s.ScannerVersion, &s.DBUpdatedAt, &s.ScannedAt, &s.VulnerabilitiesRecorded,
+			&s.Exposed, &hosts); err != nil {
 			return nil, fmt.Errorf("scan stack image scan: %w", err)
 		}
 		s.Status = domain.ImageScanStatus(status)
 		if err := json.Unmarshal(workloads, &s.Workloads); err != nil {
 			return nil, fmt.Errorf("unmarshal workloads: %w", err)
+		}
+		if err := json.Unmarshal(hosts, &s.ExposedHosts); err != nil {
+			return nil, fmt.Errorf("unmarshal exposed hosts: %w", err)
+		}
+		if len(s.ExposedHosts) == 0 {
+			s.ExposedHosts = nil
 		}
 		if s.Counts, err = parseCounts(counts); err != nil {
 			return nil, err
@@ -134,6 +152,33 @@ func (r *PostgresStackImageScanRepository) ListByStack(ctx context.Context, stac
 		out = append(out, s)
 	}
 	return out, rows.Err()
+}
+
+// FixableCriticalIDs 는 지금 저장된 결과의 "수정판 있는 CRITICAL" 취약점 ID 다. recorded 는 목록을
+// 저장한 이미지가 하나라도 있는지 — 거짓이면 처음 스캔하는 스택이다. 심각도는 대소문자를 가리지 않는다.
+func (r *PostgresStackImageScanRepository) FixableCriticalIDs(ctx context.Context, stackID string) (map[string]bool, bool, error) {
+	var recorded bool
+	if err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM stack_image_scans WHERE stack_id = $1 AND vulnerabilities_recorded)`,
+		stackID).Scan(&recorded); err != nil {
+		return nil, false, fmt.Errorf("query recorded stack image scans: %w", err)
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT DISTINCT vulnerability_id FROM stack_image_vulnerabilities
+		WHERE stack_id = $1 AND upper(severity) = 'CRITICAL' AND btrim(fixed_version) <> ''`, stackID)
+	if err != nil {
+		return nil, false, fmt.Errorf("query fixable critical vulnerabilities: %w", err)
+	}
+	defer rows.Close()
+	ids := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, false, fmt.Errorf("scan vulnerability id: %w", err)
+		}
+		ids[id] = true
+	}
+	return ids, recorded, rows.Err()
 }
 
 // ListVulnerabilities 는 이미지 하나의 저장된 취약점 목록이다.

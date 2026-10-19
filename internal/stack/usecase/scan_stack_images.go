@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
+	sharednotify "github.com/cloud-nullus/draft/internal/shared/notification"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 )
@@ -33,8 +35,18 @@ type ScanStackImages struct {
 	// 취약점 DB 는 사람이 넣은 만큼만 새것이다.
 	airgap bool
 
+	// notifier 는 새로 발견된 "수정판 있는 CRITICAL" 을 조직의 알림 채널로 보낸다.
+	// 배선되지 않으면 보내지 않는다 — 결과는 화면에서만 본다.
+	notifier sharednotify.Publisher
+
 	mu      sync.Mutex
 	running map[string]struct{}
+}
+
+// WithNotifier 는 새 CVE 고지 경로를 배선한다.
+func (uc *ScanStackImages) WithNotifier(p sharednotify.Publisher) *ScanStackImages {
+	uc.notifier = p
+	return uc
 }
 
 // NewScanStackImages 는 설치 이미지 스캔 유스케이스를 만든다.
@@ -95,8 +107,16 @@ func (uc *ScanStackImages) Execute(ctx context.Context, stackID string) (*domain
 	for i := range scans {
 		scans[i].StackID = stack.ID
 	}
+	// 무엇이 새것인지는 바꾸기 전의 결과로 판단한다.
+	known, recorded, knownErr := uc.results.FixableCriticalIDs(ctx, stack.ID)
 	if err := uc.results.ReplaceForStack(ctx, stack.ID, scans); err != nil {
 		return nil, fmt.Errorf("스택 %s 설치 이미지 스캔 결과 저장 실패: %w", stack.ID, err)
+	}
+	if knownErr != nil {
+		// 지난 결과를 모르면 전부 새것으로 보게 된다 — 알리지 않는다.
+		slog.Warn("설치 이미지 스캔: 지난 결과를 읽지 못해 새 CVE 고지를 건너뜁니다", "stack_id", stack.ID, "error", knownErr)
+	} else {
+		uc.notifyNewCVEs(ctx, stack, NewFixableCriticalsFor(known, scans), !recorded)
 	}
 
 	report := domain.BuildImageScanReport(stack.ID, "", scans)
@@ -205,4 +225,90 @@ func (uc *ScanStackImages) release(stackID string) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 	delete(uc.running, stackID)
+}
+
+// NewFixableCriticalsFor 는 도메인 판정을 감싼다(테스트가 같은 판정을 쓰게).
+func NewFixableCriticalsFor(known map[string]bool, scans []domain.StackImageScan) []domain.CVEFinding {
+	return domain.NewFixableCriticals(known, scans)
+}
+
+// maxCVEsInNotice · maxImagesPerCVE 는 알림 본문에 싣는 CVE 수와 CVE 하나에 적는 이미지 수다. 나머지는
+// 수만 적는다 — 메신저 본문 한도(Telegram 4096자)가 있고, 목록 전체는 화면에 있다. GitLab 은 공통
+// 베이스 때문에 CVE 하나가 이미지 열 개에 걸친다(실측).
+const (
+	maxCVEsInNotice = 5
+	maxImagesPerCVE = 3
+)
+
+// notifyNewCVEs 는 새로 발견된 "수정판 있는 CRITICAL" 을 스택당 한 건으로 묶어 보낸다.
+//
+// 외부에 노출된 이미지의 것이 있으면 심각(critical), 아니면 경고(warning)다 — 정책의 대응 기한이
+// 노출 여부로 갈린다. 보내지 못해도 스캔은 성공이다.
+func (uc *ScanStackImages) notifyNewCVEs(ctx context.Context, stack *domain.Stack, findings []domain.CVEFinding, firstScan bool) {
+	if uc.notifier == nil || len(findings) == 0 {
+		return
+	}
+	severity := sharednotify.SeverityWarning
+	exposed := 0
+	for _, f := range findings {
+		if f.Exposed {
+			severity = sharednotify.SeverityCritical
+			exposed++
+		}
+	}
+	name := firstNonEmptyString(stack.Name, stack.ID)
+	title := fmt.Sprintf("스택 %s: 수정판 있는 CRITICAL 취약점 %d건 새로 발견", name, len(findings))
+	if firstScan {
+		title = fmt.Sprintf("스택 %s 설치 이미지 첫 스캔: 수정판 있는 CRITICAL 취약점 %d건", name, len(findings))
+	}
+
+	var b strings.Builder
+	for i, f := range findings {
+		if i == maxCVEsInNotice {
+			fmt.Fprintf(&b, "외 %d건 — 스택 상세의 이미지 취약점에서 모두 볼 수 있습니다\n", len(findings)-maxCVEsInNotice)
+			break
+		}
+		fmt.Fprintf(&b, "• %s — %s · %s", f.ID, strings.Join(f.Packages, ", "), limitedList(f.Images, maxImagesPerCVE))
+		if f.Exposed {
+			if len(f.Hosts) > 0 {
+				fmt.Fprintf(&b, " (외부 노출: %s)", strings.Join(f.Hosts, ", "))
+			} else {
+				b.WriteString(" (외부 노출)")
+			}
+		}
+		b.WriteString("\n")
+	}
+
+	event := sharednotify.Event{
+		Type:     sharednotify.EventStackCVEFound,
+		OrgID:    stack.OrgID,
+		Severity: severity,
+		Title:    title,
+		Summary:  strings.TrimRight(b.String(), "\n"),
+		Fields: []sharednotify.Field{
+			{Name: "스택", Value: fmt.Sprintf("%s (%s)", name, stack.ID)},
+			{Name: "새 CVE", Value: fmt.Sprintf("%d건 (외부 노출 이미지에 있는 것 %d건)", len(findings), exposed)},
+		},
+		OccurredAt: time.Now(),
+	}
+	if err := uc.notifier.Publish(ctx, event); err != nil {
+		slog.Warn("설치 이미지 스캔: 새 CVE 고지를 보내지 못했습니다", "stack_id", stack.ID, "error", err)
+	}
+}
+
+// limitedList 는 앞의 max 개만 적고 나머지는 수로 적는다.
+func limitedList(items []string, max int) string {
+	if len(items) <= max {
+		return strings.Join(items, ", ")
+	}
+	return fmt.Sprintf("%s 외 %d개", strings.Join(items[:max], ", "), len(items)-max)
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }

@@ -45,8 +45,9 @@ func (f *fakeImageScanner) namespaces() []string {
 }
 
 type fakeImageScanResults struct {
-	mu   sync.Mutex
-	rows map[string][]domain.StackImageScan
+	mu       sync.Mutex
+	rows     map[string][]domain.StackImageScan
+	knownErr error
 }
 
 func newFakeImageScanResults() *fakeImageScanResults {
@@ -91,6 +92,28 @@ func imageScanStack(id string, withScanner bool) *domain.Stack {
 		cfg.Security.ImageScanner = domain.ToolSelection{Name: "trivy", Version: "0.74.0", Enabled: true}
 	}
 	return &domain.Stack{ID: id, ClusterID: "cl-1", Namespace: "ns-" + id, State: domain.StateCompleted, Config: cfg}
+}
+
+func (r *fakeImageScanResults) FixableCriticalIDs(_ context.Context, stackID string) (map[string]bool, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.knownErr != nil {
+		return nil, false, r.knownErr
+	}
+	ids := map[string]bool{}
+	recorded := false
+	for _, s := range r.rows[stackID] {
+		if !s.VulnerabilitiesRecorded {
+			continue
+		}
+		recorded = true
+		for _, v := range s.Vulnerabilities {
+			if v.Severity == "CRITICAL" && v.FixedVersion != "" {
+				ids[v.ID] = true
+			}
+		}
+	}
+	return ids, recorded, nil
 }
 
 func newScanStackImagesUC(stacks []*domain.Stack, scanner *fakeImageScanner, results *fakeImageScanResults, airgap bool) *ScanStackImages {

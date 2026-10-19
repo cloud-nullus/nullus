@@ -69,6 +69,8 @@ type stackImageScanItem struct {
 	ImageDigest    string                       `json:"image_digest"`
 	Release        string                       `json:"release,omitempty"`
 	Workloads      []string                     `json:"workloads"`
+	Exposed        bool                         `json:"exposed"`
+	ExposedHosts   []string                     `json:"exposed_hosts"`
 	Status         string                       `json:"status"`
 	Error          string                       `json:"error,omitempty"`
 	Counts         *shareddomain.SeverityCounts `json:"counts,omitempty"`
@@ -120,11 +122,17 @@ func (h *ImageScanHandler) GetImageScans(c echo.Context) error {
 		if workloads == nil {
 			workloads = []string{}
 		}
+		hosts := s.ExposedHosts
+		if hosts == nil {
+			hosts = []string{}
+		}
 		resp.Items = append(resp.Items, stackImageScanItem{
 			Image:          s.Image,
 			ImageDigest:    s.ImageDigest,
 			Release:        s.Release,
 			Workloads:      workloads,
+			Exposed:        s.Exposed,
+			ExposedHosts:   hosts,
 			Status:         string(s.Status),
 			Error:          s.Error,
 			Counts:         s.Counts,

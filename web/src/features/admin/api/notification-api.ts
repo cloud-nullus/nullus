@@ -12,7 +12,10 @@ export type SMTPSecurity = "starttls" | "tls" | "none";
 export type NotificationEvent =
   | "backup_failed"
   | "backup_partial"
-  | "backup_succeeded";
+  | "backup_succeeded"
+  | "alert_fired"
+  | "alert_resolved"
+  | "stack_cve_found";
 export type DeliveryStatus = "sent" | "failed";
 
 export const CHANNEL_TYPES: ChannelType[] = ["telegram", "email", "slack"];

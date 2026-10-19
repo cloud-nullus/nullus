@@ -351,6 +351,10 @@ export interface StackImageScanItem {
   imageDigest?: string;
   release?: string;
   workloads: string[];
+  /** 이 이미지를 쓰는 파드가 게이트웨이(HTTPRoute)로 클러스터 밖에 열려 있다. */
+  exposed: boolean;
+  /** 그 HTTPRoute 의 호스트 이름. 호스트를 적지 않은 경로면 비어 있다. */
+  exposedHosts: string[];
   status: "scanned" | "failed";
   /** status 가 failed 일 때의 이유. */
   error?: string;

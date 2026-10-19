@@ -639,6 +639,8 @@ func main() {
 		TelegramAPIURL: os.Getenv("NULLUS_TELEGRAM_API_URL"),
 		Logger:         slog.Default(),
 	})
+	// 설치 이미지 재스캔이 새로 발견한 "수정판 있는 CRITICAL" 을 조직의 알림 채널로 보낸다(nullus-plan#78).
+	stackImageScanUC.WithNotifier(notificationModule.Publisher)
 	notificationHandler := notificationhandler.NewNotificationHandler(
 		notificationModule.Channels, notificationModule.SendTest, notificationModule.Deliveries)
 	tokenSourceHandler := adminhandler.NewTokenSourceHandler(tokenSourceUC)

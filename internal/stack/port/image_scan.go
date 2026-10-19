@@ -21,6 +21,9 @@ type StackImageScanRepository interface {
 	ListByStack(ctx context.Context, stackID string) ([]domain.StackImageScan, error)
 	// ListVulnerabilities 는 이미지 하나의 저장된 취약점 목록이다.
 	ListVulnerabilities(ctx context.Context, stackID, digest string) (domain.StackImageVulnerabilities, error)
+	// FixableCriticalIDs 는 지금 저장된 결과의 "수정판 있는 CRITICAL" 취약점 ID 다. recorded 는
+	// 목록을 저장한 이미지가 하나라도 있는지 — 거짓이면 처음 스캔하는 스택이다.
+	FixableCriticalIDs(ctx context.Context, stackID string) (ids map[string]bool, recorded bool, err error)
 }
 
 // CompletedStackLister 는 설치가 끝난 스택을 조직과 무관하게 돌려준다.

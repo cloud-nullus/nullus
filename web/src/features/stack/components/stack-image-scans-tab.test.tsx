@@ -52,6 +52,8 @@ function item(image: string, overrides: Partial<StackImageScanItem> = {}): Stack
     imageDigest: 'sha256:abcdef0123456789abcdef',
     release: 'nullus-postgresql',
     workloads: ['nullus-postgresql-0'],
+    exposed: false,
+    exposedHosts: [],
     status: 'scanned',
     counts: { critical: 0, high: 2, medium: 5, low: 3, unknown: 0 },
     fixableCounts: { critical: 0, high: 1, medium: 2, low: 0, unknown: 0 },
@@ -303,5 +305,30 @@ describe('StackImageScansTab', () => {
     render(<StackImageScansTab stackId="stk_1" />)
 
     expect(screen.getByText('Loading image scan results...')).toBeTruthy()
+  })
+})
+
+describe('StackImageScansTab — 외부 노출', () => {
+  beforeEach(() => {
+    mockUseStackImageScans.mockReset()
+    mockUseStackImageVulnerabilities.mockReset()
+    mockUseStackImageVulnerabilities.mockReturnValue({ data: vulnerabilityList, isLoading: false, isError: false, isFetching: false })
+  })
+
+  // 같은 CVE 라도 게이트웨이로 밖에 열린 서비스의 것을 먼저 고친다 — 행에서 가려 보인다.
+  it('외부에 노출된 이미지에 표시와 호스트를 보인다', () => {
+    mockReport(report({
+      items: [
+        item('gitlab-webservice:17.7', { exposed: true, exposedHosts: ['gitlab.nullus.local'] }),
+        item('redis:7', { imageDigest: 'sha256:r' }),
+      ],
+      total: 2,
+    }))
+
+    render(<StackImageScansTab stackId="stk_1" />)
+
+    const badges = screen.getAllByText('Exposed')
+    expect(badges).toHaveLength(1)
+    expect(badges[0].getAttribute('title')).toContain('gitlab.nullus.local')
   })
 })

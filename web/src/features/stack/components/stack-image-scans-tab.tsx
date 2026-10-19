@@ -185,6 +185,17 @@ function ImageScanRow({
         </td>
         <td className={tdClass}>
           <span className="block text-[12px] text-[var(--color-text-primary)]">{item.release ?? "-"}</span>
+          {/* 같은 CVE 라도 게이트웨이로 밖에 열린 서비스의 것을 먼저 고친다(설치 OSS CVE 대응 정책). */}
+          {item.exposed && (
+            <span
+              title={t("stackList.imageScans.item.exposedHint", {
+                hosts: item.exposedHosts.length > 0 ? item.exposedHosts.join(", ") : "-",
+              })}
+              className="mt-0.5 inline-flex rounded-[var(--radius-sm)] bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-error)]"
+            >
+              {t("stackList.imageScans.item.exposed")}
+            </span>
+          )}
           {/* 공통 베이스 이미지는 워크로드 여러 개가 함께 쓴다(gitlab-base 7개, argocd 6개).
               좁은 릴리스 열에서 전부 펼치면 행이 여덟 줄로 늘어나므로 두 줄로 줄이고 전체는 툴팁에 둔다. */}
           {item.workloads.length > 0 && (

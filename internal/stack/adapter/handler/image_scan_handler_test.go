@@ -64,7 +64,8 @@ func TestImageScanHandler_Scanned(t *testing.T) {
 	report := domain.BuildImageScanReport("stk_1", "", []domain.StackImageScan{
 		{Image: "redis:7", ImageDigest: "sha256:r", Release: "argo-cd", Workloads: []string{"argo-cd-argocd-redis"},
 			Status: domain.ImageScanStatusScanned, Counts: &counts, FixableCounts: &shareddomain.SeverityCounts{High: 1},
-			ScannerVersion: "0.74.0", DBUpdatedAt: &fresh, ScannedAt: now},
+			ScannerVersion: "0.74.0", DBUpdatedAt: &fresh, ScannedAt: now,
+			Exposed: true, ExposedHosts: []string{"argocd.nullus.local"}},
 		{Image: "argocd:v2", ImageDigest: "sha256:a", Status: domain.ImageScanStatusFailed, Error: "manifest unknown",
 			DBUpdatedAt: &old, ScannedAt: now},
 	})
@@ -84,10 +85,15 @@ func TestImageScanHandler_Scanned(t *testing.T) {
 	assert.Equal(t, []any{"argo-cd-argocd-redis"}, scanned["workloads"])
 	assert.Equal(t, false, scanned["db_stale"])
 	assert.NotNil(t, scanned["fixable_counts"])
+	// 게이트웨이로 밖에 열린 이미지는 대응 기한이 짧다 — 화면이 가려 보인다.
+	assert.Equal(t, true, scanned["exposed"])
+	assert.Equal(t, []any{"argocd.nullus.local"}, scanned["exposed_hosts"])
 
 	failed := items[1].(map[string]any)
 	assert.Equal(t, "failed", failed["status"])
 	assert.Equal(t, "manifest unknown", failed["error"])
+	assert.Equal(t, false, failed["exposed"])
+	assert.Equal(t, []any{}, failed["exposed_hosts"], "null 이 아니라 빈 목록이다")
 	// 스캔하지 못한 이미지는 건수를 싣지 않는다 — 0 으로 읽히면 안 된다.
 	assert.NotContains(t, failed, "counts")
 	assert.Equal(t, true, failed["db_stale"])
