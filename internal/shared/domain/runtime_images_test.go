@@ -2,6 +2,7 @@ package domain
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -134,15 +135,53 @@ func TestSonarScannerImage_우리가_굽는_멀티아치_이미지를_쓴다(t *
 
 	dockerfile, err := os.ReadFile(filepath.Join(repoRoot(t), "deploy", "images", "sonar-scanner", "Dockerfile"))
 	require.NoError(t, err)
-	m := regexp.MustCompile(`(?m)^ARG SONAR_SCANNER_VERSION=(\S+)$`).FindSubmatch(dockerfile)
-	require.Len(t, m, 2, "Dockerfile 에 ARG SONAR_SCANNER_VERSION 이 있어야 한다")
-	assert.Equal(t, repository+":"+string(m[1]), SonarScannerImage, "태그는 Dockerfile 의 스캐너 버전이다")
+	version := regexp.MustCompile(`(?m)^ARG SONAR_SCANNER_VERSION=(\S+)$`).FindSubmatch(dockerfile)
+	require.Len(t, version, 2, "Dockerfile 에 ARG SONAR_SCANNER_VERSION 이 있어야 한다")
+	revision := regexp.MustCompile(`(?m)^ARG NULLUS_IMAGE_REVISION=(\d+)$`).FindSubmatch(dockerfile)
+	require.Len(t, revision, 2, "Dockerfile 에 ARG NULLUS_IMAGE_REVISION 이 있어야 한다")
+	assert.Equal(t, repository+":"+string(version[1])+"-"+string(revision[1]), SonarScannerImage,
+		"태그는 Dockerfile 의 스캐너 버전-이미지 리비전이다")
 
+	// 태그를 계산하는 곳은 스크립트 하나다. CD · 이미지 스캔 · 로컬 빌드가 각자 grep 하면 규칙이 갈린다.
+	tag, err := exec.Command(filepath.Join(repoRoot(t), "scripts", "sonar-scanner-image-tag.sh")).Output()
+	require.NoError(t, err)
+	assert.Equal(t, repository+":"+strings.TrimSpace(string(tag)), SonarScannerImage)
+
+	for _, path := range []string{
+		filepath.Join(".github", "workflows", "cd.yml"),
+		filepath.Join(".github", "workflows", "image-scan.yml"),
+		filepath.Join("scripts", "build-sonar-scanner-image.sh"),
+	} {
+		raw, err := os.ReadFile(filepath.Join(repoRoot(t), path))
+		require.NoError(t, err)
+		assert.Contains(t, string(raw), "sonar-scanner-image-tag.sh", "%s 는 태그를 스크립트로 계산해야 한다", path)
+	}
 	cd, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "cd.yml"))
 	require.NoError(t, err)
 	assert.Contains(t, string(cd), "deploy/images/sonar-scanner/Dockerfile", "CD 가 이 이미지를 굽는다")
 	assert.Contains(t, string(cd), "nullus-sonar-scanner:", "CD 가 같은 이름으로 민다")
-	assert.Contains(t, string(cd), "SONAR_SCANNER_VERSION=", "CD 태그도 Dockerfile 의 버전에서 뽑는다")
+}
+
+// 같은 스캐너 버전에서 이미지 내용이 바뀌면 리비전을 올려 태그를 바꾼다. 태그가 그대로면 CD 가 같은 태그로
+// 다시 밀어도 이미 받아 둔 노드는 옛 이미지를 계속 쓴다(쿠버네티스 기본 pull 정책 IfNotPresent) — Node 를
+// 넣은 이미지가 그 노드에는 영영 닿지 않는다. 리비전 1 은 접미사 없는 첫 태그(8.1.0.6389)였다.
+func TestSonarScannerImage_내용이_바뀐_이미지는_새_태그다(t *testing.T) {
+	assert.NotEqual(t, "ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389", SonarScannerImage,
+		"Node 를 넣은 이미지가 옛 태그를 다시 쓰면 안 된다")
+}
+
+// SonarQube 의 JS/TS/CSS 분석기는 Node 런타임을 플랫폼별로 내장하는데 LINUX_ARM64 용은 없어 PATH 의
+// node 를 찾는다. 스캐너 이미지에 node 가 없으면 arm64 노드에서는 .js·.css 가 하나만 있어도 분석 전체가
+// EXECUTION FAILURE 로 끝나고, SAST 를 기다리는 deploy 가 돌지 않는다(2026-10-19 kind arm64 ·
+// SonarQube 26.9 · 전자정부 표준프레임워크 샘플의 정적 CSS/JS 로 실측).
+func TestSonarScannerImage_JS_분석용_Node_가_있다(t *testing.T) {
+	dockerfile, err := os.ReadFile(filepath.Join(repoRoot(t), "deploy", "images", "sonar-scanner", "Dockerfile"))
+	require.NoError(t, err)
+
+	stages := strings.Split(string(dockerfile), "\nFROM ")
+	runtime := stages[len(stages)-1]
+	assert.Regexp(t, `dnf install -y [^\n]*\bnodejs\d+\b`, runtime, "실행 단계가 Node.js 를 설치해야 한다")
+	assert.Contains(t, runtime, "node --version", "빌드가 node 가 PATH 에 잡히는지 확인해야 한다")
 }
 
 // Trivy CLI 이미지는 CI 잡이 쓴다. 정책 변수와 함께 밀려야 하므로(port.ScanPolicyVariables)

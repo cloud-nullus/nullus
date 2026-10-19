@@ -105,6 +105,6 @@ docker.io/bitnamilegacy/kubectl:1.33.4
 docker:27
 docker:27-cli
 docker:27-dind
-ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389
+ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389-2
 ghcr.io/gitleaks/gitleaks:v8.30.1
 node:22-alpine
