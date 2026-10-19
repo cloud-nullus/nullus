@@ -78,6 +78,8 @@ func (uc *RefreshPipelineDefinition) Execute(ctx context.Context, pipelineID str
 		AppType:               pipeline.AppType,
 		Namespace:             pipeline.Namespace,
 		RefreshDefinitionOnly: true,
+		// 저장소가 없어 다시 만들 때만 쓰인다 — 처음처럼 원본을 다시 가져온다.
+		Source: pipeline.Source,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("refresh pipeline definition for %s: %w", pipeline.Name, err)

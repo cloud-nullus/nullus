@@ -123,3 +123,19 @@ func TestRefreshPipelineDefinition_없는_파이프라인(t *testing.T) {
 	_, err := uc.Execute(context.Background(), "nope")
 	require.Error(t, err)
 }
+
+// 원본을 가져와 만든 파이프라인은 정의 갱신에도 원본을 넘긴다. 저장소가 없어 다시 만들면 처음처럼
+// 원본을 다시 가져와야 한다 — 이미 있는 저장소에는 쓰지 않으므로 평소 갱신에는 영향이 없다.
+func TestRefreshPipelineDefinition_원본을_가져온_파이프라인은_원본을_넘긴다(t *testing.T) {
+	p := legacyPipeline()
+	p.Source = egovBootSource()
+	repo := &refreshPipelineRepo{pipeline: p}
+	prov := &fakeRepoProvisioner{out: &ProvisionPipelineRepositoryOutput{DefinitionRefreshed: true}}
+
+	_, err := NewRefreshPipelineDefinition(repo, prov).Execute(context.Background(), "pip_1")
+	require.NoError(t, err)
+
+	require.Len(t, prov.calls, 1)
+	require.NotNil(t, prov.calls[0].Source)
+	assert.Equal(t, egovBootSource().Commit, prov.calls[0].Source.Commit)
+}

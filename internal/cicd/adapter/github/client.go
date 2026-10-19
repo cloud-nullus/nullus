@@ -13,6 +13,7 @@ package github
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,6 +40,7 @@ const (
 	defaultTimeout       = 30 * time.Second
 	defaultBranchName    = "main"
 	blobFileMode         = "100644"
+	executableFileMode   = "100755"
 	maxErrorBodyReadSize = 4 << 10
 )
 
@@ -297,12 +299,27 @@ func (c *Client) CommitFiles(ctx context.Context, projectID string, spec port.Co
 	for _, f := range spec.Files {
 		// content 를 그대로 넣으면 blob 을 따로 만들지 않아도 된다.
 		// base_tree 위에 얹으므로 같은 경로는 자연스럽게 덮어써진다.
-		entries = append(entries, map[string]any{
-			"path":    f.Path,
-			"mode":    blobFileMode,
-			"type":    "blob",
-			"content": f.Content,
-		})
+		mode := blobFileMode
+		if f.Executable {
+			mode = executableFileMode
+		}
+		entry := map[string]any{
+			"path": f.Path,
+			"mode": mode,
+			"type": "blob",
+		}
+		if f.IsBinary() {
+			// 트리의 content 는 UTF-8 텍스트만 받는다. 외부 원본의 글꼴·이미지는 blob 을
+			// base64 로 먼저 만들고 그 sha 를 건다.
+			sha, err := c.createBinaryBlob(ctx, repo, f.Content)
+			if err != nil {
+				return fmt.Errorf("create blob %s in %s: %w", f.Path, repo, err)
+			}
+			entry["sha"] = sha
+		} else {
+			entry["content"] = f.Content
+		}
+		entries = append(entries, entry)
 	}
 
 	var tree struct {
@@ -334,6 +351,23 @@ func (c *Client) CommitFiles(ctx context.Context, projectID string, spec port.Co
 		return fmt.Errorf("update %s ref %s: %w", repo, branch, err)
 	}
 	return nil
+}
+
+// createBinaryBlob 은 텍스트가 아닌 파일을 blob 으로 올리고 그 sha 를 돌려준다.
+func (c *Client) createBinaryBlob(ctx context.Context, repo, content string) (string, error) {
+	var blob struct {
+		SHA string `json:"sha"`
+	}
+	if err := c.send(ctx, http.MethodPost, repoPath(repo, "/git/blobs"), map[string]any{
+		"content":  base64.StdEncoding.EncodeToString([]byte(content)),
+		"encoding": "base64",
+	}, &blob); err != nil {
+		return "", err
+	}
+	if blob.SHA == "" {
+		return "", fmt.Errorf("blob 응답에 sha 가 없습니다")
+	}
+	return blob.SHA, nil
 }
 
 // baseCommit 은 브랜치가 가리키는 커밋과 그 트리의 SHA 를 읽는다.

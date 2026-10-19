@@ -28,7 +28,8 @@ func NewPostgresCICDTemplateRepository(pool *pgxpool.Pool) *PostgresCICDTemplate
 const pipelineTemplateColumns = `
 		id, name, COALESCE(description, ''), app_type, stages,
 		COALESCE(git_repo_url, ''), COALESCE(dockerfile_path, ''), COALESCE(docker_context, ''),
-		COALESCE(env_vars, '{}'::jsonb), COALESCE(created_by, '')`
+		COALESCE(env_vars, '{}'::jsonb), COALESCE(created_by, ''),
+		` + sourceColumnList
 
 func (r *PostgresCICDTemplateRepository) GetByID(ctx context.Context, id string) (*domain.PipelineTemplate, error) {
 	const q = `SELECT ` + pipelineTemplateColumns + `
@@ -73,17 +74,19 @@ func (r *PostgresCICDTemplateRepository) List(ctx context.Context) ([]*domain.Pi
 func (r *PostgresCICDTemplateRepository) Create(ctx context.Context, tmpl *domain.PipelineTemplate) error {
 	const q = `
 		INSERT INTO pipeline_templates
-			(id, name, description, app_type, stages, git_repo_url, dockerfile_path, docker_context, env_vars, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+			(id, name, description, app_type, stages, git_repo_url, dockerfile_path, docker_context, env_vars, created_by,
+			 ` + sourceColumnList + `)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
 
 	stages, envVars, err := marshalTemplateJSON(tmpl)
 	if err != nil {
 		return err
 	}
-	_, err = r.pool.Exec(ctx, q,
+	args := append([]any{
 		tmpl.ID, tmpl.Name, tmpl.Description, string(tmpl.AppType), stages,
 		tmpl.GitRepoURL, tmpl.DockerfilePath, tmpl.DockerContext, envVars, nilIfEmpty(tmpl.CreatedBy),
-	)
+	}, sourceArgs(tmpl.Source)...)
+	_, err = r.pool.Exec(ctx, q, args...)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
@@ -99,17 +102,19 @@ func (r *PostgresCICDTemplateRepository) Update(ctx context.Context, tmpl *domai
 	const q = `
 		UPDATE pipeline_templates
 		SET name = $2, description = $3, app_type = $4, stages = $5,
-		    git_repo_url = $6, dockerfile_path = $7, docker_context = $8, env_vars = $9, created_by = $10
+		    git_repo_url = $6, dockerfile_path = $7, docker_context = $8, env_vars = $9, created_by = $10,
+		    source_repo_url = $11, source_commit = $12, source_label = $13, source_build_profile = $14
 		WHERE id = $1`
 
 	stages, envVars, err := marshalTemplateJSON(tmpl)
 	if err != nil {
 		return err
 	}
-	res, err := r.pool.Exec(ctx, q,
+	args := append([]any{
 		tmpl.ID, tmpl.Name, tmpl.Description, string(tmpl.AppType), stages,
 		tmpl.GitRepoURL, tmpl.DockerfilePath, tmpl.DockerContext, envVars, nilIfEmpty(tmpl.CreatedBy),
-	)
+	}, sourceArgs(tmpl.Source)...)
+	res, err := r.pool.Exec(ctx, q, args...)
 	if err != nil {
 		return fmt.Errorf("update pipeline template: %w", err)
 	}
@@ -168,9 +173,10 @@ func scanPipelineTemplate(row pipelineTemplateScanner) (*domain.PipelineTemplate
 		appType    string
 		stagesJSON []byte
 		envJSON    []byte
+		source     sourceColumns
 	)
 
-	err := row.Scan(
+	dest := append([]any{
 		&t.ID,
 		&t.Name,
 		&t.Description,
@@ -181,10 +187,11 @@ func scanPipelineTemplate(row pipelineTemplateScanner) (*domain.PipelineTemplate
 		&t.DockerContext,
 		&envJSON,
 		&t.CreatedBy,
-	)
-	if err != nil {
+	}, source.dest()...)
+	if err := row.Scan(dest...); err != nil {
 		return nil, err
 	}
+	t.Source = source.source()
 
 	if err := json.Unmarshal(stagesJSON, &t.Stages); err != nil {
 		return nil, fmt.Errorf("unmarshal stages: %w", err)

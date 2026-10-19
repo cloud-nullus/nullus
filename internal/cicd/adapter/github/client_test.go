@@ -3,6 +3,7 @@ package github
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -327,4 +328,100 @@ func TestClient_SendsBearerAuthAndAPIVersion(t *testing.T) {
 	require.NoError(t, c.Ping(context.Background()))
 	assert.Equal(t, "Bearer tok", gotAuth)
 	assert.Equal(t, apiVersion, gotVersion)
+}
+
+// 트리 항목의 content 는 UTF-8 텍스트만 받는다. 글꼴·이미지는 blob 을 base64 로 먼저 만들고
+// 트리에는 그 sha 를 건다 — 그대로 실으면 깨진 파일이 커밋된다.
+func TestCommitFiles_UploadsBinaryFilesAsBlobs(t *testing.T) {
+	srv, recorded := newStubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/repos/acme/myapp/git/ref/heads/main":
+			_ = json.NewEncoder(w).Encode(map[string]any{"object": map[string]any{"sha": "base-commit-sha"}})
+		case r.URL.Path == "/repos/acme/myapp/git/commits/base-commit-sha":
+			_ = json.NewEncoder(w).Encode(map[string]any{"sha": "base-commit-sha", "tree": map[string]any{"sha": "base-tree-sha"}})
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/myapp/git/blobs":
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"sha": "font-blob-sha"})
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/myapp/git/trees":
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"sha": "new-tree-sha"})
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/myapp/git/commits":
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"sha": "new-commit-sha"})
+		case r.Method == http.MethodPatch && r.URL.Path == "/repos/acme/myapp/git/refs/heads/main":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ref": "refs/heads/main"})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	font := "wOFF\x00\x01\x00\x00\xff\xfe"
+	c := NewClient(srv.URL, "tok")
+	err := c.CommitFiles(context.Background(), "acme/myapp", port.CommitSpec{
+		Branch:  "main",
+		Message: "chore(nullus): import",
+		Files: []port.CommitFile{
+			{Path: "pom.xml", Content: "<project/>"},
+			{Path: "src/main/webapp/fonts/a.woff", Content: font},
+		},
+	})
+	require.NoError(t, err)
+
+	var blob, tree *recordedRequest
+	for i := range *recorded {
+		switch req := &(*recorded)[i]; req.Path {
+		case "/repos/acme/myapp/git/blobs":
+			blob = req
+		case "/repos/acme/myapp/git/trees":
+			tree = req
+		}
+	}
+	require.NotNil(t, blob, "바이너리는 blob 으로 먼저 올려야 한다")
+	assert.Equal(t, "base64", blob.Body["encoding"])
+	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte(font)), blob.Body["content"])
+
+	require.NotNil(t, tree)
+	entries := tree.Body["tree"].([]any)
+	require.Len(t, entries, 2)
+	text := entries[0].(map[string]any)
+	assert.Equal(t, "<project/>", text["content"])
+	binary := entries[1].(map[string]any)
+	assert.Equal(t, "font-blob-sha", binary["sha"])
+	assert.NotContains(t, binary, "content", "sha 와 content 를 함께 보내면 GitHub 이 거부한다")
+}
+
+func TestCommitFiles_KeepsExecutableBit(t *testing.T) {
+	srv, recorded := newStubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/repos/acme/myapp/git/ref/heads/main":
+			_ = json.NewEncoder(w).Encode(map[string]any{"object": map[string]any{"sha": "base-commit-sha"}})
+		case r.URL.Path == "/repos/acme/myapp/git/commits/base-commit-sha":
+			_ = json.NewEncoder(w).Encode(map[string]any{"sha": "base-commit-sha", "tree": map[string]any{"sha": "base-tree-sha"}})
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/myapp/git/trees":
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"sha": "new-tree-sha"})
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/acme/myapp/git/commits":
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"sha": "new-commit-sha"})
+		case r.Method == http.MethodPatch:
+			_ = json.NewEncoder(w).Encode(map[string]any{"ref": "refs/heads/main"})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	c := NewClient(srv.URL, "tok")
+	require.NoError(t, c.CommitFiles(context.Background(), "acme/myapp", port.CommitSpec{
+		Branch: "main", Message: "chore(nullus): import",
+		Files: []port.CommitFile{{Path: "mvnw", Content: "#!/bin/sh\n", Executable: true}, {Path: "pom.xml", Content: "<project/>"}},
+	}))
+	var tree *recordedRequest
+	for i := range *recorded {
+		if (*recorded)[i].Path == "/repos/acme/myapp/git/trees" {
+			tree = &(*recorded)[i]
+		}
+	}
+	require.NotNil(t, tree)
+	entries := tree.Body["tree"].([]any)
+	assert.Equal(t, "100755", entries[0].(map[string]any)["mode"])
+	assert.Equal(t, "100644", entries[1].(map[string]any)["mode"])
 }

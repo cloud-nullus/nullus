@@ -10,6 +10,8 @@ import {
   useDeleteCicdTemplate,
 } from "../api/cicd-api";
 import type { CicdTemplate } from "../api/cicd-api";
+import type { TemplateSource } from "../../../types";
+import { describeTemplateSource } from "../utils/template-source";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 import { Modal } from "../../../components/ui/modal";
@@ -25,6 +27,8 @@ const CAPABILITY_OPTIONS = ["CI", "CD", "Test", "Security"] as const;
 const PRIORITY_TEMPLATE_IDS = [
   "nullus-sample-backend-v1",
   "nullus-sample-frontend-v1",
+  "egovframe-boot-sample-v1",
+  "egovframe-web-sample-v1",
 ] as const;
 type CicdType = "default" | "helm" | "cronjobJob";
 
@@ -87,6 +91,14 @@ const TEMPLATE_DESCRIPTION_I18N: Record<string, { ko: string; en: string }> = {
   "nullus-sample-frontend-v1": {
     ko: "Nullus 플랫폼 데모용 React SPA입니다. frontend/Dockerfile(Nginx)로 빌드하고 Kubernetes에 배포합니다.",
     en: "React SPA for the Nullus platform demo. Builds from frontend/Dockerfile (Nginx) and deploys to Kubernetes.",
+  },
+  "egovframe-boot-sample-v1": {
+    ko: "전자정부 표준프레임워크 부트 기반 심플 게시판(Java Config)입니다. 원본을 가져와 Maven으로 빌드하고, 내장 HSQLDB로 바로 실행됩니다.",
+    en: "eGovFrame Spring Boot board sample (Java config). Imports the original source, builds it with Maven, and runs it on the embedded HSQLDB.",
+  },
+  "egovframe-web-sample-v1": {
+    ko: "전자정부 표준프레임워크 웹 기반 심플 게시판(XML 설정, JSP)입니다. 원본을 가져와 Maven으로 WAR를 만들고 Tomcat에서 내장 HSQLDB로 실행됩니다.",
+    en: "eGovFrame web board sample (XML config, JSP). Imports the original source, builds a WAR with Maven, and runs it on Tomcat with the embedded HSQLDB.",
   },
 };
 
@@ -191,6 +203,41 @@ function resolveCapabilities(stages: string[]): string[] {
     });
 
   return CAPABILITY_OPTIONS.filter(hasCapability);
+}
+
+// TemplateSourceSummary 는 원본을 가져오는 템플릿이 어디서 무엇을 복사하는지 보여 준다.
+function TemplateSourceSummary({ source }: { source: TemplateSource }) {
+  const { t } = useTranslation();
+  const described = describeTemplateSource(source);
+  return (
+    <div className="rounded-lg border border-[var(--color-border-default)] p-3">
+      <span className="text-[11px] font-semibold text-[var(--color-text-muted)]">
+        {t("cicdTemplatePage.card.source", "Source")}
+      </span>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        <a
+          href={described.url}
+          target="_blank"
+          rel="noreferrer"
+          className="break-all text-[13px] font-semibold text-[var(--color-primary)] hover:underline"
+        >
+          {described.repository}
+        </a>
+        <span
+          className="rounded-md bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-text-secondary)]"
+          title={source.commit}
+        >
+          {described.version}
+        </span>
+      </div>
+      <p className="m-0 mt-1.5 text-xs leading-[1.5] text-[var(--color-text-muted)]">
+        {t(
+          "cicdTemplatePage.card.sourceNote",
+          "Copied into a new repository when you create a pipeline. Requires internet access.",
+        )}
+      </p>
+    </div>
+  );
 }
 
 export function CicdTemplatePage() {
@@ -474,6 +521,10 @@ export function CicdTemplatePage() {
                               {resolveTemplateDescription(template)}
                             </p>
                           </div>
+
+                          {template.source && (
+                            <TemplateSourceSummary source={template.source} />
+                          )}
 
                           <div className="grid grid-cols-2 gap-3 rounded-lg bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-3">
                             <div>

@@ -16,6 +16,7 @@ import type {
   PipelineSASTResult,
   SASTMetrics,
   SASTQualityGateStatus,
+  TemplateSource,
   VulnerabilityListFilter,
   VulnerabilityListResult,
 } from "../../../types";
@@ -274,6 +275,20 @@ function toCicdTemplate(t: any): CicdTemplate {
     dockerfilePath: t.dockerfile_path ?? "",
     dockerContext: t.docker_context ?? "",
     envVars: t.env_vars ?? {},
+    source: toTemplateSource(t.source),
+  };
+}
+
+// 원본이 없는 템플릿은 서버가 source 를 싣지 않는다. 빈 객체로 두면 화면이 원본이 있는 것으로 본다.
+function toTemplateSource(raw: any): TemplateSource | undefined {
+  if (!raw || typeof raw.repo_url !== "string" || raw.repo_url === "") {
+    return undefined;
+  }
+  return {
+    repoUrl: raw.repo_url,
+    commit: raw.commit ?? "",
+    label: raw.label || undefined,
+    buildProfile: raw.build_profile || undefined,
   };
 }
 

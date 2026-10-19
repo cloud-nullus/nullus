@@ -276,3 +276,18 @@ func TestProvisionPipelineRepository_RefreshDefinitionOnly_는_Argo_Application_
 	assert.Empty(t, applier.applied, "Application·자격증명 매니페스트를 다시 적용하지 않는다")
 	assert.NotEmpty(t, out.Stages)
 }
+
+func TestProvisionPipelineRepository_ImportsTemplateSource(t *testing.T) {
+	scm, pipe, res, applier := newFakeSCM(), newFakePipelineConfig(), gitlabResolver(), &fakeApplier{}
+	archive := egovBootArchive()
+	uc := newRepoUC(scm, pipe, res, applier).WithSourceArchive(archive)
+
+	in := repoInput()
+	in.Source = egovBootSource()
+	out, err := uc.Execute(context.Background(), in)
+	require.NoError(t, err)
+
+	assert.Len(t, archive.calls, 1)
+	require.NotNil(t, out.ImportedSource)
+	assert.Equal(t, egovBootSource().Commit, out.ImportedSource.Commit)
+}

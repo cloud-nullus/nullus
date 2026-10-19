@@ -8,6 +8,7 @@ package gitlab
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -184,27 +185,42 @@ func (c *Client) CommitFiles(ctx context.Context, projectID string, spec port.Co
 	return nil
 }
 
+// treePageSize / maxTreePages 는 트리 조회의 페이지 크기와 상한이다(파일·디렉터리 2만 개).
+const (
+	treePageSize = 100
+	maxTreePages = 200
+)
+
 // existingFilePaths 는 브랜치에 이미 있는 파일 경로 집합이다.
 //
 // 조회에 실패하면 빈 집합을 돌려준다 — 빈 저장소이거나 브랜치가 아직 없는
 // 경우이므로 전부 create 로 보내는 것이 맞다.
+//
+// 모든 페이지를 읽는다. GitLab 은 디렉터리를 먼저 돌려줘, 디렉터리가 많은 저장소(템플릿이 가져온
+// 원본)에서는 첫 페이지에 .gitlab-ci.yml 이 없다 — 그러면 있는 파일을 create 로 보내 커밋이 통째로
+// "already exists" 로 실패한다.
 func (c *Client) existingFilePaths(ctx context.Context, projectID, branch string) map[string]struct{} {
 	paths := map[string]struct{}{}
 
-	endpoint := fmt.Sprintf("/api/v4/projects/%s/repository/tree?ref=%s&recursive=true&per_page=100",
-		url.PathEscape(projectID), url.QueryEscape(branch))
+	for page := 1; page <= maxTreePages; page++ {
+		endpoint := fmt.Sprintf("/api/v4/projects/%s/repository/tree?ref=%s&recursive=true&per_page=%d&page=%d",
+			url.PathEscape(projectID), url.QueryEscape(branch), treePageSize, page)
 
-	var entries []struct {
-		Path string `json:"path"`
-		Type string `json:"type"`
-	}
-	found, err := c.get(ctx, endpoint, &entries)
-	if err != nil || !found {
-		return paths
-	}
-	for _, e := range entries {
-		if e.Type == "blob" {
-			paths[e.Path] = struct{}{}
+		var entries []struct {
+			Path string `json:"path"`
+			Type string `json:"type"`
+		}
+		found, err := c.get(ctx, endpoint, &entries)
+		if err != nil || !found {
+			return paths
+		}
+		for _, e := range entries {
+			if e.Type == "blob" {
+				paths[e.Path] = struct{}{}
+			}
+		}
+		if len(entries) < treePageSize {
+			return paths
 		}
 	}
 	return paths
@@ -217,11 +233,21 @@ func commitBody(branch string, spec port.CommitSpec, existing map[string]struct{
 		if _, ok := existing[f.Path]; ok {
 			action = "update"
 		}
-		actions = append(actions, map[string]any{
+		entry := map[string]any{
 			"action":    action,
 			"file_path": f.Path,
 			"content":   f.Content,
-		})
+		}
+		// JSON 문자열에 그대로 실으면 UTF-8 이 아닌 바이트가 U+FFFD 로 바뀐다 — 외부 원본의
+		// 글꼴·이미지가 깨진 채로 커밋된다.
+		if f.IsBinary() {
+			entry["content"] = base64.StdEncoding.EncodeToString([]byte(f.Content))
+			entry["encoding"] = "base64"
+		}
+		if f.Executable {
+			entry["execute_filemode"] = true
+		}
+		actions = append(actions, entry)
 	}
 	return map[string]any{
 		"branch":         branch,

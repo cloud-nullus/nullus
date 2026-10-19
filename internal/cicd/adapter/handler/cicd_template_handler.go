@@ -2,7 +2,9 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 
@@ -13,6 +15,15 @@ import (
 // CICDTemplateHandler handles HTTP requests for CI/CD pipeline template operations.
 type CICDTemplateHandler struct {
 	templateRepo port.PipelineTemplateRepository
+	// sources 가 있으면 저장할 때 원본을 가져올 수 있는 주소인지 본다.
+	sources port.SourceArchive
+}
+
+// WithSourceArchive 는 원본 주소 확인을 배선한다. 배선하지 않으면 도메인 검증만 한다 — 저장은 되는데
+// 파이프라인을 만들 때마다 실패하는 템플릿이 생길 수 있다.
+func (h *CICDTemplateHandler) WithSourceArchive(sources port.SourceArchive) *CICDTemplateHandler {
+	h.sources = sources
+	return h
 }
 
 // NewCICDTemplateHandler constructs a CICDTemplateHandler.
@@ -45,6 +56,37 @@ type cicdTemplateRequest struct {
 	DockerContext  *string           `json:"docker_context"`
 	EnvVars        map[string]string `json:"env_vars"`
 	CreatedBy      string            `json:"created_by"`
+	// Source 는 템플릿이 가져올 외부 원본이다. 수정 때 없으면 저장된 원본을 그대로 두고,
+	// 빈 객체({})면 지운다 — null 은 "안 보냄" 과 구분되지 않는다.
+	Source *domain.TemplateSource `json:"source"`
+}
+
+// requestedSource 는 요청의 원본을 템플릿에 둘 값으로 옮긴다. 모든 칸이 비었을 때만 원본이 없는 것이다 —
+// label 만 보낸 요청을 "지움" 으로 읽으면 원본 전체가 200 응답으로 조용히 사라진다. 일부만 보낸 원본은
+// 그대로 두고 도메인 검증이 거절하게 한다.
+func requestedSource(s *domain.TemplateSource) *domain.TemplateSource {
+	if s == nil {
+		return nil
+	}
+	if strings.TrimSpace(s.RepoURL) == "" && strings.TrimSpace(s.Commit) == "" &&
+		strings.TrimSpace(s.Label) == "" && strings.TrimSpace(string(s.BuildProfile)) == "" {
+		return nil
+	}
+	copied := *s
+	return &copied
+}
+
+// validateTemplate 은 도메인 검증에 더해, 원본이 있으면 가져올 수 있는 주소인지 본다.
+func (h *CICDTemplateHandler) validateTemplate(tmpl *domain.PipelineTemplate) error {
+	if err := tmpl.Validate(); err != nil {
+		return err
+	}
+	if tmpl.Source != nil && h.sources != nil {
+		if err := h.sources.Supports(tmpl.Source.RepoURL); err != nil {
+			return fmt.Errorf("%w: %v", domain.ErrTemplateInvalid, err)
+		}
+	}
+	return nil
 }
 
 // ListTemplates handles GET /api/v1/cicd/templates.
@@ -86,8 +128,9 @@ func (h *CICDTemplateHandler) CreateTemplate(c echo.Context) error {
 		DockerContext:  derefOrEmpty(req.DockerContext),
 		EnvVars:        req.EnvVars,
 		CreatedBy:      req.CreatedBy,
+		Source:         requestedSource(req.Source),
 	}
-	if err := tmpl.Validate(); err != nil {
+	if err := h.validateTemplate(tmpl); err != nil {
 		return errorResponse(c, http.StatusBadRequest, "CICD_TEMPLATE_INVALID", err.Error())
 	}
 
@@ -137,7 +180,10 @@ func (h *CICDTemplateHandler) UpdateTemplate(c echo.Context) error {
 	if req.EnvVars != nil {
 		tmpl.EnvVars = req.EnvVars
 	}
-	if err := tmpl.Validate(); err != nil {
+	if req.Source != nil {
+		tmpl.Source = requestedSource(req.Source)
+	}
+	if err := h.validateTemplate(tmpl); err != nil {
 		return errorResponse(c, http.StatusBadRequest, "CICD_TEMPLATE_INVALID", err.Error())
 	}
 

@@ -20,6 +20,9 @@ var (
 	// ErrStackClusterMismatch 는 스택에 묶인 파이프라인에 스택과 다른 클러스터를 준 경우다.
 	// 규칙은 도메인에 있다(domain.MatchStackCluster).
 	ErrStackClusterMismatch = domain.ErrStackClusterMismatch
+	// ErrTemplateSourceRequiresStack 은 원본을 가져오는 템플릿을 저장소 준비 없이 쓰려 한 경우다.
+	// 원본을 넣을 저장소는 스택의 SCM 에 만든다 — 스택 없이 만들면 원본 없는 파이프라인이 남는다.
+	ErrTemplateSourceRequiresStack = errors.New("원본을 가져오는 템플릿은 스택에 묶인 파이프라인으로만 만들 수 있습니다")
 )
 
 // CreatePipelineInput holds the parameters for creating a new pipeline.
@@ -130,6 +133,17 @@ func (uc *CreatePipeline) Execute(ctx context.Context, input CreatePipelineInput
 	}
 	maps.Copy(envVars, input.EnvVars)
 
+	var source *domain.TemplateSource
+	if tmpl != nil && tmpl.Source != nil {
+		// 원본을 넣을 저장소가 준비되지 않는 경로는 막는다. 자동 준비가 배선 없이 건너뛰어지는
+		// 경우도 같다 — 원본 없이 만들어진 파이프라인은 이 템플릿이 약속한 앱을 배포하지 않는다.
+		if !shouldProvisionRepository(input) || uc.provisioner == nil {
+			return nil, fmt.Errorf("template %s: %w", tmpl.ID, ErrTemplateSourceRequiresStack)
+		}
+		copied := *tmpl.Source
+		source = &copied
+	}
+
 	// --- Cross-context validation: Stack reference ---
 	var stackWarning string
 	if input.StackID != "" && uc.stackReader != nil {
@@ -164,7 +178,7 @@ func (uc *CreatePipeline) Execute(ctx context.Context, input CreatePipelineInput
 	// 파이프라인 레코드를 만들기 전에 수행한다. 저장소가 없으면 배포할 것이
 	// 없으므로, 실패한 채로 레코드만 남기지 않는다.
 	gitRepoURL := input.GitRepoURL
-	provisionOut, err := uc.provisionRepository(ctx, input)
+	provisionOut, err := uc.provisionRepository(ctx, input, source)
 	if err != nil {
 		return nil, err
 	}
@@ -194,6 +208,7 @@ func (uc *CreatePipeline) Execute(ctx context.Context, input CreatePipelineInput
 	}
 	if provisionOut != nil {
 		pipeline.Stages = provisionOut.Stages
+		pipeline.Source = provisionOut.ImportedSource
 	}
 	if pipeline.ExecutionMode == "" {
 		if pipeline.StackID != "" {
@@ -253,9 +268,12 @@ func shouldProvisionRepository(input CreatePipelineInput) bool {
 //
 // 준비 대상이 아니면 nil, nil 을 돌려준다. 대상인데 배선이 없거나 스택이
 // 없으면 오류다 — 조용히 넘어가면 사용자는 저장소가 생긴 줄 알고 기다린다.
+//
+// source 는 템플릿에서 읽은 원본이다. 요청이 아니라 템플릿이 정한다.
 func (uc *CreatePipeline) provisionRepository(
 	ctx context.Context,
 	input CreatePipelineInput,
+	source *domain.TemplateSource,
 ) (*ProvisionPipelineRepositoryOutput, error) {
 	if !shouldProvisionRepository(input) {
 		return nil, nil
@@ -286,6 +304,7 @@ func (uc *CreatePipeline) provisionRepository(
 		AppType:             input.AppType,
 		RegistryCredentials: input.RegistryCredentials,
 		RequestedByEmail:    input.RequestedByEmail,
+		Source:              source,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("provision repository for %q: %w", input.Name, err)

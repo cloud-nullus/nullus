@@ -583,6 +583,15 @@ export interface PipelineResource {
   serviceUrls?: string[];
 }
 
+// 템플릿이 새 저장소로 가져오는 외부 원본이다. 파이프라인을 만들 때 이 커밋의 파일을 복사하며,
+// 그 뒤로는 원본을 따라가지 않는다.
+export interface TemplateSource {
+  repoUrl: string;
+  commit: string;
+  label?: string;
+  buildProfile?: string;
+}
+
 export interface CICDTemplate {
   id: string;
   name: string;
@@ -594,6 +603,7 @@ export interface CICDTemplate {
   dockerfilePath?: string;
   dockerContext?: string;
   envVars?: Record<string, string>;
+  source?: TemplateSource;
 }
 
 export interface AppTemplateInfo {

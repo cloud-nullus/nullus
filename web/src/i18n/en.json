@@ -349,7 +349,9 @@
       "workloadType": "CI/CD Type",
       "appType": "Application Type",
       "capabilities": "Capabilities",
-      "noCapabilities": "No capabilities selected"
+      "noCapabilities": "No capabilities selected",
+      "source": "Source",
+      "sourceNote": "Copied into a new repository when you create a pipeline. Requires internet access."
     },
     "actions": {
       "createTemplate": "Create Template",
@@ -1649,6 +1651,10 @@
     "removeItem": "Remove",
     "provisionWarnings": {
       "title": "Pipeline created, but setup is incomplete"
+    },
+    "sourceImport": {
+      "title": "Imports the template source",
+      "description": "Creating the pipeline copies {{repository}} ({{version}}) into the new repository as its first commit. The repository does not follow later changes to the source. Requires internet access."
     }
   },
   "stackHistoryPage": {
