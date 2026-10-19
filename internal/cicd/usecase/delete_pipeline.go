@@ -50,11 +50,30 @@ type DeletePipeline struct {
 	// secrets 는 파이프라인을 만들 때 플랫폼이 넣은 Secret 을 지운다.
 	// 배선되지 않으면 그 Secret 은 남는다 — 종전 동작이다.
 	secrets port.ManagedSecretDeleter
+	// credentialObjects 는 CI 변수 저장소가 없는 스택(Gitea · Jenkins)의 파이프라인
+	// 자격증명 객체(ExternalSecret)를 지운다. 배선되지 않으면 자격증명 회수 전체를 건너뛴다 —
+	// 금고 값만 지우면 남은 ExternalSecret 이 동기화하다 실패한다.
+	credentialObjects port.PipelineCredentialObjectDeleter
+	// names 는 같은 이름을 쓰는 다른 파이프라인을 빠짐없이 찾는다. 배선되지 않으면 목록
+	// 조회(최근 100개)로 대신한다.
+	names port.PipelineNameLookup
+}
+
+// WithPipelineNameLookup 은 같은 이름의 다른 파이프라인을 찾는 경로를 배선한다.
+func (uc *DeletePipeline) WithPipelineNameLookup(l port.PipelineNameLookup) *DeletePipeline {
+	uc.names = l
+	return uc
 }
 
 // WithWorkloadDeleter 는 직접 배포 워크로드 정리 경로를 배선한다.
 func (uc *DeletePipeline) WithWorkloadDeleter(d port.WorkloadDeleter) *DeletePipeline {
 	uc.workloads = d
+	return uc
+}
+
+// WithCredentialObjectDeleter 는 파이프라인 자격증명 회수 경로를 배선한다.
+func (uc *DeletePipeline) WithCredentialObjectDeleter(d port.PipelineCredentialObjectDeleter) *DeletePipeline {
+	uc.credentialObjects = d
 	return uc
 }
 
@@ -142,6 +161,8 @@ func (uc *DeletePipeline) Execute(
 	if warning := uc.deleteCIJob(ctx, bundle, pipeline.Name); warning != "" {
 		out.Warnings = append(out.Warnings, warning)
 	}
+	// 자격증명은 CI job 만 쓴다. job 과 같이 플래그 없이 회수한다.
+	out.Warnings = append(out.Warnings, uc.revokeCICredentials(ctx, bundle, pipeline)...)
 
 	if input.DeleteClusterResources {
 		if err := uc.deleteClusterResources(ctx, bundle, pipeline); err != nil {
@@ -208,6 +229,85 @@ func (uc *DeletePipeline) deleteCIJob(ctx context.Context, bundle *port.SCMBundl
 		return fmt.Sprintf("CI job %s 를 지우지 못했습니다: %v. CI 서버에서 직접 지워야 합니다", appName, err)
 	}
 	return ""
+}
+
+// revokeCICredentials 는 CI 변수 저장소가 없는 스택(Gitea · Jenkins)이 파이프라인
+// 자격증명을 위해 만든 것 — 스택 네임스페이스의 ExternalSecret, ESO 가 만든 Secret, OpenBao
+// 의 값 — 을 회수한다.
+//
+// ExternalSecret 을 먼저 지운다. 금고 값을 먼저 지우면 ESO 가 남은 객체를 동기화하다
+// 실패한다. ExternalSecret 을 못 지워도 금고 값은 회수한다 — 자격증명이 남는 편이 더 나쁘다.
+// 지우지 못해도 삭제를 멈추지 않고 경고로 남긴다(CI job 과 같다).
+func (uc *DeletePipeline) revokeCICredentials(ctx context.Context, bundle *port.SCMBundle, pipeline *domain.Pipeline) []string {
+	if bundle == nil || bundle.Credentials == nil || uc.credentialObjects == nil {
+		return nil
+	}
+	app := strings.TrimSpace(pipeline.Name)
+	obj, err := bundle.Credentials.CredentialObject(app)
+	if err != nil {
+		return []string{fmt.Sprintf("파이프라인 자격증명을 회수하지 않았습니다: %v", err)}
+	}
+	// 자격증명은 이름으로 찾는다. 같은 스택에 같은 이름의 파이프라인이 또 있으면 그것도 이
+	// 자격증명을 쓴다 — 지우면 남은 쪽의 CI 가 멈추고 사용자가 넣은 값은 되살릴 수 없다.
+	if reason := uc.credentialsInUse(ctx, pipeline, app); reason != "" {
+		return []string{fmt.Sprintf("파이프라인 자격증명(%s/%s, %s)을 남겼습니다: %s",
+			obj.Namespace, obj.Name, obj.RemoteKeyPrefix, reason)}
+	}
+	var warnings []string
+
+	if err := uc.deleteCredentialObject(ctx, bundle, obj); err != nil {
+		slog.Warn("파이프라인 자격증명 객체 삭제 실패", "app", app, "object", obj.Namespace+"/"+obj.Name, "error", err)
+		warnings = append(warnings, fmt.Sprintf(
+			"파이프라인 자격증명 ExternalSecret %s/%s 를 지우지 못했습니다: %v. 클러스터에서 직접 지워야 합니다",
+			obj.Namespace, obj.Name, err))
+	}
+	if err := bundle.Credentials.Revoke(ctx, app); err != nil {
+		slog.Warn("파이프라인 자격증명 회수 실패", "app", app, "error", err)
+		warnings = append(warnings, fmt.Sprintf(
+			"OpenBao 의 파이프라인 자격증명(%s)을 지우지 못했습니다: %v", obj.RemoteKeyPrefix, err))
+	}
+	return warnings
+}
+
+// credentialsInUse 는 같은 스택에 같은 이름의 다른 파이프라인이 있으면 그 이유를 돌려준다.
+// 확인하지 못해도 남긴다 — 모르는 채 되돌릴 수 없는 일을 하지 않는다.
+func (uc *DeletePipeline) credentialsInUse(ctx context.Context, pipeline *domain.Pipeline, app string) string {
+	users, err := uc.otherPipelinesNamed(ctx, pipeline, app)
+	if err != nil {
+		return fmt.Sprintf("같은 이름의 다른 파이프라인이 쓰는지 확인하지 못했습니다: %v", err)
+	}
+	if len(users) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("같은 스택의 다른 파이프라인(%s)이 같은 이름으로 쓰고 있습니다", strings.Join(users, ", "))
+}
+
+func (uc *DeletePipeline) otherPipelinesNamed(ctx context.Context, pipeline *domain.Pipeline, app string) ([]string, error) {
+	if uc.names != nil {
+		return uc.names.OtherPipelinesNamed(ctx, pipeline.StackID, app, pipeline.ID)
+	}
+	siblings, err := uc.pipelines.ListByStackID(ctx, pipeline.StackID)
+	if err != nil {
+		return nil, err
+	}
+	var users []string
+	for _, other := range siblings {
+		if other != nil && other.ID != pipeline.ID && strings.TrimSpace(other.Name) == app {
+			users = append(users, other.ID)
+		}
+	}
+	return users, nil
+}
+
+func (uc *DeletePipeline) deleteCredentialObject(ctx context.Context, bundle *port.SCMBundle, obj port.PipelineCredentialObject) error {
+	if uc.kubeconfig == nil {
+		return fmt.Errorf("클러스터 접근이 배선되지 않았습니다")
+	}
+	kubeconfig, err := uc.kubeconfig.GetKubeconfig(ctx, bundle.ClusterID)
+	if err != nil {
+		return fmt.Errorf("클러스터 %s kubeconfig 로드 실패: %w", bundle.ClusterID, err)
+	}
+	return uc.credentialObjects.DeleteCredentialObject(ctx, kubeconfig, obj)
 }
 
 func (uc *DeletePipeline) deleteClusterResources(

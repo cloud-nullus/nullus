@@ -75,6 +75,12 @@ func IsNotFound(err error) bool {
 	return errors.As(err, &se) && se.Status == http.StatusNotFound
 }
 
+// IsForbidden 은 금고 정책이 막았는지(403) 알려준다.
+func IsForbidden(err error) bool {
+	var se *StatusError
+	return errors.As(err, &se) && se.Status == http.StatusForbidden
+}
+
 // Check 는 금고가 응답하고, 봉인이 풀려 있고, 자격이 유효한지 확인한다.
 // preflight gate 의 판단 근거다.
 func (s *OpenBaoStore) Check(ctx context.Context) error {
@@ -225,6 +231,24 @@ func (s *OpenBaoStore) ListKeys(ctx context.Context, path string) ([]string, err
 		return nil, err
 	}
 	return out.Data.Keys, nil
+}
+
+// DeleteSecret 은 경로의 값을 모든 버전과 함께 지운다. 이미 없으면 성공이다.
+//
+// KV v2 에서 data 를 지우면 최신 버전만 지워지고 경로는 목록에 남는다. 회수는
+// metadata 를 지워야 끝난다.
+func (s *OpenBaoStore) DeleteSecret(ctx context.Context, path string) error {
+	mount, subpath, err := splitKVPath(path)
+	if err != nil {
+		return err
+	}
+	if _, err := s.request(ctx, http.MethodDelete, "/v1/"+mount+"/metadata/"+subpath, nil); err != nil {
+		if IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("openbao delete failed (%s): %w", path, err)
+	}
+	return nil
 }
 
 // GetSecret 은 경로의 값 전체를 돌려준다 (token 필드만이 아니라).

@@ -16,6 +16,15 @@ type PipelineRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// PipelineNameLookup 은 같은 스택에서 같은 이름(앞뒤 공백 무시)을 쓰는 다른 파이프라인의
+// ID 를 모두 돌려준다.
+//
+// 이름으로 찾는 자원(CI 자격증명)을 지우기 전에 그것을 함께 쓰는 파이프라인이 있는지 본다.
+// 목록 조회(ListByStackID)는 최근 100개만 돌려줘 오래된 레코드를 놓친다.
+type PipelineNameLookup interface {
+	OtherPipelinesNamed(ctx context.Context, stackID, name, excludeID string) ([]string, error)
+}
+
 // SyncablePipelineLister 는 스택에 묶인 파이프라인을 조직과 무관하게 돌려준다.
 // 실행 기록 주기 동기화가 쓴다 — 그것은 조직 경계와 무관한 일이다.
 type SyncablePipelineLister interface {

@@ -62,3 +62,17 @@ func extractNoTokenBranch(t *testing.T, script string) string {
 	require.Greater(t, end, 0, "분기 끝을 찾지 못했다")
 	return rest[:end]
 }
+
+// 파이프라인을 지울 때 그 파이프라인 몫의 자격증명(kv/nullus/{env}/{org}/cicd/pipelines/{앱}/{키})
+// 을 회수하려면 컨트롤러가 그 metadata 를 지울 수 있어야 한다. 다른 값은 지우지 못하게 그 깊이로만 연다.
+//
+// 끝을 * 로 두면 안 된다. OpenBao 는 맞는 규칙 중 가장 구체적인 하나만 쓰는데, 끝이 * 이면서 + 가
+// 많은 규칙은 nullus/* 보다 우선순위가 낮아 delete 가 무시된다. 끝을 + 로 두면 이긴다.
+func TestOpenBaoBootstrapScript_ControllerMayDeletePipelineCredentialsOnly(t *testing.T) {
+	script := openBaoBootstrapScript
+
+	assert.Contains(t, script, `path "${KV_MOUNT}/metadata/nullus/+/+/cicd/pipelines/+/+" {
+  capabilities = ["read", "list", "delete"]
+}`)
+	assert.Equal(t, 1, strings.Count(script, `"delete"`), "삭제 권한은 파이프라인 자격증명에만 준다")
+}

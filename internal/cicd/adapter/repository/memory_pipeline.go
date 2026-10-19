@@ -85,6 +85,19 @@ func (r *MemoryPipelineRepository) ListByStackID(_ context.Context, stackID stri
 	return result, nil
 }
 
+// OtherPipelinesNamed 는 같은 스택에서 같은 이름을 쓰는 다른 파이프라인의 ID 를 돌려준다.
+func (r *MemoryPipelineRepository) OtherPipelinesNamed(_ context.Context, stackID, name, excludeID string) ([]string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var ids []string
+	for _, p := range r.pipelines {
+		if p.StackID == stackID && p.ID != excludeID && strings.TrimSpace(p.Name) == strings.TrimSpace(name) {
+			ids = append(ids, p.ID)
+		}
+	}
+	return ids, nil
+}
+
 // Update persists changes to an existing pipeline.
 func (r *MemoryPipelineRepository) Update(_ context.Context, p *domain.Pipeline) error {
 	r.mu.Lock()

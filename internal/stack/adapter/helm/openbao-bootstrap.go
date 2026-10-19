@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/cloud-nullus/draft/internal/shared/secrets"
 )
 
 const (
@@ -35,6 +37,11 @@ const (
 )
 
 // openBaoBootstrapScript 는 시크릿 엔진·인증 백엔드·정책·role 을 구성한다.
+//
+// 컨트롤러는 파이프라인 자격증명(kv/nullus/{env}/{org}/cicd/pipelines/{앱}/{키})만 지울 수
+// 있다 — 파이프라인을 지울 때 그 몫의 값을 회수한다. 경로는 cicd 모듈이 값을 쓰는 깊이와 같아야
+// 해서 secrets.PipelineCredentialsPolicyPath 한곳에서 가져온다. 이 권한은 부트스트랩 때만
+// 들어간다 — root token 이 폐기된 기존 스택에는 반영되지 않는다.
 //
 // 모든 명령이 멱등하다 — 엔진/인증 활성화는 이미 존재하면 무시하고,
 // policy/role write 는 덮어쓰기다. 따라서 스텝 재시도가 안전하다.
@@ -93,6 +100,9 @@ path "${KV_MOUNT}/data/nullus/*" {
 }
 path "${KV_MOUNT}/metadata/nullus/*" {
   capabilities = ["read", "list"]
+}
+path "${KV_MOUNT}/` + secrets.PipelineCredentialsPolicyPath + `" {
+  capabilities = ["read", "list", "delete"]
 }
 POLICY
 

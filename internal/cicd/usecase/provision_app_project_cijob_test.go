@@ -148,6 +148,12 @@ func (s *stubCredentialPlane) Provision(
 	return "apiVersion: external-secrets.io/v1\nkind: ExternalSecret\n", nil
 }
 
+func (s *stubCredentialPlane) CredentialObject(app string) (port.PipelineCredentialObject, error) {
+	return port.PipelineCredentialObject{Name: "nullus-ci-" + app}, nil
+}
+
+func (s *stubCredentialPlane) Revoke(context.Context, string) error { return nil }
+
 func giteaTarget() *port.ImageTarget {
 	return &port.ImageTarget{
 		Host:              "registry.otel.internal",

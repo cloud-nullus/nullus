@@ -480,7 +480,11 @@ func main() {
 		// 워크로드를 지워 줄 주체가 없다.
 		WithWorkloadDeleter(cicdkube.NewWorkloadDeleter()).
 		// 파이프라인을 만들 때 넣은 pull·저장소 자격증명 Secret 은 Argo CD 가 지워 주지 않는다.
-		WithSecretDeleter(cicdkube.NewManagedSecretDeleter())
+		WithSecretDeleter(cicdkube.NewManagedSecretDeleter()).
+		// Gitea · Jenkins 스택의 파이프라인 자격증명(ExternalSecret · ESO Secret · OpenBao 값)을 회수한다.
+		WithCredentialObjectDeleter(cicdkube.NewExternalSecretDeleter()).
+		// 같은 이름의 다른 파이프라인이 쓰는 자격증명은 남긴다 — 빠짐없이 찾는다.
+		WithPipelineNameLookup(pgPipelineRepo)
 	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier.Tracker, pool).
 		// 앱 배포 화면이 스택 모드에서 실제로 만들어질 저장소 주소를 보여 준다.
 		WithRepositoryLocator(cicdBundleFactory).

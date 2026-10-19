@@ -131,6 +131,28 @@ type SASTTokenResolver interface {
 // 적용은 하지 않는다 — 클러스터 접근은 유스케이스가 한곳에서 맡는다.
 type PipelineCredentialPlane interface {
 	Provision(ctx context.Context, app string, vars []PipelineVariable) (manifest string, err error)
+	// CredentialObject 는 Provision 이 만든 클러스터 객체의 자리다. 파이프라인을 지울 때
+	// 클러스터에서 그것을 찾아 지운다. 이름이 경로로 쓸 수 없으면 오류다.
+	CredentialObject(app string) (PipelineCredentialObject, error)
+	// Revoke 는 Provision 이 금고에 쓴 값을 지운다. 이미 없으면 성공이다.
+	Revoke(ctx context.Context, app string) error
+}
+
+// PipelineCredentialObject 는 파이프라인 자격증명을 클러스터에 싣는 객체(ExternalSecret)다.
+//
+// RemoteKeyPrefix 는 그 객체가 가리킬 수 있는 금고 경로의 접두사다. 플랫폼 표시가 붙기
+// 전에 만든 객체는 이것으로 이 파이프라인 것인지 가린다 — 같은 네임스페이스에서 스택 모듈도
+// 같은 SecretStore 로 ExternalSecret 을 만든다.
+type PipelineCredentialObject struct {
+	Namespace       string
+	Name            string
+	RemoteKeyPrefix string
+}
+
+// PipelineCredentialObjectDeleter 는 PipelineCredentialObject 를 클러스터에서 지운다.
+// 이 파이프라인 것이 아니면 이름이 같아도 지우지 않는다. 없으면 성공이다.
+type PipelineCredentialObjectDeleter interface {
+	DeleteCredentialObject(ctx context.Context, kubeconfig []byte, obj PipelineCredentialObject) error
 }
 
 // PipelineVariable 은 파이프라인이 환경변수로 읽을 값 하나다.
