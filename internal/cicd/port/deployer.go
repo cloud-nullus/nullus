@@ -16,6 +16,14 @@ type WorkloadDeleter interface {
 	DeleteByLabel(ctx context.Context, kubeconfig []byte, namespace, selector string) error
 }
 
+// ManagedSecretDeleter 는 플랫폼이 파이프라인 몫으로 만든 Secret 을 이름으로 지운다.
+//
+// 이름이 같아도 플랫폼 표시(managed-by)가 없는 Secret 은 지우지 않는다 — 사용자가
+// 같은 이름으로 만든 것일 수 있다. 이미 없는 것은 성공으로 본다.
+type ManagedSecretDeleter interface {
+	DeleteManagedSecret(ctx context.Context, kubeconfig []byte, namespace, name string) error
+}
+
 // CDApplicationDeleter 는 CD 도구가 배포한 애플리케이션을 지운다.
 //
 // 도구 이름을 계약에 넣지 않는다. Argo CD 든 다른 것이든 "배포된 애플리케이션을

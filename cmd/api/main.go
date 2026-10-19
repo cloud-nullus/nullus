@@ -478,7 +478,9 @@ func main() {
 		pgPipelineRepo, cicdBundleFactory, kubeconfigProvider).
 		// 매니페스트를 직접 적용한 파이프라인은 Argo CD Application 이 없어
 		// 워크로드를 지워 줄 주체가 없다.
-		WithWorkloadDeleter(cicdkube.NewWorkloadDeleter())
+		WithWorkloadDeleter(cicdkube.NewWorkloadDeleter()).
+		// 파이프라인을 만들 때 넣은 pull·저장소 자격증명 Secret 은 Argo CD 가 지워 주지 않는다.
+		WithSecretDeleter(cicdkube.NewManagedSecretDeleter())
 	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier.Tracker, pool).
 		// 앱 배포 화면이 스택 모드에서 실제로 만들어질 저장소 주소를 보여 준다.
 		WithRepositoryLocator(cicdBundleFactory).

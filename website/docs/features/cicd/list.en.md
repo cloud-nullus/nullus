@@ -89,6 +89,18 @@ repository, and container images. If you select the repository, you must type th
 exact `owner/repo` path before the confirm button is enabled. Anything that could
 not be deleted is reported in a banner.
 
+Selecting **cluster resources** deletes the Argo CD Application and the deployed
+workloads, plus the two Secrets the platform created along with the pipeline — the
+image pull credential in the app namespace (`nullus-registry-<app>`) and the repository
+credential in the Argo CD namespace (`nullus-repo-<app>`). A Secret without the platform
+label (`app.kubernetes.io/managed-by=nullus-cicd`) is left alone even if the name matches.
+The app namespace itself is not deleted.
+
+!!! warning "Pipeline credentials on Gitea · Jenkins stacks are left behind"
+    These stacks add one more object — an ExternalSecret `nullus-ci-<app>` in the stack
+    namespace, backed by a value in OpenBao. Deletion does not remove them; delete the
+    ExternalSecret, the Secret ESO created from it, and the OpenBao entry yourself.
+
 ## Pipeline creation screen
 
 <span class="route">/cicd/create</span>

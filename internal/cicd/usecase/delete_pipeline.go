@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/cloud-nullus/draft/internal/cicd/adapter/argocd"
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
 // DeletePipelineInput 은 무엇까지 지울지 고른 결과다.
@@ -45,11 +47,20 @@ type DeletePipeline struct {
 	// workloads 는 매니페스트를 직접 적용한 경로가 남긴 워크로드를 지운다.
 	// 배선되지 않으면 Argo CD 경로만 정리된다 — 종전 동작이다.
 	workloads port.WorkloadDeleter
+	// secrets 는 파이프라인을 만들 때 플랫폼이 넣은 Secret 을 지운다.
+	// 배선되지 않으면 그 Secret 은 남는다 — 종전 동작이다.
+	secrets port.ManagedSecretDeleter
 }
 
 // WithWorkloadDeleter 는 직접 배포 워크로드 정리 경로를 배선한다.
 func (uc *DeletePipeline) WithWorkloadDeleter(d port.WorkloadDeleter) *DeletePipeline {
 	uc.workloads = d
+	return uc
+}
+
+// WithSecretDeleter 는 플랫폼이 넣은 Secret 정리 경로를 배선한다.
+func (uc *DeletePipeline) WithSecretDeleter(d port.ManagedSecretDeleter) *DeletePipeline {
+	uc.secrets = d
 	return uc
 }
 
@@ -239,15 +250,48 @@ func (uc *DeletePipeline) deleteClusterResources(
 	// 직접 적용한 파이프라인이 그렇다. 그 경우 워크로드를 지워 줄 주체가
 	// 없으므로 라벨로 찾아 함께 지운다. 이것이 빠져 있어서 파이프라인을
 	// "클러스터 리소스까지" 지워도 앱이 계속 도는 상태가 남았다.
-	if uc.workloads == nil {
+	if uc.workloads != nil {
+		// 매니페스트 생성기가 모든 리소스에 붙이는 라벨이다.
+		//
+		// 워크로드는 **배포 대상 네임스페이스**에 있다 — CD 도구가 사는 곳이 아니다.
+		selector := "app=" + pipeline.Name
+		if err := uc.workloads.DeleteByLabel(ctx, kubeconfig, pipeline.Namespace, selector); err != nil {
+			return fmt.Errorf("배포된 워크로드 삭제 실패 (%s): %w", selector, err)
+		}
+	}
+
+	return uc.deletePlatformSecrets(ctx, kubeconfig, bundle, pipeline)
+}
+
+// deletePlatformSecrets 는 파이프라인을 만들 때 플랫폼이 넣은 Secret 을 지운다 —
+// 앱 네임스페이스의 이미지 pull 자격증명과 CD 도구 네임스페이스의 저장소 자격증명.
+//
+// Argo CD 가 배포한 것이 아니라 Application 을 지워도 남는다. 앱마다 이름이 달라
+// 남겨 두면 파이프라인을 지울 때마다 하나씩 쌓이고, 지워진 저장소의 토큰을 든 채
+// 남는다.
+func (uc *DeletePipeline) deletePlatformSecrets(
+	ctx context.Context,
+	kubeconfig []byte,
+	bundle *port.SCMBundle,
+	pipeline *domain.Pipeline,
+) error {
+	if uc.secrets == nil {
 		return nil
 	}
-	// 매니페스트 생성기가 모든 리소스에 붙이는 라벨이다.
-	//
-	// 워크로드는 **배포 대상 네임스페이스**에 있다 — CD 도구가 사는 곳이 아니다.
-	selector := "app=" + pipeline.Name
-	if err := uc.workloads.DeleteByLabel(ctx, kubeconfig, pipeline.Namespace, selector); err != nil {
-		return fmt.Errorf("배포된 워크로드 삭제 실패 (%s): %w", selector, err)
+	// 생성은 다듬은 이름으로 Secret 을 만든다. 저장된 이름을 그대로 쓰면 다른
+	// 이름을 찾고 "이미 없음" 으로 성공해 Secret 이 조용히 남는다.
+	app := strings.TrimSpace(pipeline.Name)
+	pullSecret := shareddomain.AppImagePullSecretNameFor(app)
+	if err := uc.secrets.DeleteManagedSecret(ctx, kubeconfig, pipeline.Namespace, pullSecret); err != nil {
+		return fmt.Errorf("이미지 pull 자격증명 삭제 실패: %w", err)
+	}
+	// 저장소 자격증명은 CD 도구 곁에 있다. 스택이 사라져 그 자리를 모르면 남긴다.
+	if bundle == nil || strings.TrimSpace(bundle.CDNamespace) == "" {
+		return nil
+	}
+	repoSecret := argocd.RepositorySecretName(app)
+	if err := uc.secrets.DeleteManagedSecret(ctx, kubeconfig, strings.TrimSpace(bundle.CDNamespace), repoSecret); err != nil {
+		return fmt.Errorf("CD 저장소 자격증명 삭제 실패: %w", err)
 	}
 	return nil
 }
