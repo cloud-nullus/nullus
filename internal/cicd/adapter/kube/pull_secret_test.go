@@ -14,6 +14,7 @@ import (
 // kubelet 이 "failed to fetch anonymous token: 403" 으로 죽는다 (실제로 겪었다).
 func TestRenderImagePullSecret_ProducesDockerConfigJSON(t *testing.T) {
 	manifest, err := RenderImagePullSecret(ImagePullSecretSpec{
+		AppName:      "loopdemo-api",
 		Namespace:    "loopdemo",
 		RegistryHost: "registry.test",
 		Username:     "puller",
@@ -28,7 +29,7 @@ func TestRenderImagePullSecret_ProducesDockerConfigJSON(t *testing.T) {
 	assert.Equal(t, "kubernetes.io/dockerconfigjson", doc["type"])
 
 	meta := doc["metadata"].(map[string]any)
-	assert.Equal(t, ImagePullSecretName, meta["name"])
+	assert.Equal(t, "nullus-registry-loopdemo-api", meta["name"], "앱마다 따로다 — 토큰이 그 앱 프로젝트 범위다")
 	assert.Equal(t, "loopdemo", meta["namespace"])
 
 	raw := doc["stringData"].(map[string]any)[".dockerconfigjson"].(string)
@@ -52,14 +53,17 @@ func TestRenderImagePullSecret_ProducesDockerConfigJSON(t *testing.T) {
 }
 
 func TestRenderImagePullSecret_RequiresHostAndPassword(t *testing.T) {
-	_, err := RenderImagePullSecret(ImagePullSecretSpec{Namespace: "ns", Password: "p"})
+	_, err := RenderImagePullSecret(ImagePullSecretSpec{AppName: "a", Namespace: "ns", Password: "p"})
 	require.Error(t, err)
 
-	_, err = RenderImagePullSecret(ImagePullSecretSpec{Namespace: "ns", RegistryHost: "h"})
+	_, err = RenderImagePullSecret(ImagePullSecretSpec{AppName: "a", Namespace: "ns", RegistryHost: "h"})
 	require.Error(t, err)
 
-	_, err = RenderImagePullSecret(ImagePullSecretSpec{RegistryHost: "h", Password: "p"})
+	_, err = RenderImagePullSecret(ImagePullSecretSpec{AppName: "a", RegistryHost: "h", Password: "p"})
 	require.Error(t, err)
+
+	_, err = RenderImagePullSecret(ImagePullSecretSpec{Namespace: "ns", RegistryHost: "h", Password: "p"})
+	require.Error(t, err, "앱 이름이 없으면 어느 앱의 자격증명인지 정할 수 없다")
 }
 
 // Secret 을 적용하려면 네임스페이스가 먼저 있어야 한다. Argo CD 가

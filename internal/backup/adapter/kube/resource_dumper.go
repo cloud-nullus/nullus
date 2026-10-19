@@ -371,7 +371,11 @@ func (d *ResourceDumper) dumpAppNamespaces(ctx context.Context, names []string) 
 	for _, ns := range names {
 		for _, args := range [][]string{
 			{"get", "namespace", ns, "-o", "json", "--ignore-not-found"},
-			{"get", "secret", shareddomain.AppImagePullSecretName, "-n", ns, "-o", "json", "--ignore-not-found"},
+			// 이름이 아니라 라벨과 종류로 고른다. pull Secret 은 앱마다 따로고(AppImagePullSecretNameFor),
+			// 그 전에 만든 파이프라인은 네임스페이스 공용 이름을 쓴다 — 둘 다 담는다.
+			{"get", "secret", "-n", ns,
+				"-l", shareddomain.AppManagedByLabel + "=" + shareddomain.AppManagedByCICD,
+				"--field-selector", "type=" + shareddomain.AppImagePullSecretType, "-o", "json"},
 		} {
 			var buf bytes.Buffer
 			if err := d.run(ctx, nil, &buf, args...); err != nil {

@@ -694,7 +694,7 @@ spec:
         app.kubernetes.io/managed-by: nullus-cicd%[9]s
     spec:
       # private 레지스트리는 익명 pull 을 거부한다. Nullus 가 이 이름으로
-      # 자격증명 Secret 을 네임스페이스에 만들어 둔다.
+      # 이 앱의 자격증명 Secret 을 네임스페이스에 만들어 둔다.
       imagePullSecrets:
         - name: %[7]s
       containers:
@@ -712,7 +712,7 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-`, app, namespace, repository, appPort, replicas, InitialImageTag, kube.ImagePullSecretName,
+`, app, namespace, repository, appPort, replicas, InitialImageTag, kube.ImagePullSecretNameFor(app),
 		ownerLabelLines(stackID, templateID, "    "), ownerLabelLines(stackID, templateID, "        "))
 }
 

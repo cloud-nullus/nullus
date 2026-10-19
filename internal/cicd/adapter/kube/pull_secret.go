@@ -11,12 +11,16 @@ import (
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
 
-// ImagePullSecretName 은 앱 네임스페이스에 만드는 pull 자격증명 이름이다.
-// 스캐폴딩된 Deployment 가 이 이름을 참조한다. 백업이 같은 이름을 담아야 하므로 공용 도메인이 갖는다.
-const ImagePullSecretName = shareddomain.AppImagePullSecretName
+// ImagePullSecretNameFor 는 앱 네임스페이스에 만드는 그 앱의 pull 자격증명 이름이다.
+// 스캐폴딩된 Deployment 가 이 이름을 참조한다. 백업이 같은 자격증명을 담아야 하므로 공용 도메인이 갖는다.
+func ImagePullSecretNameFor(app string) string {
+	return shareddomain.AppImagePullSecretNameFor(app)
+}
 
 // ImagePullSecretSpec 은 pull 자격증명 요청이다.
 type ImagePullSecretSpec struct {
+	// AppName 은 자격증명을 쓸 앱이다. Secret 이름이 앱마다 따로다(ImagePullSecretNameFor).
+	AppName      string
 	Namespace    string
 	RegistryHost string
 	Username     string
@@ -28,6 +32,10 @@ type ImagePullSecretSpec struct {
 //
 // 없으면 pull 이 "failed to fetch anonymous token: 403" 으로 실패한다.
 func RenderImagePullSecret(spec ImagePullSecretSpec) (string, error) {
+	app := strings.TrimSpace(spec.AppName)
+	if app == "" {
+		return "", fmt.Errorf("app name is required")
+	}
 	ns := strings.TrimSpace(spec.Namespace)
 	if ns == "" {
 		return "", fmt.Errorf("namespace is required")
@@ -63,9 +71,9 @@ func RenderImagePullSecret(spec ImagePullSecretSpec) (string, error) {
 	doc := map[string]any{
 		"apiVersion": "v1",
 		"kind":       "Secret",
-		"type":       "kubernetes.io/dockerconfigjson",
+		"type":       shareddomain.AppImagePullSecretType,
 		"metadata": map[string]any{
-			"name":      ImagePullSecretName,
+			"name":      ImagePullSecretNameFor(app),
 			"namespace": ns,
 			"labels": map[string]any{
 				shareddomain.AppManagedByLabel: shareddomain.AppManagedByCICD,

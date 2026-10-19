@@ -38,13 +38,24 @@ func appNSPayload(t *testing.T) (nsList, appNS, pullSecret string) {
 			"labels": map[string]any{shareddomain.AppManagedByLabel: shareddomain.AppManagedByCICD}},
 		"status": map[string]any{"phase": "Active"}}
 	nb, _ := json.Marshal(n)
-	s := map[string]any{"apiVersion": "v1", "kind": "Secret", "type": "kubernetes.io/dockerconfigjson",
-		"metadata": map[string]any{"name": shareddomain.AppImagePullSecretName, "namespace": "demo-api", "uid": "u2",
-			"labels": map[string]any{shareddomain.AppManagedByLabel: shareddomain.AppManagedByCICD}},
-		"data": map[string]any{".dockerconfigjson": "e30="}}
+	// 앱마다 따로 둔 pull Secret 과, 그 전에 만든 파이프라인의 네임스페이스 공용 이름이 섞여 있다.
+	pull := func(name, uid string) map[string]any {
+		return map[string]any{"apiVersion": "v1", "kind": "Secret", "type": "kubernetes.io/dockerconfigjson",
+			"metadata": map[string]any{"name": name, "namespace": "demo-api", "uid": uid,
+				"labels": map[string]any{shareddomain.AppManagedByLabel: shareddomain.AppManagedByCICD}},
+			"data": map[string]any{".dockerconfigjson": "e30="}}
+	}
+	s := map[string]any{"apiVersion": "v1", "kind": "List", "items": []any{
+		pull(shareddomain.AppImagePullSecretName, "u2"),
+		pull(shareddomain.AppImagePullSecretNameFor("demo-api"), "u3"),
+	}}
 	sb, _ := json.Marshal(s)
 	return string(b), string(nb), string(sb)
 }
+
+// pullSecretListArgs 는 앱 네임스페이스의 pull Secret 을 고르는 조회다 — 이름이 아니라 라벨과 종류로 고른다.
+const pullSecretListArgs = "get secret -n demo-api -l " + shareddomain.AppManagedByLabel + "=" + shareddomain.AppManagedByCICD +
+	" --field-selector type=kubernetes.io/dockerconfigjson -o json"
 
 func TestDump_앱_네임스페이스와_pull_Secret_을_담는다(t *testing.T) {
 	nsList, appNS, pullSecret := appNSPayload(t)
@@ -59,7 +70,7 @@ func TestDump_앱_네임스페이스와_pull_Secret_을_담는다(t *testing.T) 
 			return nsList, nil
 		case strings.HasPrefix(a, "get namespace demo-api -o json"):
 			return appNS, nil
-		case strings.HasPrefix(a, "get secret "+shareddomain.AppImagePullSecretName+" -n demo-api -o json"):
+		case a == pullSecretListArgs:
 			return pullSecret, nil
 		}
 		return "", nil
@@ -76,7 +87,7 @@ func TestDump_앱_네임스페이스와_pull_Secret_을_담는다(t *testing.T) 
 		} `json:"app_namespaces"`
 	}
 	require.NoError(t, json.Unmarshal(out.Bytes(), &doc))
-	require.Len(t, doc.AppNamespaces.Items, 2, "Namespace 와 pull Secret")
+	require.Len(t, doc.AppNamespaces.Items, 3, "Namespace 와 pull Secret 두 개(앱별·기존 공용 이름)")
 	kinds := []string{}
 	for _, it := range doc.AppNamespaces.Items {
 		kinds = append(kinds, it["kind"].(string))
@@ -85,7 +96,7 @@ func TestDump_앱_네임스페이스와_pull_Secret_을_담는다(t *testing.T) 
 		assert.Nil(t, meta["resourceVersion"])
 		assert.Nil(t, it["status"])
 	}
-	assert.ElementsMatch(t, []string{"Namespace", "Secret"}, kinds)
+	assert.ElementsMatch(t, []string{"Namespace", "Secret", "Secret"}, kinds)
 	joined := strings.Join(k.joined(), "\n")
 	assert.NotContains(t, joined, "get namespace nullus ", "스택 네임스페이스 자신은 앱 네임스페이스가 아니다")
 }
@@ -123,9 +134,13 @@ func TestDump_pull_Secret_이_없는_앱_네임스페이스는_네임스페이�
 // Argo CD 가 동기화할 때 Secret 이 있어야 첫 파드부터 pull 이 된다.
 func TestApply_앱_네임스페이스와_pull_Secret_을_없을_때만_먼저_만든다(t *testing.T) {
 	_, appNS, pullSecret := appNSPayload(t)
-	var nsItem, secretItem map[string]any
+	var nsItem map[string]any
 	require.NoError(t, json.Unmarshal([]byte(appNS), &nsItem))
-	require.NoError(t, json.Unmarshal([]byte(pullSecret), &secretItem))
+	var secrets struct {
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(pullSecret), &secrets))
+	secretItem := secrets.Items[0]
 	doc := map[string]any{
 		"app_namespaces": map[string]any{"apiVersion": "v1", "kind": "List", "items": []any{nsItem, secretItem}},
 		"namespaced":     map[string]any{"apiVersion": "v1", "kind": "List", "items": []any{map[string]any{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": map[string]any{"name": "gitlab"}}}},
