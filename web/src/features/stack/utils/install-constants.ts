@@ -125,6 +125,19 @@ export const STORAGE_SIZE_RESOURCE_HINTS: Record<
   },
 }
 
+/**
+ * 스택 안에 세울 수 있는 S3 호환 오브젝트 스토리지 구현체(백엔드 domain.ObjectStorageBackends).
+ *
+ * GitLab 은 S3 계약(엔드포인트·자격)만 보므로 이 가운데 무엇을 골라도 같은 템플릿이 그대로
+ * 선다. 그래서 새로 만들기(create) 에서는 이것만 고를 수 있고, 호환성 매트릭스 대조에서도
+ * 이 슬롯은 조합을 가르지 않는다. s3·gcs 같은 클러스터 밖 제공자는 기존 연결에서만 뜻이 있다.
+ */
+export const IN_CLUSTER_OBJECT_STORAGE_IDS: readonly string[] = ['minio', 'seaweedfs']
+
+export function isInClusterObjectStorage(toolId: string): boolean {
+  return IN_CLUSTER_OBJECT_STORAGE_IDS.includes((toolId ?? '').trim().toLowerCase())
+}
+
 export const STORAGE_PROVIDER_OPTIONS: Record<'database' | 'objectStorage', Array<{ id: string; label: string }>> = {
   database: [
     { id: 'postgres', label: 'PostgreSQL' },
@@ -133,6 +146,7 @@ export const STORAGE_PROVIDER_OPTIONS: Record<'database' | 'objectStorage', Arra
   ],
   objectStorage: [
     { id: 'minio', label: 'MinIO' },
+    { id: 'seaweedfs', label: 'SeaweedFS' },
     { id: 's3', label: 'Amazon S3' },
     { id: 'gcs', label: 'Google Cloud Storage' },
     { id: 'azure-blob', label: 'Azure Blob Storage' },
@@ -165,7 +179,12 @@ export const TOOL_OPTIONS_ALL = [
   ...Object.values(SECURITY_OPTIONS).flat(),
 ]
 
-export const TOOL_LABEL_MAP = new Map(TOOL_OPTIONS_ALL.map((opt) => [opt.id, opt.label]))
+// 오브젝트 스토리지는 마법사의 Storage 탭에서 고른다(STORAGE_PROVIDER_OPTIONS). 그 이름도
+// 설치 목록·요약에 사람이 읽는 이름으로 나와야 한다.
+export const TOOL_LABEL_MAP = new Map([
+  ...STORAGE_PROVIDER_OPTIONS.objectStorage.map((opt) => [opt.id, opt.label] as const),
+  ...TOOL_OPTIONS_ALL.map((opt) => [opt.id, opt.label] as const),
+])
 
 export const MATRIX_CATEGORY_BY_SLOT: Record<PlanningSlot, string | null> = {
   'artifacts.packageRegistry': null,
@@ -190,6 +209,7 @@ export const TOOL_ID_TO_MATRIX_NAME: Record<string, string> = {
   prometheus: 'Prometheus',
   grafana: 'Grafana',
   minio: 'MinIO',
+  seaweedfs: 'SeaweedFS',
   'gitlab-registry': 'GitLab Registry',
   github: 'GitHub',
   'github-actions': 'GitHub Actions',
@@ -212,6 +232,7 @@ export const TOOL_HELM_META: Record<string, { repoUrl: string; chartName: string
   harbor: { repoUrl: 'https://helm.goharbor.io', chartName: 'harbor/harbor' },
   'docker-hub': { repoUrl: 'https://registry-1.docker.io', chartName: 'dockerhub/proxy-cache' },
   minio: { repoUrl: 'https://charts.min.io', chartName: 'minio/minio' },
+  seaweedfs: { repoUrl: 'https://seaweedfs.github.io/seaweedfs/helm', chartName: 'seaweedfs/seaweedfs' },
   s3: { repoUrl: 'https://aws.github.io/eks-charts', chartName: 'aws/ack-s3-controller' },
   gcs: { repoUrl: 'https://example.storage.google/charts', chartName: 'gcs/storage-gateway' },
   'gitlab-ci': { repoUrl: 'https://charts.gitlab.io', chartName: 'gitlab/gitlab-runner' },

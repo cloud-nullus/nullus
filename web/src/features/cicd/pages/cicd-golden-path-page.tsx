@@ -21,6 +21,7 @@ const TOOL_NAME_TO_ID: Record<string, string> = {
   'Harbor': 'harbor',
   'Docker Hub': 'docker-hub',
   'MinIO': 'minio',
+  'SeaweedFS': 'seaweedfs',
   'AWS S3': 's3',
   'Argo CD': 'argocd',
   'Flux CD': 'flux',

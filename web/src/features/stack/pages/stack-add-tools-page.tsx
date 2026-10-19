@@ -119,6 +119,11 @@ const TOOL_CATEGORIES: ToolCategory[] = [
             description: "S3 호환 오브젝트 스토리지",
           },
           {
+            id: "seaweedfs",
+            label: "SeaweedFS",
+            description: "S3 호환 오브젝트 스토리지 (Apache-2.0)",
+          },
+          {
             id: "s3",
             label: "AWS S3",
             description: "Amazon S3 오브젝트 스토리지",

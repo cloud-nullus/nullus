@@ -480,6 +480,9 @@ export function buildHelmStepResourceOverride(toolId: string, resources: Resourc
       return { key: 'installing_cert_manager', values: { resources: k8sResources } }
     case 'minio':
       return { key: 'installing_minio', values: { resources: k8sResources } }
+    // all-in-one 파드 하나다. 자원 칸이 allInOne 아래에 있다(서버 resource-defaults.go 와 같다).
+    case 'seaweedfs':
+      return { key: 'installing_seaweedfs', values: { allInOne: { resources: k8sResources } } }
     // 둘 다 파드 하나다(서버의 resource-defaults.go 와 같은 자리).
     case 'trivy':
       return { key: 'installing_trivy', values: { resources: k8sResources } }

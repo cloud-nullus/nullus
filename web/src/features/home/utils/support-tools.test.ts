@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ARTIFACTS_OPTIONS,
   AUTHENTICATION_OPTIONS,
+  IN_CLUSTER_OBJECT_STORAGE_IDS,
   LOGGING_OPTIONS,
   MONITORING_OPTIONS,
   PIPELINE_OPTIONS,
@@ -61,9 +62,9 @@ describe('지원 OSS 목록', () => {
   })
 
   // 마법사에서 사라진 도구가 목록에 남으면 "지원한다" 가 거짓이 된다.
-  // MinIO 는 사용자가 고르는 것이 아니라 고정 설치라 예외다.
+  // 오브젝트 스토리지 구현체(MinIO·SeaweedFS)는 도구 탭이 아니라 Storage 탭에서 고른다.
   it('마법사에 없는 도구를 지원한다고 적지 않는다', () => {
-    const wizard = new Set([...wizardOptionIDs(), 'minio'])
+    const wizard = new Set([...wizardOptionIDs(), ...IN_CLUSTER_OBJECT_STORAGE_IDS])
     const orphans = SUPPORT_TOOLS.flatMap((tool) => tool.wizardIds).filter((id) => !wizard.has(id))
     expect(orphans, `마법사에 없는 id:\n${orphans.join('\n')}`).toEqual([])
   })
