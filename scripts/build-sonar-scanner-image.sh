@@ -15,8 +15,8 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE="${IMAGE:-ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner}"
-# 태그는 Dockerfile 의 스캐너 버전이다 — 코드 상수(SonarScannerImage)와 같아야 한다.
-TAG="${TAG:-$(grep -E '^ARG SONAR_SCANNER_VERSION=' "$PROJECT_ROOT/deploy/images/sonar-scanner/Dockerfile" | cut -d= -f2)}"
+# 태그는 스캐너 버전-이미지 리비전이다 — 코드 상수(SonarScannerImage)와 같아야 한다.
+TAG="${TAG:-$("$PROJECT_ROOT/scripts/sonar-scanner-image-tag.sh")}"
 KIND_LOAD="false"
 KIND_CLUSTERS=""
 

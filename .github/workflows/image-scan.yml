@@ -38,7 +38,7 @@ jobs:
           echo "release=${release#v}" >> "$GITHUB_OUTPUT"
           # Jenkins·SonarScanner 는 릴리즈 버전이 아니라 Dockerfile 의 ARG 가 태그다(릴리즈 정책 §7.1).
           jenkins="$(grep -E '^ARG JENKINS_VERSION=' deploy/images/jenkins/Dockerfile | cut -d= -f2)"
-          sonar="$(grep -E '^ARG SONAR_SCANNER_VERSION=' deploy/images/sonar-scanner/Dockerfile | cut -d= -f2)"
+          sonar="$(./scripts/sonar-scanner-image-tag.sh)"
           [ -n "$jenkins" ] && [ -n "$sonar" ] || { echo "Dockerfile 의 버전 ARG 를 찾지 못했습니다"; exit 1; }
           echo "jenkins=$jenkins" >> "$GITHUB_OUTPUT"
           echo "sonar=$sonar" >> "$GITHUB_OUTPUT"

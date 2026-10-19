@@ -282,8 +282,8 @@ jobs:
       - name: Resolve scanner version from Dockerfile
         id: ver
         run: |
-          version="$(grep -E '^ARG SONAR_SCANNER_VERSION=' deploy/images/sonar-scanner/Dockerfile | cut -d= -f2)"
-          [ -n "$version" ] || { echo "SONAR_SCANNER_VERSION 을 찾지 못했습니다"; exit 1; }
+          # 태그는 스캐너 버전-이미지 리비전이다. 같은 버전에서 내용이 바뀌면 리비전이 올라 태그가 바뀐다.
+          version="$(./scripts/sonar-scanner-image-tag.sh)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Build and push SonarScanner image (linux/amd64,linux/arm64)

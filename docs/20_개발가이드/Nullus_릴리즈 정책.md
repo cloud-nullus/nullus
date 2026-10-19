@@ -284,7 +284,7 @@ Jenkins 커스텀 이미지를 빌드하는데, 태그를 릴리즈 버전이 �
 | `nullus-api` | 릴리즈 태그 (`docker/metadata-action`) | 아니오 — `main` push 시에도 `main`·SHA 태그로 빌드 |
 | `nullus-web` | 릴리즈 태그 (`docker/metadata-action`) | 아니오 — 위와 같음 |
 | `nullus-jenkins` | `Dockerfile`의 `JENKINS_VERSION` | 아니오 — 릴리즈와 무관하게 갱신 |
-| `nullus-sonar-scanner` | `Dockerfile`의 `SONAR_SCANNER_VERSION` | 아니오 — 위와 같음 |
+| `nullus-sonar-scanner` | `Dockerfile`의 `SONAR_SCANNER_VERSION`-`NULLUS_IMAGE_REVISION` (`scripts/sonar-scanner-image-tag.sh`) | 아니오 — 위와 같음 |
 
 따라서 `nullus-jenkins`·`nullus-sonar-scanner`는 릴리즈 산출물 표(§1)에 넣지 않고, 버전 동기화 대상(§8)에서도 제외합니다.
 Jenkins나 스캐너를 올리는 것은 릴리즈가 아니라 그 `ARG` 값을 바꾸는 PR입니다.

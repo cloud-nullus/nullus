@@ -90,11 +90,12 @@ const (
 	// sonarsource/sonar-scanner-cli 는 amd64 빌드만 게시해(Docker Hub 전 태그 실측, 2026-10)
 	// arm64 노드와 에어갭 arm64 번들에서 단계가 서지 않았다 — 플랫폼 독립 스캐너 zip 을 멀티아치
 	// JRE 위에 우리가 굽는다(deploy/images/sonar-scanner, CD 의 build-and-push-sonar-scanner,
-	// 로컬은 scripts/build-sonar-scanner-image.sh). 태그는 Dockerfile 의 스캐너 버전이다
-	// (테스트가 둘을 묶는다). ghcr 패키지는 처음 만들어질 때 private 이므로 public 으로 바꿔야
+	// 로컬은 scripts/build-sonar-scanner-image.sh). 태그는 Dockerfile 의 스캐너 버전-이미지 리비전이다
+	// (scripts/sonar-scanner-image-tag.sh, 테스트가 둘을 묶는다) — 같은 버전에서 내용이 바뀌면 리비전이
+	// 올라 태그가 바뀐다. ghcr 패키지는 처음 만들어질 때 private 이므로 public 으로 바꿔야
 	// 익명 pull 이 된다(릴리즈 정책 §7.1).
 	// (internal/cicd/adapter/scaffold/sast.go)
-	SonarScannerImage = "ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389"
+	SonarScannerImage = "ghcr.io/cloud-nullus/nullus/nullus-sonar-scanner:8.1.0.6389-2"
 
 	// GitleaksImage 는 파이프라인 시크릿 탐지 단계가 쓰는 gitleaks 다(nullus-plan#80). 상류가
 	// amd64·arm64 를 모두 내므로 그대로 쓴다. 태그는 앱 저장소에 넣는 pre-commit 훅의 rev 와
