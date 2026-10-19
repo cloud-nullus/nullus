@@ -6,7 +6,7 @@ import (
 	"github.com/cloud-nullus/draft/internal/cicd/domain"
 )
 
-// sourceColumnList 는 pipeline_templates·pipelines 가 같은 이름으로 가진 원본 열이다(마이그레이션 000101).
+// sourceColumnList 는 pipeline_templates·pipelines 가 같은 이름으로 가진 원본 열이다(마이그레이션 000102).
 const sourceColumnList = `source_repo_url, source_commit, source_label, source_build_profile`
 
 // sourceColumns 는 원본 열을 읽어 들일 자리다.

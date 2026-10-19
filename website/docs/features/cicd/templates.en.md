@@ -50,7 +50,7 @@ When a template has a **source**, creating a pipeline copies a pinned commit of 
 source repository into the new app repository as its first commit. The platform then
 adds the CI definition and the deployment manifests on top.
 
-Two are included by default (migration `000101`).
+Two are included by default (migration `000102`).
 
 | Template | Source | Build profile |
 |--------|------|-------------|
