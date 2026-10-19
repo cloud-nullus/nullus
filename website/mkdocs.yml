@@ -143,6 +143,7 @@ plugins:
             스택 이력: Stack History
             스택 버전: Stack Version
             OSS 기본 리소스: OSS Default Resource
+            설치 OSS CVE 대응: Installed OSS CVE Response
             CI/CD 템플릿: CI/CD Template
             골든패스: Golden Paths
             CI/CD 목록: CI/CD List
@@ -200,6 +201,7 @@ nav:
           - 스택 이력: features/stack/history.md
           - 스택 버전: features/stack/versions.md
           - OSS 기본 리소스: features/stack/oss-defaults.md
+          - 설치 OSS CVE 대응: features/stack/cve-response.md
       - CI/CD:
           - features/cicd/index.md
           - CI/CD 템플릿: features/cicd/templates.md

@@ -18,6 +18,8 @@ manages them. Every API lives under `/api/v1/stacks/**`, and only
 
 [**OSS Default Resource**<span>Per-tool CPU and memory defaults.</span>](oss-defaults.md)
 
+[**Installed OSS CVE Response**<span>How CVEs in installed OSS are reported and fixed, and by when.</span>](cve-response.md)
+
 </div>
 
 ## The path to an installed stack

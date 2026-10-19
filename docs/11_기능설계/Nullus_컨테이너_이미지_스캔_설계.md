@@ -635,10 +635,10 @@ CI API 클라이언트는 클러스터 내부 주소로 붙는다. 그 주소는
 |---|---|---|
 | 판정 | **보고만. 설치를 막지 않는다** | 업스트림 이미지의 CVE 는 사용자가 고칠 수 없는 경우가 많다. 막으면 스택을 세울 방법이 사라진다 |
 | 스캐너를 고르지 않은 스택 | `not_scanned` · `scanner_not_installed` | "0건" 으로 보이면 안 된다 |
-| 에어갭 | **스캔하지 않는다** (`not_scanned` · `airgap`) | 이미지를 받을 외부 레지스트리에 닿지 못하고, DB 는 사람이 넣은 만큼만 새것이다. 판정 근거는 `NULLUS_HELM_OCI_REGISTRY`(에어갭 차트 저장소) |
+| 에어갭 | ~~스캔하지 않는다~~ → **스캔한다 — 내부 레지스트리 · 반입한 DB** (2026-10-20, nullus-plan#78) | 막던 것은 이름이었다 — 노드가 containerd 미러로 받아 파드 `imageID` 가 원래 레지스트리 이름이다. 스캔 Job 이 참조를 `NULLUS_HELM_OCI_REGISTRY` 의 호스트로 바꿔 받고, 보고서가 `airgap` 을 실어 "반입 뒤 CVE 는 다음 반입 전까지 안 보인다" 를 밝힌다. 사유 `airgap` 은 옛 응답에만 남는다 |
 | 시점 | 설치 완료 직후 1회 + **`STACK_IMAGE_RESCAN_INTERVAL`(기본 24h)** 주기 재스캔 | 설치 뒤에 공개된 CVE 는 다시 스캔해야 보인다 |
 
-**대상** — 스택 네임스페이스에서 `Running` 인 파드의 `imageID`(저장소@digest). digest 단위로 한 번만 스캔하고, 파드가 도는 노드의 아키텍처로 `--platform` 을 준다(Trivy 기본값은 amd64 라 arm64 노드의 이미지와 다른 것을 본다). 끝난 Job 파드, digest 가 없는 로컬 이미지, 스캔 Job 자신은 뺀다. 스택 네임스페이스 밖(cert-manager 등 클러스터 공용 구성요소)은 대상이 아니다.
+**대상** — 스택 네임스페이스에서 `Running` 인 파드의 `imageID`(저장소@digest). digest 단위로 한 번만 스캔하고, 파드가 도는 노드의 아키텍처로 `--platform` 을 준다(Trivy 기본값은 amd64 라 arm64 노드의 이미지와 다른 것을 본다). 끝난 Job 파드, digest 가 없는 로컬 이미지, 스캔 Job 자신은 뺀다. 스택 네임스페이스 밖의 클러스터 공용 구성요소(cert-manager · metrics-server · External Secrets)도 릴리스 라벨로 골라 함께 스캔하고 `shared` 로 표시한다(2026-10-20, nullus-plan#78 — 처음에는 대상이 아니었다). 대응 기한 · 고지 · 외부 노출 판정은 [설치 OSS CVE 대응 정책](Nullus_설치_OSS_CVE_대응_정책.md)이 정한다.
 
 **실행** — 스택 네임스페이스에 Job `nullus-image-scan` 을 세운다. `aquasec/trivy` client 가 스택 Trivy 서버(§2.3)에 붙는다.
 
@@ -675,7 +675,7 @@ CI API 클라이언트는 클러스터 내부 주소로 붙는다. 그 주소는
 | `report_missing` | 이 스캔에 리포트 위치가 없다(리포트를 쓰기 전에 스캔이 실패했거나 위치 기록 전의 기록) |
 | `ci_unreachable` | CI 서버에 닿지 못했다 |
 | `not_recorded` | (스택) 목록 기능 전에 스캔했다. 다음 스캔 뒤에 보인다 |
-| `scanner_not_installed` · `airgap` | (스택) 설치 이미지를 스캔하지 않는 스택이다(§12.4) |
+| `scanner_not_installed` · `airgap` | (스택) 설치 이미지를 스캔하지 않는 스택이다(§12.4). `airgap` 은 2026-10-20 부터 만들지 않는다 — 에어갭도 스캔한다 |
 
 **파이프라인 — 저장하지 않는다** — `GET /api/v1/cicd/pipelines/:id/image-scans/:scanId/vulnerabilities`. §8 의 결정(원본 리포트는 DB 에 넣지 않는다)을 지킨다. 동기화가 리포트를 읽을 때 **리포트 위치**(`image_scan_results.report_ref`, 000082 — GitLab 잡 id · GitHub 실행 id · Jenkins 빌드 번호)를 남기고, 볼 때 그 위치로 CI 리포트를 다시 읽어 목록을 만든다. 목록이 리포트와 어긋날 일이 없는 대신, CI 가 보관 기간(GitLab 인스턴스 기본값 등)이 지나 산출물을 지우면 목록은 볼 수 없고 건수만 남는다. 다른 파이프라인의 스캔 id 로는 읽을 수 없다. 위치 기록 전의 결과는 다음 동기화 때 리포트를 다시 받지 않고 위치만 채운다.
 

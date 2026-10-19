@@ -1710,7 +1710,7 @@ make docker-scan
 **스캔 정책**:
 - CI/CD 릴리스 파이프라인: CRITICAL/HIGH CVE 발견 시 릴리스 중단
 - 기존 이미지: 주 1회 스케줄 스캔 (GitHub Actions scheduled)
-- CVE 발견 후 패치 목표: 24시간 이내 (PRD 5.2 보안 요구사항)
+- CVE 발견 후 패치 목표: 24시간 이내 (PRD 5.2 보안 요구사항) — Nullus 자체 이미지. 스택이 설치한 OSS 는 설치 OSS CVE 대응 정책 §4 의 기한(고지 24시간 · 외부 노출 CRITICAL 검증된 업그레이드 7일)
 
 ```yaml
 # .github/workflows/scheduled-scan.yaml
