@@ -41,8 +41,11 @@ type UpgradeStackDeps struct {
 	Backups      port.UpgradeBackupLookup
 	BackupMaxAge time.Duration
 	Health       port.UpgradeHealthVerifier
-	Now          func() time.Time
-	NewID        func() string
+	// Vulnerabilities 는 스택의 설치 이미지 스캔 결과에서 릴리스별 CVE 를 읽는다. 없으면 후보는 번들이
+	// 고치는 CVE 목록만 싣고, 그중 무엇이 이 스택에 있는지는 비운다.
+	Vulnerabilities port.ReleaseVulnerabilityLookup
+	Now             func() time.Time
+	NewID           func() string
 	// Launch 는 실행을 요청 밖으로 넘긴다. 기본은 goroutine 이다.
 	Launch func(job func())
 	// Context 는 API 프로세스의 수명이다. 종료 때 취소되면 Helm 이 --atomic 으로 스스로 되돌리기
@@ -158,8 +161,10 @@ func (uc *UpgradeStack) Candidates(ctx context.Context, stackID string) ([]domai
 		if err != nil {
 			return nil, fmt.Errorf("list upgrade bundles: %w", err)
 		}
+		bundle := domain.SelectUpgradeBundle(bundles)
 		candidate := domain.NewUpgradeCandidate(tool, rel.ReleaseName, rel.ChartVersion, rel.AppVersion,
-			rel.Revision, rel.Status, domain.SelectUpgradeBundle(bundles), uc.d.Now())
+			rel.Revision, rel.Status, bundle, uc.d.Now())
+		candidate.FixesFound = uc.fixesFound(ctx, r.stack.ID, rel.ReleaseName, bundle)
 		last, err := uc.lastRun(ctx, r.stack.ID, tool)
 		if err != nil {
 			return nil, err
@@ -168,6 +173,20 @@ func (uc *UpgradeStack) Candidates(ctx context.Context, stackID string) ([]domai
 		out = append(out, candidate)
 	}
 	return out, nil
+}
+
+// fixesFound 는 번들이 고치는 CVE 중 이 스택의 그 릴리스 이미지에서 지금 발견된 것이다. 읽지 못하면
+// 비운다 — 후보 목록을 막을 일이 아니다.
+func (uc *UpgradeStack) fixesFound(ctx context.Context, stackID, release string, bundle *domain.UpgradeBundle) []string {
+	if uc.d.Vulnerabilities == nil || bundle == nil || len(bundle.FixesCVEs) == 0 {
+		return nil
+	}
+	present, err := uc.d.Vulnerabilities.VulnerabilityIDsByRelease(ctx, stackID, release)
+	if err != nil {
+		uc.d.Logger.Warn("업그레이드 후보: 설치 이미지 취약점을 읽지 못했습니다", "stack_id", stackID, "release", release, "error", err)
+		return nil
+	}
+	return domain.BundleFixesFound(bundle, present)
 }
 
 // lastRun 은 화면이 보여 줄 실행이다. 진행 중인 실행이 있으면 그것이다 — 진행 중에 들어와 막힌

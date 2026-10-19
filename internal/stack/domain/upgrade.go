@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -91,6 +92,24 @@ type UpgradeBundle struct {
 	RequiresBackup         bool     `json:"requires_backup"`
 	SupportedArchitectures []string `json:"supported_architectures,omitempty"`
 	Status                 string   `json:"status"`
+	// FixesCVEs 는 이 업그레이드가 고치는 CVE 다. 번들을 리허설할 때 함께 등록한다 — 설치 OSS CVE
+	// 대응(nullus-plan#78)이 "어느 검증된 업그레이드가 이 CVE 를 고치는가" 를 여기서 읽는다.
+	FixesCVEs []string `json:"fixes_cves,omitempty"`
+}
+
+// BundleFixesFound 는 번들이 고치는 CVE 중 present(지금 스캔에서 발견된 것)에 있는 것이다. 정렬해 돌려준다.
+func BundleFixesFound(bundle *UpgradeBundle, present map[string]bool) []string {
+	if bundle == nil || len(present) == 0 {
+		return nil
+	}
+	var out []string
+	for _, id := range bundle.FixesCVEs {
+		if present[id] {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // SelectUpgradeBundle 은 같은 출발점의 번들 중 가장 높은 대상 버전을 고른다.
@@ -154,8 +173,10 @@ type UpgradeCandidate struct {
 	ReleaseStatus       string         `json:"release_status"`
 	Bundle              *UpgradeBundle `json:"bundle,omitempty"`
 	BlockedReason       string         `json:"blocked_reason,omitempty"`
-	LastRun             *UpgradeRun    `json:"last_run,omitempty"`
-	CheckedAt           time.Time      `json:"checked_at"`
+	// FixesFound 는 번들이 고치는 CVE 중 이 스택의 그 릴리스 이미지에서 지금 발견된 것이다.
+	FixesFound []string    `json:"fixes_found,omitempty"`
+	LastRun    *UpgradeRun `json:"last_run,omitempty"`
+	CheckedAt  time.Time   `json:"checked_at"`
 }
 
 func NewUpgradeCandidate(tool, releaseName, chartVersion, appVersion string, revision int, releaseStatus string, bundle *UpgradeBundle, now time.Time) UpgradeCandidate {

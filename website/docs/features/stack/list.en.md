@@ -55,6 +55,11 @@ shortcut goes straight to `/stack/install`.
     rolls back to the previous revision automatically; if that also fails, the run is left
     as **Manual intervention required**.
 
+    If the bundle lists the CVEs the upgrade fixes and some of them are in this stack's
+    current **Image Vulnerabilities** scan, the row shows **Fixes N CVE(s) found in this
+    stack** and the dialog lists those CVEs under **CVEs this upgrade fixes in this stack**.
+    If none of the CVEs it fixes are in this stack, the row says so.
+
 ## Add Tools
 
 <span class="route">/stack/:id/add-tools</span>

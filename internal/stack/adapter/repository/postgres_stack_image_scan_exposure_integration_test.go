@@ -104,3 +104,50 @@ func TestPostgresStackImageScanRepository_ExposureAndCVENotices(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[string]bool{"CVE-FIX": true}, ids)
 }
+
+// 업그레이드 후보가 "이 업그레이드가 지금 있는 CVE 를 고치는가" 를 보이려고 릴리스별 CVE 를 읽는다.
+// 공용 구성요소는 스택 업그레이드 대상이 아니므로 같은 이름의 릴리스라도 빼고, 심각도는 가리지 않는다.
+func TestPostgresStackImageScanRepository_VulnerabilityIDsByRelease(t *testing.T) {
+	t.Parallel()
+
+	pool, cleanup := setupPostgres(t)
+	t.Cleanup(cleanup)
+	ctx := context.Background()
+
+	orgID, clusterID := createTestOrgAndCluster(t, ctx, pool)
+	stackID := "stack-" + uuid.NewString()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	require.NoError(t, NewPostgresStackRepository(pool).Create(ctx, &domain.Stack{
+		ID: stackID, Name: "Release CVE Stack", TemplateID: "gitlab-allinone-v1", OrgID: orgID,
+		ClusterID: clusterID, Namespace: "rel", State: domain.StateCompleted,
+		Config: sampleStackConfig("GitLab CE"), CreatedAt: now, UpdatedAt: now,
+	}))
+	repo := NewPostgresStackImageScanRepository(pool)
+
+	vuln := func(id, severity string) shareddomain.ImageVulnerability {
+		return shareddomain.ImageVulnerability{ID: id, PkgName: "pkg", InstalledVersion: "1", Severity: severity,
+			Class: shareddomain.VulnerabilityClassOS}
+	}
+	require.NoError(t, repo.ReplaceForStack(ctx, stackID, []domain.StackImageScan{
+		{Image: "argocd:v2.13.3", ImageDigest: "sha256:a1", Release: "argo-cd", Status: domain.ImageScanStatusScanned,
+			ScannedAt: now, VulnerabilitiesRecorded: true,
+			Vulnerabilities: []shareddomain.ImageVulnerability{vuln("CVE-A", "critical"), vuln("CVE-B", "low")}},
+		{Image: "redis:7", ImageDigest: "sha256:a2", Release: "argo-cd", Status: domain.ImageScanStatusScanned,
+			ScannedAt: now, VulnerabilitiesRecorded: true,
+			Vulnerabilities: []shareddomain.ImageVulnerability{vuln("CVE-A", "critical"), vuln("CVE-C", "high")}},
+		{Image: "gitlab:17", ImageDigest: "sha256:g", Release: "gitlab", Status: domain.ImageScanStatusScanned,
+			ScannedAt: now, VulnerabilitiesRecorded: true,
+			Vulnerabilities: []shareddomain.ImageVulnerability{vuln("CVE-G", "critical")}},
+		{Image: "argocd-shared:v1", ImageDigest: "sha256:s", Release: "argo-cd", Namespace: "argocd", Shared: true,
+			Status: domain.ImageScanStatusScanned, ScannedAt: now, VulnerabilitiesRecorded: true,
+			Vulnerabilities: []shareddomain.ImageVulnerability{vuln("CVE-SHARED", "critical")}},
+	}))
+
+	ids, err := repo.VulnerabilityIDsByRelease(ctx, stackID, "argo-cd")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]bool{"CVE-A": true, "CVE-B": true, "CVE-C": true}, ids)
+
+	ids, err = repo.VulnerabilityIDsByRelease(ctx, stackID, "keycloak")
+	require.NoError(t, err)
+	assert.Empty(t, ids, "스캔에 없는 릴리스")
+}

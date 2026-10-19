@@ -240,4 +240,39 @@ describe('StackVersionUpgradeTab', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Start upgrade' }))
     expect(await within(dialog).findByText('Another upgrade is running')).toBeInTheDocument()
   })
+
+  // 설치 OSS CVE 대응(nullus-plan#78): 검증된 업그레이드가 이 스택에서 발견된 CVE 를 고치면 그것을 먼저 보인다.
+  it('shows how many CVEs found in this stack the upgrade fixes', async () => {
+    withItems([
+      candidate({
+        bundle: { ...bundle, fixes_cves: ['CVE-2025-1', 'CVE-2025-2', 'CVE-2025-3'] },
+        fixes_found: ['CVE-2025-1', 'CVE-2025-2'],
+      }),
+    ])
+    mockPreflight.mockResolvedValue({ checks: passing })
+    render(<StackVersionUpgradeTab stackId="stk_1" />)
+
+    expect(screen.getByText('Fixes 2 CVE(s) found in this stack')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Upgrade' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('CVE-2025-1')).toBeInTheDocument()
+    expect(within(dialog).getByText('CVE-2025-2')).toBeInTheDocument()
+    expect(within(dialog).queryByText('CVE-2025-3')).not.toBeInTheDocument()
+  })
+
+  it('says when the CVEs the upgrade fixes are not in this stack', () => {
+    withItems([candidate({ bundle: { ...bundle, fixes_cves: ['CVE-2025-1'] } })])
+    render(<StackVersionUpgradeTab stackId="stk_1" />)
+
+    expect(screen.getByText("Fixes 1 known CVE(s) — none in this stack's last image scan")).toBeInTheDocument()
+  })
+
+  it('says nothing about CVEs when the bundle lists none', () => {
+    withItems([candidate()])
+    render(<StackVersionUpgradeTab stackId="stk_1" />)
+
+    expect(screen.queryByText(/found in this stack/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/known CVE/)).not.toBeInTheDocument()
+  })
 })

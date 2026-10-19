@@ -45,6 +45,8 @@ export interface UpgradeBundle {
   expected_disruption: string;
   release_notes?: string;
   requires_backup: boolean;
+  // 이 업그레이드가 고치는 CVE — 번들을 리허설하며 적는다.
+  fixes_cves?: string[];
 }
 
 export type UpgradeRunStatus =
@@ -93,6 +95,8 @@ export interface UpgradeCandidate {
   release_status: string;
   bundle?: UpgradeBundle;
   blocked_reason?: string;
+  // fixes_cves 중 이 스택의 그 릴리스 이미지에서 지금 발견된 것.
+  fixes_found?: string[];
   last_run?: UpgradeRun;
   checked_at: string;
 }

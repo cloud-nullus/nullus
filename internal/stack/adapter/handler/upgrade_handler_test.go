@@ -152,3 +152,26 @@ func TestUpgradeHandler_ErrorMapping(t *testing.T) {
 		assert.Equal(t, tc.code, rec.Code, tc.err.Error())
 	}
 }
+
+// 화면은 fixes_cves(번들이 고치는 것)와 fixes_found(그중 이 스택에서 발견된 것)를 읽는다.
+func TestUpgradeHandler_ListCandidates_CarriesCVEFixes(t *testing.T) {
+	svc := &stubUpgrades{candidates: []domain.UpgradeCandidate{{
+		Tool: "argocd", CurrentChartVersion: "7.7.16", CheckedAt: time.Now(),
+		Bundle:     &domain.UpgradeBundle{ID: "b-20", FixesCVEs: []string{"CVE-A", "CVE-B"}},
+		FixesFound: []string{"CVE-A"},
+	}}}
+	rec := serveUpgrade(t, svc, nil, http.MethodGet, "/api/v1/stacks/stk_1/upgrades", "", nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var out struct {
+		Items []struct {
+			Bundle struct {
+				FixesCVEs []string `json:"fixes_cves"`
+			} `json:"bundle"`
+			FixesFound []string `json:"fixes_found"`
+		} `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+	require.Len(t, out.Items, 1)
+	assert.Equal(t, []string{"CVE-A", "CVE-B"}, out.Items[0].Bundle.FixesCVEs)
+	assert.Equal(t, []string{"CVE-A"}, out.Items[0].FixesFound)
+}

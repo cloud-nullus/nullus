@@ -224,13 +224,14 @@ func main() {
 	// 스택이 돌리는 OSS 이미지를 스택의 Trivy 서버로 스캔한다 — 설치 직후 한 번,
 	// 이후 주기적으로. 에어갭 설치는 노드가 containerd 미러로 받은 이미지를 내부 레지스트리
 	// (NULLUS_HELM_OCI_REGISTRY 의 호스트)에서 받아 스캔하고, DB 는 번들이 반입한 것을 쓴다.
+	stackImageScanRepo := stackrepo.NewPostgresStackImageScanRepository(pool)
 	stackImageScanUC := stackuc.NewScanStackImages(
 		pgStackRepo,
 		pgStackRepo,
 		kubeconfigProvider,
 		stackimagescan.NewScanner(stackimagescan.WithMirrorRegistry(
 			shareddomain.AirgapRegistryHost(os.Getenv("NULLUS_HELM_OCI_REGISTRY")))),
-		stackrepo.NewPostgresStackImageScanRepository(pool),
+		stackImageScanRepo,
 		stackhelm.AirgapMode(),
 	)
 
@@ -800,6 +801,8 @@ func main() {
 		Executors:   func(kubeconfig []byte) stackport.ChartUpgradeExecutor { return stackhelm.NewHelmInstaller(kubeconfig) },
 		Backups:     upgradeBackups,
 		Health:      stackhelm.NewArgoCDUpgradeHealthVerifier(),
+		// 후보에 "이 업그레이드가 이 스택에서 발견된 CVE 를 고친다" 를 싣는다(nullus-plan#78).
+		Vulnerabilities: stackImageScanRepo,
 	})
 	upgradeHandler := stackhandler.NewUpgradeHandler(upgradeUC, auditLogger)
 	upgradeHandler.RegisterRoutes(stacks)

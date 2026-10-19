@@ -38,3 +38,9 @@ type StackImageScanRepository interface {
 type CompletedStackLister interface {
 	ListCompleted(ctx context.Context) ([]*domain.Stack, error)
 }
+
+// ReleaseVulnerabilityLookup 은 스택의 설치 이미지 스캔 결과에서 한 릴리스의 이미지가 가진 CVE 다.
+// 업그레이드 후보가 "이 업그레이드가 지금 있는 CVE 를 고치는가" 를 보이는 데 쓴다.
+type ReleaseVulnerabilityLookup interface {
+	VulnerabilityIDsByRelease(ctx context.Context, stackID, release string) (map[string]bool, error)
+}
