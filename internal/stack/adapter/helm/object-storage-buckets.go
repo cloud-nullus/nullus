@@ -245,11 +245,23 @@ func s3EndpointURL(endpoint string) string {
 //
 // 엔드포인트·자격은 환경변수로 받는다. 스크립트 안에 값이 없으므로 따옴표를
 // 맞출 일도, 로그에 비밀이 찍힐 일도 없다.
+//
+// 스토리지 설치는 준비를 기다리지 않고 넘어오므로 먼저 엔드포인트가 응답할 때까지
+// 기다린다(기본 60회 × 2초 — 단계가 Job 을 기다리는 180초 안쪽이다). 2026-10-19 kind
+// 실측에서 SeaweedFS 게이트웨이가 포트를 열기 전에 만들기가 연결 거절로 죽었다 —
+// mc 는 SDK 가 알아서 재시도해 이 경합이 가려져 있었다. 뜬 뒤의 일시적 5xx 는 curl 의
+// --retry 가 받는다(409·403 같은 확정 응답은 다시 보내지 않는다).
 func buildBucketBootstrapScript(buckets []string) string {
 	var sb strings.Builder
 	sb.WriteString("set -eu\n")
 	sb.WriteString(fmt.Sprintf("SIG='aws:amz:%s:s3'\n", domain.ObjectStorageRegion))
-	sb.WriteString("s3() { curl -sS -o /dev/null -w '%{http_code}' --aws-sigv4 \"$SIG\" --user \"$S3_ACCESS_KEY:$S3_SECRET_KEY\" \"$@\"; }\n")
+	sb.WriteString("i=0\n")
+	sb.WriteString("until [ \"$(curl -s -o /dev/null -w '%{http_code}' \"$S3_ENDPOINT/\" || true)\" != 000 ]; do\n")
+	sb.WriteString("  i=$((i+1))\n")
+	sb.WriteString("  if [ \"$i\" -ge \"${S3_WAIT_ATTEMPTS:-60}\" ]; then echo \"S3 endpoint not reachable: $S3_ENDPOINT\" >&2; exit 1; fi\n")
+	sb.WriteString("  sleep \"${S3_WAIT_DELAY:-2}\"\n")
+	sb.WriteString("done\n")
+	sb.WriteString("s3() { curl -sS --retry 5 --retry-delay 2 -o /dev/null -w '%{http_code}' --aws-sigv4 \"$SIG\" --user \"$S3_ACCESS_KEY:$S3_SECRET_KEY\" \"$@\"; }\n")
 	for _, bucket := range buckets {
 		sb.WriteString(fmt.Sprintf("code=$(s3 -X PUT \"$S3_ENDPOINT/%s\")\n", bucket))
 		sb.WriteString(fmt.Sprintf("case \"$code\" in 200|409) ;; *) echo \"create bucket %s: HTTP $code\" >&2; exit 1;; esac\n", bucket))

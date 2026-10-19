@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -33,39 +34,65 @@ func TestBuildBucketBootstrapScript_CallsS3OverHTTPOnly(t *testing.T) {
 
 // 스크립트를 실제로 돌려 본다. curl 자리에 HTTP 코드를 돌려주는 가짜를 두고
 // "이미 있음(409)" 은 성공, 그 밖의 거절은 실패로 끝나는지 본다.
-func TestBuildBucketBootstrapScript_AcceptsExistingBucketAndRejectsDenied(t *testing.T) {
+//
+// 가짜는 세 가지 호출을 가른다 — 만들기(-X PUT), 확인(-I), 그리고 엔드포인트가
+// 뜰 때까지 두드리는 대기(그 밖). 서버가 아직 안 뜬 것처럼 처음 PROBE_FAILS 번의
+// 호출은 종류와 무관하게 연결 거절(000, exit 7)이다.
+func runBucketScript(t *testing.T, createCode, headCode string, probeFails int, extraEnv ...string) (string, error) {
+	t.Helper()
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh 가 없다")
 	}
-	run := func(createCode, headCode string) (string, error) {
-		dir := t.TempDir()
-		fake := "#!/bin/sh\n" +
-			"for a in \"$@\"; do [ \"$a\" = -I ] && { printf '%s' \"$HEAD_CODE\"; exit 0; }; done\n" +
-			"printf '%s' \"$CREATE_CODE\"\n"
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "curl"), []byte(fake), 0o755))
-		cmd := exec.Command("sh", "-c", buildBucketBootstrapScript([]string{"gitlab-artifacts"}))
-		cmd.Env = append(os.Environ(),
-			"PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
-			"S3_ENDPOINT=http://s3.local:8333", "S3_ACCESS_KEY=ak", "S3_SECRET_KEY=sk",
-			"CREATE_CODE="+createCode, "HEAD_CODE="+headCode)
-		out, err := cmd.CombinedOutput()
-		return string(out), err
-	}
+	dir := t.TempDir()
+	fake := "#!/bin/sh\n" +
+		"n=$(cat \"$PROBE_COUNT\" 2>/dev/null || echo 0); n=$((n+1)); echo $n > \"$PROBE_COUNT\"\n" +
+		"if [ $n -le \"$PROBE_FAILS\" ]; then printf '000'; exit 7; fi\n" +
+		"for a in \"$@\"; do\n" +
+		"  [ \"$a\" = -I ] && { printf '%s' \"$HEAD_CODE\"; exit 0; }\n" +
+		"  [ \"$a\" = -X ] && { printf '%s' \"$CREATE_CODE\"; exit 0; }\n" +
+		"done\n" +
+		"printf '403'\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "curl"), []byte(fake), 0o755))
+	cmd := exec.Command("sh", "-c", buildBucketBootstrapScript([]string{"gitlab-artifacts"}))
+	cmd.Env = append(os.Environ(),
+		"PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"S3_ENDPOINT=http://s3.local:8333", "S3_ACCESS_KEY=ak", "S3_SECRET_KEY=sk",
+		"CREATE_CODE="+createCode, "HEAD_CODE="+headCode,
+		"PROBE_FAILS="+strconv.Itoa(probeFails), "PROBE_COUNT="+filepath.Join(dir, "probes"),
+		"S3_WAIT_DELAY=0")
+	cmd.Env = append(cmd.Env, extraEnv...)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
 
-	out, err := run("200", "200")
+func TestBuildBucketBootstrapScript_AcceptsExistingBucketAndRejectsDenied(t *testing.T) {
+	out, err := runBucketScript(t, "200", "200", 0)
 	require.NoError(t, err, out)
 	assert.Contains(t, out, "bucket gitlab-artifacts ready")
 
-	out, err = run("409", "200")
+	out, err = runBucketScript(t, "409", "200", 0)
 	require.NoError(t, err, "재시도에서 이미 있는 버킷은 성공이어야 한다: %s", out)
 
-	out, err = run("403", "200")
+	out, err = runBucketScript(t, "403", "200", 0)
 	require.Error(t, err, "권한 거절을 성공으로 넘기면 GitLab 이 첫 업로드에서 죽는다")
 	assert.Contains(t, out, "HTTP 403")
 
-	out, err = run("200", "404")
+	out, err = runBucketScript(t, "200", "404", 0)
 	require.Error(t, err, "만들고도 읽지 못하면 실패여야 한다")
 	assert.Contains(t, out, "head bucket gitlab-artifacts: HTTP 404")
+}
+
+// 스토리지 설치는 준비를 기다리지 않고 다음 단계로 넘어간다. 게이트웨이가 아직
+// 포트를 열기 전에 버킷을 만들면 연결이 거절된다 — 2026-10-19 kind 실측에서
+// SeaweedFS 를 고른 첫 설치가 이렇게 죽었다(mc 는 SDK 가 알아서 재시도해 가려졌다).
+func TestBuildBucketBootstrapScript_WaitsForEndpoint(t *testing.T) {
+	out, err := runBucketScript(t, "200", "200", 3)
+	require.NoError(t, err, "엔드포인트가 늦게 떠도 기다렸다 만들어야 한다: %s", out)
+	assert.Contains(t, out, "bucket gitlab-artifacts ready")
+
+	out, err = runBucketScript(t, "200", "200", 99, "S3_WAIT_ATTEMPTS=5")
+	require.Error(t, err, "끝내 뜨지 않으면 이유를 남기고 실패해야 한다")
+	assert.Contains(t, out, "S3 endpoint not reachable")
 }
 
 // 스택 안 스토리지는 자격을 Secret 참조로 넘긴다. 매니페스트(=Job 스펙)에 평문이
