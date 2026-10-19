@@ -65,7 +65,9 @@ The defaults per repository are GitLab → GitLab CI, GitHub → GitHub Actions,
 Files committed together: the CI definition, `Dockerfile`, `README.md`,
 `deploy/deployment.yaml`, `deploy/service.yaml`, `.pre-commit-config.yaml`, and
 `.gitleaks.toml`. If gateway information is available, `deploy/httproute.yaml` is
-included too.
+included too. The route attaches to the gateway that actually exists in the stack namespace — its name
+differs depending on whether the stack was installed from the screen or by the runbook, so it is looked
+up when the pipeline is created.
 
 !!! warning "`deploy/ingress.yaml` is not generated"
     The "Reload Deploy YAML files" button on the [App Deploy](app-deploy.md) screen

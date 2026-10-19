@@ -63,7 +63,9 @@ Dockerfile 이 더 들어가는 차이뿐입니다.
 
 함께 커밋되는 파일: CI 정의, `Dockerfile`, `README.md`,
 `deploy/deployment.yaml`, `deploy/service.yaml`, `.pre-commit-config.yaml`,
-`.gitleaks.toml`. 게이트웨이 정보가 있으면 `deploy/httproute.yaml` 도 들어갑니다.
+`.gitleaks.toml`. 게이트웨이 정보가 있으면 `deploy/httproute.yaml` 도 들어갑니다. 라우트는 스택
+네임스페이스에 실제로 있는 게이트웨이에 붙습니다 — 스택을 화면으로 설치했는지 런북으로 설치했는지에 따라
+게이트웨이 이름이 달라서, 파이프라인을 만들 때 조회해 고릅니다.
 
 !!! warning "`deploy/ingress.yaml` 은 만들지 않습니다"
     [앱 배포](app-deploy.md) 화면의 "Deploy YAML 다시 읽기" 버튼이

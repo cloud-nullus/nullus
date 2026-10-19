@@ -406,7 +406,10 @@ func main() {
 		WithRegistrySecrets(secretRouter).
 		// Gitea + Jenkins 스택은 CI 변수 저장소가 없어 스캔 정책을 스택 네임스페이스의
 		// ConfigMap 으로 싣는다. 배선하지 않으면 그 스택은 정책을 실을 경로가 없다.
-		WithManifestApplier(manifestApplier, kubeconfigProvider)
+		WithManifestApplier(manifestApplier, kubeconfigProvider).
+		// 앱 HTTPRoute 는 스택 네임스페이스에 실제로 있는 게이트웨이에 붙인다. 스택은 설치 경로에 따라
+		// 게이트웨이 이름 규칙이 달라, 이름을 짐작하면 라우트가 붙지 않아 앱 주소가 404 다.
+		WithGatewayLocator(cicdkube.NewGatewayLocator())
 	// 스택별 이미지 스캔 정책. 판정은 CI 가 푸시받은 값으로 스스로 한다(설계 §5.4) —
 	// CI 가 플랫폼에 되묻는 인바운드 경로와 기계 인증을 두지 않는다.
 	pgScanPolicyRepo := cicdrepo.NewPostgresScanPolicyRepository(pool)
