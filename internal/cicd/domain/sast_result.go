@@ -97,9 +97,12 @@ type SASTMetrics struct {
 
 // SASTReport 는 파이프라인 SAST 잡이 남긴 리포트를 읽은 것이다.
 type SASTReport struct {
-	// ScannerExitCode 는 sonar-scanner 의 종료 코드다. 0 통과, 3 Quality Gate 실패,
-	// 그 밖은 분석 실패(서버 장애·인증 실패)다(실측).
-	ScannerExitCode   int
+	// ScannerExitCode 는 sonar-scanner 의 종료 코드다. 0 통과, 3 엔진 단계 실패(Quality Gate 실패
+	// 또는 분석 실패), 그 밖은 엔진을 띄우지도 못한 실패(서버 장애·인증 실패)다(실측).
+	ScannerExitCode int
+	// CETaskID 는 분석을 서버에 올렸을 때 생기는 작업 ID 다. 3 이 Quality Gate 실패인지 분석 실패인지는
+	// 이것으로 가른다 — 게이트 판정은 올린 분석에만 있다.
+	CETaskID          string
 	ProjectKey        string
 	AnalysisID        string
 	DashboardURL      string
@@ -117,6 +120,7 @@ const (
 type sastReportJSON struct {
 	ScannerExitCode *int   `json:"scanner_exit_code"`
 	ProjectKey      string `json:"project_key"`
+	CETaskID        string `json:"ce_task_id"`
 	AnalysisID      string `json:"analysis_id"`
 	DashboardURL    string `json:"dashboard_url"`
 	QualityGate     *struct {
@@ -156,6 +160,7 @@ func ParseSASTReport(raw []byte) (*SASTReport, error) {
 
 	r := &SASTReport{
 		ScannerExitCode: *doc.ScannerExitCode,
+		CETaskID:        strings.TrimSpace(doc.CETaskID),
 		ProjectKey:      strings.TrimSpace(doc.ProjectKey),
 		AnalysisID:      strings.TrimSpace(doc.AnalysisID),
 		DashboardURL:    strings.TrimSpace(doc.DashboardURL),
@@ -230,6 +235,11 @@ func SASTGateFromStageAndReport(stageStatus string, r *SASTReport) (GateResult, 
 	case sastExitPassed:
 		return GateResultPass, true
 	case sastExitGateFailed:
+		// 스캐너는 엔진 단계의 실패를 모두 3 으로 끝낸다. 분석을 올리지 못했으면 게이트 판정이 없다 —
+		// 분석 실패다(arm64 에서 Node 가 없어 JS 분석이 죽었을 때 실측).
+		if r.CETaskID == "" {
+			return GateResultError, true
+		}
 		if fromStage == GateResultPass {
 			// 경고 정책이 통과시켰다. 배포는 나갔으므로 차단으로 세지 않는다.
 			return GateResultWarn, true
