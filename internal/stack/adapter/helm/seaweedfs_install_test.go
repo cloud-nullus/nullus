@@ -1,7 +1,9 @@
 package helm
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -212,4 +214,55 @@ func TestDefaultGatewayBundleManifest_NoConsoleRouteForSeaweedFS(t *testing.T) {
 	manifest := o.defaultGatewayBundleManifest("nullus-demo")
 	assert.NotContains(t, manifest, "minio.nullus.local")
 	assert.NotContains(t, manifest, domain.SeaweedFSServiceName)
+}
+
+const liveLikeKubeconfig = "apiVersion: v1\nkind: Config\nclusters: []\n"
+
+// 이미 다른 구현체로 선 스택에서 구현체를 바꾸면 GitLab 의 연결 Secret 이 빈 새 스토리지를
+// 가리키게 되고 기존 아티팩트·업로드·이미지가 보이지 않는다(옛 릴리스는 고아로 남는다).
+// 데이터를 옮기는 기능이 없으므로 설치 단계가 이유를 남기고 멈춘다.
+func TestObjectStorageStep_RefusesToSwitchBackendOnInstalledStack(t *testing.T) {
+	installer := &mockInstaller{strictStatus: true, installed: []string{domain.MinIOServiceName}}
+	o := NewOrchestrator(installer, []byte(liveLikeKubeconfig), "nullus")
+	o.SetStackConfig(seaweedFSStackConfig())
+
+	err := o.ensureObjectStorageBackendNotSwitched(context.Background(), domain.SeaweedFSObjectStorage, "nullus")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), domain.MinIOServiceName)
+
+	err = o.ExecuteStep(context.Background(), "", "installing_seaweedfs", "A")
+	require.Error(t, err, "가드를 지나 SeaweedFS 를 설치했다")
+	assert.NotContains(t, installer.installed, domain.SeaweedFSReleaseName)
+}
+
+func TestObjectStorageStep_AllowsSameBackendAndFreshStack(t *testing.T) {
+	// 같은 구현체의 재설치·재시도는 막지 않는다.
+	same := &mockInstaller{strictStatus: true, installed: []string{domain.SeaweedFSReleaseName}}
+	o := NewOrchestrator(same, []byte(liveLikeKubeconfig), "nullus")
+	require.NoError(t, o.ensureObjectStorageBackendNotSwitched(context.Background(), domain.SeaweedFSObjectStorage, "nullus"))
+
+	// 아무것도 없는 새 스택은 그대로 선다.
+	fresh := &mockInstaller{strictStatus: true}
+	o = NewOrchestrator(fresh, []byte(liveLikeKubeconfig), "nullus")
+	require.NoError(t, o.ensureObjectStorageBackendNotSwitched(context.Background(), domain.MinIOObjectStorage, "nullus"))
+
+	// 확인 자체가 실패하면(클러스터 오류) 막지 않는다 — 설치가 그 자리에서 진짜 이유로 실패한다.
+	broken := &mockInstaller{failStatus: errors.New("connection refused")}
+	o = NewOrchestrator(broken, []byte(liveLikeKubeconfig), "nullus")
+	require.NoError(t, o.ensureObjectStorageBackendNotSwitched(context.Background(), domain.MinIOObjectStorage, "nullus"))
+}
+
+// 가드는 연결 배선을 처음 건드리는 단계 앞에서 서야 한다. 구현체 단계에서만 막으면 그 앞의
+// provisioning_secrets 가 이미 GitLab 연결 Secret 을 없는 구현체로 다시 렌더한 뒤다 — kind
+// 실측에서 그렇게 nullus-object-storage 가 nullus-minio 를 가리킨 채로 남았다.
+func TestProvisioningSecrets_RefusesBackendSwitchBeforeRewiring(t *testing.T) {
+	installer := &mockInstaller{strictStatus: true, installed: []string{domain.SeaweedFSReleaseName}}
+	o := NewOrchestrator(installer, []byte(liveLikeKubeconfig), "nullus")
+	cfg := seaweedFSStackConfig()
+	cfg.Artifacts.StorageBackend = domain.ToolSelection{Name: "MinIO", Enabled: true}
+	o.SetStackConfig(cfg)
+
+	err := o.ExecuteStep(context.Background(), "", "provisioning_secrets", "A")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), domain.SeaweedFSReleaseName)
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { IN_CLUSTER_OBJECT_STORAGE_IDS, STORAGE_PROVIDER_OPTIONS, isInClusterObjectStorage } from './install-constants'
-import { buildHelmStepResourceOverride } from './install-manifest-builders'
+import { buildGatewayManifest, buildHelmStepResourceOverride } from './install-manifest-builders'
 import { compatibilityRequestedTools } from '../pages/stack-install-page'
 import { buildInstallOverridesFromTemplate } from './template-overrides'
 import { useStackConfigStore } from '../stores/stack-config-store'
@@ -61,5 +61,24 @@ describe('stack object storage backend', () => {
     const { objectStorage } = useStackConfigStore.getState().draft.storage
     expect(objectStorage.providerOrEngine).toBe('seaweedfs')
     expect(objectStorage.version).toBe('4.48')
+  })
+
+  // 화면이 만든 게이트웨이가 서버 기본값을 대신한다. SeaweedFS 는 화면(콘솔)이 없으므로 라우트를
+  // 만들면 없는 서비스(seaweedfs-svc)를 가리키는 죽은 라우트가 설치된다.
+  it('should not route SeaweedFS through the gateway while keeping the MinIO console', () => {
+    useStackConfigStore.getState().resetConfig()
+    const draft = { ...useStackConfigStore.getState().draft, stackName: 'swfs-stack', accessDomain: 'nullus.local' }
+    const entry = (toolId: string) => ({
+      toolId,
+      toolLabel: toolId,
+      installType: 'helm' as const,
+      toolVersion: '1',
+      hasVersionConflict: false,
+      roles: [],
+      sourceToolIds: [toolId],
+      sourceVersions: ['1'],
+    })
+    expect(buildGatewayManifest(draft, [entry('gitlab'), entry('seaweedfs')])).not.toContain('seaweedfs.nullus.local')
+    expect(buildGatewayManifest(draft, [entry('gitlab'), entry('minio')])).toContain('minio.nullus.local')
   })
 })

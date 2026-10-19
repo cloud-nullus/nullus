@@ -86,10 +86,11 @@ and Secret of the implementation you picked.
 - The SeaweedFS data volume follows the Storage tab size (small 50Gi · medium 100Gi · large 300Gi).
 - Existing stacks saved without a name, and names Nullus does not recognize, still install MinIO as before.
 
-!!! warning "Do not switch implementations after installing"
-    There is no data migration. If you switch on a stack that is already running,
-    the new storage is empty and GitLab cannot find its existing artifacts, uploads
-    or images.
+!!! warning "You cannot switch implementations after installing"
+    There is no data migration. A switch would leave the new storage empty, and GitLab
+    could not find its existing artifacts, uploads or images. So on a stack where the
+    other implementation is already running, the install stops at the secret
+    provisioning step and says why. Switch back, or create a new stack.
 
 ## Deploy
 

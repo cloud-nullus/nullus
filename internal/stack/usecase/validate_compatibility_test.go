@@ -527,3 +527,19 @@ func TestValidateCompatibility_PersistedSeaweedFSStackPasses(t *testing.T) {
 	require.NoError(t, err)
 	assert.Truef(t, out.Compatible, out.Message)
 }
+
+// 오브젝트 스토리지만 고른 스택도 화면(compatibilityRequestedTools)과 같은 판정이어야 한다.
+// 화면은 이 슬롯을 늘 빼서 통과시키는데 서버가 남겨 두면, SeaweedFS 만 고른 스택은 화면에서
+// 통과하고 배포 게이트에서 MATRIX_NOT_FOUND 로 막힌다(MinIO 만 고르면 통과하던 것과도 어긋난다).
+func TestValidateCompatibility_StorageOnlySelectionMatchesLikeWizard(t *testing.T) {
+	repo := repository.NewMemoryCompatibilityRepository()
+	uc := NewValidateCompatibility(repo)
+
+	for _, backend := range []string{"MinIO", "SeaweedFS"} {
+		out, err := uc.Execute(context.Background(), ValidateCompatibilityInput{
+			Tools: map[string]string{"storage_backend": backend},
+		})
+		require.NoError(t, err)
+		assert.Truef(t, out.Compatible, "%s: %s", backend, out.Message)
+	}
+}

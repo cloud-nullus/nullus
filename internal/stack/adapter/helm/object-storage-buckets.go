@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
@@ -45,6 +46,49 @@ func (o *Orchestrator) objectStorageBackend() domain.ObjectStorageBackend {
 		return backend
 	}
 	return domain.MinIOObjectStorage
+}
+
+// ensureObjectStorageBackendNotSwitched 는 이미 다른 구현체로 선 스택에서 구현체를 바꾸지
+// 못하게 막는다.
+//
+// 바꾸면 GitLab 의 연결 Secret 이 빈 새 스토리지를 가리키게 되어 기존 아티팩트·업로드·
+// 이미지가 보이지 않고, 옛 릴리스는 스택을 지울 때까지 고아로 남는다. 오브젝트를 옮기는
+// 기능은 없다. 확인 자체가 실패하면(클러스터 오류) 막지 않는다 — 설치가 그 자리에서
+// 진짜 이유로 실패한다.
+func (o *Orchestrator) ensureObjectStorageBackendNotSwitched(ctx context.Context, selected domain.ObjectStorageBackend, namespace string) error {
+	if o.installer == nil {
+		return nil
+	}
+	for _, other := range domain.ObjectStorageBackends() {
+		if other.Tool == selected.Tool {
+			continue
+		}
+		_, err := o.installer.Status(ctx, other.ReleaseName, namespace)
+		switch {
+		case err == nil:
+			return fmt.Errorf("이 스택에는 이미 %s(릴리스 %s)가 서 있어 %s 로 바꿀 수 없습니다 — 오브젝트를 옮기는 기능이 없어 GitLab 이 기존 아티팩트·업로드·이미지를 잃습니다. storage_backend 를 %s 로 되돌리거나 스택을 새로 만드십시오",
+				other.DisplayName, other.ReleaseName, selected.DisplayName, other.DisplayName)
+		case isReleaseNotFoundError(err):
+			continue
+		default:
+			slog.Warn("다른 오브젝트 스토리지 릴리스를 확인하지 못했습니다", "release", other.ReleaseName, "namespace", namespace, "error", err)
+		}
+	}
+	return nil
+}
+
+// guardObjectStorageSwitch 는 이 스택이 오브젝트 스토리지를 고른 경우에만 전환 가드를 돈다.
+// 실클러스터가 아니면(kubeconfig 가 아니면) 확인할 곳이 없다.
+func (o *Orchestrator) guardObjectStorageSwitch(ctx context.Context) error {
+	cfg := o.currentStackConfig()
+	if cfg == nil || !looksLikeKubeconfig(o.kubeconfig) {
+		return nil
+	}
+	backend, ok := domain.ObjectStorageBackendFor(cfg.Artifacts.StorageBackend)
+	if !ok {
+		return nil
+	}
+	return o.ensureObjectStorageBackendNotSwitched(ctx, backend, o.namespace)
 }
 
 // ensureGitLabObjectStorageBuckets 는 GitLab 이 쓸 버킷을 만든다.
@@ -236,12 +280,13 @@ func s3EndpointURL(endpoint string) string {
 	return endpoint
 }
 
-// buildBucketBootstrapScript 는 S3 CreateBucket 을 HTTP 로 부르는 스크립트다.
+// buildBucketBootstrapScript 는 S3 로 버킷을 확인하고 없으면 만드는 스크립트다.
 //
-// 만들기(PUT)는 200, 이미 있으면 409(BucketAlreadyOwnedByYou)다 — 재시도가 같은
-// 결과여야 하므로 둘 다 받아들인다. 그 뒤 HEAD 가 200 이어야 끝난다: 만들기를
-// 받아들이고도 그 키로 버킷을 읽지 못하면(권한·서명 불일치) GitLab 이 첫 업로드에서
-// 죽는데, 여기서 잡는 편이 원인이 가깝다.
+// 먼저 HEAD 로 본다. 200 이면 만들지 않는다 — 외부 S3(다른 리전의 AWS 등)는 이미 있는
+// 버킷에 대한 PUT 을 리전·본문 문제로 거절할 수 있어, 버킷이 있는데도 설치가 멈춘다.
+// 404 일 때만 만든다(PUT, 200 · 409 는 성공 — 그사이 다른 쪽이 만들었을 수 있다). 그 뒤
+// HEAD 가 200 이어야 끝난다: 만들기를 받아들이고도 그 키로 버킷을 읽지 못하면(권한·서명
+// 불일치) GitLab 이 첫 업로드에서 죽는데, 여기서 잡는 편이 원인이 가깝다.
 //
 // 엔드포인트·자격은 환경변수로 받는다. 스크립트 안에 값이 없으므로 따옴표를
 // 맞출 일도, 로그에 비밀이 찍힐 일도 없다.
@@ -251,21 +296,28 @@ func s3EndpointURL(endpoint string) string {
 // 실측에서 SeaweedFS 게이트웨이가 포트를 열기 전에 만들기가 연결 거절로 죽었다 —
 // mc 는 SDK 가 알아서 재시도해 이 경합이 가려져 있었다. 뜬 뒤의 일시적 5xx 는 curl 의
 // --retry 가 받는다(409·403 같은 확정 응답은 다시 보내지 않는다).
+//
+// 모든 호출에 시간 제한을 둔다. 패킷을 버리는 엔드포인트(NetworkPolicy·방화벽)에서는
+// 연결 시도 하나가 SYN 재전송으로 2분 넘게 붙잡혀 대기 횟수가 아무것도 막지 못하고,
+// 단계는 이유 없는 시간 초과로 죽는다.
 func buildBucketBootstrapScript(buckets []string) string {
 	var sb strings.Builder
 	sb.WriteString("set -eu\n")
 	sb.WriteString(fmt.Sprintf("SIG='aws:amz:%s:s3'\n", domain.ObjectStorageRegion))
 	sb.WriteString("i=0\n")
-	sb.WriteString("until [ \"$(curl -s -o /dev/null -w '%{http_code}' \"$S3_ENDPOINT/\" || true)\" != 000 ]; do\n")
+	sb.WriteString("until [ \"$(curl -s --connect-timeout 3 --max-time 10 -o /dev/null -w '%{http_code}' \"$S3_ENDPOINT/\" || true)\" != 000 ]; do\n")
 	sb.WriteString("  i=$((i+1))\n")
 	sb.WriteString("  if [ \"$i\" -ge \"${S3_WAIT_ATTEMPTS:-60}\" ]; then echo \"S3 endpoint not reachable: $S3_ENDPOINT\" >&2; exit 1; fi\n")
 	sb.WriteString("  sleep \"${S3_WAIT_DELAY:-2}\"\n")
 	sb.WriteString("done\n")
-	sb.WriteString("s3() { curl -sS --retry 5 --retry-delay 2 -o /dev/null -w '%{http_code}' --aws-sigv4 \"$SIG\" --user \"$S3_ACCESS_KEY:$S3_SECRET_KEY\" \"$@\"; }\n")
+	sb.WriteString("s3() { curl -sS --connect-timeout 5 --max-time 30 --retry 5 --retry-delay 2 -o /dev/null -w '%{http_code}' --aws-sigv4 \"$SIG\" --user \"$S3_ACCESS_KEY:$S3_SECRET_KEY\" \"$@\"; }\n")
 	for _, bucket := range buckets {
-		sb.WriteString(fmt.Sprintf("code=$(s3 -X PUT \"$S3_ENDPOINT/%s\")\n", bucket))
-		sb.WriteString(fmt.Sprintf("case \"$code\" in 200|409) ;; *) echo \"create bucket %s: HTTP $code\" >&2; exit 1;; esac\n", bucket))
 		sb.WriteString(fmt.Sprintf("code=$(s3 -I \"$S3_ENDPOINT/%s\")\n", bucket))
+		sb.WriteString("if [ \"$code\" = 404 ]; then\n")
+		sb.WriteString(fmt.Sprintf("  code=$(s3 -X PUT -H 'Content-Length: 0' \"$S3_ENDPOINT/%s\")\n", bucket))
+		sb.WriteString(fmt.Sprintf("  case \"$code\" in 200|409) ;; *) echo \"create bucket %s: HTTP $code\" >&2; exit 1;; esac\n", bucket))
+		sb.WriteString(fmt.Sprintf("  code=$(s3 -I \"$S3_ENDPOINT/%s\")\n", bucket))
+		sb.WriteString("fi\n")
 		sb.WriteString(fmt.Sprintf("[ \"$code\" = 200 ] || { echo \"head bucket %s: HTTP $code\" >&2; exit 1; }\n", bucket))
 		sb.WriteString(fmt.Sprintf("echo \"bucket %s ready\"\n", bucket))
 	}

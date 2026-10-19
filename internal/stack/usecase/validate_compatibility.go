@@ -56,14 +56,15 @@ func stackConfigToCategoryMap(cfg domain.StackConfig) map[string]string {
 // 도구 조합을 가르면 안 된다. 갈랐다면 구현체를 하나 더할 때마다 모든 매트릭스를
 // 한 벌씩 복제해야 하고, 빠뜨린 조합은 "호환 매트릭스 없음" 으로 배포가 막힌다.
 //
-// 표에 없는 이름(s3·gcs 같은 클러스터 밖 제공자)은 지금처럼 대조한다. 빼고 나면
-// 아무것도 남지 않는 요청은 그대로 둔다 — 빈 요청은 아무 매트릭스에나 맞는다.
+// 표에 없는 이름(s3·gcs 같은 클러스터 밖 제공자)은 지금처럼 대조한다. 빼고 나서 아무것도
+// 남지 않으면 어느 매트릭스에나 맞는다 — 화면 게이트(compatibilityRequestedTools)와 같은
+// 판정이다. 남겨 두면 MinIO 만 고른 스택은 통과하고 SeaweedFS 만 고른 스택은 막힌다.
 func withoutInterchangeableSlots(tools map[string]string) map[string]string {
 	name, ok := tools["storage_backend"]
 	if !ok {
 		return tools
 	}
-	if _, known := domain.ObjectStorageBackendNamed(name); !known || len(tools) == 1 {
+	if _, known := domain.ObjectStorageBackendNamed(name); !known {
 		return tools
 	}
 	out := make(map[string]string, len(tools)-1)

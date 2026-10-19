@@ -181,12 +181,6 @@ func ObjectStorageBackendForStep(step string) (ObjectStorageBackend, bool) {
 	return ObjectStorageBackend{}, false
 }
 
-// IsObjectStorageStep 은 오브젝트 스토리지 구현체를 세우는 단계인지 본다.
-func IsObjectStorageStep(step string) bool {
-	_, ok := ObjectStorageBackendForStep(step)
-	return ok
-}
-
 func normalizeObjectStorageTool(name string) string {
 	normalized := strings.ToLower(strings.TrimSpace(name))
 	// 카탈로그는 사람이 읽는 이름을 준다("MinIO (SILO)"). 괄호 뒤는 부연이다.

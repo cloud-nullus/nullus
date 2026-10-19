@@ -862,6 +862,12 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	// chartSpecForStep 아래에 두면 spec 조회에 실패해 "unknown step" 으로
 	// 떨어지므로 그 앞에서 처리한다.
 	if step == "provisioning_secrets" {
+		// 오브젝트 스토리지 구현체를 바꾸는 설치는 여기서 막는다. 이 단계가 GitLab 연결
+		// Secret 을 고른 구현체로 다시 렌더하므로, 구현체 단계에서야 막으면 이미 늦다 —
+		// kind 실측에서 nullus-object-storage 가 없는 nullus-minio 를 가리킨 채로 남았다.
+		if err := o.guardObjectStorageSwitch(ctx); err != nil {
+			return err
+		}
 		// 시크릿을 생성해 OpenBao 에 기록하고 ESO 가 K8s Secret 을 만들 때까지 기다린다.
 		// 후속 차트가 existingSecret 을 참조하므로 이 대기가 없으면 파드가 기동에 실패한다.
 		if err := o.runSecretProvisioning(ctx, o.namespace); err != nil {
@@ -949,6 +955,12 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		if generated := o.defaultGatewayBundleManifest(namespace); strings.TrimSpace(generated) != "" {
 			manifest = generated
 			hasManifest = true
+		}
+	}
+
+	if backend, ok := domain.ObjectStorageBackendForStep(step); ok && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.ensureObjectStorageBackendNotSwitched(ctx, backend, namespace); err != nil {
+			return err
 		}
 	}
 

@@ -626,7 +626,9 @@ const GATEWAY_ROUTE_TIMEOUT_SECONDS = 600
 
 // 화면이 없는 도구는 게이트웨이로 열지 않는다. Trivy 서버는 CI 잡이 클러스터 안에서 부르고,
 // 서버의 기본 게이트웨이(manifest-builders.go)도 라우트를 만들지 않는다.
-const TOOLS_WITHOUT_GATEWAY_ROUTE = new Set(['trivy'])
+// SeaweedFS 는 S3 API 만 쓴다(GitLab 이 클러스터 안에서 붙는다). 라우트를 만들면 GATEWAY_BACKENDS 에
+// 없는 이름이라 seaweedfs-svc 를 가리키는 죽은 라우트가 선다.
+const TOOLS_WITHOUT_GATEWAY_ROUTE = new Set(['trivy', 'seaweedfs'])
 
 export function buildGatewayManifest(draft: StackConfigDraft, manifestTools: ManifestToolEntry[]): string {
   const namespace = draft.namespace.trim() || 'nullus'

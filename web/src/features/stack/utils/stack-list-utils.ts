@@ -767,8 +767,9 @@ export function buildConnectionInfoText(
     `[Access Domain] ${conn.accessDomain || "-"}`,
     ...(conn.accessDomain
       ? [
-          // 콘솔 화면은 MinIO 에만 있다. SeaweedFS 는 S3 API 뿐이라 열 주소가 없다.
-          `[Primary URLs] https://gitlab.${conn.accessDomain} | https://argocd.${conn.accessDomain}${(conn.objectStorage.providerOrEngine || "minio") === "minio" ? ` | https://minio.${conn.accessDomain}` : ""} | https://openbao.${conn.accessDomain}`,
+          // 콘솔 화면은 MinIO 에만 있다. SeaweedFS 는 S3 API 뿐이라 열 주소가 없다. 그 밖의
+          // 이름(s3·gcs)은 서버가 예전처럼 MinIO 를 세우므로 콘솔을 안내한다.
+          `[Primary URLs] https://gitlab.${conn.accessDomain} | https://argocd.${conn.accessDomain}${conn.objectStorage.providerOrEngine === "seaweedfs" ? "" : ` | https://minio.${conn.accessDomain}`} | https://openbao.${conn.accessDomain}`,
         ]
       : []),
     "",
