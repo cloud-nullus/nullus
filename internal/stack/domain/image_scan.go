@@ -51,6 +51,10 @@ type StackImageScan struct {
 	ImageDigest string
 	Release     string
 	Workloads   []string
+	// Namespace 는 이미지를 돌리는 파드의 네임스페이스다. Shared 는 그것이 스택 네임스페이스 밖의
+	// 클러스터 공용 구성요소(cert-manager 등)라는 뜻이다.
+	Namespace string
+	Shared    bool
 	// Exposed 는 이 이미지를 쓰는 파드가 게이트웨이(HTTPRoute)로 클러스터 밖에 열려 있는지다.
 	// ExposedHosts 는 그 HTTPRoute 의 호스트 이름이다(호스트를 적지 않은 경로면 비어 있다).
 	// 같은 CVE 라도 밖에서 닿는 서비스의 것을 먼저 고친다(설치 OSS CVE 대응 정책).

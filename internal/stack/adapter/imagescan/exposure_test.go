@@ -61,7 +61,7 @@ func TestScanner_MarksExposedImages(t *testing.T) {
 	}}
 	s := NewScanner(WithKubectl(kubectl.run), WithPollInterval(time.Millisecond))
 
-	scans, err := s.ScanInstalledImages(context.Background(), []byte("kc"), "argocd-ns")
+	scans, err := s.ScanInstalledImages(context.Background(), []byte("kc"), "argocd-ns", nil)
 	require.NoError(t, err)
 
 	byDigest := map[string]bool{}
@@ -85,7 +85,7 @@ func TestScanner_ScansWhenRoutesUnavailable(t *testing.T) {
 	}, errs: map[string]error{"get httproute": errors.New(`the server doesn't have a resource type "httproutes"`)}}
 	s := NewScanner(WithKubectl(kubectl.run), WithPollInterval(time.Millisecond))
 
-	scans, err := s.ScanInstalledImages(context.Background(), []byte("kc"), "argocd-ns")
+	scans, err := s.ScanInstalledImages(context.Background(), []byte("kc"), "argocd-ns", nil)
 	require.NoError(t, err)
 	for _, sc := range scans {
 		assert.False(t, sc.Exposed)

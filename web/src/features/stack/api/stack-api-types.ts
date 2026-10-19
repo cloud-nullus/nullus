@@ -355,6 +355,10 @@ export interface StackImageScanItem {
   exposed: boolean;
   /** 그 HTTPRoute 의 호스트 이름. 호스트를 적지 않은 경로면 비어 있다. */
   exposedHosts: string[];
+  /** 이미지를 돌리는 파드의 네임스페이스. */
+  namespace?: string;
+  /** 스택 네임스페이스 밖의 클러스터 공용 구성요소(cert-manager 등)다. */
+  shared: boolean;
   status: "scanned" | "failed";
   /** status 가 failed 일 때의 이유. */
   error?: string;

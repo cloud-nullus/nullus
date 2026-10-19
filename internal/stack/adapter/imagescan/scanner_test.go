@@ -239,17 +239,24 @@ func (f *fakeKubectl) run(_ context.Context, _ []byte, args ...string) (string, 
 		}
 		f.manifest = string(raw)
 	}
+	// 가장 긴 접두사를 고른다 — "get pods" 와 "get pods -n cert-manager" 가 함께 맞으면 맵 순서에
+	// 따라 답이 달라진다.
+	best, bestLen, isErr := "", -1, false
+	var bestErr error
 	for prefix, err := range f.errs {
-		if strings.HasPrefix(joined, prefix) {
-			return "", err
+		if strings.HasPrefix(joined, prefix) && len(prefix) > bestLen {
+			bestLen, bestErr, isErr = len(prefix), err, true
 		}
 	}
 	for prefix, out := range f.outputs {
-		if strings.HasPrefix(joined, prefix) {
-			return out, nil
+		if strings.HasPrefix(joined, prefix) && len(prefix) > bestLen {
+			best, bestLen, isErr = out, len(prefix), false
 		}
 	}
-	return "", nil
+	if isErr {
+		return "", bestErr
+	}
+	return best, nil
 }
 
 func TestScanner_ScanInstalledImages(t *testing.T) {
@@ -271,7 +278,7 @@ func TestScanner_ScanInstalledImages(t *testing.T) {
 	}}
 	s := NewScanner(WithKubectl(kubectl.run), WithClock(func() time.Time { return now }), WithPollInterval(time.Millisecond))
 
-	scans, err := s.ScanInstalledImages(context.Background(), []byte("kc"), "harbor-e2e")
+	scans, err := s.ScanInstalledImages(context.Background(), []byte("kc"), "harbor-e2e", nil)
 	require.NoError(t, err)
 
 	require.Len(t, scans, 3)
@@ -312,13 +319,13 @@ func TestScanner_ScanInstalledImages(t *testing.T) {
 
 func TestScanner_FailsWhenNoRunningImages(t *testing.T) {
 	kubectl := &fakeKubectl{outputs: map[string]string{"get nodes": nodesJSON, "get pods": `{"items":[]}`}}
-	_, err := NewScanner(WithKubectl(kubectl.run)).ScanInstalledImages(context.Background(), []byte("kc"), "ns")
+	_, err := NewScanner(WithKubectl(kubectl.run)).ScanInstalledImages(context.Background(), []byte("kc"), "ns", nil)
 	assert.Error(t, err)
 }
 
 func TestScanner_FailsWhenJobFails(t *testing.T) {
 	kubectl := &fakeKubectl{outputs: map[string]string{"get nodes": nodesJSON, "get pods": podsJSON, "get job": " 1"}}
 	_, err := NewScanner(WithKubectl(kubectl.run), WithPollInterval(time.Millisecond)).
-		ScanInstalledImages(context.Background(), []byte("kc"), "harbor-e2e")
+		ScanInstalledImages(context.Background(), []byte("kc"), "harbor-e2e", nil)
 	assert.Error(t, err)
 }

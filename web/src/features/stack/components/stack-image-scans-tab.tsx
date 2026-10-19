@@ -185,6 +185,15 @@ function ImageScanRow({
         </td>
         <td className={tdClass}>
           <span className="block text-[12px] text-[var(--color-text-primary)]">{item.release ?? "-"}</span>
+          {/* 스택 네임스페이스 밖의 공용 구성요소(cert-manager 등)도 스택이 쓰는 것이라 함께 스캔한다. */}
+          {item.shared && (
+            <span
+              title={t("stackList.imageScans.item.sharedHint", { namespace: item.namespace ?? "-" })}
+              className="mr-1 mt-0.5 inline-flex rounded-[var(--radius-sm)] bg-[var(--color-bg-tertiary)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-text-secondary)]"
+            >
+              {t("stackList.imageScans.item.shared")}
+            </span>
+          )}
           {/* 같은 CVE 라도 게이트웨이로 밖에 열린 서비스의 것을 먼저 고친다(설치 OSS CVE 대응 정책). */}
           {item.exposed && <ExposedBadge hosts={item.exposedHosts} />}
           {/* 공통 베이스 이미지는 워크로드 여러 개가 함께 쓴다(gitlab-base 7개, argocd 6개).

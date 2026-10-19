@@ -18,6 +18,7 @@ import (
 type fakeImageScanner struct {
 	mu         sync.Mutex
 	calls      []string
+	shared     []domain.SharedComponent
 	kubeconfig []byte
 	scans      []domain.StackImageScan
 	err        error
@@ -25,9 +26,10 @@ type fakeImageScanner struct {
 	block      chan struct{}
 }
 
-func (f *fakeImageScanner) ScanInstalledImages(_ context.Context, kubeconfig []byte, namespace string) ([]domain.StackImageScan, error) {
+func (f *fakeImageScanner) ScanInstalledImages(_ context.Context, kubeconfig []byte, namespace string, shared []domain.SharedComponent) ([]domain.StackImageScan, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, namespace)
+	f.shared = shared
 	f.kubeconfig = kubeconfig
 	f.mu.Unlock()
 	if f.started != nil {
@@ -321,4 +323,16 @@ func TestScanStackImages_RescanAll_NothingOnAirgap(t *testing.T) {
 
 	assert.Zero(t, uc.RescanAll(context.Background()))
 	assert.Empty(t, scanner.namespaces())
+}
+
+// 스택 스캔은 스택이 쓰는 클러스터 공용 구성요소를 함께 넘긴다.
+func TestScanStackImages_Execute_PassesSharedComponents(t *testing.T) {
+	scanner := &fakeImageScanner{scans: []domain.StackImageScan{{
+		Image: "redis:7", ImageDigest: "sha256:r", Status: domain.ImageScanStatusScanned, ScannedAt: time.Now(),
+	}}}
+	uc := newScanStackImagesUC([]*domain.Stack{imageScanStack("stk_1", true)}, scanner, newFakeImageScanResults(), false)
+
+	_, err := uc.Execute(context.Background(), "stk_1")
+	require.NoError(t, err)
+	assert.Equal(t, domain.SharedComponents(), scanner.shared)
 }

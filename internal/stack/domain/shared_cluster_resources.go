@@ -21,6 +21,11 @@ const (
 	CertManagerReleaseName   = "cert-manager"
 	MetricsServerReleaseName = "metrics-server"
 
+	// ESOReleaseName · ESONamespace 는 External Secrets 의 릴리스와 네임스페이스다. 설치(adapter/helm
+	// 의 ESONamespace)와 같아야 한다 — 계약 테스트가 본다.
+	ESOReleaseName = "external-secrets"
+	ESONamespace   = "external-secrets"
+
 	// 내부 CA — 설치가 cert-manager 단계에서 만든다. 이름이 Nullus 전용이라 표시 없이도
 	// Nullus 것이다. 백업도 같은 이름으로 담는다(shared/domain).
 	InternalCABootstrapIssuerName = shareddomain.InternalCABootstrapIssuerName
@@ -156,4 +161,21 @@ func lookupNestedValue(values map[string]any, path []string) (any, bool) {
 	}
 	value, ok := current[path[len(path)-1]]
 	return value, ok
+}
+
+// SharedComponent 는 스택이 쓰는 클러스터 공용 구성요소 하나다(스택 네임스페이스 밖).
+type SharedComponent struct {
+	Release   string
+	Namespace string
+}
+
+// SharedComponents 는 스택이 쓰는 공용 구성요소다. 설치 이미지 스캔이 스택 네임스페이스와 함께 본다 —
+// 그 이미지의 CVE 도 스택의 위험이다. 클러스터에 이미 있던 것을 재사용했어도 스택이 쓰므로 넣는다.
+// 네임스페이스는 설치기가 못박은 곳이다(cert-manager · metrics-server 는 chart spec, ESO 는 ESONamespace).
+func SharedComponents() []SharedComponent {
+	return []SharedComponent{
+		{Release: CertManagerReleaseName, Namespace: "cert-manager"},
+		{Release: MetricsServerReleaseName, Namespace: "kube-system"},
+		{Release: ESOReleaseName, Namespace: ESONamespace},
+	}
 }

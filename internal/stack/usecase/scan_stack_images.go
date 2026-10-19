@@ -100,7 +100,7 @@ func (uc *ScanStackImages) Execute(ctx context.Context, stackID string) (*domain
 		return nil, fmt.Errorf("클러스터 %s 의 kubeconfig 가 없습니다", stack.ClusterID)
 	}
 
-	scans, err := uc.scanner.ScanInstalledImages(ctx, kubeconfig, stack.Namespace)
+	scans, err := uc.scanner.ScanInstalledImages(ctx, kubeconfig, stack.Namespace, domain.SharedComponents())
 	if err != nil {
 		return nil, fmt.Errorf("스택 %s 설치 이미지 스캔 실패: %w", stack.ID, err)
 	}

@@ -54,6 +54,7 @@ function item(image: string, overrides: Partial<StackImageScanItem> = {}): Stack
     workloads: ['nullus-postgresql-0'],
     exposed: false,
     exposedHosts: [],
+    shared: false,
     status: 'scanned',
     counts: { critical: 0, high: 2, medium: 5, low: 3, unknown: 0 },
     fixableCounts: { critical: 0, high: 1, medium: 2, low: 0, unknown: 0 },
@@ -345,3 +346,29 @@ describe('StackImageScansTab — 외부 노출', () => {
     )
   })
 })
+
+describe('StackImageScansTab — 공용 구성요소', () => {
+  beforeEach(() => {
+    mockUseStackImageScans.mockReset()
+    mockUseStackImageVulnerabilities.mockReset()
+    mockUseStackImageVulnerabilities.mockReturnValue({ data: vulnerabilityList, isLoading: false, isError: false, isFetching: false })
+  })
+
+  // 스택 네임스페이스 밖의 cert-manager 등도 스택이 쓰는 것이라 함께 보이되, 공용이라고 밝힌다.
+  it('공용 구성요소에 표시와 네임스페이스를 보인다', () => {
+    mockReport(report({
+      items: [
+        item('quay.io/jetstack/cert-manager-controller:v1.16.3', { release: 'cert-manager', shared: true, namespace: 'cert-manager' }),
+        item('redis:7', { imageDigest: 'sha256:r' }),
+      ],
+      total: 2,
+    }))
+
+    render(<StackImageScansTab stackId="stk_1" />)
+
+    const badges = screen.getAllByText('Shared')
+    expect(badges).toHaveLength(1)
+    expect(badges[0].getAttribute('title')).toContain('cert-manager')
+  })
+})
+

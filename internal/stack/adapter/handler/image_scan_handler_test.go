@@ -67,7 +67,7 @@ func TestImageScanHandler_Scanned(t *testing.T) {
 			ScannerVersion: "0.74.0", DBUpdatedAt: &fresh, ScannedAt: now,
 			Exposed: true, ExposedHosts: []string{"argocd.nullus.local"}},
 		{Image: "argocd:v2", ImageDigest: "sha256:a", Status: domain.ImageScanStatusFailed, Error: "manifest unknown",
-			DBUpdatedAt: &old, ScannedAt: now},
+			DBUpdatedAt: &old, ScannedAt: now, Namespace: "cert-manager", Shared: true},
 	})
 
 	code, body := getImageScans(t, fakeImageScanReporter{report: &report}, now)
@@ -94,6 +94,10 @@ func TestImageScanHandler_Scanned(t *testing.T) {
 	assert.Equal(t, "manifest unknown", failed["error"])
 	assert.Equal(t, false, failed["exposed"])
 	assert.Equal(t, []any{}, failed["exposed_hosts"], "null 이 아니라 빈 목록이다")
+	// 스택 네임스페이스 밖 공용 구성요소는 어디 있는지와 함께 공용이라고 싣는다.
+	assert.Equal(t, true, failed["shared"])
+	assert.Equal(t, "cert-manager", failed["namespace"])
+	assert.Equal(t, false, scanned["shared"])
 	// 스캔하지 못한 이미지는 건수를 싣지 않는다 — 0 으로 읽히면 안 된다.
 	assert.NotContains(t, failed, "counts")
 	assert.Equal(t, true, failed["db_stale"])
