@@ -61,12 +61,14 @@ type toolBaseline struct {
 
 // toolBaselineMap maps tool names to their baseline resources per instance.
 var toolBaselineMap = map[string]toolBaseline{
-	"gitlab-ce":       {CPUCores: 4.0, MemoryGi: 8.0, StorageGi: 30.0},
-	"gitlab-runner":   {CPUCores: 2.0, MemoryGi: 4.0, StorageGi: 10.0},
-	"argocd":          {CPUCores: 2.0, MemoryGi: 3.0, StorageGi: 5.0},
-	"prometheus":      {CPUCores: 1.0, MemoryGi: 4.0, StorageGi: 20.0},
-	"grafana":         {CPUCores: 1.0, MemoryGi: 2.0, StorageGi: 5.0},
-	"minio":           {CPUCores: 1.0, MemoryGi: 2.0, StorageGi: 50.0},
+	"gitlab-ce":     {CPUCores: 4.0, MemoryGi: 8.0, StorageGi: 30.0},
+	"gitlab-runner": {CPUCores: 2.0, MemoryGi: 4.0, StorageGi: 10.0},
+	"argocd":        {CPUCores: 2.0, MemoryGi: 3.0, StorageGi: 5.0},
+	"prometheus":    {CPUCores: 1.0, MemoryGi: 4.0, StorageGi: 20.0},
+	"grafana":       {CPUCores: 1.0, MemoryGi: 2.0, StorageGi: 5.0},
+	"minio":         {CPUCores: 1.0, MemoryGi: 2.0, StorageGi: 50.0},
+	// all-in-one 파드 하나. 유휴 40Mi 남짓(kind 실측)이라 MinIO 보다 가볍게 잡는다.
+	"seaweedfs":       {CPUCores: 0.5, MemoryGi: 1.0, StorageGi: 50.0},
 	"opentelemetry":   {CPUCores: 1.0, MemoryGi: 2.0, StorageGi: 0.0},
 	"opensearch":      {CPUCores: 2.0, MemoryGi: 4.0, StorageGi: 30.0},
 	"harbor":          {CPUCores: 2.0, MemoryGi: 4.0, StorageGi: 40.0},

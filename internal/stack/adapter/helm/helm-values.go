@@ -130,6 +130,9 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 		if step == "installing_postgresql" {
 			base = mergeMaps(base, o.sharedPostgresValues(cfg))
 		}
+		if step == "installing_seaweedfs" {
+			base = mergeMaps(base, seaweedFSDataValues(cfg))
+		}
 		if step == "installing_gitlab" {
 			base = mergeMaps(base, o.gitlabExternalSharedServiceValues(cfg))
 		}
@@ -164,6 +167,10 @@ func (o *Orchestrator) mergedValuesForStep(step string, spec ChartSpec) map[stri
 
 	if step == "installing_postgresql" {
 		base = mergeMaps(base, o.sharedPostgresValues(cfg))
+	}
+
+	if step == "installing_seaweedfs" {
+		base = mergeMaps(base, seaweedFSDataValues(cfg))
 	}
 
 	if step == "installing_minio" {
@@ -311,6 +318,24 @@ func (o *Orchestrator) sharedPostgresValues(cfg *domain.StackConfig) map[string]
 	}
 }
 
+// seaweedFSDataValues 는 SeaweedFS 데이터 볼륨 크기를 Storage 탭에서 고른 값으로 맞춘다.
+//
+// PostgreSQL 과 같은 규칙이다 — 설치 후에 늘리기 어려운 값이라 기본값으로 조용히
+// 깔리면 안 된다. MinIO 는 여기에 넣지 않는다: 이미 선 스택의 PVC 크기를 바꾸면
+// 업그레이드가 PVC 축소로 거절된다.
+func seaweedFSDataValues(cfg *domain.StackConfig) map[string]any {
+	if cfg == nil || cfg.Storage == nil || cfg.Storage.ObjectStorage.Size <= 0 {
+		return nil
+	}
+	return map[string]any{
+		"allInOne": map[string]any{
+			"data": map[string]any{
+				"size": fmt.Sprintf("%gGi", cfg.Storage.ObjectStorage.Size),
+			},
+		},
+	}
+}
+
 // harborExternalURLValues 는 Harbor 의 externalURL 을 실제 주소로 맞춘다.
 //
 // Harbor 는 이 값을 토큰 발급 엔드포인트로 클라이언트에게 되돌려준다. 기본값을
@@ -450,7 +475,7 @@ func (o *Orchestrator) gitlabExternalSharedServiceValues(_ *domain.StackConfig) 
 				},
 			},
 		},
-		// Container Registry 를 S3(MinIO) 백엔드로 고정한다. 차트 기본값인
+		// Container Registry 를 스택의 S3 백엔드로 고정한다. 차트 기본값인
 		// filesystem 은 PVC 없이 /tmp 를 쓰므로 파드 재시작 시 이미지가 사라지고,
 		// replica 2개 사이에 스토리지가 공유되지 않아 pull 이 비결정적으로 실패한다.
 		"registry": map[string]any{
@@ -470,17 +495,18 @@ func (o *Orchestrator) sharedObjectStorageSecretManifest(namespace string) strin
 		namespace = "nullus"
 	}
 
-	endpoint := fmt.Sprintf("http://nullus-minio.%s.svc.cluster.local:9000", namespace)
-	accessKey := MinIORootUser
-	secretKey, err := o.readSecretValue(context.Background(), namespace, ProvisionedMinIOSecret, "rootPassword")
+	backend := o.objectStorageBackend()
+	endpoint := backend.Endpoint(namespace)
+	accessKey := domain.ObjectStorageAccessKey
+	secretKey, err := o.readSecretValue(context.Background(), namespace, backend.CredentialSecret, backend.SecretKeyKey)
 	if err != nil {
-		slog.Warn("MinIO 자격증명을 읽지 못해 object storage secret 생성을 건너뜁니다",
-			"namespace", namespace, "error", err)
+		slog.Warn("오브젝트 스토리지 자격증명을 읽지 못해 object storage secret 생성을 건너뜁니다",
+			"namespace", namespace, "backend", backend.Tool, "error", err)
 		return ""
 	}
 
-	connection := fmt.Sprintf("provider: AWS\nregion: us-east-1\naws_access_key_id: %s\naws_secret_access_key: %s\nendpoint: %s\npath_style: true\n",
-		accessKey, secretKey, endpoint)
+	connection := fmt.Sprintf("provider: AWS\nregion: %s\naws_access_key_id: %s\naws_secret_access_key: %s\nendpoint: %s\npath_style: true\n",
+		domain.ObjectStorageRegion, accessKey, secretKey, endpoint)
 
 	return fmt.Sprintf(`apiVersion: v1
 kind: Secret

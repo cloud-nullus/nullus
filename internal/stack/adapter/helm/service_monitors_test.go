@@ -28,6 +28,8 @@ func TestServiceMonitorValues_CarryPrometheusReleaseLabel(t *testing.T) {
 		{step: "installing_grafana", path: []string{"serviceMonitor"}, label: []string{"labels"}},
 		{step: "installing_minio", path: []string{"metrics", "serviceMonitor"}, label: []string{"additionalLabels"}},
 		{step: "installing_logging", path: []string{"serviceMonitor"}, label: []string{"additionalLabels"}},
+		// seaweedfs 차트는 ServiceMonitor 스위치가 global.seaweedfs.monitoring 에 있다.
+		{step: "installing_seaweedfs", path: []string{"global", "seaweedfs", "monitoring"}, label: []string{"additionalLabels"}},
 	}
 
 	for _, tc := range cases {

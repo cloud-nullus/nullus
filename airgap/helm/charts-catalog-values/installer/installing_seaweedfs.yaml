@@ -1,0 +1,33 @@
+# AUTO-GENERATED — go test ./internal/stack/adapter/helm -run TestAirgapInstallerValues -update-airgap-values
+# step: installing_seaweedfs
+# chart: seaweedfs 4.48.0
+allInOne:
+    data:
+        size: 50Gi
+        type: persistentVolumeClaim
+    enabled: true
+    resources:
+        limits:
+            cpu: "1"
+            memory: 2Gi
+        requests:
+            cpu: 250m
+            memory: 512Mi
+    s3:
+        enableAuth: true
+        enabled: true
+        existingConfigSecret: nullus-seaweedfs-credentials
+filer:
+    enabled: false
+global:
+    seaweedfs:
+        createClusterRole: false
+image:
+    repository: docker.io/chrislusf/seaweedfs
+    tag: "4.48"
+master:
+    enabled: false
+s3:
+    enabled: false
+volume:
+    enabled: false

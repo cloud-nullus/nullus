@@ -176,6 +176,11 @@ func (o *Orchestrator) resourceDefaultValuesForStep(step string, cfg *domain.Sta
 		return map[string]any{
 			"resources": resources,
 		}
+	// SeaweedFS all-in-one 은 파드 하나다. 자원 칸이 allInOne 아래에 있다.
+	case "installing_seaweedfs":
+		return map[string]any{
+			"allInOne": map[string]any{"resources": resources},
+		}
 	// Gitea 는 파드 하나다 — 계획 벡터를 나누지 않고 그대로 싣는다.
 	case "installing_gitea":
 		return map[string]any{
@@ -345,6 +350,8 @@ func (o *Orchestrator) resourceDefaultKeyForStep(step string, cfg *domain.StackC
 		return "cert-manager"
 	case "installing_minio":
 		return "minio"
+	case "installing_seaweedfs":
+		return "seaweedfs"
 	case "installing_gitlab":
 		return "gitlab-ce"
 	// Gitea·Jenkins·Harbor·Nexus 는 오래 빠져 있었다. 키가 없으면 관리자

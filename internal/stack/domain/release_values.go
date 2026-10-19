@@ -57,6 +57,9 @@ var protectedValuePathsByStep = map[string][]string{
 	"installing_runner": {"gitlabUrl"},
 	// MinIO 는 네임스페이스와 OIDC 블록을 플랫폼이 채운다.
 	"installing_minio": {"namespace", "oidc"},
+	// SeaweedFS 의 S3 신원은 금고에서 렌더한 Secret 이다. 바꾸면 GitLab 이 쓰는
+	// 연결 Secret 과 다른 자격으로 게이트웨이가 뜬다.
+	"installing_seaweedfs": {"allInOne.s3.existingConfigSecret", "allInOne.s3.enableAuth"},
 	// oidcValuesForStep
 	"installing_grafana": {"envValueFrom", "grafana.ini.auth.generic_oauth"},
 	"installing_argocd":  {"configs.cm", "configs.secret"},

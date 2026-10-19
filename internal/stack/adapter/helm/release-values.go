@@ -34,6 +34,7 @@ var releaseStepNames = map[string]string{
 	"external-secrets":          "installing_external_secrets",
 	domain.PostgresServiceName:  "installing_postgresql",
 	domain.MinIOServiceName:     "installing_minio",
+	domain.SeaweedFSReleaseName: "installing_seaweedfs",
 	"gitlab":                    "installing_gitlab",
 	domain.GiteaReleaseName:     "installing_gitea",
 	"gitlab-runner":             stepInstallingRunner,

@@ -3,7 +3,7 @@
 # Regenerate whenever chart deps or app versions change.
 # Format : <registry>/<repo>:<tag>, one per line. Blank / "#" lines ignored.
 # CI     : MODE=check ./00-generate-images.sh blocks drift.
-# installer-values-sha256: 0f1c5a2acb4c0493fe01b80bb6820d5e452bdcb61c9fd77aa2bf2bf568dcef56
+# installer-values-sha256: b03d5ac9d96fbc793032ff81f2bae778b912ca9f536b3756158041a8ae79645c
 
 # --- Nullus app + chart dependency images (rendered from chart) ---
 busybox:1.37
@@ -27,6 +27,7 @@ docker.io/bitnamilegacy/postgresql:17.6.0-debian-12-r4
 docker.io/bitnamilegacy/redis-exporter:1.76.0-debian-12-r0
 docker.io/bitnamilegacy/redis:7.4.2-debian-12-r0
 docker.io/bitnamilegacy/valkey-cluster:8.1.3-debian-12-r3
+docker.io/chrislusf/seaweedfs:4.48
 docker.io/envoyproxy/gateway:v1.4.3
 docker.io/envoyproxy/ratelimit:bb4dae24
 docker.io/grafana/grafana:11.5.1

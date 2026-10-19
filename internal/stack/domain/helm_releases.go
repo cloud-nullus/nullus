@@ -30,6 +30,9 @@ var InstalledHelmReleaseNames = []string{
 	"external-secrets",
 	"nullus-postgresql",
 	"nullus-minio",
+	// installing_seaweedfs. 오브젝트 스토리지 슬롯은 둘 중 하나만 서지만 삭제는
+	// 어느 쪽인지 모른 채 훑는다. 빼면 스택을 지워도 데이터 PVC 가 남는다.
+	SeaweedFSReleaseName,
 	// installing_container_registry 변형. 남기면 레지스트리 파드와 PVC 가 그대로
 	// 떠 있어 다음 스택이 같은 네임스페이스를 쓸 때 리소스를 물고 늘어진다.
 	HarborReleaseName,

@@ -21,6 +21,7 @@ import (
 // (고정: TestPlannedResources_CoverEveryToolInLiteTemplate)
 var plannedSlotForStep = map[string]string{
 	"installing_minio":          domain.SlotStorageBackend,
+	"installing_seaweedfs":      domain.SlotStorageBackend,
 	"installing_gitlab":         domain.SlotSourceRepository,
 	"installing_gitea":          domain.SlotSourceRepository,
 	"installing_harbor":         domain.SlotContainerRegistry,

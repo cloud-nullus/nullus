@@ -151,6 +151,18 @@ func defaultChartSpecForStep(step string) (ChartSpec, bool) {
 			Values:      DefaultValues("installing_minio"),
 			Wait:        false,
 		}, true
+	case "installing_seaweedfs":
+		// 릴리스명이 곧 S3 Service 이름의 뿌리다(<릴리스>-all-in-one). 소비자가 붙을
+		// 주소(domain.SeaweedFSObjectStorage.Endpoint)가 이 이름에서 나오므로 domain
+		// 상수를 쓴다.
+		return ChartSpec{
+			ReleaseName: domain.SeaweedFSReleaseName,
+			ChartName:   "seaweedfs",
+			RepoURL:     domain.SeaweedFSChartRepo,
+			Version:     domain.SeaweedFSChartVersion,
+			Values:      DefaultValues("installing_seaweedfs"),
+			Wait:        false,
+		}, true
 	case "installing_gitlab":
 		return ChartSpec{
 			ChartName: "gitlab",

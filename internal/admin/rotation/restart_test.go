@@ -21,6 +21,7 @@ func TestRestartPolicy_RequiresRestart(t *testing.T) {
 		{"gitlab", true, "설정을 기동 시 읽음"},
 		{"postgresql", true, "자격증명 변경 시 재기동 필요"},
 		{"minio", true, "루트 자격 변경 시 재기동 필요"},
+		{"seaweedfs", true, "S3 신원 설정(-s3.config)을 기동 시 읽음"},
 		{"argocd", false, "repository Secret 을 매 요청 시 읽음"},
 		{"unknown-tool", false, "알 수 없으면 재시작하지 않는다 (보수적)"},
 	}

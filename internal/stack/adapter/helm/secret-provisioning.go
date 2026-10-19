@@ -60,6 +60,9 @@ type ManagedSecret struct {
 	// TemplateData 가 있으면 ExternalSecret 의 target.template 으로 렌더링한다.
 	// 값 안에서 {{ .키 }} 로 Entries 의 TargetKey 를 참조한다.
 	TemplateData map[string]string
+	// KeepEntries 는 템플릿과 함께 Entries 의 원본 값도 Secret 에 남긴다.
+	// (externalsecret.Spec.KeepEntries)
+	KeepEntries bool
 }
 
 // 프로비저닝된 Secret 이름. 차트 values 가 existingSecret 으로 참조한다.
@@ -83,15 +86,32 @@ const (
 	MinIORootUser = domain.MinIORootUser
 )
 
-// managedSecrets 는 현재 관리 대상 시크릿이다.
+// managedSecrets 는 오브젝트 스토리지가 MinIO 인 스택의 관리 대상 시크릿이다.
+// 설정을 모를 때의 기본값이기도 하다(domain.ObjectStorageBackendFor 의 빈 이름).
+func managedSecrets(namespace string) []ManagedSecret {
+	return managedSecretsFor(namespace, domain.MinIOObjectStorage)
+}
+
+// managedSecretsFor 는 현재 관리 대상 시크릿이다.
+//
+// 오브젝트 스토리지 자격은 고른 구현체(storage)에서 온다. GitLab 의 연결 Secret 은
+// 그 구현체의 금고 경로와 엔드포인트로 만들 뿐 어느 구현체인지는 모른다 — S3 계약만
+// 맞으면 같은 YAML 이다.
 //
 // provider 발급이 필요한 토큰(Runner 등록 토큰, registry PAT)은 해당 OSS 설치
 // 이후에만 얻을 수 있으므로 이 단계가 아니라 회전 컨트롤러가 담당한다.
-func managedSecrets(namespace string) []ManagedSecret {
+func managedSecretsFor(namespace string, storage domain.ObjectStorageBackend) []ManagedSecret {
 	if strings.TrimSpace(namespace) == "" {
 		namespace = defaultStackNamespace
 	}
-	minioEndpoint := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", domain.MinIOServiceName, namespace, domain.MinIOServicePort)
+	storageEndpoint := storage.Endpoint(namespace)
+	// 소비자 Secret 은 구현체의 금고 경로에서 자격을 받아 S3 키 이름으로 싣는다.
+	storageCredentials := func() []SecretEntry {
+		return []SecretEntry{
+			{PathSuffix: storage.VaultAccessKeyPath, TargetKey: "accessKey", Fixed: domain.ObjectStorageAccessKey},
+			{PathSuffix: storage.VaultSecretKeyPath, TargetKey: "secretKey"},
+		}
+	}
 
 	return []ManagedSecret{
 		{
@@ -106,16 +126,7 @@ func managedSecrets(namespace string) []ManagedSecret {
 				{PathSuffix: "storage/postgresql/replication-password", TargetKey: "replication-password"},
 			},
 		},
-		{
-			// charts.min.io 의 existingSecret 은 rootUser/rootPassword 키를 읽는다.
-			TargetSecret:    ProvisionedMinIOSecret,
-			Consumer:        "MinIO, GitLab(object storage)",
-			RestartRequired: true,
-			Entries: []SecretEntry{
-				{PathSuffix: "artifacts/minio/root-user", TargetKey: domain.MinIOUserKey, Fixed: MinIORootUser},
-				{PathSuffix: "artifacts/minio/root-password", TargetKey: domain.MinIOPasswordKey},
-			},
-		},
+		objectStorageCredentialSecret(storage),
 		{
 			// GitLab 차트의 global.initialRootPassword 가 참조한다.
 			TargetSecret:    ProvisionedGitLabRootSecret,
@@ -158,32 +169,27 @@ func managedSecrets(namespace string) []ManagedSecret {
 		{
 			// GitLab object storage 연결 정보. 값 자체는 MinIO 자격이므로
 			// 같은 OpenBao 경로를 참조하고 ESO template 으로 YAML 을 만든다.
+			// (SeaweedFS 를 고르면 SeaweedFS 자격이다 — managedSecretsFor 주석)
 			// 하드코딩 연결 문자열을 대체한다.
 			TargetSecret:    ProvisionedObjectStorageSecret,
 			Consumer:        "GitLab(object storage)",
 			RestartRequired: true,
-			Entries: []SecretEntry{
-				{PathSuffix: "artifacts/minio/root-user", TargetKey: "accessKey", Fixed: MinIORootUser},
-				{PathSuffix: "artifacts/minio/root-password", TargetKey: "secretKey"},
-			},
+			Entries:         storageCredentials(),
 			TemplateData: map[string]string{
-				"connection": objectStorageConnectionTemplate(minioEndpoint),
-				"config":     objectStorageConnectionTemplate(minioEndpoint),
+				"connection": objectStorageConnectionTemplate(storageEndpoint),
+				"config":     objectStorageConnectionTemplate(storageEndpoint),
 			},
 		},
 		{
 			// Container Registry 스토리지. 차트 기본값은 filesystem(/tmp/registry)
 			// 이라 파드 재시작 시 이미지가 사라지고, replica 가 2개면 push 한 파드와
-			// pull 하는 파드가 달라 비결정적으로 실패한다. S3(MinIO) 로 고정한다.
+			// pull 하는 파드가 달라 비결정적으로 실패한다. 스택의 S3 로 고정한다.
 			TargetSecret:    ProvisionedRegistryStorageSecret,
 			Consumer:        "GitLab(container registry)",
 			RestartRequired: true,
-			Entries: []SecretEntry{
-				{PathSuffix: "artifacts/minio/root-user", TargetKey: "accessKey", Fixed: MinIORootUser},
-				{PathSuffix: "artifacts/minio/root-password", TargetKey: "secretKey"},
-			},
+			Entries:         storageCredentials(),
 			TemplateData: map[string]string{
-				RegistryStorageSecretKey: registryStorageConfigTemplate(minioEndpoint),
+				RegistryStorageSecretKey: registryStorageConfigTemplate(storageEndpoint),
 			},
 		},
 		{
@@ -237,6 +243,51 @@ func managedSecrets(namespace string) []ManagedSecret {
 	}
 }
 
+// objectStorageCredentialSecret 은 오브젝트 스토리지 구현체 자신이 읽는 자격 Secret 이다.
+//
+// 구현체마다 차트가 읽는 모양이 다르다 — MinIO 는 rootUser/rootPassword 두 키,
+// SeaweedFS 는 S3 게이트웨이의 신원(identity) JSON 이다. 값의 원천은 둘 다 금고다.
+func objectStorageCredentialSecret(storage domain.ObjectStorageBackend) ManagedSecret {
+	entries := []SecretEntry{
+		{PathSuffix: storage.VaultAccessKeyPath, TargetKey: storage.AccessKeyKey, Fixed: domain.ObjectStorageAccessKey},
+		{PathSuffix: storage.VaultSecretKeyPath, TargetKey: storage.SecretKeyKey},
+	}
+	switch storage.Tool {
+	case domain.ObjectStorageToolSeaweedFS:
+		return ManagedSecret{
+			// 차트의 allInOne.s3.existingConfigSecret 이 seaweedfs_s3_config 키를 읽는다.
+			// 원본 키(accessKey/secretKey)도 남긴다 — 버킷 부트스트랩과 연결정보가
+			// 줄바꿈 없는 값을 읽어야 한다.
+			TargetSecret:    storage.CredentialSecret,
+			Consumer:        "SeaweedFS, GitLab(object storage)",
+			RestartRequired: true,
+			Entries:         entries,
+			TemplateData: map[string]string{
+				domain.SeaweedFSS3ConfigKey: seaweedFSS3ConfigTemplate(storage),
+			},
+			KeepEntries: true,
+		}
+	default:
+		// charts.min.io 의 existingSecret 은 rootUser/rootPassword 키를 읽는다.
+		return ManagedSecret{
+			TargetSecret:    storage.CredentialSecret,
+			Consumer:        "MinIO, GitLab(object storage)",
+			RestartRequired: true,
+			Entries:         entries,
+		}
+	}
+}
+
+// seaweedFSS3ConfigTemplate 은 SeaweedFS S3 게이트웨이의 신원 설정이다(-s3.config).
+//
+// 스택이 쓰는 신원은 하나다 — GitLab 이 버킷을 만들고 읽고 쓴다. 값은 생성기
+// 알파벳(영숫자)이라 JSON 이스케이프가 필요 없다.
+func seaweedFSS3ConfigTemplate(storage domain.ObjectStorageBackend) string {
+	return `{"identities":[{"name":"` + domain.ObjectStorageAccessKey + `",` +
+		`"credentials":[{"accessKey":"{{ .` + storage.AccessKeyKey + ` }}","secretKey":"{{ .` + storage.SecretKeyKey + ` }}"}],` +
+		`"actions":["Admin","Read","List","Tagging","Write"]}]}`
+}
+
 // registryStorageConfigTemplate 은 Docker distribution 의 storage 블록이다.
 //
 // Rails 의 object_store(objectStorageConnectionTemplate)와 키 이름이 다르다 —
@@ -247,12 +298,12 @@ func registryStorageConfigTemplate(endpoint string) string {
 		"  bucket: " + RegistryStorageBucket + "\n" +
 		"  accesskey: {{ .accessKey }}\n" +
 		"  secretkey: {{ .secretKey }}\n" +
-		"  region: us-east-1\n" +
+		"  region: " + domain.ObjectStorageRegion + "\n" +
 		"  regionendpoint: " + endpoint + "\n" +
 		"  v4auth: true\n" +
 		"  pathstyle: true\n" +
 		// 리다이렉트를 끄면 레지스트리가 blob 을 직접 흘려보낸다.
-		// 켜두면 클라이언트를 MinIO 의 클러스터 내부 주소로 보내는데,
+		// 켜두면 클라이언트를 오브젝트 스토리지의 클러스터 내부 주소로 보내는데,
 		// kubelet 은 클러스터 DNS 를 쓰지 않아 그 주소를 해석하지 못하고
 		// 이미지 pull 이 타임아웃으로 실패한다.
 		"redirect:\n" +
@@ -262,7 +313,7 @@ func registryStorageConfigTemplate(endpoint string) string {
 // objectStorageConnectionTemplate 은 ESO template 으로 렌더링할 연결 YAML 이다.
 func objectStorageConnectionTemplate(endpoint string) string {
 	return "provider: AWS\n" +
-		"region: us-east-1\n" +
+		"region: " + domain.ObjectStorageRegion + "\n" +
 		"aws_access_key_id: {{ .accessKey }}\n" +
 		"aws_secret_access_key: {{ .secretKey }}\n" +
 		"endpoint: " + endpoint + "\n" +
@@ -348,6 +399,7 @@ func externalSecretManifest(namespace, pathPrefix string, item ManagedSecret) st
 		SecretStoreName: ESOSecretStoreName,
 		Entries:         entries,
 		TemplateData:    item.TemplateData,
+		KeepEntries:     item.KeepEntries,
 	})
 	if err != nil {
 		slog.Error("ExternalSecret 렌더 실패", "secret", item.TargetSecret, "error", err)
@@ -412,7 +464,7 @@ func (o *Orchestrator) ProvisionSecrets(
 
 	// 기본 시크릿에 SSO client secret 을 더한다.
 	// 설치되는 도구가 스택마다 다르므로 목록도 스택 구성에서 파생된다.
-	items := append(managedSecrets(namespace), o.ssoManagedSecrets()...)
+	items := append(managedSecretsFor(namespace, o.objectStorageBackend()), o.ssoManagedSecrets()...)
 
 	for _, item := range items {
 		for _, entry := range item.Entries {

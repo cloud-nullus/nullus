@@ -31,6 +31,7 @@ var restartRequiredProviders = map[string]bool{
 	"gitlab-registry": true,
 	"postgresql":      true,
 	"minio":           true,
+	"seaweedfs":       true,
 	"harbor":          true,
 	"grafana":         true,
 
@@ -162,6 +163,8 @@ func normalizeReleaseName(provider string) string {
 		return shareddomain.PostgresReleaseName
 	case "minio":
 		return shareddomain.MinIOReleaseName
+	case "seaweedfs":
+		return shareddomain.SeaweedFSReleaseName
 	default:
 		return p
 	}

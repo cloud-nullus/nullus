@@ -467,3 +467,63 @@ func TestValidateCompatibility_PersistedMode_NoToolsConfigured_SkipsAsPass(t *te
 	assert.Nil(t, out.Matrix)
 	assert.Contains(t, out.Message, "skipped")
 }
+
+// 오브젝트 스토리지 구현체는 S3 계약으로 갈아 끼운다. 매트릭스가 MinIO 로 적혀
+// 있어도 SeaweedFS 를 고른 조합이 "호환 매트릭스 없음" 으로 막히면 안 된다.
+func TestValidateCompatibility_ObjectStorageBackendIsInterchangeable(t *testing.T) {
+	repo := repository.NewMemoryCompatibilityRepository()
+	uc := NewValidateCompatibility(repo)
+
+	for _, backend := range []string{"MinIO", "SeaweedFS"} {
+		out, err := uc.Execute(context.Background(), ValidateCompatibilityInput{
+			Tools: map[string]string{
+				"source_repository": "GitLab CE",
+				"ci_platform":       "GitLab CI",
+				"cd_tool":           "Argo CD",
+				"storage_backend":   backend,
+			},
+		})
+		require.NoError(t, err)
+		assert.Truef(t, out.Compatible, "%s: %s", backend, out.Message)
+		assert.NotNil(t, out.Matrix, backend)
+	}
+}
+
+// 클러스터 밖 제공자 이름은 구현체가 아니다 — 지금처럼 매트릭스 대조를 받는다.
+func TestValidateCompatibility_UnknownStorageProviderStillChecked(t *testing.T) {
+	repo := repository.NewMemoryCompatibilityRepository()
+	uc := NewValidateCompatibility(repo)
+
+	out, err := uc.Execute(context.Background(), ValidateCompatibilityInput{
+		Tools: map[string]string{
+			"source_repository": "GitLab CE",
+			"ci_platform":       "GitLab CI",
+			"cd_tool":           "Argo CD",
+			"storage_backend":   "gcs",
+		},
+	})
+	require.NoError(t, err)
+	assert.False(t, out.Compatible)
+}
+
+// 저장된 스택(persisted mode)도 같은 규칙이다 — 배포 핸들러의 서버측 게이트가 이 경로다.
+func TestValidateCompatibility_PersistedSeaweedFSStackPasses(t *testing.T) {
+	repo := repository.NewMemoryCompatibilityRepository()
+	stacks := repository.NewMemoryStackRepository()
+	stack := &domain.Stack{
+		ID:   "stk_seaweedfs",
+		Name: "seaweedfs",
+		Tools: []domain.ToolConfig{
+			{Category: "source_repository", Name: "GitLab CE"},
+			{Category: "ci_platform", Name: "GitLab CI"},
+			{Category: "cd_tool", Name: "Argo CD"},
+			{Category: "storage_backend", Name: "SeaweedFS"},
+		},
+	}
+	require.NoError(t, stacks.Create(context.Background(), stack))
+	uc := NewValidateCompatibility(repo, WithStackRepository(stacks))
+
+	out, err := uc.Execute(context.Background(), ValidateCompatibilityInput{StackID: stack.ID})
+	require.NoError(t, err)
+	assert.Truef(t, out.Compatible, out.Message)
+}

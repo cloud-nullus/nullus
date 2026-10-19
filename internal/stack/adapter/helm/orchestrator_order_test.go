@@ -22,6 +22,8 @@ var canonicalInstallOrder = []string{
 	"provisioning_secrets",
 	"installing_postgresql",
 	"installing_minio",
+	// SeaweedFS 는 오브젝트 스토리지 슬롯의 다른 선택지다. 술어가 배타적이라 둘 중 하나만 선다.
+	"installing_seaweedfs",
 	"installing_object_storage_secret",
 	"installing_object_storage_buckets",
 	"installing_database_connection_check",
@@ -85,7 +87,7 @@ func TestOrderedStep_SecretProvisioningPrecedesStorage(t *testing.T) {
 	o := newOrderTestOrchestrator()
 
 	provisioning := o.stepOrder["provisioning_secrets"]
-	for _, consumer := range []string{"installing_postgresql", "installing_minio"} {
+	for _, consumer := range []string{"installing_postgresql", "installing_minio", "installing_seaweedfs"} {
 		assert.Lessf(t, provisioning, o.stepOrder[consumer],
 			"provisioning_secrets must precede %s", consumer)
 	}

@@ -49,6 +49,32 @@ func stackConfigToCategoryMap(cfg domain.StackConfig) map[string]string {
 	return out
 }
 
+// withoutInterchangeableSlots 는 매트릭스 대조에서 구현체를 갈아 끼울 수 있는 슬롯을 뺀다.
+//
+// 오브젝트 스토리지는 S3 계약 뒤에 있다(domain.ObjectStorageBackends) — GitLab 은
+// 엔드포인트와 자격만 보고 MinIO 인지 SeaweedFS 인지 모른다. 그래서 구현체 이름이
+// 도구 조합을 가르면 안 된다. 갈랐다면 구현체를 하나 더할 때마다 모든 매트릭스를
+// 한 벌씩 복제해야 하고, 빠뜨린 조합은 "호환 매트릭스 없음" 으로 배포가 막힌다.
+//
+// 표에 없는 이름(s3·gcs 같은 클러스터 밖 제공자)은 지금처럼 대조한다. 빼고 나면
+// 아무것도 남지 않는 요청은 그대로 둔다 — 빈 요청은 아무 매트릭스에나 맞는다.
+func withoutInterchangeableSlots(tools map[string]string) map[string]string {
+	name, ok := tools["storage_backend"]
+	if !ok {
+		return tools
+	}
+	if _, known := domain.ObjectStorageBackendNamed(name); !known || len(tools) == 1 {
+		return tools
+	}
+	out := make(map[string]string, len(tools)-1)
+	for category, tool := range tools {
+		if category != "storage_backend" {
+			out[category] = tool
+		}
+	}
+	return out
+}
+
 func canonicalToolName(name string) string {
 	key := strings.ToLower(strings.TrimSpace(name))
 	alias := map[string]string{
@@ -61,6 +87,7 @@ func canonicalToolName(name string) string {
 		"argocd":          "Argo CD",
 		"argo cd":         "Argo CD",
 		"minio":           "MinIO",
+		"seaweedfs":       "SeaweedFS",
 		"prometheus":      "Prometheus",
 		"grafana":         "Grafana",
 		"harbor":          "Harbor",
@@ -252,7 +279,7 @@ func (uc *ValidateCompatibility) Execute(ctx context.Context, input ValidateComp
 		}
 	}
 
-	matrix, err := uc.repo.Validate(ctx, input.Tools)
+	matrix, err := uc.repo.Validate(ctx, withoutInterchangeableSlots(input.Tools))
 	if err != nil {
 		out := &ValidateCompatibilityOutput{
 			Compatible: false,

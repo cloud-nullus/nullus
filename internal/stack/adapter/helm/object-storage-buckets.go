@@ -34,31 +34,34 @@ func (o *Orchestrator) currentStackConfig() *domain.StackConfig {
 	return &cfg
 }
 
+// objectStorageBackend 는 이 스택이 고른 오브젝트 스토리지 구현체다.
+// 설정을 모르면 MinIO 다(domain.ObjectStorageBackendFor 의 기본값과 같다).
+func (o *Orchestrator) objectStorageBackend() domain.ObjectStorageBackend {
+	cfg := o.currentStackConfig()
+	if cfg == nil {
+		return domain.MinIOObjectStorage
+	}
+	if backend, ok := domain.ObjectStorageBackendFor(cfg.Artifacts.StorageBackend); ok {
+		return backend
+	}
+	return domain.MinIOObjectStorage
+}
+
+// ensureGitLabObjectStorageBuckets 는 GitLab 이 쓸 버킷을 만든다.
+//
+// 벤더 CLI(mc) 를 쓰지 않는다. S3 의 CreateBucket 은 서명한 PUT 하나라 curl 의
+// --aws-sigv4 로 부르면 MinIO·SeaweedFS·외부 S3 어디서나 같다 — 구현체를 갈아
+// 끼워도 이 Job 은 바뀌지 않는다.
+//
+// 자격은 매니페스트에 평문으로 싣지 않는다. 같은 네임스페이스의 Secret 을
+// 환경변수로 읽는다(objectStorageTarget.CredentialSecret).
 func (o *Orchestrator) ensureGitLabObjectStorageBuckets(ctx context.Context, namespace string) error {
 	target, err := o.resolveObjectStorageTarget(ctx, namespace)
 	if err != nil {
 		return err
 	}
 
-	script := buildBucketBootstrapScript(target.Endpoint, target.AccessKey, target.SecretKey, gitLabRequiredBuckets)
-	manifest := fmt.Sprintf(`apiVersion: batch/v1
-kind: Job
-metadata:
-  name: %s
-  namespace: %s
-spec:
-  backoffLimit: 0
-  template:
-    spec:
-      restartPolicy: Never
-      containers:
-      - name: mc
-        image: %s
-        command: ["/bin/sh", "-c"]
-        args:
-          - |
-%s
-`, objectStorageBucketJobName, namespace, shareddomain.MinIOClientImage, indentYAML(script, 12))
+	manifest := bucketBootstrapJobManifest(namespace, target, gitLabRequiredBuckets)
 
 	_, _ = o.runKubectl(ctx, "delete", "job", objectStorageBucketJobName, "-n", namespace, "--ignore-not-found=true")
 	if err := o.applyManifest(ctx, namespace, manifest); err != nil {
@@ -79,17 +82,23 @@ type objectStorageTarget struct {
 	Endpoint  string
 	AccessKey string
 	SecretKey string
+	// CredentialSecret 이 있으면 Job 이 자격을 이 Secret 에서 읽는다(AccessKeyKey·
+	// SecretKeyKey). 없으면 AccessKey·SecretKey 를 평문 환경변수로 싣는다 — 외부
+	// 스토리지를 직접 입력한 경우처럼 클러스터에 그 값을 담은 Secret 이 없을 때다.
+	CredentialSecret string
+	AccessKeyKey     string
+	SecretKeyKey     string
 }
 
 func (o *Orchestrator) resolveObjectStorageTarget(ctx context.Context, namespace string) (objectStorageTarget, error) {
 	cfg := o.currentStackConfig()
 	if cfg == nil || cfg.Storage == nil {
-		return o.internalMinIOTarget(ctx, namespace)
+		return o.internalObjectStorageTarget(ctx, namespace)
 	}
 
 	target := cfg.Storage.ObjectStorage
 	if strings.TrimSpace(target.Mode) != "existing-connect" {
-		return o.internalMinIOTarget(ctx, namespace)
+		return o.internalObjectStorageTarget(ctx, namespace)
 	}
 
 	endpoint := strings.TrimSpace(target.Endpoint)
@@ -171,13 +180,82 @@ func escapeJSONPathKey(key string) string {
 	return replacer.Replace(key)
 }
 
-func buildBucketBootstrapScript(endpoint, accessKey, secretKey string, buckets []string) string {
+// bucketBootstrapJobManifest 는 버킷을 만드는 Job 이다.
+func bucketBootstrapJobManifest(namespace string, target objectStorageTarget, buckets []string) string {
+	env := ""
+	if strings.TrimSpace(target.CredentialSecret) != "" {
+		env = fmt.Sprintf(`        - name: S3_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: %s
+              key: %s
+        - name: S3_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: %s
+              key: %s
+`, target.CredentialSecret, target.AccessKeyKey, target.CredentialSecret, target.SecretKeyKey)
+	} else {
+		env = fmt.Sprintf(`        - name: S3_ACCESS_KEY
+          value: %q
+        - name: S3_SECRET_KEY
+          value: %q
+`, target.AccessKey, target.SecretKey)
+	}
+	return fmt.Sprintf(`apiVersion: batch/v1
+kind: Job
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: s3
+        image: %s
+        env:
+        - name: S3_ENDPOINT
+          value: %q
+%s        command: ["/bin/sh", "-c"]
+        args:
+          - |
+%s
+`, objectStorageBucketJobName, namespace, shareddomain.CurlImage, s3EndpointURL(target.Endpoint), env,
+		indentYAML(buildBucketBootstrapScript(buckets), 12))
+}
+
+// s3EndpointURL 은 curl 이 부를 수 있는 URL 로 맞춘다. 외부 스토리지를 입력할 때
+// 스킴을 빼는 경우가 있다(host:port) — 클러스터 안 주소처럼 http 로 본다.
+func s3EndpointURL(endpoint string) string {
+	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	if !strings.Contains(endpoint, "://") {
+		endpoint = "http://" + endpoint
+	}
+	return endpoint
+}
+
+// buildBucketBootstrapScript 는 S3 CreateBucket 을 HTTP 로 부르는 스크립트다.
+//
+// 만들기(PUT)는 200, 이미 있으면 409(BucketAlreadyOwnedByYou)다 — 재시도가 같은
+// 결과여야 하므로 둘 다 받아들인다. 그 뒤 HEAD 가 200 이어야 끝난다: 만들기를
+// 받아들이고도 그 키로 버킷을 읽지 못하면(권한·서명 불일치) GitLab 이 첫 업로드에서
+// 죽는데, 여기서 잡는 편이 원인이 가깝다.
+//
+// 엔드포인트·자격은 환경변수로 받는다. 스크립트 안에 값이 없으므로 따옴표를
+// 맞출 일도, 로그에 비밀이 찍힐 일도 없다.
+func buildBucketBootstrapScript(buckets []string) string {
 	var sb strings.Builder
-	sb.WriteString("set -e\n")
-	sb.WriteString(fmt.Sprintf("mc alias set target %q %q %q >/dev/null\n", endpoint, accessKey, secretKey))
+	sb.WriteString("set -eu\n")
+	sb.WriteString(fmt.Sprintf("SIG='aws:amz:%s:s3'\n", domain.ObjectStorageRegion))
+	sb.WriteString("s3() { curl -sS -o /dev/null -w '%{http_code}' --aws-sigv4 \"$SIG\" --user \"$S3_ACCESS_KEY:$S3_SECRET_KEY\" \"$@\"; }\n")
 	for _, bucket := range buckets {
-		sb.WriteString(fmt.Sprintf("mc mb --ignore-existing target/%s >/dev/null\n", bucket))
-		sb.WriteString(fmt.Sprintf("mc ls target/%s >/dev/null\n", bucket))
+		sb.WriteString(fmt.Sprintf("code=$(s3 -X PUT \"$S3_ENDPOINT/%s\")\n", bucket))
+		sb.WriteString(fmt.Sprintf("case \"$code\" in 200|409) ;; *) echo \"create bucket %s: HTTP $code\" >&2; exit 1;; esac\n", bucket))
+		sb.WriteString(fmt.Sprintf("code=$(s3 -I \"$S3_ENDPOINT/%s\")\n", bucket))
+		sb.WriteString(fmt.Sprintf("[ \"$code\" = 200 ] || { echo \"head bucket %s: HTTP $code\" >&2; exit 1; }\n", bucket))
+		sb.WriteString(fmt.Sprintf("echo \"bucket %s ready\"\n", bucket))
 	}
 	return sb.String()
 }
@@ -190,23 +268,31 @@ func decodeBase64String(value string) (string, error) {
 	return string(decoded), nil
 }
 
-// internalMinIOTarget 은 내장 MinIO 접속 정보를 만든다.
+// internalObjectStorageTarget 은 스택 안에 세운 오브젝트 스토리지 접속 정보다.
 //
+// 어느 구현체든 같다 — 엔드포인트와 자격 Secret 의 위치만 구현체 표에서 온다.
 // 자격증명은 하드코딩하지 않고 프로비저닝된 Secret 에서 읽는다. ESO 가 그
 // Secret 의 소유자이며 원천은 OpenBao 다.
-func (o *Orchestrator) internalMinIOTarget(ctx context.Context, namespace string) (objectStorageTarget, error) {
+func (o *Orchestrator) internalObjectStorageTarget(ctx context.Context, namespace string) (objectStorageTarget, error) {
+	backend := o.objectStorageBackend()
 	target := objectStorageTarget{
-		Endpoint:  fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", domain.MinIOServiceName, namespace, domain.MinIOServicePort),
-		AccessKey: MinIORootUser,
+		Endpoint:         backend.Endpoint(namespace),
+		AccessKey:        domain.ObjectStorageAccessKey,
+		CredentialSecret: backend.CredentialSecret,
+		AccessKeyKey:     backend.AccessKeyKey,
+		SecretKeyKey:     backend.SecretKeyKey,
 	}
 
-	secretKey, err := o.readSecretValue(ctx, namespace, ProvisionedMinIOSecret, domain.MinIOPasswordKey)
+	// Job 은 Secret 을 직접 참조하지만, 그 Secret 이 아직 없으면 파드가
+	// CreateContainerConfigError 로 서서 180초 대기 끝에야 실패한다. 여기서 먼저
+	// 읽어 보아 이유를 바로 돌려준다.
+	secretKey, err := o.readSecretValue(ctx, namespace, backend.CredentialSecret, backend.SecretKeyKey)
 	if err != nil {
-		return objectStorageTarget{}, fmt.Errorf("MinIO 자격증명을 읽지 못했습니다 (%s): %w", ProvisionedMinIOSecret, err)
+		return objectStorageTarget{}, fmt.Errorf("%s 자격증명을 읽지 못했습니다 (%s): %w", backend.DisplayName, backend.CredentialSecret, err)
 	}
 	target.SecretKey = secretKey
 
-	if user, err := o.readSecretValue(ctx, namespace, ProvisionedMinIOSecret, domain.MinIOUserKey); err == nil && strings.TrimSpace(user) != "" {
+	if user, err := o.readSecretValue(ctx, namespace, backend.CredentialSecret, backend.AccessKeyKey); err == nil && strings.TrimSpace(user) != "" {
 		target.AccessKey = user
 	}
 	return target, nil

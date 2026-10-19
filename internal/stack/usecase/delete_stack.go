@@ -59,8 +59,11 @@ var legacyReleaseArtifactExactNames = map[string]struct{}{
 	// 프로비저닝 단계가 Helm 이 아니라 kubectl 로 만드는 것들. 소유자 표시가
 	// 없어 고아로 남으므로 이름으로 지운다. 접두사로 뭉뚱그리지 않고 하나씩
 	// 적는다 — 이 네임스페이스를 플랫폼과 공유할 수 있기 때문이다.
-	domain.ProvisionedPostgresSecret:        {},
-	domain.ProvisionedMinIOSecret:           {},
+	domain.ProvisionedPostgresSecret:  {},
+	domain.ProvisionedMinIOSecret:     {},
+	domain.ProvisionedSeaweedFSSecret: {},
+	// SeaweedFS 차트가 keep 정책으로 만드는 Secret. helm uninstall 이 남긴다.
+	domain.SeaweedFSSFTPSecret:              {},
 	domain.ProvisionedObjectStorageSecret:   {},
 	domain.ProvisionedRegistryStorageSecret: {},
 	domain.HarborAdminSecret:                {},
