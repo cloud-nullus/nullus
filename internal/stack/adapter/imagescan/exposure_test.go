@@ -91,3 +91,45 @@ func TestScanner_ScansWhenRoutesUnavailable(t *testing.T) {
 		assert.False(t, sc.Exposed)
 	}
 }
+
+// 스택 게이트웨이의 Envoy 데이터플레인은 LoadBalancer Service 뒤에서 밖의 요청을 직접 받는다 — 스택의
+// 모든 라우트 호스트로 노출된 것이다. 손으로 연 NodePort · LoadBalancer 도 노출이다(호스트는 모른다).
+const gatewayPodsJSON = `{"items":[
+ {"metadata":{"name":"envoy-1","labels":{"app.kubernetes.io/name":"envoy","gateway.envoyproxy.io/owning-gateway-namespace":"argocd-ns"}},
+  "spec":{"nodeName":"worker"},
+  "status":{"phase":"Running","containerStatuses":[{"image":"envoyproxy/envoy:distroless-v1.33","imageID":"docker.io/envoyproxy/envoy@sha256:eee"}]}},
+ {"metadata":{"name":"argocd-redis-1","labels":{"app.kubernetes.io/name":"argocd-redis"}},
+  "spec":{"nodeName":"worker"},
+  "status":{"phase":"Running","containerStatuses":[{"image":"redis:7","imageID":"docker.io/library/redis@sha256:rrr"}]}},
+ {"metadata":{"name":"internal-1","labels":{"app.kubernetes.io/name":"internal"}},
+  "spec":{"nodeName":"worker"},
+  "status":{"phase":"Running","containerStatuses":[{"image":"busybox:1","imageID":"docker.io/library/busybox@sha256:bbb"}]}}
+]}`
+
+const gatewayServicesJSON = `{"items":[
+ {"metadata":{"name":"envoy-argocd-ns-eg-1234","labels":{"gateway.envoyproxy.io/owning-gateway-namespace":"argocd-ns"}},
+  "spec":{"type":"LoadBalancer","selector":{"app.kubernetes.io/name":"envoy","gateway.envoyproxy.io/owning-gateway-namespace":"argocd-ns"}}},
+ {"metadata":{"name":"redis-debug"},"spec":{"type":"NodePort","selector":{"app.kubernetes.io/name":"argocd-redis"}}},
+ {"metadata":{"name":"internal"},"spec":{"type":"ClusterIP","selector":{"app.kubernetes.io/name":"internal"}}}
+]}`
+
+const gatewayRoutesJSON = `{"items":[
+ {"metadata":{"name":"gitlab"},"spec":{"hostnames":["gitlab.nullus.local"],"rules":[{"backendRefs":[{"name":"gitlab-webservice"}]}]}},
+ {"metadata":{"name":"argocd"},"spec":{"hostnames":["argocd.nullus.local"],"rules":[{"backendRefs":[{"name":"argocd-server"}]}]}}
+]}`
+
+func TestExposedPods_GatewayDataPlaneAndNodePorts(t *testing.T) {
+	exposed, err := exposedPods("argocd-ns", []byte(gatewayPodsJSON), []byte(gatewayRoutesJSON), []byte(gatewayServicesJSON))
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{
+		"envoy-1":        {"argocd.nullus.local", "gitlab.nullus.local"},
+		"argocd-redis-1": {},
+	}, exposed, "ClusterIP 이고 라우트가 없는 Service 는 노출이 아니다")
+}
+
+// Gateway API CRD 가 없어도 LoadBalancer · NodePort 로 열린 것은 노출이다.
+func TestExposedPods_LoadBalancerWithoutRoutes(t *testing.T) {
+	exposed, err := exposedPods("argocd-ns", []byte(gatewayPodsJSON), nil, []byte(gatewayServicesJSON))
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{"envoy-1": {}, "argocd-redis-1": {}}, exposed)
+}

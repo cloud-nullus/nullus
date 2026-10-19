@@ -186,8 +186,9 @@ func (s *Scanner) ScanInstalledImages(ctx context.Context, kubeconfig []byte, na
 func (s *Scanner) exposure(ctx context.Context, kubeconfig []byte, ns, podsOut string) map[string][]string {
 	routesOut, err := s.kubectl(ctx, kubeconfig, "get", "httproutes.gateway.networking.k8s.io", "-n", ns, "-o", "json")
 	if err != nil {
-		slog.Info("설치 이미지 스캔: HTTPRoute 를 읽지 못해 외부 노출을 판정하지 않습니다", "namespace", ns, "error", err)
-		return nil
+		// Gateway API CRD 가 없는 클러스터 — LoadBalancer · NodePort 로 열린 것만 본다.
+		slog.Info("설치 이미지 스캔: HTTPRoute 를 읽지 못해 라우트로 열린 것은 판정하지 않습니다", "namespace", ns, "error", err)
+		routesOut = ""
 	}
 	servicesOut, err := s.kubectl(ctx, kubeconfig, "get", "services", "-n", ns, "-o", "json")
 	if err != nil {

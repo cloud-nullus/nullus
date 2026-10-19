@@ -15,8 +15,8 @@ import (
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
-// 외부 노출을 함께 저장하고, 새 CVE 고지가 지난 스캔의 "수정판 있는 CRITICAL" 을 읽는다.
-func TestPostgresStackImageScanRepository_ExposureAndKnownCriticals(t *testing.T) {
+// 외부 노출을 함께 저장하고, 새 CVE 고지가 알린 CVE 를 선점 · 기록한다.
+func TestPostgresStackImageScanRepository_ExposureAndCVENotices(t *testing.T) {
 	t.Parallel()
 
 	pool, cleanup := setupPostgres(t)
@@ -34,10 +34,9 @@ func TestPostgresStackImageScanRepository_ExposureAndKnownCriticals(t *testing.T
 	}))
 	repo := NewPostgresStackImageScanRepository(pool)
 
-	// 처음 스캔하는 스택은 알던 것이 없다.
-	ids, recorded, err := repo.KnownFixableCriticalIDs(ctx, stackID)
+	// 처음 고지하는 스택은 알린 것이 없다.
+	ids, err := repo.NotifiedCVEIDs(ctx, stackID)
 	require.NoError(t, err)
-	assert.False(t, recorded)
 	assert.Empty(t, ids)
 
 	counts := shareddomain.SeverityCounts{Critical: 2}
@@ -65,27 +64,35 @@ func TestPostgresStackImageScanRepository_ExposureAndKnownCriticals(t *testing.T
 	assert.False(t, byDigest["sha256:r"].Exposed)
 	assert.Empty(t, byDigest["sha256:r"].ExposedHosts)
 
-	ids, recorded, err = repo.KnownFixableCriticalIDs(ctx, stackID)
-	require.NoError(t, err)
-	assert.True(t, recorded)
-	assert.Equal(t, map[string]bool{"CVE-FIX": true}, ids, "대소문자와 상관없이 CRITICAL · 수정판이 있는 것만")
-
-	// 알린 CVE 는 그 이미지의 스캔이 실패해 행이 사라져도 아는 것으로 남는다. 처음 알린 시각은 그대로다.
+	// 알릴 것을 선점한다. 이미 남은 것은 돌려주지 않고(다른 레플리카가 보냈다) 시각도 바꾸지 않는다.
 	first := now.Add(-time.Hour)
-	require.NoError(t, repo.RecordCVENotices(ctx, stackID, []string{"CVE-FIX"}, first))
-	require.NoError(t, repo.RecordCVENotices(ctx, stackID, []string{"CVE-FIX", "CVE-LATER"}, now))
-	require.NoError(t, repo.RecordCVENotices(ctx, stackID, nil, now))
+	claimed, err := repo.ClaimCVENotices(ctx, stackID, []string{"CVE-FIX"}, first)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"CVE-FIX"}, claimed)
+	claimed, err = repo.ClaimCVENotices(ctx, stackID, []string{"CVE-FIX", "CVE-LATER"}, now)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"CVE-LATER"}, claimed)
+	claimed, err = repo.ClaimCVENotices(ctx, stackID, nil, now)
+	require.NoError(t, err)
+	assert.Empty(t, claimed)
+
+	// 그 이미지의 스캔이 실패해 행이 사라져도 알린 것은 남는다.
 	require.NoError(t, repo.ReplaceForStack(ctx, stackID, []domain.StackImageScan{
 		{Image: "gitlab-webservice:17.7", ImageDigest: "sha256:w", Status: domain.ImageScanStatusFailed,
 			Error: "unexpected EOF", ScannedAt: now},
 	}))
-	ids, recorded, err = repo.KnownFixableCriticalIDs(ctx, stackID)
+	ids, err = repo.NotifiedCVEIDs(ctx, stackID)
 	require.NoError(t, err)
-	assert.True(t, recorded, "목록이 하나도 없어도 알린 적이 있으면 첫 스캔이 아니다")
 	assert.Equal(t, map[string]bool{"CVE-FIX": true, "CVE-LATER": true}, ids)
 	var notifiedAt time.Time
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT first_notified_at FROM stack_cve_notices WHERE stack_id = $1 AND vulnerability_id = 'CVE-FIX'`,
 		stackID).Scan(&notifiedAt))
 	assert.True(t, notifiedAt.Equal(first), "처음 알린 시각은 대응 기한의 기준이라 바꾸지 않는다")
+
+	// 보내지 못한 선점은 되돌린다.
+	require.NoError(t, repo.ReleaseCVENotices(ctx, stackID, []string{"CVE-LATER"}))
+	ids, err = repo.NotifiedCVEIDs(ctx, stackID)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]bool{"CVE-FIX": true}, ids)
 }

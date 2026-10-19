@@ -22,12 +22,14 @@ type StackImageScanRepository interface {
 	ListByStack(ctx context.Context, stackID string) ([]domain.StackImageScan, error)
 	// ListVulnerabilities 는 이미지 하나의 저장된 취약점 목록이다.
 	ListVulnerabilities(ctx context.Context, stackID, digest string) (domain.StackImageVulnerabilities, error)
-	// KnownFixableCriticalIDs 는 새 CVE 고지가 "이미 아는 것" 으로 보는 취약점 ID 다 — 지금 저장된 결과의
-	// "수정판 있는 CRITICAL" 과 이미 알린 것. recorded 는 목록을 저장한 이미지나 알린 기록이 하나라도
-	// 있는지 — 거짓이면 처음 스캔하는 스택이다.
-	KnownFixableCriticalIDs(ctx context.Context, stackID string) (ids map[string]bool, recorded bool, err error)
-	// RecordCVENotices 는 스택에 알린 CVE 를 남긴다. 이미 남은 것의 처음 알린 시각은 바꾸지 않는다.
-	RecordCVENotices(ctx context.Context, stackID string, ids []string, at time.Time) error
+	// NotifiedCVEIDs 는 스택에 이미 알린 CVE 다. 새 CVE 고지는 저장된 스캔 결과가 아니라 이것으로
+	// 새것을 가린다 — 이미지 하나의 스캔이 실패하면 그 이미지의 취약점 행이 사라진다.
+	NotifiedCVEIDs(ctx context.Context, stackID string) (map[string]bool, error)
+	// ClaimCVENotices 는 ids 중 아직 남지 않은 것을 알린 것으로 남기고, 이번에 남긴 것만 돌려준다 —
+	// API 레플리카 둘이 같은 스캔 결과를 보고도 한 번만 알린다. 이미 남은 것의 시각은 바꾸지 않는다.
+	ClaimCVENotices(ctx context.Context, stackID string, ids []string, at time.Time) ([]string, error)
+	// ReleaseCVENotices 는 보내지 못한 선점을 되돌린다.
+	ReleaseCVENotices(ctx context.Context, stackID string, ids []string) error
 }
 
 // CompletedStackLister 는 설치가 끝난 스택을 조직과 무관하게 돌려준다.

@@ -50,22 +50,39 @@ type fakeImageScanResults struct {
 	rows     map[string][]domain.StackImageScan
 	notified map[string]map[string]time.Time
 	knownErr error
+	claimErr error
+	// staleNotified 가 있으면 NotifiedCVEIDs 가 그것을 돌려준다.
+	staleNotified map[string]bool
 }
 
 func newFakeImageScanResults() *fakeImageScanResults {
 	return &fakeImageScanResults{rows: map[string][]domain.StackImageScan{}, notified: map[string]map[string]time.Time{}}
 }
 
-func (r *fakeImageScanResults) RecordCVENotices(_ context.Context, stackID string, ids []string, at time.Time) error {
+func (r *fakeImageScanResults) ClaimCVENotices(_ context.Context, stackID string, ids []string, at time.Time) ([]string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.claimErr != nil {
+		return nil, r.claimErr
+	}
 	if r.notified[stackID] == nil {
 		r.notified[stackID] = map[string]time.Time{}
 	}
+	claimed := []string{}
 	for _, id := range ids {
 		if _, ok := r.notified[stackID][id]; !ok {
 			r.notified[stackID][id] = at
+			claimed = append(claimed, id)
 		}
+	}
+	return claimed, nil
+}
+
+func (r *fakeImageScanResults) ReleaseCVENotices(_ context.Context, stackID string, ids []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, id := range ids {
+		delete(r.notified[stackID], id)
 	}
 	return nil
 }
@@ -121,29 +138,21 @@ func imageScanStack(id string, withScanner bool) *domain.Stack {
 	return &domain.Stack{ID: id, ClusterID: "cl-1", Namespace: "ns-" + id, State: domain.StateCompleted, Config: cfg}
 }
 
-func (r *fakeImageScanResults) KnownFixableCriticalIDs(_ context.Context, stackID string) (map[string]bool, bool, error) {
+func (r *fakeImageScanResults) NotifiedCVEIDs(_ context.Context, stackID string) (map[string]bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.knownErr != nil {
-		return nil, false, r.knownErr
+		return nil, r.knownErr
+	}
+	// staleNotified 는 다른 레플리카가 선점하기 전에 읽은 것처럼 보이게 한다.
+	if r.staleNotified != nil {
+		return r.staleNotified, nil
 	}
 	ids := map[string]bool{}
-	recorded := len(r.notified[stackID]) > 0
 	for id := range r.notified[stackID] {
 		ids[id] = true
 	}
-	for _, s := range r.rows[stackID] {
-		if !s.VulnerabilitiesRecorded {
-			continue
-		}
-		recorded = true
-		for _, v := range s.Vulnerabilities {
-			if v.Severity == "CRITICAL" && v.FixedVersion != "" {
-				ids[v.ID] = true
-			}
-		}
-	}
-	return ids, recorded, nil
+	return ids, nil
 }
 
 func newScanStackImagesUC(stacks []*domain.Stack, scanner *fakeImageScanner, results *fakeImageScanResults, airgap bool) *ScanStackImages {
@@ -284,6 +293,25 @@ func TestScanStackImages_RescanAll_OnlyEligibleStacks(t *testing.T) {
 
 	assert.Equal(t, 2, uc.RescanAll(context.Background()))
 	assert.ElementsMatch(t, []string{"ns-stk_1", "ns-stk_3"}, scanner.namespaces())
+}
+
+// 재시작 · 롤아웃마다 재스캔 타이머가 처음부터 다시 세어지면 24시간 안의 고지를 지킬 수 없다. 기동 직후에는
+// 마지막 스캔이 주기보다 오래됐거나 아직 없는 스택만 스캔한다 — 레플리카마다 전부 다시 스캔하지 않는다.
+func TestScanStackImages_RescanStale_OnlyStaleOrNeverScanned(t *testing.T) {
+	stacks := []*domain.Stack{imageScanStack("stk_fresh", true), imageScanStack("stk_old", true),
+		imageScanStack("stk_never", true), imageScanStack("stk_noscanner", false)}
+	results := newFakeImageScanResults()
+	ctx := context.Background()
+	require.NoError(t, results.ReplaceForStack(ctx, "stk_fresh", []domain.StackImageScan{
+		{Image: "a", ImageDigest: "sha256:a", Status: domain.ImageScanStatusScanned, ScannedAt: time.Now().Add(-time.Hour)}}))
+	require.NoError(t, results.ReplaceForStack(ctx, "stk_old", []domain.StackImageScan{
+		{Image: "a", ImageDigest: "sha256:a", Status: domain.ImageScanStatusScanned, ScannedAt: time.Now().Add(-30 * time.Hour)},
+		{Image: "b", ImageDigest: "sha256:b", Status: domain.ImageScanStatusFailed, ScannedAt: time.Now().Add(-26 * time.Hour)}}))
+	scanner := &fakeImageScanner{}
+	uc := newScanStackImagesUC(stacks, scanner, results, false)
+
+	assert.Equal(t, 2, uc.RescanStale(ctx, 24*time.Hour))
+	assert.ElementsMatch(t, []string{"ns-stk_old", "ns-stk_never"}, scanner.namespaces())
 }
 
 // 에어갭 플랫폼은 주기 재스캔도 하지 않는다.

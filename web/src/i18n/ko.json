@@ -1171,7 +1171,8 @@
         "vulnerabilityList": "취약점 목록",
         "vulnerabilityListFor": "취약점 목록 — {{image}}",
         "exposed": "외부 노출",
-        "exposedHint": "게이트웨이로 클러스터 밖에서 닿습니다: {{hosts}}"
+        "exposedHint": "게이트웨이로 클러스터 밖에서 닿습니다: {{hosts}}",
+        "exposedHintNoHosts": "LoadBalancer · NodePort Service 로 클러스터 밖에서 닿습니다(호스트는 모름)"
       },
       "columns": {
         "image": "이미지",

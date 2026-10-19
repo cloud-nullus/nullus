@@ -155,47 +155,58 @@ func (r *PostgresStackImageScanRepository) ListByStack(ctx context.Context, stac
 	return out, rows.Err()
 }
 
-// KnownFixableCriticalIDs 는 새 CVE 고지가 이미 아는 것으로 보는 취약점 ID 다 — 지금 저장된 결과의
-// "수정판 있는 CRITICAL"(심각도는 대소문자를 가리지 않는다)과 이미 알린 것. recorded 는 목록을 저장한
-// 이미지나 알린 기록이 하나라도 있는지 — 거짓이면 처음 스캔하는 스택이다.
-func (r *PostgresStackImageScanRepository) KnownFixableCriticalIDs(ctx context.Context, stackID string) (map[string]bool, bool, error) {
-	var recorded bool
-	if err := r.pool.QueryRow(ctx, `SELECT
-		EXISTS (SELECT 1 FROM stack_image_scans WHERE stack_id = $1 AND vulnerabilities_recorded)
-		OR EXISTS (SELECT 1 FROM stack_cve_notices WHERE stack_id = $1)`,
-		stackID).Scan(&recorded); err != nil {
-		return nil, false, fmt.Errorf("query recorded stack image scans: %w", err)
-	}
-	rows, err := r.pool.Query(ctx, `
-		SELECT vulnerability_id FROM stack_image_vulnerabilities
-		WHERE stack_id = $1 AND upper(severity) = 'CRITICAL' AND btrim(fixed_version) <> ''
-		UNION
-		SELECT vulnerability_id FROM stack_cve_notices WHERE stack_id = $1`, stackID)
+// NotifiedCVEIDs 는 스택에 이미 알린 CVE 다.
+func (r *PostgresStackImageScanRepository) NotifiedCVEIDs(ctx context.Context, stackID string) (map[string]bool, error) {
+	rows, err := r.pool.Query(ctx, `SELECT vulnerability_id FROM stack_cve_notices WHERE stack_id = $1`, stackID)
 	if err != nil {
-		return nil, false, fmt.Errorf("query fixable critical vulnerabilities: %w", err)
+		return nil, fmt.Errorf("query stack cve notices: %w", err)
 	}
 	defer rows.Close()
 	ids := map[string]bool{}
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, false, fmt.Errorf("scan vulnerability id: %w", err)
+			return nil, fmt.Errorf("scan vulnerability id: %w", err)
 		}
 		ids[id] = true
 	}
-	return ids, recorded, rows.Err()
+	return ids, rows.Err()
 }
 
-// RecordCVENotices 는 스택에 알린 CVE 를 남긴다. 이미 남은 것은 처음 알린 시각을 그대로 둔다.
-func (r *PostgresStackImageScanRepository) RecordCVENotices(ctx context.Context, stackID string, ids []string, at time.Time) error {
+// ClaimCVENotices 는 ids 중 아직 남지 않은 것을 남기고 이번에 남긴 것만 돌려준다. 같은 행을 두
+// 레플리카가 동시에 넣으면 기본 키가 하나만 받는다.
+func (r *PostgresStackImageScanRepository) ClaimCVENotices(ctx context.Context, stackID string, ids []string, at time.Time) ([]string, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := r.pool.Query(ctx, `
+		INSERT INTO stack_cve_notices (stack_id, vulnerability_id, first_notified_at)
+		SELECT $1, id, $3 FROM unnest($2::text[]) AS id
+		ON CONFLICT (stack_id, vulnerability_id) DO NOTHING
+		RETURNING vulnerability_id`, stackID, ids, at)
+	if err != nil {
+		return nil, fmt.Errorf("claim stack cve notices: %w", err)
+	}
+	defer rows.Close()
+	claimed := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan claimed vulnerability id: %w", err)
+		}
+		claimed = append(claimed, id)
+	}
+	return claimed, rows.Err()
+}
+
+// ReleaseCVENotices 는 보내지 못한 선점을 되돌린다.
+func (r *PostgresStackImageScanRepository) ReleaseCVENotices(ctx context.Context, stackID string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	if _, err := r.pool.Exec(ctx, `
-		INSERT INTO stack_cve_notices (stack_id, vulnerability_id, first_notified_at)
-		SELECT $1, id, $3 FROM unnest($2::text[]) AS id
-		ON CONFLICT (stack_id, vulnerability_id) DO NOTHING`, stackID, ids, at); err != nil {
-		return fmt.Errorf("record stack cve notices: %w", err)
+	if _, err := r.pool.Exec(ctx,
+		`DELETE FROM stack_cve_notices WHERE stack_id = $1 AND vulnerability_id = ANY($2::text[])`, stackID, ids); err != nil {
+		return fmt.Errorf("release stack cve notices: %w", err)
 	}
 	return nil
 }

@@ -53,12 +53,14 @@ These six are all of them. For how alerts are collected and delivered, see
 [Observability](../observability/index.md#who-evaluates-alerts).
 
 `stack_cve_found` is sent once per stack, bundling every "fixable CRITICAL" that the installed-image rescan
-(every 24 hours by default) found and the previous scan did not have. Its severity is `critical` if any of
-them is in an image reachable from outside through the gateway, otherwise `warning`. The message carries up
+(every 24 hours by default) found and that has not been reported yet. Its severity is `critical` if any of
+them is in an image reachable from outside the cluster (gateway · LoadBalancer · NodePort), otherwise `warning`. The message carries up
 to five CVEs (package installed → fixed version · image · exposed host); the rest are on the
-**Image Vulnerabilities** tab of the stack detail. A stack's first scan reports what was already
-there at install time once, labelled as the first scan. A CVE already reported for a stack is not reported for it
-again — even if one image's scan failed in between and then came back. Channels created before this event existed do not
+**Image Vulnerabilities** tab of the stack detail. The first notice for a stack reports everything there now at once,
+labelled as the first notice — for a new stack, what was there at install time; for a stack installed before this
+event existed, its current state. A CVE already reported for a stack is not reported for it again — even if one
+image's scan failed in between and then came back, or a channel failed to deliver (the failure stays in the
+delivery history). Channels created before this event existed do not
 receive it automatically — edit the channel and tick it.
 
 ## Two tables

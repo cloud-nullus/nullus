@@ -1171,7 +1171,8 @@
         "vulnerabilityList": "Vulnerability list",
         "vulnerabilityListFor": "Vulnerability list — {{image}}",
         "exposed": "Exposed",
-        "exposedHint": "Reachable from outside the cluster through the gateway: {{hosts}}"
+        "exposedHint": "Reachable from outside the cluster through the gateway: {{hosts}}",
+        "exposedHintNoHosts": "Reachable from outside the cluster through a LoadBalancer or NodePort Service (hosts unknown)"
       },
       "columns": {
         "image": "Image",
