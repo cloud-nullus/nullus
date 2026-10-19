@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"maps"
 	"strings"
+	"time"
 
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/argocd"
 	"github.com/cloud-nullus/draft/internal/cicd/adapter/kube"
@@ -72,7 +73,18 @@ type ProvisionPipelineRepository struct {
 	kubeconfig port.KubeconfigProvider
 	// sources 는 템플릿 원본을 가져온다. 스택과 무관하므로 번들이 아니라 여기서 받는다.
 	sources port.SourceArchive
+	// runAsync / cdWebhookRetryInterval 은 CD webhook 을 뒤에서 다시 거는 데 쓴다.
+	// 테스트가 바로 돌리도록 바꿔 끼운다.
+	runAsync               func(func())
+	cdWebhookRetryInterval time.Duration
 }
+
+const (
+	// cdWebhookRetryAttempts · defaultCDWebhookRetryInterval 은 SCM 이 webhook 허용을
+	// 반영할 때까지 다시 거는 횟수와 간격이다. GitLab 의 설정 캐시(최대 1분)를 넉넉히 넘긴다.
+	cdWebhookRetryAttempts        = 12
+	defaultCDWebhookRetryInterval = 10 * time.Second
+)
 
 // WithSourceArchive 는 템플릿 원본을 가져올 경로를 배선한다.
 func (uc *ProvisionPipelineRepository) WithSourceArchive(sources port.SourceArchive) *ProvisionPipelineRepository {
@@ -86,7 +98,11 @@ func NewProvisionPipelineRepository(
 	applier port.ManifestApplier,
 	kubeconfig port.KubeconfigProvider,
 ) *ProvisionPipelineRepository {
-	return &ProvisionPipelineRepository{factory: factory, applier: applier, kubeconfig: kubeconfig}
+	return &ProvisionPipelineRepository{
+		factory: factory, applier: applier, kubeconfig: kubeconfig,
+		runAsync:               func(f func()) { go f() },
+		cdWebhookRetryInterval: defaultCDWebhookRetryInterval,
+	}
 }
 
 // Execute 는 저장소를 만들고 Argo CD 가 바라보게 한다.
@@ -186,6 +202,10 @@ func (uc *ProvisionPipelineRepository) Execute(
 	// 기본값으로 되돌릴 이유가 없고, 갱신의 목적은 CI 정의와 변수다.
 	if !input.RefreshDefinitionOnly {
 		uc.applyArgoApplication(ctx, bundle, app, input.Namespace, appOut, out)
+	} else {
+		// webhook 은 다시 보장한다. 이 기능 전에 만든 파이프라인, 뒤에서 하던 재시도가 API
+		// 재시작으로 끊긴 파이프라인이 정의 갱신으로 webhook 을 얻는다. 이미 있으면 조회만 한다.
+		uc.ensureCDWebhook(ctx, bundle, appOut.Project)
 	}
 
 	// 무엇이 준비되지 못했는지는 서버에도 남긴다.
@@ -453,4 +473,86 @@ func (uc *ProvisionPipelineRepository) applyArgoApplication(
 		return
 	}
 	out.ArgoApplicationCreated = true
+
+	uc.ensureCDWebhook(ctx, bundle, project)
+	ensureFirstComparison(ctx, bundle, kubeconfig, app, out)
+}
+
+// ensureCDWebhook 은 저장소가 새 커밋을 CD 도구에 바로 알리게 한다.
+//
+// 없으면 CD 도구는 정기 확인(Argo CD 기본 3분)으로만 새 커밋을 안다. CI 가 배포 태그를
+// 되커밋한 뒤 최대 그만큼 늦게 배포된다.
+//
+// 걸지 못해도 생성 경고로 돌려주지 않고 서버 로그에만 남긴다. 화면은 경고가 하나라도 있으면
+// 자동 실행을 멈추는데, 배포는 webhook 없이도 된다(늦을 뿐이다). 권한 · 설정처럼 매번
+// 되풀이되는 실패라면 그 스택의 모든 생성이 멈춘다.
+//
+// SCM 이 허용 변경을 아직 못 봤으면 생성 요청을 붙잡지 않고 뒤에서 다시 건다 — 요청이
+// 1분을 넘기면 API 앞의 게이트웨이가 끊을 수 있고, CI 의 배포 되커밋은 몇 분 뒤라
+// 그 전에 걸린다.
+func (uc *ProvisionPipelineRepository) ensureCDWebhook(ctx context.Context, bundle *port.SCMBundle, project *port.SCMProject) {
+	if bundle.CDWebhooks == nil || strings.TrimSpace(bundle.CDWebhookURL) == "" || project == nil {
+		return
+	}
+	hooks, projectID, target := bundle.CDWebhooks, project.ID, bundle.CDWebhookURL
+	err := hooks.EnsureWebhook(ctx, projectID, target, "")
+	switch {
+	case err == nil:
+	case errors.Is(err, port.ErrWebhookTargetPending):
+		background := context.WithoutCancel(ctx)
+		uc.runAsync(func() { uc.retryCDWebhook(background, hooks, projectID, target) })
+	default:
+		slog.Warn("CD webhook 을 걸지 못했습니다 — 새 커밋은 Argo CD 의 정기 확인(3분)에 반영됩니다",
+			"project", projectID, "target", target, "error", err)
+	}
+}
+
+// retryCDWebhook 은 SCM 이 허용 변경을 볼 때까지 webhook 을 다시 건다. 결과는 로그로만
+// 남는다 — 생성 응답은 이미 나갔다.
+func (uc *ProvisionPipelineRepository) retryCDWebhook(ctx context.Context, hooks port.SCMWebhookProvisioner, projectID, target string) {
+	for attempt := 1; attempt <= cdWebhookRetryAttempts; attempt++ {
+		if err := sleepWithContext(ctx, uc.cdWebhookRetryInterval); err != nil {
+			return
+		}
+		err := hooks.EnsureWebhook(ctx, projectID, target, "")
+		if err == nil {
+			slog.Info("CD webhook 을 걸었습니다", "project", projectID, "target", target, "attempt", attempt)
+			return
+		}
+		if !errors.Is(err, port.ErrWebhookTargetPending) {
+			slog.Warn("CD webhook 을 걸지 못했습니다 — 새 커밋은 Argo CD 의 정기 확인에 반영됩니다",
+				"project", projectID, "target", target, "error", err)
+			return
+		}
+	}
+	slog.Warn("SCM 이 webhook 허용을 반영하지 않아 CD webhook 을 걸지 못했습니다 — 새 커밋은 Argo CD 의 정기 확인에 반영됩니다",
+		"project", projectID, "target", target)
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// ensureFirstComparison 은 방금 만든 Application 이 저장소를 읽었는지 확인한다.
+//
+// 자격증명 Secret 과 Application 을 한 번에 적용하면 CD 도구가 Secret 을 보기 전에 첫
+// 비교를 돌려 실패할 수 있다. 다시 읽게 해도 못 읽으면 자격증명 · 경로 문제이므로 알린다.
+func ensureFirstComparison(ctx context.Context, bundle *port.SCMBundle, kubeconfig []byte, app string, out *ProvisionPipelineRepositoryOutput) {
+	if bundle.CDRefresher == nil {
+		return
+	}
+	if err := bundle.CDRefresher.EnsureFirstComparison(ctx, kubeconfig, bundle.CDNamespace, app); err != nil {
+		out.Warnings = append(out.Warnings, fmt.Sprintf(
+			"Argo CD 가 저장소를 아직 읽지 못했습니다 — 동기화가 늦어지거나 실패할 수 있습니다: %v", err))
+	}
 }

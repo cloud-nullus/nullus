@@ -101,6 +101,31 @@ GitLab·GitHub·Jenkins 쪽에서 돌기 때문입니다. 그쪽 단계 구성�
 몇 초 늦게 나타나므로, 브랜치 머리 커밋이 방금 생겼으면 그 실행을 최대 20초 기다립니다(GitLab CI ·
 GitHub Actions). 같은 커밋의 실행이 둘 생기면 두 deploy 가 같은 브랜치에 되커밋해 하나가 실패합니다.
 
+CI 의 deploy 단계가 배포 태그를 되커밋하면 Argo CD 가 그 커밋을 동기화해 앱이 바뀝니다. Argo CD 는
+기본으로 3분마다 저장소를 확인하므로, 그대로 두면 되커밋 뒤 최대 3분 늦게 배포됩니다. 그래서 파이프라인을
+만들 때 다음을 합니다.
+
+- **GitLab 스택은 저장소에 push webhook 을 겁니다.** 대상은 스택의 Argo CD 서버
+  (`http://argo-cd-argocd-server.<스택 네임스페이스>.svc:80/api/webhook`)입니다. GitLab 은 기본 설정으로
+  클러스터 안 주소로 가는 webhook 을 막으므로, 그 호스트의 80 포트 하나만 관리자 설정의 허용 목록
+  (Admin → Settings → Network → Outbound requests 의 *Local IP addresses and domain names that hooks and
+  integrations can access*)에 더합니다. 사설망 전체 허용은 켜지 않고, 관리자가 넣어 둔 항목은 그대로
+  둡니다. GitLab 은 설정을 최대 1분 캐시해서, 스택의 첫 파이프라인에서는 허용이 퍼진 뒤 webhook 을 뒤에서
+  다시 겁니다(최대 2분). 로컬 실측에서 되커밋 1~2초 뒤에 동기화됐습니다(webhook 이 없을 때는 85초).
+  - webhook 을 걸지 못해도(권한 · 설정) 생성 경고로 알리지 않고 서버 로그에만 남깁니다 — 배포는 늦을 뿐
+    되고, 경고가 있으면 화면이 실행을 멈추기 때문입니다.
+  - [정의 갱신](list.md)도 webhook 을 다시 겁니다. 이 기능 전에 만든 파이프라인, 뒤에서 하던 재시도가
+    API 재시작으로 끊긴 파이프라인은 정의를 갱신하면 webhook 을 얻습니다.
+- **GitHub · Gitea 스택은 webhook 을 걸지 않습니다.** github.com 은 사설 클러스터의 Argo CD 에 닿지 못하고,
+  Gitea 는 기본 설정(`webhook.ALLOWED_HOST_LIST=external`)이 사설망 주소를 막는데 그 설정은 설치 때만 바꿀
+  수 있습니다. 새 커밋은 Argo CD 의 정기 확인(3분)으로 반영됩니다.
+- **모든 스택에서 첫 비교를 확인합니다.** 저장소 자격증명과 Application 을 한 번에 넣으면 Argo CD 가
+  자격증명을 보기 전에 첫 비교를 돌려 `authentication required` 로 끝날 수 있고, 그대로 두면 다음 정기
+  확인까지 동기화되지 않습니다. 만든 직후 최대 20초 동안 지켜보다가 비교 오류면 다시 읽게 합니다
+  (`argocd.argoproj.io/refresh` 주석). 두 번 다시 읽게 해도 실패하면 자격증명 · 경로 문제이므로 생성 응답에
+  경고로 알립니다 — 화면은 경고가 있으면 실행하지 않고 멈춥니다(위 4단계). Argo CD 가 20초 안에 비교를
+  마치지 못하면 결과를 모르는 채 경고하지 않고 넘깁니다.
+
 !!! warning "developer 는 이 화면을 끝까지 채울 수 없습니다"
     Stack · Cluster · Namespace 선택이 admin·devops 전용 조회 API 에서 옵니다.
     인증을 켠 환경에서 developer 로 들어가면 **이 선택들이 403 으로 비어** 생성까지

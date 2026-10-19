@@ -77,6 +77,8 @@ Stack**(없거나 `삭제됨`) **· Status · Last Deployed** 입니다.
 `Jenkinsfile` 중 하나와 `SONAR_TOKEN` 같은 CI 변수입니다.
 **앱 코드 · Dockerfile · `deploy/` 매니페스트 · Argo CD Application 은 건드리지
 않습니다.**
+GitLab 스택에서는 저장소가 새 커밋을 Argo CD 에 바로 알리는 push webhook 이 없으면 다시 겁니다
+([앱 배포](app-deploy.md)).
 
 ### Delete 의 선택 항목
 

@@ -2,6 +2,7 @@ package port
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -51,6 +52,11 @@ type CIJobProvisioner interface {
 type SCMWebhookProvisioner interface {
 	EnsureWebhook(ctx context.Context, projectID, targetURL, secret string) error
 }
+
+// ErrWebhookTargetPending 은 webhook 대상을 허용해 두었지만 SCM 이 아직 그 변경을 보지
+// 못해 생성이 거부됐다는 뜻이다. 잠시 뒤 다시 걸면 된다 — GitLab 은 애플리케이션 설정을
+// 프로세스마다 최대 1분 캐시한다.
+var ErrWebhookTargetPending = errors.New("webhook 대상 허용이 아직 SCM 에 반영되지 않았습니다")
 
 // CICredentialResolver 는 스택별 CI 서버 접속 자격증명을 돌려준다.
 //

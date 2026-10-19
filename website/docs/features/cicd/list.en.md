@@ -81,6 +81,8 @@ The dialog spells it out — one of `.gitlab-ci.yml` · `.github/workflows/nullu
 `Jenkinsfile`, plus CI variables such as `SONAR_TOKEN`.
 **It does not touch application code, the Dockerfile, the `deploy/` manifests, or
 the Argo CD Application.**
+On GitLab stacks it also re-adds the push webhook that tells Argo CD about new commits, if it is
+missing ([App deploy](app-deploy.md)).
 
 ### Delete options
 
