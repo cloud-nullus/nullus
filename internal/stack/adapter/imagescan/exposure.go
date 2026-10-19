@@ -75,7 +75,7 @@ func exposedPods(namespace string, podsRaw, routesRaw, servicesRaw []byte) (map[
 	var services serviceList
 	if len(strings.TrimSpace(string(servicesRaw))) > 0 {
 		if err := json.Unmarshal(servicesRaw, &services); err != nil {
-			return nil, fmt.Errorf("Service 목록을 해석하지 못했습니다: %w", err)
+			return nil, fmt.Errorf("서비스 목록을 해석하지 못했습니다: %w", err)
 		}
 	}
 	var pods podList
