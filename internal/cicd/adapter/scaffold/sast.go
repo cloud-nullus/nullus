@@ -22,6 +22,9 @@ const (
 )
 
 // sastPolicyVariableNames 는 분석 단계가 읽는, 플랫폼이 푸시하는 정책 변수다.
+// sastReportTaskFile 은 스캐너가 분석을 서버에 올린 뒤 남기는 작업 정보다(ceTaskId). 리포트 줄도 이것을 읽는다.
+const sastReportTaskFile = ".scannerwork/report-task.txt"
+
 var sastPolicyVariableNames = []string{
 	port.SASTOnGateFailureVariable,
 	port.ScanOnUnreachableVariable,
@@ -32,10 +35,14 @@ var sastPolicyVariableNames = []string{
 // sonar.qualitygate.wait 가 핵심이다 — 없으면 스캐너는 결과를 올리기만 하고 성공으로
 // 끝나, Quality Gate 가 배포 판정에 끼지 못한다.
 //
-// 종료 코드로 둘을 가른다(sonar-scanner 실측): 3 은 Quality Gate 실패라 스택 정책
-// (차단·경고)을 따르고, 그 밖의 실패는 분석 자체를 못 한 것(서버 장애·인증 실패)이라
-// 이미지 스캔과 같은 장애 정책을 따른다. 경고 정책을 분석 실패에까지 적용하지 않는다 —
-// 분석기가 죽은 동안 모든 배포가 초록불로 지나가는 것이 가장 나쁜 실패다.
+// Quality Gate 실패와 분석 실패를 가른다. 앞엣것은 스택 정책(차단·경고)을, 뒤엣것은 이미지 스캔과
+// 같은 장애 정책을 따른다. 경고 정책을 분석 실패에까지 적용하지 않는다 — 분석기가 죽은 동안 모든
+// 배포가 초록불로 지나가는 것이 가장 나쁜 실패다.
+//
+// 종료 코드만으로는 가를 수 없다. SonarScanner CLI 는 엔진 단계의 실패를 모두 3(SCANNER_ENGINE_ERROR)
+// 으로 끝낸다 — Quality Gate 실패도, 분석기가 죽은 것도(arm64 에서 Node 가 없어 JS 분석이 실패했을 때도
+// 3 이었다, 2026-10-19 실측) 3 이다. 서버에 닿지 못해 엔진을 받지도 못하면 1 이다. 게이트 판정은 분석을
+// 서버에 올린 뒤에만 있으므로, 올렸다는 표시(.scannerwork/report-task.txt)가 있는 3 만 게이트 실패다.
 //
 // 명령에 역슬래시를 쓰지 않는다. Jenkins 의 sh ”'…”' 는 Groovy 문자열이라 역슬래시를
 // 이스케이프로 읽는다.
@@ -46,11 +53,12 @@ func sastScriptLines(projectKey string) []string {
 			shellQuoteSingle(projectKey)),
 		sastReportLine(projectKey),
 		fmt.Sprintf(`if [ "$rc" -eq 0 ]; then exit 0; fi; `+
-			`if [ "$rc" -eq 3 ]; then `+
+			`if [ "$rc" -eq 3 ] && [ -s %s ]; then `+
 			`if [ "${%s:-%s}" = "%s" ]; then echo "Quality Gate 를 통과하지 못했습니다 — 경고 정책에 따라 통과시킵니다"; exit 0; fi; `+
 			`echo "Quality Gate 를 통과하지 못했습니다 — 차단 정책입니다"; exit 1; fi; `+
 			`if [ "${%s:-%s}" = "%s" ]; then echo "정적 분석을 수행하지 못했습니다 — 분석기 장애 허용 정책에 따라 통과시킵니다"; exit 0; fi; `+
 			`echo "정적 분석을 수행하지 못했습니다 — 분석기 장애 시 차단 정책입니다"; exit 1`,
+			sastReportTaskFile,
 			port.SASTOnGateFailureVariable, defaults.SASTGateActionOrDefault(), domain.SASTGateWarn,
 			port.ScanOnUnreachableVariable, defaults.UnreachableActionOrDefault(), domain.UnreachableAllow),
 	}

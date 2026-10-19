@@ -36,6 +36,10 @@ graph LR
 | `ImageScan` | Trivy (이미지) | 스택이 Trivy 를 제공할 때 |
 | `Deploy` | 매니페스트 태그를 바꿔 `[skip ci]` 로 커밋·푸시 | 항상 |
 
+`SAST` 는 **Quality Gate 실패**(스택 정책: 차단·경고)와 **분석 실패**(분석기 장애 정책)를 가릅니다.
+sonar-scanner 는 둘 다 종료 코드 3 으로 끝나므로, 분석을 SonarQube 에 올린 실행만 게이트 실패로 봅니다 —
+분석하지 못한 실행은 경고 정책이어도 통과시키지 않습니다.
+
 **앱 종류(web/backend/batch)로 갈리는 작업은 없습니다.** `web` 은 React 소스와
 Dockerfile 이 더 들어가는 차이뿐입니다.
 

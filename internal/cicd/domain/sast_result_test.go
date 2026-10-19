@@ -29,6 +29,7 @@ func TestParseSASTReport_GateFailed(t *testing.T) {
 
 	assert.Equal(t, 3, r.ScannerExitCode)
 	assert.Equal(t, "api", r.ProjectKey)
+	assert.Equal(t, "ce-1", r.CETaskID, "분석을 올렸는지는 작업 ID 로 안다")
 	assert.Equal(t, "an-1", r.AnalysisID)
 	assert.Equal(t, "https://sonarqube.example.com/dashboard?id=api", r.DashboardURL)
 	assert.Equal(t, QualityGateError, r.QualityGateStatus)
@@ -80,7 +81,9 @@ func TestParseSASTReport_RejectsMalformed(t *testing.T) {
 // 판정은 파이프라인 관점이다 — 단계 결과에 이미 정책(차단·경고·장애 허용)이 반영돼 있고,
 // 리포트의 스캐너 종료 코드가 "게이트에 걸렸다" 와 "분석을 못 했다" 를 가른다.
 func TestSASTGateFromStageAndReport(t *testing.T) {
-	report := func(exit int) *SASTReport { return &SASTReport{ScannerExitCode: exit} }
+	report := func(exit int) *SASTReport { return &SASTReport{ScannerExitCode: exit, CETaskID: "ce-1"} }
+	// 분석을 올리지 못한 실행 — 스캐너는 엔진 단계의 실패도 3 으로 끝낸다.
+	notUploaded := func(exit int) *SASTReport { return &SASTReport{ScannerExitCode: exit} }
 
 	cases := []struct {
 		name   string
@@ -94,6 +97,8 @@ func TestSASTGateFromStageAndReport(t *testing.T) {
 		// 경고 정책이 통과시켰다. 배포는 나갔으므로 차단으로 세지 않지만 통과도 아니다.
 		{"게이트 실패·경고 정책", "success", report(3), GateResultWarn, true},
 		{"분석 실패·차단", "failed", report(1), GateResultError, true},
+		{"올리지 못한 3 은 분석 실패", "failed", notUploaded(3), GateResultError, true},
+		{"올리지 못한 3 은 경고 정책이어도 분석 실패", "success", notUploaded(3), GateResultError, true},
 		// 장애 허용 정책이 통과시켜도 분석하지 않은 코드를 통과로 적지 않는다.
 		{"분석 실패·장애 허용", "success", report(1), GateResultError, true},
 		{"도는 중이면 판정하지 않는다", "running", report(3), "", false},

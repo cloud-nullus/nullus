@@ -127,7 +127,11 @@ func runSASTScript(t *testing.T, scannerExit int, env map[string]string) (int, s
 	t.Helper()
 	dir := t.TempDir()
 	argsFile := filepath.Join(dir, "args")
-	fake := "#!/bin/sh\necho \"$*\" > '" + argsFile + "'\nexit \"${FAKE_SCANNER_EXIT:-0}\"\n"
+	// FAKE_SCANNER_UPLOADED 면 실제 스캐너처럼 분석을 올린 뒤의 report-task.txt 를 남긴다 — Quality Gate
+	// 판정은 올린 분석에만 있다.
+	fake := "#!/bin/sh\necho \"$*\" > '" + argsFile + "'\n" +
+		"if [ -n \"${FAKE_SCANNER_UPLOADED:-}\" ]; then mkdir -p .scannerwork; printf 'ceTaskId=ce-1\\n' > .scannerwork/report-task.txt; fi\n" +
+		"exit \"${FAKE_SCANNER_EXIT:-0}\"\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "sonar-scanner"), []byte(fake), 0o755))
 
 	cmd := exec.Command("bash", "-c", "set -euo pipefail\n"+strings.Join(sastScriptLines("api"), "\n"))
@@ -161,14 +165,29 @@ func TestSASTScript_PassesWhenGatePasses(t *testing.T) {
 
 // 기본은 차단이다 — Trivy 와 같다.
 func TestSASTScript_GateFailureBlocksByDefault(t *testing.T) {
-	code, _ := runSASTScript(t, 3, nil)
+	code, _ := runSASTScript(t, 3, map[string]string{"FAKE_SCANNER_UPLOADED": "1"})
 	assert.Equal(t, 1, code)
 }
 
 // 스택 정책이 warn 이면 기록만 남기고 통과시킨다.
 func TestSASTScript_GateFailureWarnsByPolicy(t *testing.T) {
-	code, _ := runSASTScript(t, 3, map[string]string{port.SASTOnGateFailureVariable: "warn"})
+	code, _ := runSASTScript(t, 3, map[string]string{
+		"FAKE_SCANNER_UPLOADED": "1", port.SASTOnGateFailureVariable: "warn",
+	})
 	assert.Equal(t, 0, code)
+}
+
+// 종료 코드 3 은 Quality Gate 실패만이 아니다 — SonarScanner CLI 는 엔진 단계의 실패를 모두 3
+// (SCANNER_ENGINE_ERROR)으로 끝낸다. arm64 에서 Node 가 없어 JS 분석이 죽었을 때도 3 이었고, 스크립트가
+// 그것을 "Quality Gate 를 통과하지 못했습니다" 로 안내했다(2026-10-19 kind 실측). 게이트 판정은 분석을
+// 서버에 올린 뒤에만 있으므로, 올리지 못한 3 은 분석 실패다 — 경고 정책으로 통과시키면 분석기가 죽은 동안
+// 모든 배포가 초록불로 지나간다.
+func TestSASTScript_EngineFailureIsNotGateFailure(t *testing.T) {
+	code, _ := runSASTScript(t, 3, map[string]string{port.SASTOnGateFailureVariable: "warn"})
+	assert.Equal(t, 1, code, "경고 정책은 게이트 실패에만 적용된다")
+
+	code, _ = runSASTScript(t, 3, map[string]string{port.ScanOnUnreachableVariable: "allow"})
+	assert.Equal(t, 0, code, "분석 실패는 분석기 장애 정책을 따른다")
 }
 
 // 분석을 못 했을 때(서버 장애·인증 실패)는 이미지 스캔과 같은 장애 정책을 따른다.

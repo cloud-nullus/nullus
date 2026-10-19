@@ -36,6 +36,11 @@ graph LR
 | `ImageScan` | Trivy (image) | The stack provides Trivy |
 | `Deploy` | Changes the manifest tag, then commits and pushes with `[skip ci]` | Always |
 
+`SAST` tells a **Quality Gate failure** (stack policy: block or warn) apart from an **analysis failure**
+(analyzer-outage policy). sonar-scanner ends both with exit code 3, so only a run that uploaded its
+analysis to SonarQube counts as a gate failure — a run that could not analyze is never passed, even under
+the warn policy.
+
 **No job depends on the app type (web/backend/batch).** The only difference is
 that `web` also gets React source and a Dockerfile.
 
