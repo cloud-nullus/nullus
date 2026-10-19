@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // PipelineTrigger 는 port.CIBuildTrigger 의 GitLab CI 구현체다.
@@ -18,11 +19,41 @@ type PipelineTrigger struct {
 	groupPath string
 	// webBaseURL 은 브라우저가 여는 GitLab 주소다. 비면 API 가 준 web_url 을 쓴다.
 	webBaseURL string
+	// now · sleep 은 push 파이프라인을 기다릴 때 쓴다. 테스트가 바꾼다.
+	now   func() time.Time
+	sleep func(ctx context.Context, d time.Duration) error
 }
+
+// push 파이프라인을 기다리는 기준이다.
+//
+// GitLab 은 push 파이프라인을 커밋 API 응답보다 몇 초 늦게 만든다. 머리 커밋이 pushPipelineGrace 안에
+// 생겼고 그 커밋의 파이프라인이 아직 없으면 pushPipelineWait 동안 pushPipelinePoll 간격으로 다시 본다.
+const (
+	pushPipelineGrace = 2 * time.Minute
+	pushPipelineWait  = 20 * time.Second
+	pushPipelinePoll  = 2 * time.Second
+)
 
 // NewPipelineTrigger 는 groupPath 아래 앱 프로젝트의 파이프라인을 시작시키는 트리거를 만든다.
 func NewPipelineTrigger(client *Client, groupPath string) *PipelineTrigger {
-	return &PipelineTrigger{client: client, groupPath: groupPath}
+	return &PipelineTrigger{client: client, groupPath: groupPath, now: time.Now, sleep: sleepContext}
+}
+
+func (t *PipelineTrigger) withClock(now func() time.Time, sleep func(context.Context, time.Duration) error) *PipelineTrigger {
+	t.now, t.sleep = now, sleep
+	return t
+}
+
+// sleepContext 는 d 만큼 기다리되 요청이 끝나면 멈춘다.
+func sleepContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // WithWebBaseURL 은 실행 링크에 쓸 외부 주소를 정한다.
@@ -67,6 +98,13 @@ func (t *PipelineTrigger) TriggerBuild(ctx context.Context, jobName, branch stri
 			"project", project, "ref", ref, "pipeline_id", running.ID, "status", running.Status)
 		return t.runURL(project, running), nil
 	}
+	// 방금 push 된 커밋이면 그 push 파이프라인이 곧 생긴다. 그보다 먼저 만들면 같은 커밋의 파이프라인이
+	// 둘 생기고, 둘째 deploy 가 되커밋 경쟁에서 non-fast-forward 로 실패한다(2026-10-18 로컬 시연).
+	if pushed := t.awaitPushPipeline(ctx, base, project, ref); pushed != nil {
+		slog.Info("gitlab 머리 커밋의 push 파이프라인에 붙습니다",
+			"project", project, "ref", ref, "pipeline_id", pushed.ID, "status", pushed.Status)
+		return t.runURL(project, pushed), nil
+	}
 
 	var created pipelineRef
 	err := t.client.post(ctx, base+"/pipeline", map[string]any{"ref": ref}, &created)
@@ -104,6 +142,56 @@ func (t *PipelineTrigger) latestInFlight(ctx context.Context, base, project, ref
 		return nil
 	}
 	return &pipelines[0]
+}
+
+// awaitPushPipeline 은 브랜치 머리 커밋이 방금 생겼을 때 그 커밋의 push 파이프라인을 잠깐 기다린다.
+//
+// 돌고 있는 것이 나타나면 그것을 돌려준다. 이미 끝났거나 건너뛴 것([skip ci])이면 붙을 것이 없으므로
+// nil 이다 — 사용자는 지금 다시 돌리길 바란다. 커밋이 오래됐거나 조회가 실패하면 기다리지 않는다.
+func (t *PipelineTrigger) awaitPushPipeline(ctx context.Context, base, project, ref string) *pipelineRef {
+	var branch struct {
+		Commit struct {
+			ID            string    `json:"id"`
+			CommittedDate time.Time `json:"committed_date"`
+		} `json:"commit"`
+	}
+	found, err := t.client.get(ctx, base+"/repository/branches/"+url.PathEscape(ref), &branch)
+	if err != nil || !found || branch.Commit.ID == "" || branch.Commit.CommittedDate.IsZero() {
+		return nil
+	}
+	if t.now().Sub(branch.Commit.CommittedDate) > pushPipelineGrace {
+		return nil
+	}
+
+	q := url.Values{}
+	q.Set("sha", branch.Commit.ID)
+	q.Set("order_by", "id")
+	q.Set("sort", "desc")
+	q.Set("per_page", "1")
+	deadline := t.now().Add(pushPipelineWait)
+	for {
+		var pipelines []pipelineRef
+		found, err := t.client.get(ctx, base+"/pipelines?"+q.Encode(), &pipelines)
+		if err != nil {
+			slog.Warn("gitlab 머리 커밋의 파이프라인을 읽지 못해 기다리지 않습니다",
+				"project", project, "ref", ref, "error", err)
+			return nil
+		}
+		if found && len(pipelines) > 0 {
+			if inFlightPipelineStatuses[pipelines[0].Status] {
+				return &pipelines[0]
+			}
+			return nil
+		}
+		if !t.now().Before(deadline) {
+			slog.Info("gitlab 머리 커밋의 push 파이프라인이 나타나지 않아 새로 만듭니다",
+				"project", project, "ref", ref, "waited", pushPipelineWait)
+			return nil
+		}
+		if err := t.sleep(ctx, pushPipelinePoll); err != nil {
+			return nil
+		}
+	}
 }
 
 // runURL 은 사람이 열어 볼 파이프라인 주소다. 외부 주소를 알면 그것으로 만들고,

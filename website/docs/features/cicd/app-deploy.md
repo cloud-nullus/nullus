@@ -93,6 +93,10 @@ Git Clone → Docker Build → Image Load(또는 Image Push)
 GitLab·GitHub·Jenkins 쪽에서 돌기 때문입니다. 그쪽 단계 구성은
 [CI/CD 개요](index.md#파이프라인이-실제로-돌리는-단계)를 보세요.
 
+만든 직후의 실행은 새 실행을 만들지 않고 스캐폴딩 커밋의 push 실행에 붙습니다. push 실행은 커밋보다
+몇 초 늦게 나타나므로, 브랜치 머리 커밋이 방금 생겼으면 그 실행을 최대 20초 기다립니다(GitLab CI ·
+GitHub Actions). 같은 커밋의 실행이 둘 생기면 두 deploy 가 같은 브랜치에 되커밋해 하나가 실패합니다.
+
 !!! warning "developer 는 이 화면을 끝까지 채울 수 없습니다"
     Stack · Cluster · Namespace 선택이 admin·devops 전용 조회 API 에서 옵니다.
     인증을 켠 환경에서 developer 로 들어가면 **이 선택들이 403 으로 비어** 생성까지
