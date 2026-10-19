@@ -98,6 +98,50 @@ type BundleFactory struct {
 	// ConfigMap 을 적용한다(scan_policy_publisher.go).
 	applier     port.ManifestApplier
 	kubeconfigs port.KubeconfigProvider
+	// gateways 는 앱 HTTPRoute 가 붙을 게이트웨이를 스택 네임스페이스에서 찾는다. 배선되지 않으면
+	// 이름을 계산한다(gatewayNameForStack).
+	gateways port.GatewayLocator
+}
+
+// WithGatewayLocator 는 스택 네임스페이스의 실제 게이트웨이를 찾는 길을 배선한다. kubeconfig 는
+// WithManifestApplier 가 배선한 것을 쓴다.
+func (f *BundleFactory) WithGatewayLocator(gateways port.GatewayLocator) *BundleFactory {
+	f.gateways = gateways
+	return f
+}
+
+// gatewayName 은 앱 HTTPRoute 가 붙을 게이트웨이다.
+//
+// 스택 네임스페이스에 실제로 있는 것을 쓴다. 스택은 게이트웨이를 만드는 길이 둘이고 이름 규칙도 둘이다 —
+// 화면 설치는 `<스택 이름>-gateway`, 화면이 게이트웨이 매니페스트를 보내지 않는 설치(런북 stack-up 등)는
+// 서버 기본값이 접근 도메인에서 이름을 만든다(nullus.local → nullus-local-gateway). 짐작한 이름이 틀리면
+// 라우트는 어느 컨트롤러도 집지 않아 앱 주소가 404 다(2026-10-19 kind 실측).
+//
+// 클러스터에 닿지 못하거나 하나로 고를 수 없으면 지금까지처럼 계산한 이름을 쓴다 — 파이프라인 생성을
+// 막지 않는다. 접근 도메인이 없으면 HTTPRoute 를 만들지 않으므로 묻지 않는다.
+func (f *BundleFactory) gatewayName(ctx context.Context, summary *port.StackSummary, namespace string) string {
+	preferred := gatewayNameForStack(summary.Name)
+	if f.gateways == nil || f.kubeconfigs == nil || strings.TrimSpace(summary.AccessDomain) == "" {
+		return preferred
+	}
+	kubeconfig, err := f.kubeconfigs.GetKubeconfig(ctx, summary.ClusterID)
+	if err != nil {
+		slog.Warn("게이트웨이를 찾으려 했지만 kubeconfig 를 읽지 못해 계산한 이름을 씁니다",
+			"stack_id", summary.ID, "gateway", preferred, "error", err)
+		return preferred
+	}
+	name, err := f.gateways.LocateGateway(ctx, kubeconfig, namespace, preferred)
+	switch {
+	case err != nil:
+		slog.Warn("스택 게이트웨이를 조회하지 못해 계산한 이름을 씁니다",
+			"stack_id", summary.ID, "gateway", preferred, "error", err)
+		return preferred
+	case strings.TrimSpace(name) == "":
+		slog.Warn("스택 네임스페이스에서 게이트웨이를 하나로 고르지 못해 계산한 이름을 씁니다",
+			"stack_id", summary.ID, "namespace", namespace, "gateway", preferred)
+		return preferred
+	}
+	return name
 }
 
 // WithRegistrySecrets 는 스택이 설치한 레지스트리의 자격증명 저장소를 배선한다.
@@ -244,7 +288,7 @@ func (f *BundleFactory) gitLabBundle(
 		SASTServerEndpoint:           summary.SASTServerEndpoint,
 		DependencyScanEndpoint:       summary.DependencyScanEndpoint,
 		SASTWebURL:                   sastWebURL(summary),
-		GatewayName:                  gatewayNameForStack(summary.Name),
+		GatewayName:                  f.gatewayName(ctx, summary, namespace),
 	}
 	f.attachSASTToken(bundle, summary)
 	// GitLab 스택도 Harbor·Nexus 를 레지스트리로 고를 수 있다. 빠뜨리면 CI 변수가
@@ -381,7 +425,7 @@ func (f *BundleFactory) gitHubBundle(
 		SASTServerEndpoint:     summary.SASTServerEndpoint,
 		DependencyScanEndpoint: summary.DependencyScanEndpoint,
 		SASTWebURL:             sastWebURL(summary),
-		GatewayName:            gatewayNameForStack(summary.Name),
+		GatewayName:            f.gatewayName(ctx, summary, strings.TrimSpace(summary.Namespace)),
 	}
 	f.attachSASTToken(bundle, summary)
 	return bundle, nil
@@ -457,7 +501,7 @@ func (f *BundleFactory) giteaBundle(
 		SASTServerEndpoint:           summary.SASTServerEndpoint,
 		DependencyScanEndpoint:       summary.DependencyScanEndpoint,
 		SASTWebURL:                   sastWebURL(summary),
-		GatewayName:                  gatewayNameForStack(summary.Name),
+		GatewayName:                  f.gatewayName(ctx, summary, namespace),
 	}
 	f.attachSASTToken(bundle, summary)
 
