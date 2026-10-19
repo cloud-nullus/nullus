@@ -36,7 +36,7 @@ Nullus 가 **설치해 주는** OSS(GitLab · Harbor · Argo CD · Keycloak …)
 
 **14종 전체인가, 코어 N종인가** — 전체다. 스캔은 사람이 고르지 않고 실제로 도는 파드의 `imageID`(저장소@digest)를 모으므로, 템플릿에 도구가 늘어도 정책을 고칠 필요가 없다. 대상을 줄여서 얻는 것은 화면의 행 수뿐이고, 잃는 것은 "스캔하지 않은 곳" 이다.
 
-**공용 구성요소** — cert-manager(`cert-manager`) · metrics-server(`kube-system`) · External Secrets(`external-secrets`)는 스택 네임스페이스 밖에 있지만 스택이 쓴다. 릴리스 라벨(`app.kubernetes.io/instance`)로 골라 함께 스캔하고 **공용**으로 표시한다. 설치기가 클러스터에 이미 있던 것을 재사용했어도 넣는다 — 스택이 그것에 기대기 때문이다. 다만 패치 책임은 갈린다.
+**공용 구성요소** — cert-manager(`cert-manager`) · metrics-server(`kube-system`) · External Secrets(`external-secrets`)는 스택 네임스페이스 밖에 있지만 스택이 쓴다. 릴리스 라벨(`app.kubernetes.io/instance`)로 골라 함께 스캔하고 **공용**으로 표시한다. 설치기가 클러스터에 이미 있던 것을 재사용했어도 넣는다 — 스택이 그것에 기대기 때문이다. 다만 재사용한 것이 위 네임스페이스에 없거나 그 릴리스 라벨이 없으면(다른 네임스페이스의 cert-manager, 배포판 애드온 metrics-server 등) 찾지 못하고 건너뛴다 — 설치기는 CRD · APIService 로 재사용을 판단하지만 스캐너는 고정된 네임스페이스와 라벨로 찾는다. 패치 책임은 갈린다.
 
 | 공용 구성요소를 누가 설치했나 | 패치 책임 |
 |---|---|
@@ -52,7 +52,7 @@ Nullus 가 **설치해 주는** OSS(GitLab · Harbor · Argo CD · Keycloak …)
 | 항목 | 정의 |
 |---|---|
 | 방식 | 스택 Trivy 서버에 붙는 client Job(`nullus-image-scan`)이 스택이 돌리는 이미지를 digest 단위로 스캔한다 |
-| 시점 | 설치 완료 직후 1회 + `STACK_IMAGE_RESCAN_INTERVAL`(기본 **24h**) 재스캔 — 설치 뒤 공개된 CVE 는 다시 스캔해야 보인다 |
+| 시점 | 설치 완료 직후 1회 + `STACK_IMAGE_RESCAN_INTERVAL`(기본 **24h**) 재스캔 — 설치 뒤 공개된 CVE 는 다시 스캔해야 보인다. API 가 다시 뜨면 마지막 스캔이 주기보다 오래된 스택부터 스캔한다(타이머가 재시작마다 처음부터 세어지므로) |
 | 결과 | 이미지별 심각도 건수 · 수정판 있는 건수 · 취약점 목록 · **외부 노출** · **공용 여부** (`stack_image_scans`, `stack_image_vulnerabilities`) |
 | 보는 곳 | 스택 상세 **이미지 취약점** 탭, `GET /api/v1/stacks/:id/image-scans` |
 | 판정 | **보고만 한다.** 설치를 막지 않는다 — 상류 이미지의 CVE 는 사용자가 고칠 수 없는 경우가 많다 |
@@ -77,7 +77,7 @@ Nullus 가 **설치해 주는** OSS(GitLab · Harbor · Argo CD · Keycloak …)
 |---|---|---|
 | ① 수정판이 있는가 | Trivy 의 `FixedVersion` | 없으면 지금 할 수 있는 일이 없다 — 완화책만 |
 | ② 심각도 | Trivy 심각도(CRITICAL · HIGH · …) | |
-| ③ 외부 노출 | 스택 네임스페이스의 **HTTPRoute → Service selector → 파드** 를 따라가 게이트웨이로 클러스터 밖에 열린 이미지를 가린다(호스트 이름 포함) | 밖에서 닿는 서비스의 것을 먼저 고친다 |
+| ③ 외부 노출 | 스택 네임스페이스의 **HTTPRoute → Service selector → 파드** 를 따라가 게이트웨이로 클러스터 밖에 열린 이미지를 가린다(호스트 이름 포함). **LoadBalancer · NodePort Service** 가 고르는 파드도 노출이다 — 스택 게이트웨이의 Envoy 데이터플레인이 그렇게 밖의 요청을 직접 받으므로 스택의 모든 라우트 호스트로 노출된 것으로 본다 | 밖에서 닿는 서비스의 것을 먼저 고친다 |
 
 세 가지로 등급을 매긴다.
 
@@ -88,7 +88,7 @@ Nullus 가 **설치해 주는** OSS(GitLab · Harbor · Argo CD · Keycloak …)
 | **C** | HIGH · 수정판 있음 |
 | **D** | 수정판 없음(심각도 무관) |
 
-외부 노출은 Gateway API(HTTPRoute)만 본다 — 스택이 도구를 여는 길이 그것뿐이다. Ingress · NodePort · LoadBalancer 를 손으로 더했다면 기계는 모른다(2차 판정에서 본다). Gateway API CRD 가 없는 클러스터에서는 노출을 모른 채 스캔한다.
+외부 노출은 HTTPRoute 와 LoadBalancer · NodePort Service 로 본다. Ingress 는 보지 않는다 — 스택이 만드는 브리지 Ingress 는 Envoy 를 가리킬 뿐이라 Envoy 가 노출로 잡히지만, 손으로 더한 Ingress 가 ClusterIP Service 를 가리키면 기계는 모른다(2차 판정에서 본다). Gateway API CRD 가 없는 클러스터에서는 라우트로 열린 것만 모른다.
 
 ### 3.2 사람 2차 판정
 
@@ -129,13 +129,14 @@ Nullus 는 설치 OSS 의 상류 이미지를 빌드하지 않는다. 그래서 
 
 | 항목 | 정의 |
 |---|---|
-| 언제 | 재스캔이 지난 스캔에 없던 **수정판 있는 CRITICAL**(A · B)을 찾았을 때 |
+| 언제 | 재스캔이 아직 알리지 않은 **수정판 있는 CRITICAL**(A · B)을 찾았을 때. "알렸는가" 는 스캔 결과가 아니라 알린 기록(`stack_cve_notices`)으로 가린다 |
 | 묶음 | 스택당 한 건. 본문에 CVE 다섯 개까지(패키지 설치→수정 버전 · 이미지 셋까지 · 노출 호스트), 나머지는 수만 |
 | 심각도 | A 가 하나라도 있으면 `critical`, 아니면 `warning` |
-| 첫 스캔 | 설치 시점에 이미 있던 것을 "첫 스캔" 으로 한 번 알린다 |
-| 보내지 않는 것 | HIGH · 수정판 없음(화면으로 본다), 지난 스캔에 이미 있던 것, **이미 알린 것**(이미지 스캔이 한 번 실패해 취약점 행이 사라졌다 돌아와도 — `stack_cve_notices`), 지난 결과를 읽지 못한 경우(전부 새것으로 보지 않는다) |
+| 첫 고지 | 스택에 처음 보내는 것은 지금 있는 것을 "첫 고지" 로 한 번에 알린다 — 새 스택이면 설치 시점의 것, 이 기능 전에 설치한 스택이면 지금의 현황 |
+| 중복 | 보내기 전에 알린 기록을 선점한다(기본 키, `INSERT … RETURNING`). API 레플리카 둘이 같은 시각에 재스캔해도 한 번만 간다 |
+| 보내지 않는 것 | HIGH · 수정판 없음(화면으로 본다), **이미 알린 것**(이미지 스캔이 한 번 실패해 취약점 행이 사라졌다 돌아와도), 알린 기록을 읽거나 남기지 못한 경우(이번엔 건너뛰고 다음 스캔이 다시 본다) |
 | 구독 | 새 채널은 기본으로 켜진다. 이 이벤트 전에 만든 채널은 편집해 체크해야 받는다 |
-| 실패 | 보내지 못해도 스캔은 성공이다. 발송 기록(최근 발송)에 실패가 남는다 |
+| 실패 | 보내지 못해도 스캔은 성공이다. 발송 기록(최근 발송)에 실패가 남고, 그 CVE 를 다시 보내지는 않는다 — 다시 보내면 받은 채널에 같은 알림이 반복해 간다. 종료로 취소돼 못 보낸 것만 다음 스캔이 보낸다 |
 
 같은 CVE 를 매 스캔마다 보내지 않는다 — 매일 같은 알림이 오면 아무도 읽지 않는다.
 
@@ -180,7 +181,7 @@ Nullus 는 설치 OSS 의 상류 이미지를 빌드하지 않는다. 그래서 
 
 | 기능 | 위치 |
 |---|---|
-| 주기 스캔 · 결과 저장 | `internal/stack/usecase/scan_stack_images.go`, `internal/stack/adapter/imagescan/scanner.go`, `stack_image_scans`(000081 · 000083) |
+| 주기 스캔 · 결과 저장 | `internal/stack/usecase/scan_stack_images.go`(`RescanAll` · 기동 직후 `RescanStale`), `internal/stack/adapter/imagescan/scanner.go`, `stack_image_scans`(000081 · 000083) |
 | 외부 노출 판정 | `internal/stack/adapter/imagescan/exposure.go`, `exposed` · `exposed_hosts`(000103) |
 | 공용 구성요소 | `domain.SharedComponents()`, `namespace` · `shared`(000104) |
 | 에어갭 스캔 | `imagescan.WithMirrorRegistry`, `mirrorRef` |
@@ -195,6 +196,9 @@ Nullus 는 설치 OSS 의 상류 이미지를 빌드하지 않는다. 그래서 
 - **업그레이드 지원 도구 확대** — 지금은 Argo CD 만 검증된 업그레이드가 있다(#70). 그 밖의 도구는 §4 의 "수동 안내" 경로다
 - **취약점 쪽에서 업그레이드로 잇기** — 지금은 버전 업그레이드 탭이 "이 업그레이드가 고치는 CVE" 를 보인다. 이미지 취약점 탭의 CVE 행에서 그것을 고치는 검증된 업그레이드로 가는 길은 아직 없다
 - **익스플로잇 정보 자동 반영** — CISA KEV · EPSS 를 1차 판정에 넣으면 사람 판정이 준다. 에어갭에서 같은 정보를 어떻게 반입할지가 먼저다
-- **노출 판정 범위** — Gateway API 외의 노출 경로(손으로 더한 Ingress · NodePort)는 보지 않는다
+- **노출 판정 범위** — 손으로 더한 Ingress(ClusterIP Service 를 가리키는 것)는 보지 않는다
+- **재사용한 공용 구성요소 찾기** — 스캐너는 고정 네임스페이스 · 릴리스 라벨로 찾는다. 설치기가 판단한 위치(CRD 주석 · APIService)를 넘겨받으면 다른 네임스페이스의 cert-manager 나 애드온 metrics-server 도 스캔할 수 있다
+- **릴리스 이름의 출처** — 스캔 결과의 릴리스는 파드 라벨(`app.kubernetes.io/instance` 등)에서 읽는다. 오퍼레이터가 만드는 파드(Prometheus · Alertmanager 는 CR 이름, Envoy 는 라벨 없음)는 Helm 릴리스 이름과 다르다. 지금 검증된 업그레이드는 Argo CD 뿐이라 맞지만, 도구가 늘면 `fixes_found` 가 조용히 빌 수 있다
+- **스캔 Job 이름 충돌** — 레플리카 둘이 같은 스택을 동시에 스캔하면 같은 이름의 Job(`nullus-image-scan`)을 서로 지워 그 회차 결과가 실패할 수 있다(고지는 선점으로 한 번만 간다). 스택 단위 잠금이 필요하다
 - **기존 채널의 이벤트 구독** — 이 이벤트 전에 만든 채널은 자동으로 받지 않는다(받지 않은 것을 기본으로 켜면 고객 채널에 예고 없이 새 알림이 간다)
 - **Security Dashboard(#65)** — 조직의 모든 스택의 설치 OSS CVE 현황을 한 화면에 모은다
