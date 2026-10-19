@@ -480,6 +480,8 @@ func main() {
 		// 워크로드를 지워 줄 주체가 없다.
 		WithWorkloadDeleter(cicdkube.NewWorkloadDeleter())
 	pipelineHandler := cicdhandler.NewPipelineHandler(createPipelineUC, listPipelinesUC, deployPipelineUC, pgPipelineRepo, pgDeploymentRepo, kubeconfigProvider, manifestApplier.Tracker, pool).
+		// 앱 배포 화면이 스택 모드에서 실제로 만들어질 저장소 주소를 보여 준다.
+		WithRepositoryLocator(cicdBundleFactory).
 		WithDeletePipeline(deletePipelineUC).
 		// GitOps 경로의 실행 기록은 CI 서버에만 있다. 들이지 않으면 빌드가
 		// 성공해도 화면의 실행 통계가 0 으로 남는다.

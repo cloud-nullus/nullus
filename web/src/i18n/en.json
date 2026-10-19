@@ -1631,7 +1631,10 @@
       "branch": "Branch",
       "directory": "Directory",
       "newNamespace": "New Namespace",
-      "newNamespacePlaceholder": "my-namespace"
+      "newNamespacePlaceholder": "my-namespace",
+      "plannedRepositoryHint": "Creating the pipeline creates this repository. If a repository with that name already exists, it is used as is.",
+      "dockerfileAtRoot": "Dockerfile at the repository root",
+      "imageRegistryByPlatform": "Chosen by the platform in the stack registry"
     },
     "manifestLoad": {
       "pathRequired": "Enter a Config Repository URL and YAML path.",

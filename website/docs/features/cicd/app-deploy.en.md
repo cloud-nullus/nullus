@@ -37,12 +37,17 @@ never reaches the server.
 
 First, use **Select Stack** to choose
 which stack's tools to use (if there are no stacks, the only option is
-`Manual Input`). The default URLs of the three fields below are then filled with
-that stack's repository and registry addresses.
+`Manual Input`). A stack-bound pipeline does not ask for a repository; the screen shows where
+the platform will actually create it — the repository is always `<group>/<app name>`
+(`GET /api/v1/cicd/repository-location?stack_id=…` returns the group and web address).
 
-1. **Source Repository** — stack URL (not editable) + path
-2. **Dockerfile Repository**
-3. **Image Registry**
+1. **Source Repository** — `<stack SCM address>/<group>/<app name>` (read-only). If a repository with
+   that name already exists, it is used as is
+2. **Dockerfile Repository** — "Dockerfile at the repository root" (read-only)
+3. **Image Registry** — "Chosen by the platform in the stack registry" (read-only)
+
+On a server that cannot tell that location (no lookup API, or it fails), the three fields still take
+paths as before.
 
 ### Create (when CD is selected)
 
