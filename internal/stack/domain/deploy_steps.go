@@ -24,6 +24,8 @@ var InstallStepOrder = []string{
 	"provisioning_secrets",
 	"installing_postgresql",
 	"installing_minio",
+	// 오브젝트 스토리지 슬롯의 다른 구현체다. 둘은 술어가 배타적이라 함께 서지 않는다.
+	"installing_seaweedfs",
 	"installing_object_storage_secret",
 	"installing_object_storage_buckets",
 	"installing_database_connection_check",

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isInClusterObjectStorage } from '../utils/install-constants'
 
 export type BuildFrequency = 'low' | 'medium' | 'high'
 export type Currency = 'USD' | 'KRW' | 'CNY'
@@ -40,6 +41,7 @@ export const TOOL_VERSION_CATALOG: Record<string, ToolVersionCatalogEntry> = {
   'gitlab-ci': { appVersion: 'v17.7.0', chartVersion: '8.7.2' },
   argocd: { appVersion: 'v2.13.3', chartVersion: '7.7.16' },
   minio: { appVersion: 'RELEASE.2024-12-18T13-15-44Z', chartVersion: '5.4.0' },
+  seaweedfs: { appVersion: '4.48', chartVersion: '4.48.0' },
   prometheus: { appVersion: 'v3.1.0', chartVersion: '69.3.0' },
   grafana: { appVersion: '11.5.1', chartVersion: '8.9.0' },
   opensearch: { appVersion: '2.14.0', chartVersion: '2.22.0' },
@@ -386,7 +388,33 @@ function buildTemplateDraft(templateId: string, overrides?: Partial<StackConfigD
         selectedTemplateId: templateId,
       }
 
-  return migrateDraftToolVersions({ ...baseDraft, ...overrides })
+  return migrateDraftToolVersions(withTemplateObjectStorage({ ...baseDraft, ...overrides }, overrides))
+}
+
+/**
+ * 템플릿이 고른 오브젝트 스토리지 구현체를 Storage 탭에도 싣는다.
+ *
+ * 요청은 Storage 탭의 값(storage.objectStorage.providerOrEngine)을 storage_backend 로 보낸다
+ * (toCreateStackBody). 템플릿 값은 artifacts.storageBackend 에만 들어가므로, 여기서 맞추지
+ * 않으면 SeaweedFS 템플릿을 골라도 Storage 탭의 기본값(minio)이 이겨 MinIO 가 설치된다.
+ * 새로 만들기(create)일 때만 맞춘다 — 기존 연결은 사용자가 적은 제공자가 진실이다.
+ */
+function withTemplateObjectStorage(draft: StackConfigDraft, overrides?: Partial<StackConfigDraft>): StackConfigDraft {
+  const selected = overrides?.artifacts?.storageBackend
+  if (!selected || !isInClusterObjectStorage(selected.tool) || draft.storage.objectStorage.mode !== 'create') {
+    return draft
+  }
+  return {
+    ...draft,
+    storage: {
+      ...draft.storage,
+      objectStorage: {
+        ...draft.storage.objectStorage,
+        providerOrEngine: selected.tool,
+        version: selected.version || getToolAppVersion(selected.tool),
+      },
+    },
+  }
 }
 
 function migrateDraftToolVersions(draft: StackConfigDraft): StackConfigDraft {

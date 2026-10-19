@@ -19,6 +19,8 @@ const (
 	PostgresReleaseName = "nullus-postgresql"
 	// MinIOReleaseName 은 플랫폼이 설치하는 MinIO 릴리스다.
 	MinIOReleaseName = "nullus-minio"
+	// SeaweedFSReleaseName 은 MinIO 대신 고를 수 있는 S3 호환 스토리지 릴리스다.
+	SeaweedFSReleaseName = "nullus-seaweedfs"
 )
 
 // OpenTelemetry Collector 의 이름과 주소 규칙.

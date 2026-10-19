@@ -79,7 +79,9 @@ func InstalledToolWorkloads(cfg StackConfig) []ToolWorkload {
 		// 릴리스명이 곧 파드 이름 접두사다. 차트 이름(opentelemetry-collector)이
 		// 아니라 릴리스명을 써야 실제 파드와 맞는다.
 		{workload("trace_exporter", cfg.Logging.TraceExporter, OTelCollectorReleaseName), cfg.Logging.TraceExporter.Enabled},
-		{workload("storage_backend", cfg.Artifacts.StorageBackend, MinIOServiceName, "minio"), cfg.Artifacts.StorageBackend.Enabled},
+		// 오브젝트 스토리지도 고른 구현체에 따라 파드 접두사가 달라진다(MinIO / SeaweedFS).
+		{workload("storage_backend", cfg.Artifacts.StorageBackend, objectStorageNamePrefixes(cfg.Artifacts.StorageBackend)...),
+			objectStorageNamePrefixes(cfg.Artifacts.StorageBackend) != nil},
 		// 이미지 스캐너는 선택 항목이라 고르지 않은 스택에서는 빠진다.
 		// 릴리스명이 곧 파드 이름 접두사다.
 		// 의존성 스캔(SCA)만 골라도 Trivy 서버가 서므로 여기에 뜬다. 둘 다 골라도 서버는 하나다.
@@ -145,6 +147,19 @@ func InstalledToolWorkloads(cfg StackConfig) []ToolWorkload {
 		}
 	}
 	return out
+}
+
+// objectStorageNamePrefixes 는 오브젝트 스토리지 선택이 띄우는 워크로드 이름 접두사다.
+// 고르지 않았으면 nil 이다. 설치 경로와 같은 기준(ObjectStorageBackendFor)으로 고른다.
+func objectStorageNamePrefixes(sel ToolSelection) []string {
+	backend, ok := ObjectStorageBackendFor(sel)
+	if !ok {
+		return nil
+	}
+	if backend.Tool == ObjectStorageToolMinIO {
+		return []string{MinIOServiceName, "minio"}
+	}
+	return []string{backend.ReleaseName}
 }
 
 // loggingCollectionPrefixes 는 로그 수집 슬롯이 띄우는 워크로드 이름 접두사다.

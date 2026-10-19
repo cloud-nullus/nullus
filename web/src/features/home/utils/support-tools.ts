@@ -60,10 +60,11 @@ export const SUPPORT_TOOLS: SupportTool[] = [
   { name: 'Argo CD', icon: 'argo', categoryKey: CATEGORY.delivery, wizardIds: ['argocd'] },
   { name: 'Harbor', icon: 'harbor', categoryKey: CATEGORY.registry, wizardIds: ['harbor'] },
   { name: 'Nexus Repository', icon: 'sonatype', categoryKey: CATEGORY.registry, wizardIds: ['nexus'] },
-  // MinIO 는 마법사가 고르게 하지 않는다 — 오브젝트 스토리지 백엔드로 고정 설치된다.
-  // 실제로 설치하는 것은 MinIO 포크인 SILO 다(받을 수 있는 이미지가 그쪽뿐이다 —
+  // 오브젝트 스토리지는 마법사의 Storage 탭에서 구현체를 고른다(S3 계약 뒤에서 갈아 끼운다).
+  // MinIO 로 설치되는 실물은 MinIO 포크인 SILO 다(받을 수 있는 이미지가 그쪽뿐이다 —
   // shareddomain.MinIOServerImage). 마크도 설치되는 것과 같아야 한다.
   { name: 'MinIO', icon: 'silo', categoryKey: CATEGORY.objectStorage, wizardIds: ['minio'] },
+  { name: 'SeaweedFS', icon: 'seaweedfs', categoryKey: CATEGORY.objectStorage, wizardIds: ['seaweedfs'] },
   { name: 'Prometheus', icon: 'prometheus', categoryKey: CATEGORY.metrics, wizardIds: ['prometheus'] },
   { name: 'Grafana', icon: 'grafana', categoryKey: CATEGORY.visualization, wizardIds: ['grafana'] },
   // OpenSearch Dashboards 는 여기 없다 — 마법사의 시각화 선택지로 남아 있지만

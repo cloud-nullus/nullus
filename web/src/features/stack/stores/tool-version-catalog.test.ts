@@ -30,6 +30,7 @@ const BACKEND_OWNED: Record<string, string> = {
   'gitlab-ci': 'GitLab',
   argocd: 'ArgoCD',
   minio: 'MinIO',
+  seaweedfs: 'SeaweedFS',
   prometheus: 'Prometheus',
   grafana: 'Grafana',
   nexus: 'Nexus',

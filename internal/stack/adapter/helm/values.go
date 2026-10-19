@@ -10,7 +10,8 @@ import (
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
 
-// minioImageValues 는 "repo:tag" 를 minio 차트의 이미지 values 로 쪼갠다.
+// minioImageValues 는 "repo:tag" 를 차트의 이미지 values(repository·tag)로 쪼갠다.
+// minio·seaweedfs 차트가 같은 모양을 받는다.
 //
 // 차트는 repository 와 tag 를 따로 받는다. 이미지 참조는 공개 상수 하나로
 // 두어야 에어갭 번들 목록·드리프트 검사와 같은 값을 보게 된다.
@@ -172,6 +173,54 @@ func DefaultValues(stepName string) map[string]any {
 				"limits": map[string]any{
 					"cpu":    "1",
 					"memory": "2Gi",
+				},
+			},
+		}
+	case "installing_seaweedfs":
+		// all-in-one 모드: master·volume·filer·S3 게이트웨이를 파드 하나로 세운다.
+		// MinIO standalone 과 같은 자리라 자원·운영 모양이 비슷하다. 차트는
+		// allInOne 을 켜도 개별 컴포넌트를 끄지 않으므로 넷 다 명시적으로 끈다 —
+		// 그대로 두면 StatefulSet 셋이 따로 떠 같은 역할을 두 번 한다.
+		return map[string]any{
+			"global": map[string]any{
+				"seaweedfs": map[string]any{
+					// ClusterRole 은 마스터 마이그레이션용이라 all-in-one 에는 필요 없다.
+					// 이름이 <릴리스>-rw-cr 로 고정이라 켜 두면 한 클러스터의 두 번째
+					// 스택이 소유권 충돌로 설치되지 않는다.
+					"createClusterRole": false,
+				},
+			},
+			"image":  minioImageValues(shareddomain.SeaweedFSImage),
+			"master": map[string]any{"enabled": false},
+			"volume": map[string]any{"enabled": false},
+			"filer":  map[string]any{"enabled": false},
+			"s3":     map[string]any{"enabled": false},
+			"allInOne": map[string]any{
+				"enabled": true,
+				"s3": map[string]any{
+					"enabled":    true,
+					"enableAuth": true,
+					// 신원(액세스 키·시크릿 키) JSON 은 provisioning_secrets 가 금고 값으로
+					// 렌더한 Secret 에서 읽는다. 차트가 직접 만들면 임의 키가 생겨 금고·
+					// GitLab 연결 Secret 이 가리키는 값과 갈라진다.
+					"existingConfigSecret": domain.ProvisionedSeaweedFSSecret,
+				},
+				// 기본값 emptyDir 은 파드가 재시작하면 오브젝트가 전부 사라진다.
+				// 크기는 Storage 탭의 선택이 덮는다(seaweedFSDataValues). 여기는 그
+				// 화면의 가장 작은 값(small)이다.
+				"data": map[string]any{
+					"type": "persistentVolumeClaim",
+					"size": "50Gi",
+				},
+				"resources": map[string]any{
+					"requests": map[string]any{
+						"cpu":    "250m",
+						"memory": "512Mi",
+					},
+					"limits": map[string]any{
+						"cpu":    "1",
+						"memory": "2Gi",
+					},
 				},
 			},
 		}

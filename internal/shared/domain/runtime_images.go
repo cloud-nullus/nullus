@@ -37,9 +37,17 @@ const (
 	// quay.io 를 가리키므로 values 로 덮는다.
 	MinIOServerImage = "docker.io/pgsty/silo:RELEASE.2026-10-15T00-00-00Z"
 
-	// MinIOClientImage — GitLab 오브젝트 스토리지 버킷 부트스트랩 Job.
-	// (internal/stack/adapter/helm/object-storage-buckets.go)
+	// MinIOClientImage — MinIO 차트의 버킷 훅(mcImage). 차트 기본값이 quay.io 라 덮는다.
+	//
+	// GitLab 버킷 부트스트랩 Job 은 더 이상 이것을 쓰지 않는다 — 구현체를 갈아
+	// 끼울 수 있게 S3 CreateBucket 을 curl 로 직접 부른다(CurlImage).
 	MinIOClientImage = "docker.io/pgsty/mc:RELEASE.2026-09-16T00-00-00Z"
+
+	// SeaweedFSImage — 스택 오브젝트 스토리지의 다른 구현체(installing_seaweedfs).
+	// Apache-2.0 이고 상류가 amd64·arm64 를 함께 낸다. 태그는 차트 appVersion 과 같게 둔다
+	// (domain.SeaweedFSAppVersion) — 차트 기본값도 같은 태그지만, 출처를 values 로 못박아
+	// 에어갭 번들과 같은 참조를 보게 한다.
+	SeaweedFSImage = "docker.io/chrislusf/seaweedfs:4.48"
 
 	// CurlImage — Harbor·Nexus 프로비저닝 Job 이 REST API 를 호출한다.
 	// (internal/stack/adapter/helm/{harbor,nexus}-provisioning.go)

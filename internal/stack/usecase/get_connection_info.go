@@ -84,15 +84,22 @@ func databaseConnection(cfg domain.StackConfig) domain.StorageConnection {
 }
 
 // objectStorageConnection 은 오브젝트 스토리지 접속 정보를 만든다.
+//
+// 어느 구현체든 안내하는 것은 같은 S3 계약이다 — 엔드포인트·버킷·액세스 키와
+// 시크릿 키가 든 Secret. 구현체마다 다른 이름은 domain 의 표에서 온다.
 func objectStorageConnection(cfg domain.StackConfig) domain.StorageConnection {
+	backend, ok := domain.ObjectStorageBackendFor(cfg.Artifacts.StorageBackend)
+	if !ok {
+		backend = domain.MinIOObjectStorage
+	}
 	provisioned := domain.StorageConnection{
 		Mode:         "create",
-		Engine:       "minio",
-		Endpoint:     fmt.Sprintf("http://%s:%d", domain.MinIOServiceName, domain.MinIOServicePort),
+		Engine:       backend.Tool,
+		Endpoint:     fmt.Sprintf("http://%s:%d", backend.ServiceName, backend.ServicePort),
 		ResourceName: domain.GitLabArtifactsBucket,
-		AuthID:       domain.MinIORootUser,
-		SecretRef:    domain.ProvisionedMinIOSecret,
-		SecretKey:    domain.MinIOPasswordKey,
+		AuthID:       domain.ObjectStorageAccessKey,
+		SecretRef:    backend.CredentialSecret,
+		SecretKey:    backend.SecretKeyKey,
 	}
 	if cfg.Storage == nil {
 		return provisioned
@@ -181,6 +188,8 @@ func toolCredentials(cfg domain.StackConfig, namespace string) []domain.ToolCred
 			SecretKey: domain.SonarQubeAdminPasswordKey,
 		})
 	}
+	// MinIO 만 로그인 화면(콘솔)이 있다. SeaweedFS 는 S3 API 뿐이라 접속 정보는
+	// 위의 오브젝트 스토리지 항목(엔드포인트·자격 Secret)이 전부다.
 	if sel := cfg.Artifacts.StorageBackend; sel.Enabled && normalizeTool(sel.Name) == "minio" {
 		tools = append(tools, domain.ToolCredential{
 			Name:      sel.Name,

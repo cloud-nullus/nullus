@@ -52,6 +52,7 @@ import {
   STORAGE_SIZE_OPTIONS,
   STORAGE_SIZE_RESOURCE_HINTS,
   STORAGE_PROVIDER_OPTIONS,
+  isInClusterObjectStorage,
   TOOL_LABEL_MAP,
   TOOL_ID_TO_MATRIX_NAME,
   MATRIX_CATEGORY_BY_SLOT,
@@ -177,7 +178,8 @@ type PreDeployCompatibilityReport = {
   matchedMatrix?: CompatibilityMatrix
   baseline: {
     k8s: string
-    minio: string
+    // 고른 오브젝트 스토리지 구현체의 버전이다(MinIO / SeaweedFS).
+    objectStorage: string
     postgres: string
     setupType: 'Helm' | 'Deployment' | 'Mixed'
   }
@@ -197,6 +199,12 @@ function normalizeText(value: string): string {
 export function compatibilityRequestedTools(items: Array<{ slot: PlanningSlot; toolKey: string }>): Record<string, string> {
   return items.reduce<Record<string, string>>((acc, item) => {
     if (item.slot.startsWith('security.')) {
+      return acc
+    }
+    // 스택 안 오브젝트 스토리지는 S3 계약 뒤에서 갈아 끼우는 구현체라 도구 조합을 가르지
+    // 않는다(서버 withoutInterchangeableSlots 와 같다). 매트릭스가 MinIO 로 적혀 있어도
+    // SeaweedFS 를 고른 조합이 "일치하는 매트릭스 없음" 으로 막히면 안 된다.
+    if (item.slot === 'artifacts.storageBackend' && isInClusterObjectStorage(item.toolKey)) {
       return acc
     }
     const category = MATRIX_CATEGORY_BY_SLOT[item.slot]
@@ -671,7 +679,7 @@ export function StackInstallPage() {
         issues: [{ severity: 'error', message: '호환성 매트릭스를 가져오지 못했습니다. 배포를 잠시 중단해 주세요.' }],
         baseline: {
           k8s: 'Unknown',
-          minio: objectStorageBackendVersion,
+          objectStorage: objectStorageBackendVersion,
           postgres: draft.storage.database.version || draft.storage.database.providerOrEngine || 'N/A',
           setupType,
         },
@@ -699,14 +707,17 @@ export function StackInstallPage() {
         issues: [{ severity: 'error', message: '선택한 OSS 조합과 일치하는 호환성 매트릭스가 없습니다.' }],
         baseline: {
           k8s: 'Unknown',
-          minio: objectStorageBackendVersion,
+          objectStorage: objectStorageBackendVersion,
           postgres: draft.storage.database.version || draft.storage.database.providerOrEngine || 'N/A',
           setupType,
         },
       }
     }
 
-    const minioFromMatrix = findMatrixToolVersion(matched, 'minio')
+    // MinIO 는 매트릭스가 버전을 적고 있다. 다른 구현체는 매트릭스에 없으므로 고른 버전을 보인다.
+    const objectStorageVersion = objectStorageBackendTool === 'minio'
+      ? findMatrixToolVersion(matched, 'minio')
+      : objectStorageBackendVersion
     const postgresFromDraft = draft.storage.database.version || draft.storage.database.providerOrEngine || 'N/A'
 
     // F8 Task 3 / 5: cross-check the matched matrix against the selected
@@ -759,7 +770,7 @@ export function StackInstallPage() {
         matchedMatrix: matched,
         baseline: {
           k8s: matched.k8sRange,
-          minio: minioFromMatrix,
+          objectStorage: objectStorageVersion,
           postgres: postgresFromDraft,
           setupType,
         },
@@ -778,7 +789,7 @@ export function StackInstallPage() {
         matchedMatrix: matched,
         baseline: {
           k8s: matched.k8sRange,
-          minio: minioFromMatrix,
+          objectStorage: objectStorageVersion,
           postgres: postgresFromDraft,
           setupType,
         },
@@ -807,7 +818,7 @@ export function StackInstallPage() {
       matchedMatrix: matched,
       baseline: {
         k8s: matched.k8sRange,
-        minio: minioFromMatrix,
+        objectStorage: objectStorageVersion,
         postgres: postgresFromDraft,
         setupType,
       },
@@ -816,6 +827,7 @@ export function StackInstallPage() {
     compatibilityMatrixData,
     clustersData,
     draft.clusterId,
+    objectStorageBackendTool,
     objectStorageBackendVersion,
     draft.storage.database.providerOrEngine,
     draft.storage.database.version,
@@ -2597,7 +2609,10 @@ export function StackInstallPage() {
         </div>
         <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-4">
           <span><strong>K8s:</strong> {compatibilityGate.baseline.k8s}</span>
-          <span><strong>MinIO:</strong> {compatibilityGate.baseline.minio}</span>
+          <span>
+            <strong>{objectStorageBackendTool === 'seaweedfs' ? <>SeaweedFS:</> : <>MinIO:</>}</strong>{' '}
+            {compatibilityGate.baseline.objectStorage}
+          </span>
           <span><strong>Postgres:</strong> {compatibilityGate.baseline.postgres}</span>
           <span><strong>Setup:</strong> {compatibilityGate.baseline.setupType}</span>
         </div>
@@ -3485,7 +3500,15 @@ export function StackInstallPage() {
                     const targetKey = item.key
                     const effectiveMode = getStorageEffectiveMode()
 
-                    const providerOptions = STORAGE_PROVIDER_OPTIONS[targetKey]
+                    // 새로 만들 오브젝트 스토리지는 스택 안에 세울 수 있는 S3 구현체 가운데서 고른다.
+                    // s3·gcs 는 클러스터 밖 제공자라 기존 연결에서만 뜻이 있다 — 새로 만들기에서
+                    // 고르게 두면 설치는 MinIO 를 세우는데 화면은 Amazon S3 라고 말한다.
+                    // 예전 초안이 이미 그런 값을 갖고 있으면 그 값은 목록에 남겨 보이게 한다.
+                    const providerOptions = targetKey === 'objectStorage' && effectiveMode === 'create'
+                      ? STORAGE_PROVIDER_OPTIONS.objectStorage.filter(
+                          (provider) => isInClusterObjectStorage(provider.id) || provider.id === item.target.providerOrEngine,
+                        )
+                      : STORAGE_PROVIDER_OPTIONS[targetKey]
                     const existingRefError = getStorageFieldError(targetKey, 'existingRef')
                     const endpointError = getStorageFieldError(targetKey, 'endpoint')
                     const resourceNameError = getStorageFieldError(targetKey, 'resourceName')

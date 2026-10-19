@@ -52,6 +52,8 @@ CATALOG=(
   "cert-manager|jetstack|https://charts.jetstack.io|jetstack/cert-manager|v1.16.3"
   "metrics-server|metrics-server|https://kubernetes-sigs.github.io/metrics-server/|metrics-server/metrics-server|3.12.2"
   "minio|minio-official|https://charts.min.io/|minio-official/minio|5.4.0"
+  # 오브젝트 스토리지의 다른 구현체(installing_seaweedfs). Apache-2.0 이라 MinIO 가 막혀도 받을 수 있다.
+  "seaweedfs|seaweedfs|https://seaweedfs.github.io/seaweedfs/helm|seaweedfs/seaweedfs|4.48.0"
   "gitlab|gitlab|https://charts.gitlab.io/|gitlab/gitlab|8.7.2"
   "gitlab-runner|gitlab|https://charts.gitlab.io/|gitlab/gitlab-runner|0.72.0"
   "argo-cd|argo|https://argoproj.github.io/argo-helm|argo/argo-cd|7.7.16"

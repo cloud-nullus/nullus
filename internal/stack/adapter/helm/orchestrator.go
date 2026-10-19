@@ -412,6 +412,7 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 		stepConfigFieldPath: map[string]string{
 			"installing_postgresql":                "config.storage.database",
 			"installing_minio":                     "config.artifacts.storage_backend",
+			"installing_seaweedfs":                 "config.artifacts.storage_backend",
 			"installing_object_storage_secret":     "config.storage.object_storage",
 			"installing_object_storage_buckets":    "config.storage.object_storage",
 			"installing_database_connection_check": "config.storage.database",
@@ -448,14 +449,19 @@ func NewOrchestrator(installer port.HelmInstaller, kubeconfig []byte, namespace 
 				}
 				return strings.TrimSpace(cfg.Storage.Database.Mode) == "create"
 			},
+			// 오브젝트 스토리지 슬롯은 구현체를 고른다(MinIO / SeaweedFS). 고른
+			// 구현체의 단계만 서고, 뒤 단계는 어느 쪽이 섰는지 모른 채 S3 계약만 본다.
 			"installing_minio": func(cfg domain.StackConfig) bool {
-				return cfg.Artifacts.StorageBackend.Enabled
+				return isObjectStorageBackendStep(cfg, "installing_minio")
+			},
+			"installing_seaweedfs": func(cfg domain.StackConfig) bool {
+				return isObjectStorageBackendStep(cfg, "installing_seaweedfs")
 			},
 			"installing_object_storage_secret": func(cfg domain.StackConfig) bool {
-				return cfg.Artifacts.StorageBackend.Enabled && isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
+				return hasObjectStorageBackend(cfg) && isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
 			"installing_object_storage_buckets": func(cfg domain.StackConfig) bool {
-				return cfg.Artifacts.StorageBackend.Enabled && isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
+				return hasObjectStorageBackend(cfg) && isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository)
 			},
 			"installing_database_connection_check": func(cfg domain.StackConfig) bool {
 				if !isGitLabSourceRepositorySelection(cfg.Artifacts.SourceRepository) || cfg.Storage == nil {
@@ -618,6 +624,18 @@ func isGiteaSourceRepositorySelection(sel domain.ToolSelection) bool {
 		return false
 	}
 	return normalizeToolName(sel.Name) == "gitea"
+}
+
+// hasObjectStorageBackend 는 스택 안에 오브젝트 스토리지를 세우는 선택인지 본다.
+func hasObjectStorageBackend(cfg domain.StackConfig) bool {
+	_, ok := domain.ObjectStorageBackendFor(cfg.Artifacts.StorageBackend)
+	return ok
+}
+
+// isObjectStorageBackendStep 은 그 단계가 고른 오브젝트 스토리지 구현체의 단계인지 본다.
+func isObjectStorageBackendStep(cfg domain.StackConfig, step string) bool {
+	backend, ok := domain.ObjectStorageBackendFor(cfg.Artifacts.StorageBackend)
+	return ok && backend.Step == step
 }
 
 // isHarborRegistrySelection 은 컨테이너 레지스트리로 Harbor 를 골랐는지 본다.
@@ -844,6 +862,12 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 	// chartSpecForStep 아래에 두면 spec 조회에 실패해 "unknown step" 으로
 	// 떨어지므로 그 앞에서 처리한다.
 	if step == "provisioning_secrets" {
+		// 오브젝트 스토리지 구현체를 바꾸는 설치는 여기서 막는다. 이 단계가 GitLab 연결
+		// Secret 을 고른 구현체로 다시 렌더하므로, 구현체 단계에서야 막으면 이미 늦다 —
+		// kind 실측에서 nullus-object-storage 가 없는 nullus-minio 를 가리킨 채로 남았다.
+		if err := o.guardObjectStorageSwitch(ctx); err != nil {
+			return err
+		}
 		// 시크릿을 생성해 OpenBao 에 기록하고 ESO 가 K8s Secret 을 만들 때까지 기다린다.
 		// 후속 차트가 existingSecret 을 참조하므로 이 대기가 없으면 파드가 기동에 실패한다.
 		if err := o.runSecretProvisioning(ctx, o.namespace); err != nil {
@@ -931,6 +955,12 @@ func (o *Orchestrator) ExecuteStep(ctx context.Context, stackID, step, phase str
 		if generated := o.defaultGatewayBundleManifest(namespace); strings.TrimSpace(generated) != "" {
 			manifest = generated
 			hasManifest = true
+		}
+	}
+
+	if backend, ok := domain.ObjectStorageBackendForStep(step); ok && looksLikeKubeconfig(o.kubeconfig) {
+		if err := o.ensureObjectStorageBackendNotSwitched(ctx, backend, namespace); err != nil {
+			return err
 		}
 	}
 
@@ -1251,6 +1281,11 @@ func isOptInStep(step string) bool {
 	// (isGitLabSourceRepositorySelection 이 빈 이름에 true 를 돌려준다) 여기 없으면
 	// 설정을 모를 때 GitLab 과 Gitea 가 함께 서 버린다.
 	case "installing_gitea", "installing_jenkins":
+		return true
+	// SeaweedFS 도 명시적으로 골라야 선다. 오브젝트 스토리지 슬롯의 기본값은 MinIO 라
+	// (domain.ObjectStorageBackendFor 가 빈 이름에 MinIO 를 돌려준다) 여기 없으면
+	// 설정을 모를 때 둘이 함께 선다.
+	case "installing_seaweedfs":
 		return true
 	// CRD 는 Prometheus 를 고른 스택에서만 필요하다. 여기 없으면 설정을 모를 때
 	// 켜진 것으로 보고, 순서 검증이 오지 않을 단계를 기다리다 멈춘다.

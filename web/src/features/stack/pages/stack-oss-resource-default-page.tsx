@@ -43,6 +43,7 @@ const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   harbor: 'Artifacts',
   'docker-hub': 'Artifacts',
   minio: 'Storage',
+  seaweedfs: 'Storage',
   s3: 'Storage',
   gcs: 'Storage',
   'azure-blob': 'Storage',
@@ -102,7 +103,7 @@ const CATEGORY_HINTS: Array<{ category: ToolCategory; patterns: RegExp[] }> = [
   },
   {
     category: 'Storage',
-    patterns: [/storage/, /object/, /bucket/, /minio/, /\bs3\b/, /\bgcs\b/, /azure[- ]blob/],
+    patterns: [/storage/, /object/, /bucket/, /minio/, /seaweed/, /\bs3\b/, /\bgcs\b/, /azure[- ]blob/],
   },
   {
     category: 'Observability',

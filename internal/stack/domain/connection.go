@@ -232,6 +232,11 @@ const (
 	MinIOChartVersion = "5.4.0"
 	MinIOAppVersion   = "RELEASE.2024-12-18T13-15-44Z"
 
+	// SeaweedFS 는 오브젝트 스토리지의 다른 구현체다(domain.SeaweedFSObjectStorage).
+	// 앱 버전은 이미지 태그와 같다(shareddomain.SeaweedFSImage).
+	SeaweedFSChartVersion = "4.48.0"
+	SeaweedFSAppVersion   = "4.48"
+
 	ArgoCDChartVersion = "7.7.16"
 	ArgoCDAppVersion   = "v2.13.3"
 

@@ -7,7 +7,7 @@ import (
 // 스택이 설치하는 OSS 가 자기 메트릭을 Prometheus 에 내주도록 켠다.
 //
 // 켜지 않으면 파드의 CPU·메모리(cadvisor 경유)만 보이고 도구 자신이 아는 것 —
-// Argo CD 의 동기화 실패 수, Loki 의 수집 지연, MinIO 의 버킷 사용량 — 은 어디에도
+// Argo CD 의 동기화 실패 수, Loki 의 수집 지연, 오브젝트 스토리지의 버킷 사용량 — 은 어디에도
 // 남지 않는다. "모니터링을 설치했는데 정작 도구 상태를 모른다" 가 그 상태다.
 //
 // 두 가지가 함께 필요하다:
@@ -76,6 +76,21 @@ func serviceMonitorValuesForStep(step string, cfg *domain.StackConfig) map[strin
 					// 실제로 한 번 밟았다.
 					"includeNode":      true,
 					"additionalLabels": prometheusReleaseLabels(),
+				},
+			},
+		}
+
+	case "installing_seaweedfs":
+		// all-in-one 의 ServiceMonitor 는 global.seaweedfs.monitoring 하나로 켜진다.
+		// 같은 스위치가 SeaweedFS 대시보드 ConfigMap(grafana_dashboard 라벨)도 만든다.
+		// gatewayHost 는 비워 둔다 — 그것은 Pushgateway 로 밀어 넣는 경로다.
+		return map[string]any{
+			"global": map[string]any{
+				"seaweedfs": map[string]any{
+					"monitoring": map[string]any{
+						"enabled":          true,
+						"additionalLabels": prometheusReleaseLabels(),
+					},
 				},
 			},
 		}

@@ -49,7 +49,11 @@ var installDAG = []installStep{
 
 	{name: "installing_postgresql", phase: "A", duration: time.Second, deps: []string{"provisioning_secrets"}},
 	{name: "installing_minio", phase: "A", duration: time.Second, deps: []string{"installing_postgresql"}},
-	{name: "installing_object_storage_secret", phase: "A", duration: time.Second, deps: []string{"installing_minio"}},
+	// SeaweedFS 는 오브젝트 스토리지 슬롯의 다른 선택지다(nullus-plan#88). MinIO 와
+	// 술어가 배타적이라 동시에 서지 않고, 고르지 않은 쪽은 건너뛴 것으로 끝난다 —
+	// 그래서 뒤 단계가 둘 다에 기대도 순서가 선다.
+	{name: "installing_seaweedfs", phase: "A", duration: time.Second, deps: []string{"installing_postgresql"}},
+	{name: "installing_object_storage_secret", phase: "A", duration: time.Second, deps: []string{"installing_minio", "installing_seaweedfs"}},
 	{name: "installing_object_storage_buckets", phase: "A", duration: time.Second, deps: []string{"installing_object_storage_secret"}},
 	{name: "installing_database_connection_check", phase: "A", duration: time.Second, deps: []string{"installing_object_storage_secret"}},
 
@@ -970,6 +974,8 @@ func resumeStepForReadinessError(err error) string {
 		{hint: "postgresql", step: "installing_postgresql"},
 		{hint: domain.MinIOServiceName, step: "installing_minio"},
 		{hint: "minio", step: "installing_minio"},
+		{hint: domain.SeaweedFSReleaseName, step: "installing_seaweedfs"},
+		{hint: "seaweedfs", step: "installing_seaweedfs"},
 		{hint: "kube-prometheus-stack", step: "installing_prometheus"},
 		{hint: "grafana", step: "installing_grafana"},
 		{hint: "envoy", step: "installing_gateway"},

@@ -63,6 +63,35 @@ resource floors · bundled OSS version conflicts · storage plan.
 The `Run Dry Run` button only stamps the "last run" time — the checks
 themselves are recomputed every time a value changes.
 
+### Object storage: pick the implementation
+
+On the Storage tab, **Object Storage → Storage Provider** picks the S3-compatible
+storage the stack runs in-cluster. Storage you create (the integrated create plan) is
+one of these two.
+
+| Implementation | License | What gets installed | Web console |
+|----------------|---------|---------------------|-------------|
+| **MinIO** | AGPL-3.0 — the image is the community fork SILO (`pgsty/silo`) | release `nullus-minio` (standalone) | `minio.<domain>` (Keycloak sign-in) |
+| **SeaweedFS** | Apache-2.0 | release `nullus-seaweedfs` (all-in-one — master, volume, filer and S3 gateway in one pod) | None — S3 API only |
+
+GitLab (artifacts, LFS, uploads, packages, Pages, Container Registry) sees **only the
+S3 contract** — endpoint, access key, secret key, region and path-style. So the same
+template installs with either implementation, and the compatibility matrix does not
+split combinations on this field. Buckets are created with a plain S3 `CreateBucket`
+over HTTP, with no vendor CLI. The credentials are generated in the stack vault
+(OpenBao) like every other secret, and the connection info screen shows the endpoint
+and Secret of the implementation you picked.
+
+- When a template picks SeaweedFS, the Storage tab picks it up too.
+- The SeaweedFS data volume follows the Storage tab size (small 50Gi · medium 100Gi · large 300Gi).
+- Existing stacks saved without a name, and names Nullus does not recognize, still install MinIO as before.
+
+!!! warning "You cannot switch implementations after installing"
+    There is no data migration. A switch would leave the new storage empty, and GitLab
+    could not find its existing artifacts, uploads or images. So on a stack where the
+    other implementation is already running, the install stops at the secret
+    provisioning step and says why. Switch back, or create a new stack.
+
 ## Deploy
 
 The **Deploy** button stays disabled if any of the following is true:

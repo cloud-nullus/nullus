@@ -40,6 +40,12 @@ type Spec struct {
 	// TemplateData 가 있으면 target.template 으로 렌더링한다.
 	// 값 안에서 {{ .키 }} 로 Entries 의 SecretKey 를 참조한다.
 	TemplateData map[string]string
+	// KeepEntries 는 템플릿을 쓰면서도 Entries 의 값을 대상 Secret 에 그대로 남긴다
+	// (template.mergePolicy: Merge). ESO 의 기본(Replace)은 템플릿 키만 남긴다.
+	//
+	// 템플릿 값은 블록 스칼라라 끝에 줄바꿈이 붙는다. 자격 문자열처럼 줄바꿈 없이
+	// 읽혀야 하는 값은 템플릿으로 다시 쓰지 말고 이것으로 원본을 남긴다.
+	KeepEntries bool
 }
 
 // Render 는 ExternalSecret 매니페스트를 만든다.
@@ -84,7 +90,11 @@ spec:
 `, name, namespace, refresh, store, name)
 
 	if len(spec.TemplateData) > 0 {
-		b.WriteString("    template:\n      engineVersion: v2\n      data:\n")
+		b.WriteString("    template:\n      engineVersion: v2\n")
+		if spec.KeepEntries {
+			b.WriteString("      mergePolicy: Merge\n")
+		}
+		b.WriteString("      data:\n")
 		keys := make([]string, 0, len(spec.TemplateData))
 		for k := range spec.TemplateData {
 			keys = append(keys, k)
