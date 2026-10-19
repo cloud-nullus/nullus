@@ -2,6 +2,7 @@ package port
 
 import (
 	"context"
+	"time"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
@@ -21,9 +22,12 @@ type StackImageScanRepository interface {
 	ListByStack(ctx context.Context, stackID string) ([]domain.StackImageScan, error)
 	// ListVulnerabilities 는 이미지 하나의 저장된 취약점 목록이다.
 	ListVulnerabilities(ctx context.Context, stackID, digest string) (domain.StackImageVulnerabilities, error)
-	// FixableCriticalIDs 는 지금 저장된 결과의 "수정판 있는 CRITICAL" 취약점 ID 다. recorded 는
-	// 목록을 저장한 이미지가 하나라도 있는지 — 거짓이면 처음 스캔하는 스택이다.
-	FixableCriticalIDs(ctx context.Context, stackID string) (ids map[string]bool, recorded bool, err error)
+	// KnownFixableCriticalIDs 는 새 CVE 고지가 "이미 아는 것" 으로 보는 취약점 ID 다 — 지금 저장된 결과의
+	// "수정판 있는 CRITICAL" 과 이미 알린 것. recorded 는 목록을 저장한 이미지나 알린 기록이 하나라도
+	// 있는지 — 거짓이면 처음 스캔하는 스택이다.
+	KnownFixableCriticalIDs(ctx context.Context, stackID string) (ids map[string]bool, recorded bool, err error)
+	// RecordCVENotices 는 스택에 알린 CVE 를 남긴다. 이미 남은 것의 처음 알린 시각은 바꾸지 않는다.
+	RecordCVENotices(ctx context.Context, stackID string, ids []string, at time.Time) error
 }
 
 // CompletedStackLister 는 설치가 끝난 스택을 조직과 무관하게 돌려준다.

@@ -156,3 +156,60 @@ func TestScanStackImages_Execute_PublishFailureDoesNotFailScan(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, pub.events, 1)
 }
+
+// 이미지 하나의 스캔이 한 번 실패하면 그 이미지의 취약점 행이 사라진다. 다음 스캔이 그 CVE 를
+// "새로 발견" 으로 다시 알리면 안 된다 — 한 번 알린 것은 기억한다(실클러스터에서 드러남).
+func TestScanStackImages_Execute_DoesNotRenotifyAfterImageScanFailure(t *testing.T) {
+	stack := imageScanStack("stk_1", true)
+	stack.OrgID = "org-1"
+	results := newFakeImageScanResults()
+	require.NoError(t, results.ReplaceForStack(context.Background(), "stk_1",
+		[]domain.StackImageScan{cveScan("sha256:w", false, nil)}))
+	scanner := &fakeImageScanner{scans: []domain.StackImageScan{cveScan("sha256:w", false, nil, critical("CVE-A"))}}
+	pub := &fakeCVEPublisher{}
+	uc := newScanStackImagesUC([]*domain.Stack{stack}, scanner, results, false).WithNotifier(pub)
+
+	_, err := uc.Execute(context.Background(), "stk_1")
+	require.NoError(t, err)
+	require.Len(t, pub.events, 1, "처음 나온 CVE-A 는 알린다")
+	assert.Equal(t, []string{"CVE-A"}, results.notifiedIDs("stk_1"))
+
+	// 다음 스캔: 이미지 스캔이 일시적으로 실패한다(레이어를 받다 끊김).
+	scanner.scans = []domain.StackImageScan{{Image: "img-sha256:w", ImageDigest: "sha256:w",
+		Status: domain.ImageScanStatusFailed, Error: "unexpected EOF", ScannedAt: time.Now()}}
+	_, err = uc.Execute(context.Background(), "stk_1")
+	require.NoError(t, err)
+
+	// 그다음 스캔: 다시 성공해 같은 CVE 가 보인다.
+	scanner.scans = []domain.StackImageScan{cveScan("sha256:w", false, nil, critical("CVE-A"))}
+	_, err = uc.Execute(context.Background(), "stk_1")
+	require.NoError(t, err)
+	assert.Len(t, pub.events, 1, "이미 알린 CVE-A 를 다시 알리지 않는다")
+}
+
+// 모든 이미지가 실패해 목록이 하나도 없어도, 이미 알린 적이 있는 스택은 "첫 스캔" 이 아니다.
+func TestScanStackImages_Execute_NotFirstScanOnceNotified(t *testing.T) {
+	stack := imageScanStack("stk_1", true)
+	results := newFakeImageScanResults()
+	scanner := &fakeImageScanner{scans: []domain.StackImageScan{cveScan("sha256:w", false, nil, critical("CVE-A"))}}
+	pub := &fakeCVEPublisher{}
+	uc := newScanStackImagesUC([]*domain.Stack{stack}, scanner, results, false).WithNotifier(pub)
+
+	_, err := uc.Execute(context.Background(), "stk_1")
+	require.NoError(t, err)
+	require.Len(t, pub.events, 1)
+	assert.Contains(t, pub.events[0].Title, "첫 스캔")
+
+	scanner.scans = []domain.StackImageScan{{Image: "img-sha256:w", ImageDigest: "sha256:w",
+		Status: domain.ImageScanStatusFailed, Error: "unexpected EOF", ScannedAt: time.Now()}}
+	_, err = uc.Execute(context.Background(), "stk_1")
+	require.NoError(t, err)
+
+	scanner.scans = []domain.StackImageScan{cveScan("sha256:w", false, nil, critical("CVE-A"), critical("CVE-B"))}
+	_, err = uc.Execute(context.Background(), "stk_1")
+	require.NoError(t, err)
+	require.Len(t, pub.events, 2)
+	assert.NotContains(t, pub.events[1].Title, "첫 스캔")
+	assert.Contains(t, pub.events[1].Summary, "CVE-B")
+	assert.NotContains(t, pub.events[1].Summary, "CVE-A")
+}

@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -47,11 +48,37 @@ func (f *fakeImageScanner) namespaces() []string {
 type fakeImageScanResults struct {
 	mu       sync.Mutex
 	rows     map[string][]domain.StackImageScan
+	notified map[string]map[string]time.Time
 	knownErr error
 }
 
 func newFakeImageScanResults() *fakeImageScanResults {
-	return &fakeImageScanResults{rows: map[string][]domain.StackImageScan{}}
+	return &fakeImageScanResults{rows: map[string][]domain.StackImageScan{}, notified: map[string]map[string]time.Time{}}
+}
+
+func (r *fakeImageScanResults) RecordCVENotices(_ context.Context, stackID string, ids []string, at time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.notified[stackID] == nil {
+		r.notified[stackID] = map[string]time.Time{}
+	}
+	for _, id := range ids {
+		if _, ok := r.notified[stackID][id]; !ok {
+			r.notified[stackID][id] = at
+		}
+	}
+	return nil
+}
+
+func (r *fakeImageScanResults) notifiedIDs(stackID string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := []string{}
+	for id := range r.notified[stackID] {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (r *fakeImageScanResults) ReplaceForStack(_ context.Context, stackID string, scans []domain.StackImageScan) error {
@@ -94,14 +121,17 @@ func imageScanStack(id string, withScanner bool) *domain.Stack {
 	return &domain.Stack{ID: id, ClusterID: "cl-1", Namespace: "ns-" + id, State: domain.StateCompleted, Config: cfg}
 }
 
-func (r *fakeImageScanResults) FixableCriticalIDs(_ context.Context, stackID string) (map[string]bool, bool, error) {
+func (r *fakeImageScanResults) KnownFixableCriticalIDs(_ context.Context, stackID string) (map[string]bool, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.knownErr != nil {
 		return nil, false, r.knownErr
 	}
 	ids := map[string]bool{}
-	recorded := false
+	recorded := len(r.notified[stackID]) > 0
+	for id := range r.notified[stackID] {
+		ids[id] = true
+	}
 	for _, s := range r.rows[stackID] {
 		if !s.VulnerabilitiesRecorded {
 			continue

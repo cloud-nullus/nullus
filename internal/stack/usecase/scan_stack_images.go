@@ -108,7 +108,7 @@ func (uc *ScanStackImages) Execute(ctx context.Context, stackID string) (*domain
 		scans[i].StackID = stack.ID
 	}
 	// 무엇이 새것인지는 바꾸기 전의 결과로 판단한다.
-	known, recorded, knownErr := uc.results.FixableCriticalIDs(ctx, stack.ID)
+	known, recorded, knownErr := uc.results.KnownFixableCriticalIDs(ctx, stack.ID)
 	if err := uc.results.ReplaceForStack(ctx, stack.ID, scans); err != nil {
 		return nil, fmt.Errorf("스택 %s 설치 이미지 스캔 결과 저장 실패: %w", stack.ID, err)
 	}
@@ -290,6 +290,15 @@ func (uc *ScanStackImages) notifyNewCVEs(ctx context.Context, stack *domain.Stac
 			{Name: "새 CVE", Value: fmt.Sprintf("%d건 (외부 노출 이미지에 있는 것 %d건)", len(findings), exposed)},
 		},
 		OccurredAt: time.Now(),
+	}
+	// 보내기 전에 남긴다. 이미지 하나의 스캔이 실패해 취약점 행이 사라졌다 돌아와도 다시 알리지 않는다.
+	// 남기지 못하면 그런 경우에 한 번 더 알릴 뿐이라 고지는 그대로 보낸다.
+	ids := make([]string, 0, len(findings))
+	for _, f := range findings {
+		ids = append(ids, f.ID)
+	}
+	if err := uc.results.RecordCVENotices(ctx, stack.ID, ids, event.OccurredAt); err != nil {
+		slog.Warn("설치 이미지 스캔: 알린 CVE 를 남기지 못했습니다", "stack_id", stack.ID, "error", err)
 	}
 	if err := uc.notifier.Publish(ctx, event); err != nil {
 		slog.Warn("설치 이미지 스캔: 새 CVE 고지를 보내지 못했습니다", "stack_id", stack.ID, "error", err)

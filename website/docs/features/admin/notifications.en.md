@@ -57,7 +57,8 @@ These six are all of them. For how alerts are collected and delivered, see
 them is in an image reachable from outside through the gateway, otherwise `warning`. The message carries up
 to five CVEs (package installed → fixed version · image · exposed host); the rest are on the
 **Image Vulnerabilities** tab of the stack detail. A stack's first scan reports what was already
-there at install time once, labelled as the first scan. Channels created before this event existed do not
+there at install time once, labelled as the first scan. A CVE already reported for a stack is not reported for it
+again — even if one image's scan failed in between and then came back. Channels created before this event existed do not
 receive it automatically — edit the channel and tick it.
 
 ## Two tables

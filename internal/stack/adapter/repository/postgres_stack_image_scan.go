@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -154,18 +155,22 @@ func (r *PostgresStackImageScanRepository) ListByStack(ctx context.Context, stac
 	return out, rows.Err()
 }
 
-// FixableCriticalIDs 는 지금 저장된 결과의 "수정판 있는 CRITICAL" 취약점 ID 다. recorded 는 목록을
-// 저장한 이미지가 하나라도 있는지 — 거짓이면 처음 스캔하는 스택이다. 심각도는 대소문자를 가리지 않는다.
-func (r *PostgresStackImageScanRepository) FixableCriticalIDs(ctx context.Context, stackID string) (map[string]bool, bool, error) {
+// KnownFixableCriticalIDs 는 새 CVE 고지가 이미 아는 것으로 보는 취약점 ID 다 — 지금 저장된 결과의
+// "수정판 있는 CRITICAL"(심각도는 대소문자를 가리지 않는다)과 이미 알린 것. recorded 는 목록을 저장한
+// 이미지나 알린 기록이 하나라도 있는지 — 거짓이면 처음 스캔하는 스택이다.
+func (r *PostgresStackImageScanRepository) KnownFixableCriticalIDs(ctx context.Context, stackID string) (map[string]bool, bool, error) {
 	var recorded bool
-	if err := r.pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM stack_image_scans WHERE stack_id = $1 AND vulnerabilities_recorded)`,
+	if err := r.pool.QueryRow(ctx, `SELECT
+		EXISTS (SELECT 1 FROM stack_image_scans WHERE stack_id = $1 AND vulnerabilities_recorded)
+		OR EXISTS (SELECT 1 FROM stack_cve_notices WHERE stack_id = $1)`,
 		stackID).Scan(&recorded); err != nil {
 		return nil, false, fmt.Errorf("query recorded stack image scans: %w", err)
 	}
 	rows, err := r.pool.Query(ctx, `
-		SELECT DISTINCT vulnerability_id FROM stack_image_vulnerabilities
-		WHERE stack_id = $1 AND upper(severity) = 'CRITICAL' AND btrim(fixed_version) <> ''`, stackID)
+		SELECT vulnerability_id FROM stack_image_vulnerabilities
+		WHERE stack_id = $1 AND upper(severity) = 'CRITICAL' AND btrim(fixed_version) <> ''
+		UNION
+		SELECT vulnerability_id FROM stack_cve_notices WHERE stack_id = $1`, stackID)
 	if err != nil {
 		return nil, false, fmt.Errorf("query fixable critical vulnerabilities: %w", err)
 	}
@@ -179,6 +184,20 @@ func (r *PostgresStackImageScanRepository) FixableCriticalIDs(ctx context.Contex
 		ids[id] = true
 	}
 	return ids, recorded, rows.Err()
+}
+
+// RecordCVENotices 는 스택에 알린 CVE 를 남긴다. 이미 남은 것은 처음 알린 시각을 그대로 둔다.
+func (r *PostgresStackImageScanRepository) RecordCVENotices(ctx context.Context, stackID string, ids []string, at time.Time) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if _, err := r.pool.Exec(ctx, `
+		INSERT INTO stack_cve_notices (stack_id, vulnerability_id, first_notified_at)
+		SELECT $1, id, $3 FROM unnest($2::text[]) AS id
+		ON CONFLICT (stack_id, vulnerability_id) DO NOTHING`, stackID, ids, at); err != nil {
+		return fmt.Errorf("record stack cve notices: %w", err)
+	}
+	return nil
 }
 
 // ListVulnerabilities 는 이미지 하나의 저장된 취약점 목록이다.
