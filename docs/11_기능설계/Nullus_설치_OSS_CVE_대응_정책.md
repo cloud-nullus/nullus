@@ -113,7 +113,7 @@ Nullus 는 설치 OSS 의 상류 이미지를 빌드하지 않는다. 그래서 
 | **C** (HIGH · 수정판) | 화면 · 정기 점검 | 분기 OSS 버전 갱신(템플릿 기본 버전) |
 | **D** (수정판 없음) | 화면. A·B 급이면 완화책 공지 | 수정판이 나온 시각부터 위 기한 |
 
-- **기한의 기준 시각** — 그 CVE 를 처음 고지한 시각(`stack_cve_found` 를 보낸 스캔)
+- **기한의 기준 시각** — 그 CVE 를 처음 고지한 시각(`stack_cve_found` 를 보낸 스캔, `stack_cve_notices.first_notified_at`)
 - **못 지킬 때** — 릴리즈 노트 `### Security` 에 사유와 다음 목표일을 적는다. 목표일은 다음 정기 릴리즈를 넘기지 않는다
 - **업그레이드 경로가 아직 없는 도구** — 지금 검증된 업그레이드는 Argo CD 만 있다(#70). 다른 도구는 (1) 템플릿 기본 버전을 올린 Nullus 릴리즈(새 설치) (2) 검증된 절차 문서로 수동 업그레이드를 안내한다. #70 이 도구를 넓히는 만큼 (2)가 줄어든다
 
@@ -133,7 +133,7 @@ Nullus 는 설치 OSS 의 상류 이미지를 빌드하지 않는다. 그래서 
 | 묶음 | 스택당 한 건. 본문에 CVE 다섯 개까지(패키지 설치→수정 버전 · 이미지 셋까지 · 노출 호스트), 나머지는 수만 |
 | 심각도 | A 가 하나라도 있으면 `critical`, 아니면 `warning` |
 | 첫 스캔 | 설치 시점에 이미 있던 것을 "첫 스캔" 으로 한 번 알린다 |
-| 보내지 않는 것 | HIGH · 수정판 없음(화면으로 본다), 지난 스캔에 이미 있던 것, 지난 결과를 읽지 못한 경우(전부 새것으로 보지 않는다) |
+| 보내지 않는 것 | HIGH · 수정판 없음(화면으로 본다), 지난 스캔에 이미 있던 것, **이미 알린 것**(이미지 스캔이 한 번 실패해 취약점 행이 사라졌다 돌아와도 — `stack_cve_notices`), 지난 결과를 읽지 못한 경우(전부 새것으로 보지 않는다) |
 | 구독 | 새 채널은 기본으로 켜진다. 이 이벤트 전에 만든 채널은 편집해 체크해야 받는다 |
 | 실패 | 보내지 못해도 스캔은 성공이다. 발송 기록(최근 발송)에 실패가 남는다 |
 
@@ -184,7 +184,7 @@ Nullus 는 설치 OSS 의 상류 이미지를 빌드하지 않는다. 그래서 
 | 외부 노출 판정 | `internal/stack/adapter/imagescan/exposure.go`, `exposed` · `exposed_hosts`(000103) |
 | 공용 구성요소 | `domain.SharedComponents()`, `namespace` · `shared`(000104) |
 | 에어갭 스캔 | `imagescan.WithMirrorRegistry`, `mirrorRef` |
-| 새 CVE 판정 · 고지 | `domain.NewFixableCriticals`, `ScanStackImages.notifyNewCVEs`, 이벤트 `stack_cve_found`(`internal/shared/notification`) |
+| 새 CVE 판정 · 고지 | `domain.NewFixableCriticals`, `ScanStackImages.notifyNewCVEs`, 이벤트 `stack_cve_found`(`internal/shared/notification`), 알린 CVE `stack_cve_notices`(000103) |
 | 화면 | 스택 상세 **이미지 취약점** 탭(외부 노출 · 공용 표시, 에어갭 DB 안내), 알림 채널 이벤트 목록 |
 | 업그레이드 번들 ↔ CVE | `upgrade_bundles.fixes_cves`(000105), `domain.BundleFixesFound`, `UpgradeStack.Candidates` 의 `fixes_found`, `PostgresStackImageScanRepository.VulnerabilityIDsByRelease`, 버전 업그레이드 탭 |
 
