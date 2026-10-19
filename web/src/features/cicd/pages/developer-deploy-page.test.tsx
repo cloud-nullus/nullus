@@ -179,6 +179,47 @@ describe("DeveloperDeployPage", () => {
     );
   });
 
+  it("should tell the user that a source template copies its source into the new repository", async () => {
+    mockUseCicdTemplates.mockReturnValue({
+      data: [
+        ...templates,
+        {
+          id: "egovframe-boot-sample-v1",
+          name: "eGovFrame Boot Sample (Spring Boot)",
+          description: "",
+          appType: "backend",
+          stages: ["Build", "Deploy"],
+          source: {
+            repoUrl: "https://github.com/eGovFramework/egovframe-boot-sample-java-config",
+            commit: "c44e4bc8ea1e1b1e83e0aaab1037fbf04c761feb",
+            label: "v5.0.0",
+            buildProfile: "spring-boot",
+          },
+        },
+      ],
+    });
+    renderWithProviders(<DeveloperDeployPage />, {
+      route: "/cicd/developer-deploy?template=egovframe-boot-sample-v1",
+    });
+
+    expect(await screen.findByText("Imports the template source")).not.toBeNull();
+    expect(
+      screen.getByText(
+        "Creating the pipeline copies eGovFramework/egovframe-boot-sample-java-config (v5.0.0) into the new repository as its first commit. The repository does not follow later changes to the source. Requires internet access.",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("should not show the source notice for templates without a source", async () => {
+    renderWithProviders(<DeveloperDeployPage />, {
+      route: "/cicd/developer-deploy?template=starter-v1",
+    });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("my-awesome-app")).toHaveValue("starter");
+    });
+    expect(screen.queryByText("Imports the template source")).toBeNull();
+  });
+
   it("selects the first stack and fills stack path defaults", async () => {
     renderWithProviders(<DeveloperDeployPage />);
 

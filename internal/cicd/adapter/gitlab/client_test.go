@@ -2,6 +2,7 @@ package gitlab
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -321,4 +322,105 @@ func TestClient_SendsPrivateTokenHeader(t *testing.T) {
 	_, err := c.EnsureGroup(context.Background(), port.GroupSpec{Name: "x", Path: "x"})
 	require.NoError(t, err)
 	assert.Equal(t, "super-secret", gotToken)
+}
+
+// 외부 원본에서 가져온 글꼴·이미지는 텍스트가 아니다. JSON 문자열로 그대로 실으면
+// UTF-8 이 아닌 바이트가 U+FFFD 로 바뀌어 깨진 파일이 커밋된다.
+func TestCommitFiles_SendsBinaryFilesAsBase64(t *testing.T) {
+	srv, recorded := newStubGitLab(t, func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "abc123"})
+	})
+
+	font := "wOFF\x00\x01\x00\x00\xff\xfe"
+	c := NewClient(srv.URL, "tok")
+	err := c.CommitFiles(context.Background(), "51", port.CommitSpec{
+		Branch:  "main",
+		Message: "chore(nullus): import",
+		Files: []port.CommitFile{
+			{Path: "pom.xml", Content: "<project/>"},
+			{Path: "src/main/webapp/fonts/a.woff", Content: font},
+		},
+	})
+	require.NoError(t, err)
+
+	var commit *recordedRequest
+	for i := range *recorded {
+		if (*recorded)[i].Method == http.MethodPost {
+			commit = &(*recorded)[i]
+		}
+	}
+	require.NotNil(t, commit)
+	actions := commit.Body["actions"].([]any)
+	require.Len(t, actions, 2)
+
+	text := actions[0].(map[string]any)
+	assert.Equal(t, "<project/>", text["content"])
+	assert.NotContains(t, text, "encoding", "텍스트는 지금처럼 평문으로 보낸다")
+
+	binary := actions[1].(map[string]any)
+	assert.Equal(t, "base64", binary["encoding"])
+	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte(font)), binary["content"])
+}
+
+// 원본의 실행 권한(mvnw · entrypoint.sh)을 잃으면 원본 Dockerfile 이 permission denied 로 죽는다.
+func TestCommitFiles_KeepsExecutableBit(t *testing.T) {
+	srv, recorded := newStubGitLab(t, func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "abc123"})
+	})
+	c := NewClient(srv.URL, "tok")
+	require.NoError(t, c.CommitFiles(context.Background(), "51", port.CommitSpec{
+		Branch: "main", Message: "chore(nullus): import",
+		Files: []port.CommitFile{{Path: "mvnw", Content: "#!/bin/sh\n", Executable: true}, {Path: "pom.xml", Content: "<project/>"}},
+	}))
+	var commit *recordedRequest
+	for i := range *recorded {
+		if (*recorded)[i].Method == http.MethodPost {
+			commit = &(*recorded)[i]
+		}
+	}
+	require.NotNil(t, commit)
+	actions := commit.Body["actions"].([]any)
+	assert.Equal(t, true, actions[0].(map[string]any)["execute_filemode"])
+	assert.NotContains(t, actions[1].(map[string]any), "execute_filemode")
+}
+
+// 트리 조회는 페이지로 나뉜다. GitLab 은 디렉터리를 먼저 돌려줘, 디렉터리가 많은 저장소(가져온 원본)에서는
+// 첫 페이지에 .gitlab-ci.yml 이 없다. 첫 페이지만 보면 있는 파일을 create 로 보내 "already exists" 로
+// 커밋 전체가 실패한다 — 정의 갱신이 그렇게 죽는다.
+func TestCommitFiles_ReadsEveryTreePage(t *testing.T) {
+	srv, recorded := newStubGitLab(t, func(w http.ResponseWriter, r *http.Request, _ map[string]any) {
+		if r.Method == http.MethodGet && strings.Contains(r.URL.EscapedPath(), "/repository/tree") {
+			page := r.URL.Query().Get("page")
+			var entries []map[string]string
+			if page == "" || page == "1" {
+				for i := 0; i < 100; i++ {
+					entries = append(entries, map[string]string{"path": fmt.Sprintf("src/dir%03d", i), "type": "tree"})
+				}
+			} else if page == "2" {
+				entries = append(entries, map[string]string{"path": ".gitlab-ci.yml", "type": "blob"})
+			}
+			_ = json.NewEncoder(w).Encode(entries)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "abc123"})
+	})
+
+	c := NewClient(srv.URL, "tok")
+	require.NoError(t, c.CommitFiles(context.Background(), "51", port.CommitSpec{
+		Branch: "main", Message: "chore(nullus): refresh pipeline definition",
+		Files: []port.CommitFile{{Path: ".gitlab-ci.yml", Content: "stages: [build]"}},
+	}))
+
+	var commit *recordedRequest
+	for i := range *recorded {
+		if (*recorded)[i].Method == http.MethodPost {
+			commit = &(*recorded)[i]
+		}
+	}
+	require.NotNil(t, commit)
+	action := commit.Body["actions"].([]any)[0].(map[string]any)
+	assert.Equal(t, "update", action["action"], "둘째 페이지의 파일도 있는 것으로 봐야 한다")
 }

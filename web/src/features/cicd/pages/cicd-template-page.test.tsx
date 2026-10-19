@@ -262,3 +262,62 @@ describe("CicdTemplatePage", () => {
     expect(screen.getByLabelText("Application Type").textContent).toBe("Backend");
   });
 });
+
+describe("CicdTemplatePage template source", () => {
+  beforeEach(() => {
+    mockUseAuthStore.mockImplementation((selector: (state: { role: string }) => unknown) =>
+      selector({ role: "developer" }),
+    );
+    mockUseCicdTemplates.mockReturnValue({
+      data: [
+        {
+          id: "egovframe-web-sample-v1",
+          name: "eGovFrame Web Sample (JSP)",
+          description: "전자정부 표준프레임워크 웹 샘플",
+          appType: "backend",
+          stages: ["Build", "Deploy"],
+          source: {
+            repoUrl: "https://github.com/eGovFramework/egovframe-web-sample",
+            commit: "158daebd2bfdab951e90ad526c3d2a6b6b42513b",
+            label: "v5.0.0",
+            buildProfile: "maven-war",
+          },
+        },
+        {
+          id: "web-backend-v1",
+          name: "Web Backend Pipeline",
+          description: "Backend custom pipeline",
+          appType: "backend",
+          stages: ["Build", "Deploy"],
+        },
+      ],
+    });
+  });
+
+  it("should show where a source template copies its code from", () => {
+    renderWithProviders(<CicdTemplatePage />);
+
+    const link = screen.getByRole("link", {
+      name: "eGovFramework/egovframe-web-sample",
+    });
+    expect(link).toHaveAttribute(
+      "href",
+      "https://github.com/eGovFramework/egovframe-web-sample",
+    );
+    expect(screen.getByText("v5.0.0")).not.toBeNull();
+    expect(
+      screen.getByText(
+        "Copied into a new repository when you create a pipeline. Requires internet access.",
+      ),
+    ).not.toBeNull();
+    expect(screen.getAllByText("Source")).toHaveLength(1);
+  });
+
+  it("should describe the eGovFrame templates in English", () => {
+    renderWithProviders(<CicdTemplatePage />);
+
+    expect(
+      screen.getByText(/eGovFrame web board sample \(XML config, JSP\)/),
+    ).not.toBeNull();
+  });
+});

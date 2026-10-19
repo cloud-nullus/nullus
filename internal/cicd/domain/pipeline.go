@@ -69,6 +69,11 @@ type Pipeline struct {
 	// 보여준다(마이그레이션 000070). 비어 있으면 모른다는 뜻이고, 화면은
 	// 템플릿으로 떨어진다 — 이 칸이 생기기 전에 만든 파이프라인이 그렇다.
 	Stages []string `json:"stages,omitempty"`
+	// Source 는 이 파이프라인의 저장소가 처음 가져온 원본이다. 원본을 가져오지 않았으면 nil 이다.
+	//
+	// 템플릿의 원본 커밋은 시간이 지나면 올라간다. 저장소가 어느 버전에서 시작했는지는
+	// 여기에만 남는다.
+	Source *TemplateSource `json:"source,omitempty"`
 }
 
 // 실행 모드. 어느 쪽이 이미지를 만들고 클러스터에 반영하는지를 가른다.
@@ -114,6 +119,9 @@ type PipelineTemplate struct {
 	DockerContext  string            `json:"docker_context,omitempty"`
 	EnvVars        map[string]string `json:"env_vars,omitempty"`
 	CreatedBy      string            `json:"created_by,omitempty"`
+	// Source 가 있으면 파이프라인을 만들 때 이 원본을 새 저장소로 가져온다.
+	// 없으면 예전처럼 app_type 에 맞춘 스캐폴딩만 커밋한다.
+	Source *TemplateSource `json:"source,omitempty"`
 }
 
 // 열 길이(pipeline_templates.id VARCHAR(100), name VARCHAR(255))와 같다 — VARCHAR 처럼 문자 수로 센다.
@@ -149,6 +157,9 @@ func (t *PipelineTemplate) Validate() error {
 		if strings.TrimSpace(stage) == "" {
 			return fmt.Errorf("%w: stage names must not be empty", ErrTemplateInvalid)
 		}
+	}
+	if t.Source != nil {
+		return t.Source.Validate()
 	}
 	return nil
 }

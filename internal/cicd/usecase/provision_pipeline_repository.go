@@ -36,6 +36,8 @@ type ProvisionPipelineRepositoryInput struct {
 	// RefreshDefinitionOnly 는 이미 있는 저장소의 파이프라인 정의 파일만 다시 쓰고 CI 변수를
 	// 다시 등록한다. Argo CD Application 은 건드리지 않는다.
 	RefreshDefinitionOnly bool
+	// Source 는 템플릿의 원본이다. 있으면 새 저장소의 첫 커밋으로 가져온다.
+	Source *domain.TemplateSource
 }
 
 // ProvisionPipelineRepositoryOutput 은 준비 결과다.
@@ -56,6 +58,8 @@ type ProvisionPipelineRepositoryOutput struct {
 	RepositoryRecreated bool
 	// Stages 는 파이프라인 레코드에 남길 실효 단계다. 스캐폴딩을 건너뛰었으면 비어 있다.
 	Stages []string
+	// ImportedSource 는 새 저장소로 가져온 원본이다. 파이프라인 레코드에 남긴다.
+	ImportedSource *domain.TemplateSource
 }
 
 // ProvisionPipelineRepository 는 파이프라인 하나가 돌기 위한 저장소 일체를 만든다.
@@ -66,6 +70,14 @@ type ProvisionPipelineRepository struct {
 	factory    port.SCMBundleFactory
 	applier    port.ManifestApplier
 	kubeconfig port.KubeconfigProvider
+	// sources 는 템플릿 원본을 가져온다. 스택과 무관하므로 번들이 아니라 여기서 받는다.
+	sources port.SourceArchive
+}
+
+// WithSourceArchive 는 템플릿 원본을 가져올 경로를 배선한다.
+func (uc *ProvisionPipelineRepository) WithSourceArchive(sources port.SourceArchive) *ProvisionPipelineRepository {
+	uc.sources = sources
+	return uc
 }
 
 // NewProvisionPipelineRepository 는 유스케이스를 만든다.
@@ -118,6 +130,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 	appOut, err := NewProvisionAppProject(bundle.Provisioner, bundle.Pipeline, bundle.Registry).
 		WithCIJobs(bundle.CIJobs, bundle.Webhooks, bundle.CIBaseURL, scmServerURLFor(bundle)).
 		WithCredentialPlane(bundle.Credentials).
+		WithSourceArchive(uc.sources).
 		Execute(ctx, ProvisionAppProjectInput{
 			AppName:             app,
 			AppType:             input.AppType,
@@ -142,6 +155,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 			DependencyScanEndpoint:       bundle.DependencyScanEndpoint,
 			SASTToken:                    sastToken,
 			RefreshDefinitionOnly:        input.RefreshDefinitionOnly,
+			Source:                       input.Source,
 		})
 	if err != nil {
 		return nil, fmt.Errorf("provision app project: %w", err)
@@ -162,6 +176,7 @@ func (uc *ProvisionPipelineRepository) Execute(
 		DefinitionRefreshed: appOut.DefinitionRefreshed,
 		RepositoryRecreated: appOut.RepositoryRecreated,
 		Stages:              appOut.Stages,
+		ImportedSource:      appOut.ImportedSource,
 	}
 	if memberWarning != "" {
 		out.Warnings = append(out.Warnings, memberWarning)

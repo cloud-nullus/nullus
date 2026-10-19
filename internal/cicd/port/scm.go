@@ -3,6 +3,8 @@ package port
 import (
 	"context"
 	"errors"
+	"strings"
+	"unicode/utf8"
 )
 
 // SCMGroup 은 소스 저장소 플랫폼의 그룹(네임스페이스)이다.
@@ -61,9 +63,24 @@ type ProjectSpec struct {
 }
 
 // CommitFile 은 커밋에 포함할 파일 하나다.
+//
+// Content 는 파일의 바이트 그대로다. 외부 원본에서 가져온 글꼴·이미지처럼 텍스트가
+// 아닌 파일도 담긴다 — 어댑터는 IsBinary 를 보고 SCM API 에 맞는 인코딩으로 보낸다.
 type CommitFile struct {
 	Path    string
 	Content string
+	// Executable 은 실행 권한이 있는 파일인지다(원본의 mvnw · entrypoint.sh 등). 잃으면 원본
+	// Dockerfile 이 permission denied 로 죽는다. Gitea 의 contents API 는 파일 모드를 받지 않는다.
+	Executable bool
+}
+
+// IsBinary 는 텍스트로 보내면 깨지는 내용인지다.
+//
+// SCM API 는 파일 내용을 JSON 문자열로 받는다. UTF-8 이 아닌 바이트는 JSON 으로 옮기는
+// 순간 U+FFFD 로 바뀌고, NUL 은 받는 쪽이 텍스트로 다루지 못한다 — 둘 다 base64 로 보내야
+// 그대로 커밋된다.
+func (f CommitFile) IsBinary() bool {
+	return !utf8.ValidString(f.Content) || strings.ContainsRune(f.Content, 0)
 }
 
 // CommitSpec 은 여러 파일을 한 커밋으로 올리는 요청이다.

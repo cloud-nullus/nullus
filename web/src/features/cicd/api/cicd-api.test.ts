@@ -481,6 +481,36 @@ describe('cicd-api template mutations', () => {
     })
   })
 
+  // 원본을 가져오는 템플릿(전자정부 표준프레임워크 샘플)은 카드와 생성 화면이 출처를 보여 준다.
+  it('원본이 있는 템플릿은 원본을 화면 모양으로 옮기고, 없으면 비워 둔다', async () => {
+    vi.mocked(mockApi.post).mockResolvedValueOnce({
+      data: {
+        ...rawTemplate,
+        source: {
+          repo_url: 'https://github.com/eGovFramework/egovframe-web-sample',
+          commit: '158daebd2bfdab951e90ad526c3d2a6b6b42513b',
+          label: 'v5.0.0',
+          build_profile: 'maven-war',
+        },
+      },
+    } as never)
+    const withSource = await cicdApiCalls.createTemplate({
+      id: 'team-backend-v1', name: 'Team Backend', description: '', appType: 'backend', stages: ['CI'],
+    })
+    expect(withSource.source).toEqual({
+      repoUrl: 'https://github.com/eGovFramework/egovframe-web-sample',
+      commit: '158daebd2bfdab951e90ad526c3d2a6b6b42513b',
+      label: 'v5.0.0',
+      buildProfile: 'maven-war',
+    })
+
+    vi.mocked(mockApi.post).mockResolvedValueOnce({ data: rawTemplate } as never)
+    const plain = await cicdApiCalls.createTemplate({
+      id: 'team-backend-v1', name: 'Team Backend', description: '', appType: 'backend', stages: ['CI'],
+    })
+    expect(plain.source).toBeUndefined()
+  })
+
   it('수정은 경로의 ID 로 PUT 하고 같은 필드명을 쓴다', async () => {
     vi.mocked(mockApi.put).mockResolvedValueOnce({ data: { ...rawTemplate, name: 'Renamed' } } as never)
 

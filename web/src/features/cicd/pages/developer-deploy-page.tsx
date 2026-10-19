@@ -21,6 +21,7 @@ import {
 import type { AppType } from "../api/cicd-api";
 import { StepSection, labelStyleClass } from "../components/deploy-ui";
 import { generateManifestYamls } from "../utils/yaml-generator";
+import { describeTemplateSource } from "../utils/template-source";
 import { PageHeader } from "../../../components/layout/page-header";
 import { Checkbox } from "../../../components/ui/checkbox";
 
@@ -407,6 +408,14 @@ export function DeveloperDeployPage() {
     setValue,
     stackClusterId,
   ]);
+
+  // 원본을 가져오는 템플릿이면 무엇이 새 저장소로 복사되는지 미리 알린다.
+  const selectedTemplateRecord = templates.find(
+    (item) => item.id === selectedTemplateId,
+  );
+  const selectedTemplateSource = selectedTemplateRecord?.source
+    ? describeTemplateSource(selectedTemplateRecord.source)
+    : null;
 
   const templateIdParam = searchParams.get("template") ?? "";
   useEffect(() => {
@@ -859,6 +868,27 @@ export function DeveloperDeployPage() {
                       "1. Code Checkout",
                     )}
                   </h3>
+                  {selectedTemplateSource && (
+                    <div
+                      role="note"
+                      className="rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-primary)_6%,_transparent)] p-3"
+                    >
+                      <p className="m-0 text-[13px] font-semibold text-[var(--color-text-primary)]">
+                        {t(
+                          "developerDeployPage.sourceImport.title",
+                          "Imports the template source",
+                        )}
+                      </p>
+                      <p className="m-0 mt-1 text-xs leading-[1.5] text-[var(--color-text-secondary)]">
+                        {t("developerDeployPage.sourceImport.description", {
+                          repository: selectedTemplateSource.repository,
+                          version: selectedTemplateSource.version,
+                          defaultValue:
+                            "Creating the pipeline copies {{repository}} ({{version}}) into the new repository as its first commit. The repository does not follow later changes to the source. Requires internet access.",
+                        })}
+                      </p>
+                    </div>
+                  )}
                   <div>
                     <label
                       htmlFor="deploy-code-repository"

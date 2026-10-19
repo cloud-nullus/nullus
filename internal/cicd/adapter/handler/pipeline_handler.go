@@ -243,16 +243,8 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 		RegistryCredentials: req.RegistryCredentials,
 	})
 	if err != nil {
-		if errors.Is(err, usecase.ErrStackNotFound) {
-			return errorResponse(c, http.StatusBadRequest, "STACK_NOT_FOUND", err.Error())
-		}
-		if errors.Is(err, usecase.ErrStackOrgMismatch) {
-			return errorResponse(c, http.StatusForbidden, "STACK_ORG_MISMATCH", err.Error())
-		}
-		if errors.Is(err, usecase.ErrStackClusterMismatch) {
-			return errorResponse(c, http.StatusBadRequest, "STACK_CLUSTER_MISMATCH", err.Error())
-		}
-		return errorResponse(c, http.StatusBadRequest, "PIPELINE_CONFIG_INVALID", err.Error())
+		status, code := createPipelineErrorStatus(err)
+		return errorResponse(c, status, code, err.Error())
 	}
 
 	// 만들자마자 어디로 열리는지 알려 준다. 목록으로 돌아가 다시 찾게 하지 않는다.
@@ -284,6 +276,29 @@ func (h *PipelineHandler) CreatePipeline(c echo.Context) error {
 		resp["warnings"] = out.Warnings
 	}
 	return c.JSON(http.StatusCreated, resp)
+}
+
+// createPipelineErrorStatus 는 파이프라인 생성 실패를 상태 코드와 오류 코드로 옮긴다.
+//
+// 템플릿 원본을 받지 못한 것은 원본 호스트 쪽 문제다(오프라인 설치·사라진 커밋). 요청을 고쳐도
+// 낫지 않으므로 400 이 아니라 502 로 돌려준다. 원본이 쓸 수 없는 모양이면 템플릿 문제라 422 다.
+func createPipelineErrorStatus(err error) (int, string) {
+	switch {
+	case errors.Is(err, usecase.ErrStackNotFound):
+		return http.StatusBadRequest, "STACK_NOT_FOUND"
+	case errors.Is(err, usecase.ErrStackOrgMismatch):
+		return http.StatusForbidden, "STACK_ORG_MISMATCH"
+	case errors.Is(err, usecase.ErrStackClusterMismatch):
+		return http.StatusBadRequest, "STACK_CLUSTER_MISMATCH"
+	case errors.Is(err, usecase.ErrTemplateSourceRequiresStack):
+		return http.StatusBadRequest, "TEMPLATE_SOURCE_REQUIRES_STACK"
+	case errors.Is(err, port.ErrSourceUnreachable), errors.Is(err, port.ErrSourceNotFound), errors.Is(err, port.ErrSourceTooLarge):
+		return http.StatusBadGateway, "TEMPLATE_SOURCE_UNAVAILABLE"
+	case errors.Is(err, port.ErrSourceUnsupported):
+		// 템플릿의 원본 자체가 쓸 수 없는 모양이다 — 템플릿을 고쳐야 낫는다.
+		return http.StatusUnprocessableEntity, "TEMPLATE_SOURCE_UNSUPPORTED"
+	}
+	return http.StatusBadRequest, "PIPELINE_CONFIG_INVALID"
 }
 
 // ListPipelines handles GET /api/v1/pipelines.

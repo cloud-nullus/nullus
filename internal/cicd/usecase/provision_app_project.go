@@ -72,6 +72,9 @@ type ProvisionAppProjectInput struct {
 	// 않는다. SAST 리포트 같은 새 단계가 옛 파이프라인에 붙게 하는 길이다 — 전에는
 	// 파이프라인을 다시 만드는 것 말고 방법이 없었다.
 	RefreshDefinitionOnly bool
+	// Source 가 있으면 새 저장소의 첫 커밋으로 이 원본을 가져온다(템플릿의 원본).
+	// 이미 있던 저장소에는 쓰지 않는다 — 스캐폴딩과 같은 규칙이다.
+	Source *domain.TemplateSource
 }
 
 // argoReadTokenName 은 Argo CD 가 저장소를 읽을 때 쓰는 토큰 이름이다.
@@ -140,6 +143,8 @@ type ProvisionAppProjectOutput struct {
 	// 여기서 적용하지 않는다 — 클러스터 접근은 상위 유스케이스가 한곳에서
 	// 맡는다(Argo CD 리소스와 같은 경로로 적용된다).
 	CredentialManifests []string
+	// ImportedSource 는 이번에 새 저장소로 가져온 원본이다. 가져오지 않았으면 nil 이다.
+	ImportedSource *domain.TemplateSource
 }
 
 // ProvisionAppProject 는 앱 저장소를 만들고 CI/CD 가 돌 수 있는 상태로 만든다.
@@ -159,6 +164,17 @@ type ProvisionAppProject struct {
 	// creds 는 CI 변수 저장소가 없는 SCM(Gitea)에서 자격증명을 OpenBao → ESO
 	// 평면으로 나르는 경로다.
 	creds giteaCredentialPlane
+	// sources 는 템플릿의 원본을 가져온다. 원본이 있는 템플릿에만 쓴다.
+	sources port.SourceArchive
+}
+
+// WithSourceArchive 는 템플릿 원본을 가져올 경로를 배선한다.
+//
+// 배선하지 않은 채 원본이 있는 요청이 오면 오류다 — 빈 스캐폴딩으로 대신 만들면
+// 원본 대신 자리표시자 nginx 가 배포된다.
+func (uc *ProvisionAppProject) WithSourceArchive(sources port.SourceArchive) *ProvisionAppProject {
+	uc.sources = sources
+	return uc
 }
 
 // giteaCredentialPlane 은 포트의 별칭이다 — 어댑터 타입을 직접 받으면 레이어
@@ -210,6 +226,11 @@ func (uc *ProvisionAppProject) Execute(
 		return nil, fmt.Errorf("group_path is required")
 	}
 
+	// 배선이 없는 것은 저장소를 만들기 전에 안다.
+	if input.Source != nil && uc.sources == nil {
+		return nil, fmt.Errorf("템플릿 원본을 가져올 경로가 배선되지 않았습니다 (%s)", input.Source.RepoURL)
+	}
+
 	project, err := uc.scm.EnsureProject(ctx, port.ProjectSpec{
 		Name:        app,
 		Path:        app,
@@ -222,6 +243,17 @@ func (uc *ProvisionAppProject) Execute(
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ensure app project %q: %w", app, err)
+	}
+
+	// 원본은 새로 만든 저장소에만 쓴다 — 이미 있던 저장소에는 스캐폴딩과 같은 이유로 쓰지 않으므로 받지도
+	// 않는다(오프라인 설치에서 기존 저장소로 다시 만드는 길이 원본 호스트 때문에 막히지 않게). 정의 갱신이
+	// 저장소를 다시 만든 경우도 처음처럼 원본을 다시 가져온다.
+	var source *scaffold.ImportedSource
+	if project.Created && input.Source != nil {
+		source, err = uc.fetchSource(ctx, *input.Source)
+		if err != nil {
+			return nil, uc.rollbackNewProject(ctx, project, err)
+		}
 	}
 
 	// 이미지 저장 위치는 스택 구성이 정한다 — 여기서 GitLab 을 전제하지 않는다.
@@ -254,6 +286,7 @@ func (uc *ProvisionAppProject) Execute(
 		SASTServerEndpoint:           input.SASTServerEndpoint,
 		DependencyScanEndpoint:       input.DependencyScanEndpoint,
 	}
+	scaffoldInput.Source = source
 	files, err := scaffold.Render(scaffoldInput)
 	if err != nil {
 		return nil, fmt.Errorf("render scaffold for %q: %w", app, err)
@@ -275,10 +308,15 @@ func (uc *ProvisionAppProject) Execute(
 	case project.Created:
 		if err := uc.scm.CommitFiles(ctx, project.ID, port.CommitSpec{
 			Branch:  project.DefaultBranch,
-			Message: "chore(nullus): scaffold pipeline and deployment manifests",
+			Message: scaffoldCommitMessage(scaffoldInput.Source),
 			Files:   files,
 		}); err != nil {
-			return nil, fmt.Errorf("commit scaffold to %q: %w", project.FullPath, err)
+			err = fmt.Errorf("commit scaffold to %q: %w", project.FullPath, err)
+			// 원본 커밋은 스캐폴딩보다 훨씬 커서 SCM 이 거부하기 쉽다. 남은 빈 저장소는 지운다.
+			if source != nil {
+				return nil, uc.rollbackNewProject(ctx, project, err)
+			}
+			return nil, err
 		}
 		if input.RefreshDefinitionOnly {
 			definitionRefreshed, repositoryRecreated = true, true
@@ -310,6 +348,10 @@ func (uc *ProvisionAppProject) Execute(
 		DefinitionRefreshed: definitionRefreshed,
 		RepositoryRecreated: repositoryRecreated,
 	}
+	if scaffoldInput.Source != nil {
+		origin := scaffoldInput.Source.Origin
+		out.ImportedSource = &origin
+	}
 	if !scaffoldSkipped {
 		// 렌더에 쓴 입력 그대로 단계를 낸다. 따로 판단하면 선언과 실제가 갈린다.
 		out.Stages = scaffold.PipelineStageNamesFor(scaffoldInput)
@@ -319,7 +361,12 @@ func (uc *ProvisionAppProject) Execute(
 			"%s 저장소가 이미 있어 스캐폴딩을 건너뛰었습니다 — 기존 파일을 덮어쓰지 않습니다",
 			project.FullPath))
 	}
-	if repositoryRecreated {
+	switch {
+	case repositoryRecreated && source != nil:
+		out.Warnings = append(out.Warnings, fmt.Sprintf(
+			"%s 저장소가 없어 다시 만들고 템플릿 원본(%s@%s)을 다시 가져왔습니다 — 그 뒤에 밀었던 코드는 다시 밀어야 합니다",
+			project.FullPath, source.Origin.RepoURL, source.Origin.ShortCommit()))
+	case repositoryRecreated:
 		out.Warnings = append(out.Warnings, fmt.Sprintf(
 			"%s 저장소가 없어 다시 만들었습니다 — 전체 스캐폴딩을 썼으므로 앱 코드를 다시 밀어야 합니다",
 			project.FullPath))
@@ -329,6 +376,51 @@ func (uc *ProvisionAppProject) Execute(
 
 	sort.Strings(out.MissingVariables)
 	return out, nil
+}
+
+// fetchSource 는 템플릿의 원본을 가져와 첫 커밋으로 올릴 수 있는지 본다.
+func (uc *ProvisionAppProject) fetchSource(
+	ctx context.Context,
+	origin domain.TemplateSource,
+) (*scaffold.ImportedSource, error) {
+	files, err := uc.sources.Fetch(ctx, origin.RepoURL, origin.Commit)
+	if err != nil {
+		return nil, fmt.Errorf("템플릿 원본 %s@%s 을 가져오지 못했습니다: %w",
+			origin.RepoURL, origin.ShortCommit(), err)
+	}
+	source := &scaffold.ImportedSource{Origin: origin, Files: files}
+	if err := scaffold.CheckImportable(source); err != nil {
+		return nil, fmt.Errorf("템플릿 원본을 쓸 수 없습니다: %w", err)
+	}
+	return source, nil
+}
+
+// rollbackNewProject 는 원본을 올리지 못한 새 저장소를 지운다.
+//
+// 이번 호출이 방금 만든 저장소만 대상이다 — 안에는 초기화 README 하나뿐이고 사용자 코드가 없다. 남겨 두면
+// 같은 이름으로 다시 만들 때 "이미 있던 저장소" 라 스캐폴딩을 건너뛰어, 빈 저장소를 가리키는 파이프라인이
+// 생긴다. 지우지도 못하면 사람이 지워야 한다는 것을 오류에 담는다.
+func (uc *ProvisionAppProject) rollbackNewProject(ctx context.Context, project *port.SCMProject, cause error) error {
+	if delErr := uc.scm.DeleteProject(ctx, project.ID); delErr != nil {
+		return fmt.Errorf("%w — 방금 만든 저장소 %s 를 지우지 못했습니다. 직접 지워야 같은 이름으로 다시 만들 수 있습니다: %v",
+			cause, project.FullPath, delErr)
+	}
+	return fmt.Errorf("%w — 방금 만든 저장소 %s 는 지웠습니다", cause, project.FullPath)
+}
+
+// scaffoldCommitMessage 는 새 저장소의 첫 커밋 메시지다. 원본을 가져왔으면 출처를 적는다 —
+// 저장소 이력만 보고도 어디서 시작했는지 알 수 있어야 한다.
+func scaffoldCommitMessage(source *scaffold.ImportedSource) string {
+	if source == nil {
+		return "chore(nullus): scaffold pipeline and deployment manifests"
+	}
+	origin := source.Origin
+	ref := origin.RepoURL + "@" + origin.ShortCommit()
+	if label := strings.TrimSpace(origin.Label); label != "" {
+		ref += " (" + label + ")"
+	}
+	return "chore(nullus): import " + ref + " and scaffold pipeline\n\n" +
+		"Source: " + origin.RepoURL + "\nCommit: " + origin.Commit + "\n"
 }
 
 // configureGiteaPipeline 은 파이프라인 자격증명을 OpenBao → ESO 평면에 얹는다.

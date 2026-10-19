@@ -42,6 +42,7 @@ import (
 	cicdprovisioning "github.com/cloud-nullus/draft/internal/cicd/adapter/provisioning"
 	cicdrepo "github.com/cloud-nullus/draft/internal/cicd/adapter/repository"
 	cicdrunner "github.com/cloud-nullus/draft/internal/cicd/adapter/runner"
+	cicdsourcearchive "github.com/cloud-nullus/draft/internal/cicd/adapter/sourcearchive"
 	cicdport "github.com/cloud-nullus/draft/internal/cicd/port"
 	cicduc "github.com/cloud-nullus/draft/internal/cicd/usecase"
 	notificationmod "github.com/cloud-nullus/draft/internal/notification"
@@ -427,8 +428,13 @@ func main() {
 		// 주기 동기화가 돌 파이프라인 목록. 화면을 열 때만 들이면 아무도 보지 않는
 		// 파이프라인의 스캔 결과가 쌓이지 않는다.
 		WithSyncablePipelines(pgPipelineRepo)
+	// 템플릿 원본을 가져오는 곳. 템플릿 API 도 저장할 때 같은 것으로 주소를 확인한다.
+	cicdSourceArchive := cicdsourcearchive.NewGitHub(nil)
 	provisionRepoUC := cicduc.NewProvisionPipelineRepository(
-		cicdBundleFactory, manifestApplier, kubeconfigProvider)
+		cicdBundleFactory, manifestApplier, kubeconfigProvider).
+		// 원본을 가져오는 템플릿(전자정부 표준프레임워크 샘플 등)이 새 저장소에 원본을 복사한다.
+		// 원본 호스트는 인터넷에 있다 — 오프라인 설치에서는 그 템플릿만 쓸 수 없다.
+		WithSourceArchive(cicdSourceArchive)
 
 	createPipelineUC := cicduc.NewCreatePipeline(pgPipelineRepo, pgCICDTemplateRepo, cicdStackReader).
 		WithRepositoryProvisioner(provisionRepoUC).
@@ -462,7 +468,9 @@ func main() {
 		// 없으면 배포는 되고 추적 환경변수만 빠진다.
 		cicduc.WithStackReader(cicdStackReader),
 	)
-	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo)
+	cicdTemplateHandler := cicdhandler.NewCICDTemplateHandler(pgCICDTemplateRepo).
+		// 원본을 가져올 수 없는 주소의 템플릿은 저장하지 않는다 — 파이프라인을 만들 때마다 실패한다.
+		WithSourceArchive(cicdSourceArchive)
 	cicdGoldenPathHandler := cicdhandler.NewCICDGoldenPathHandler(pgGoldenPathRepo)
 	deletePipelineUC := cicduc.NewDeletePipeline(
 		// CD 도구의 애플리케이션 삭제기는 번들이 공급한다 — 스택마다 다른 도구를

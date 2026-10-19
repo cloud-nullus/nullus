@@ -105,6 +105,9 @@ type Input struct {
 	//
 	// 비면 의존성 스캔 단계를 만들지 않는다 — 이미지 스캔·SAST 와 같은 이유다.
 	DependencyScanEndpoint string
+	// Source 는 템플릿이 가져온 원본이다. 있으면 앱 자리(React·자리표시자 Dockerfile·README)를
+	// 만들지 않고 원본 파일 위에 플랫폼 소유 파일만 얹는다(imported_source.go).
+	Source *ImportedSource
 }
 
 // 이미지 스캔 단계의 이름. CI 마다 표기가 달라 둘로 나눈다 —
@@ -182,11 +185,10 @@ func Render(in Input) ([]port.CommitFile, error) {
 
 	pipelinePath, pipelineContent := renderPipelineFor(in)
 
-	files := []port.CommitFile{
+	// 플랫폼이 소유하는 파일이다. 원본을 가져온 저장소에서도 이것들은 플랫폼 것으로 둔다.
+	platform := []port.CommitFile{
 		{Path: pipelinePath, Content: pipelineContent},
-		{Path: "Dockerfile", Content: renderDockerfile(in.AppType, appPort)},
-		{Path: "README.md", Content: renderReadme(in.Platform, app, namespace, in.ImageTarget)},
-		{Path: "deploy/deployment.yaml", Content: renderDeployment(app, namespace, in.ImageTarget.Repository, appPort, replicas, in.StackID, in.TemplateID)},
+		{Path: "deploy/deployment.yaml", Content: renderDeployment(app, namespace, in.ImageTarget.Repository, appPort, replicas, in.StackID, in.TemplateID, runtimeProfileFor(in))},
 		{Path: "deploy/service.yaml", Content: renderService(app, namespace, appPort, in.StackID, in.TemplateID)},
 		// 시크릿 탐지의 "유출 전" 절반 — 개발자 로컬 훅과 오탐 allowlist. 정의 갱신은 이 둘을 덮어쓰지
 		// 않는다(allowlist 는 사용자가 다듬는다).
@@ -194,16 +196,29 @@ func Render(in Input) ([]port.CommitFile, error) {
 		{Path: GitleaksConfigPath, Content: renderGitleaksConfig()},
 	}
 
-	// 웹 앱이면 실제로 도는 소스를 함께 넣는다. 자리만 잡아 두면 배포는
-	// 성공하는데 열어 보면 nginx 기본 페이지가 뜬다.
-	if in.AppType == domain.AppTypeWeb {
-		files = append(files, reactAppFiles(app, appPort)...)
-	}
-
 	// 게이트웨이 정보가 있으면 외부 접근 경로를 함께 만든다.
 	// Service 만으로는 클러스터 밖에서 앱에 닿을 수 없다.
 	if route, ok := renderHTTPRoute(app, namespace, appPort, in); ok {
-		files = append(files, port.CommitFile{Path: "deploy/httproute.yaml", Content: route})
+		platform = append(platform, port.CommitFile{Path: "deploy/httproute.yaml", Content: route})
+	}
+
+	var files []port.CommitFile
+	if in.Source != nil {
+		imported, err := composeImported(in, appPort, platform, pipelinePath)
+		if err != nil {
+			return nil, err
+		}
+		files = imported
+	} else {
+		files = append(platform,
+			port.CommitFile{Path: dockerfilePath, Content: renderDockerfile(in.AppType, appPort)},
+			port.CommitFile{Path: "README.md", Content: renderReadme(in.Platform, app, namespace, in.ImageTarget)},
+		)
+		// 웹 앱이면 실제로 도는 소스를 함께 넣는다. 자리만 잡아 두면 배포는
+		// 성공하는데 열어 보면 nginx 기본 페이지가 뜬다.
+		if in.AppType == domain.AppTypeWeb {
+			files = append(files, reactAppFiles(app, appPort)...)
+		}
 	}
 
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
@@ -673,7 +688,7 @@ func ownerLabelLines(stackID, templateID, indent string) string {
 	return b.String()
 }
 
-func renderDeployment(app, namespace, repository string, appPort, replicas int32, stackID, templateID string) string {
+func renderDeployment(app, namespace, repository string, appPort, replicas int32, stackID, templateID string, rt runtimeProfile) string {
 	return fmt.Sprintf(`apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -705,15 +720,16 @@ spec:
           ports:
             - name: http
               containerPort: %[4]d
-          resources:
+%[14]s          resources:
             requests:
-              cpu: 100m
-              memory: 128Mi
+              cpu: %[10]s
+              memory: %[11]s
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: %[12]s
+              memory: %[13]s
 `, app, namespace, repository, appPort, replicas, InitialImageTag, kube.ImagePullSecretNameFor(app),
-		ownerLabelLines(stackID, templateID, "    "), ownerLabelLines(stackID, templateID, "        "))
+		ownerLabelLines(stackID, templateID, "    "), ownerLabelLines(stackID, templateID, "        "),
+		rt.requestCPU, rt.requestMemory, rt.limitCPU, rt.limitMemory, readinessProbeLines(rt))
 }
 
 func renderService(app, namespace string, appPort int32, stackID, templateID string) string {

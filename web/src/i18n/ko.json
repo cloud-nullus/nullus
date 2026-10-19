@@ -349,7 +349,9 @@
       "workloadType": "CI/CD 유형",
       "appType": "애플리케이션 유형",
       "capabilities": "기능",
-      "noCapabilities": "선택된 기능이 없습니다."
+      "noCapabilities": "선택된 기능이 없습니다.",
+      "source": "원본",
+      "sourceNote": "파이프라인을 만들 때 새 저장소로 복사합니다. 인터넷 연결이 필요합니다."
     },
     "actions": {
       "createTemplate": "템플릿 생성",
@@ -1649,6 +1651,10 @@
     "removeItem": "삭제",
     "provisionWarnings": {
       "title": "파이프라인은 만들어졌지만 준비가 끝나지 않았습니다"
+    },
+    "sourceImport": {
+      "title": "템플릿 원본을 가져옵니다",
+      "description": "파이프라인을 만들면 {{repository}} ({{version}})을 새 저장소의 첫 커밋으로 복사합니다. 이후 원본이 바뀌어도 이 저장소는 따라가지 않습니다. 인터넷 연결이 필요합니다."
     }
   },
   "stackHistoryPage": {
