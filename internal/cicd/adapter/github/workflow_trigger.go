@@ -22,6 +22,9 @@ type WorkflowTrigger struct {
 	webBaseURL string
 	// wait 는 dispatch 뒤 실행이 목록에 나타나길 기다리는 간격이다. 테스트가 바꾼다.
 	wait func()
+	// now · sleep 은 push 실행을 기다릴 때 쓴다. 테스트가 바꾼다.
+	now   func() time.Time
+	sleep func(ctx context.Context, d time.Duration) error
 }
 
 // NewWorkflowTrigger 는 owner 아래 리포의 workflowFile(.github/workflows/ 안의 파일 이름)을
@@ -32,6 +35,25 @@ func NewWorkflowTrigger(client *Client, owner, workflowFile string) *WorkflowTri
 		owner:        strings.TrimSpace(owner),
 		workflowFile: strings.TrimSpace(workflowFile),
 		wait:         func() { time.Sleep(runLookupInterval) },
+		now:          time.Now,
+		sleep:        sleepContext,
+	}
+}
+
+func (t *WorkflowTrigger) withClock(now func() time.Time, sleep func(context.Context, time.Duration) error) *WorkflowTrigger {
+	t.now, t.sleep = now, sleep
+	return t
+}
+
+// sleepContext 는 d 만큼 기다리되 요청이 끝나면 멈춘다.
+func sleepContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 
@@ -51,6 +73,12 @@ const (
 	// dispatch 에 실행 id 를 돌려주지 않고 실행은 몇 초 뒤에 목록에 나타난다.
 	runLookupAttempts = 3
 	runLookupInterval = 2 * time.Second
+
+	// push 실행을 기다리는 기준이다(GitLab 트리거와 같다). 머리 커밋이 pushRunGrace 안에 생겼고 그 커밋의
+	// 실행이 아직 없으면 pushRunWait 동안 pushRunPoll 간격으로 다시 본다.
+	pushRunGrace = 2 * time.Minute
+	pushRunWait  = 20 * time.Second
+	pushRunPoll  = 2 * time.Second
 )
 
 // inFlightRunStatuses 는 아직 끝나지 않은 실행 상태다(GitHub 상태값).
@@ -93,6 +121,13 @@ func (t *WorkflowTrigger) TriggerBuild(ctx context.Context, jobName, branch stri
 			"repo", full, "ref", ref, "run_id", latest.ID, "status", latest.Status)
 		return latest.HTMLURL, nil
 	}
+	// 방금 push 된 커밋이면 그 push 실행이 곧 생긴다. 그보다 먼저 dispatch 하면 같은 커밋의 실행이 둘 생기고
+	// 두 deploy 가 같은 브랜치에 되커밋한다.
+	if pushed := t.awaitPushRun(ctx, base, full, ref); pushed != nil {
+		slog.Info("github actions 머리 커밋의 push 실행에 붙습니다",
+			"repo", full, "ref", ref, "run_id", pushed.ID, "status", pushed.Status)
+		return pushed.HTMLURL, nil
+	}
 	var lastKnownID int64
 	if latest != nil {
 		lastKnownID = latest.ID
@@ -115,6 +150,61 @@ func (t *WorkflowTrigger) TriggerBuild(ctx context.Context, jobName, branch stri
 	}
 	// 아직 목록에 없다. 지어낸 실행 주소 대신 워크플로 페이지를 준다.
 	return t.workflowPageURL(repo), nil
+}
+
+// awaitPushRun 은 브랜치 머리 커밋이 방금 생겼을 때 그 커밋의 실행을 잠깐 기다린다.
+//
+// 돌고 있는 것이 나타나면 그것을 돌려준다. 이미 끝났으면 붙을 것이 없으므로 nil 이다. 커밋이 오래됐거나
+// 조회가 실패하면 기다리지 않는다.
+func (t *WorkflowTrigger) awaitPushRun(ctx context.Context, base, full, ref string) *workflowRun {
+	var branch struct {
+		Commit struct {
+			SHA    string `json:"sha"`
+			Commit struct {
+				Committer struct {
+					Date time.Time `json:"date"`
+				} `json:"committer"`
+			} `json:"commit"`
+		} `json:"commit"`
+	}
+	found, err := t.client.get(ctx, base+"/branches/"+url.PathEscape(ref), &branch)
+	committed := branch.Commit.Commit.Committer.Date
+	if err != nil || !found || branch.Commit.SHA == "" || committed.IsZero() {
+		return nil
+	}
+	if t.now().Sub(committed) > pushRunGrace {
+		return nil
+	}
+
+	q := url.Values{}
+	q.Set("head_sha", branch.Commit.SHA)
+	q.Set("per_page", "1")
+	deadline := t.now().Add(pushRunWait)
+	for {
+		var payload struct {
+			WorkflowRuns []workflowRun `json:"workflow_runs"`
+		}
+		found, err := t.client.get(ctx, base+"/actions/runs?"+q.Encode(), &payload)
+		if err != nil {
+			slog.Warn("github actions 머리 커밋의 실행을 읽지 못해 기다리지 않습니다", "repo", full, "ref", ref, "error", err)
+			return nil
+		}
+		if found && len(payload.WorkflowRuns) > 0 {
+			run := payload.WorkflowRuns[0]
+			if inFlightRunStatuses[strings.ToLower(run.Status)] && run.HTMLURL != "" {
+				return &run
+			}
+			return nil
+		}
+		if !t.now().Before(deadline) {
+			slog.Info("github actions 머리 커밋의 push 실행이 나타나지 않아 새로 시작합니다",
+				"repo", full, "ref", ref, "waited", pushRunWait)
+			return nil
+		}
+		if err := t.sleep(ctx, pushRunPoll); err != nil {
+			return nil
+		}
+	}
 }
 
 // latestRun 은 그 브랜치의 최신 실행이다. event 가 비어 있지 않으면 그 종류만 본다.

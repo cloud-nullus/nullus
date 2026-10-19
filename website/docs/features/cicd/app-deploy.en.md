@@ -97,6 +97,11 @@ A pipeline linked to a stack has **a single stage, `Trigger CI`** — the real w
 runs on the GitLab, GitHub, or Jenkins side. For the stages there, see the
 [CI/CD overview](index.md#stages-a-pipeline-actually-runs).
 
+The run right after creation does not start a new run; it attaches to the push run of the scaffold
+commit. That push run appears a few seconds after the commit, so when the branch head commit is fresh
+the trigger waits up to 20 seconds for it (GitLab CI · GitHub Actions). Two runs of the same commit would
+both push a deploy commit to the same branch, and one of them would fail.
+
 !!! warning "developer cannot fill this screen to the end"
     The Stack, Cluster, and Namespace pickers are populated from lookup APIs that
     only admin and devops may call. In an environment with authentication enabled,
