@@ -97,9 +97,21 @@ CI 의 **PR Convention Check** 가 제목과 본문을 강제합니다.
 ```bash
 pip install -r website/requirements.txt
 ./website/stage.sh                  # docs/ 의 단독 HTML 가이드를 가져옵니다
-cd website && mkdocs serve          # http://127.0.0.1:8000
+python3 website/check_i18n.py       # 한국어·영어판 짝을 봅니다
+cd website && mkdocs serve          # http://127.0.0.1:8000 (영어판은 /en/)
 ```
 
+**페이지는 한국어·영어 두 벌입니다.** 한국어 `X.md` 가 원본이고 영어판 `X.en.md` 가
+같은 자리에 있습니다. 한국어를 고치면 같은 PR 에서 영어판도 고칩니다.
+
+- 영어판의 화면 문구는 영어 UI 의 실제 문구(`web/src/i18n/en.json`)를 씁니다
+- 페이지 링크는 한국어 파일명(`list.md`)으로 겁니다 — 영어판에서는 플러그인이 영어 페이지로
+  바꿉니다. 제목 앵커는 영어 제목 기준입니다
+- nav 에 제목을 더하면 `website/mkdocs.yml` 의 `nav_translations` 에 영어 제목도 더합니다
+- 화면 캡처는 `web` 에서 `npm run shots:docs` 로 찍으면 `*.png`(한국어)와 `*.en.png`(영어)가
+  함께 나옵니다. 본문의 그림 경로는 두 판 모두 `*.png` 그대로 둡니다
+
 `main` 에 들어가면 GitHub Actions 가 자동으로 배포합니다. PR 에서는 빌드만
-합니다 — `mkdocs build --strict` 라서 **nav 에 적은 문서가 없거나 내부 링크가
-깨지면 CI 가 실패합니다.**
+합니다 — `mkdocs build --strict` 라서 **nav 에 적은 문서가 없거나 내부 링크·앵커가
+깨지면 CI 가 실패합니다.** 영어판이 빠졌거나 한쪽에만 절·그림을 더한 페이지도
+`check_i18n.py` 가 막습니다.

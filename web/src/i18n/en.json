@@ -1608,7 +1608,7 @@
     "appNameRule": "Only lowercase letters, numbers, and hyphens are allowed.",
     "form": {
       "stackOptional": "Stack",
-      "stackRequired": "Stack 선택",
+      "stackRequired": "Select Stack",
       "clusterLockedToStack": "Fixed to the cluster the stack is installed on. The stack's Argo CD deploys the app there.",
       "manualInput": "Manual Input",
       "appName": "App Name",
