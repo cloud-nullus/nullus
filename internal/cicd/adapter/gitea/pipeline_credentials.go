@@ -2,12 +2,15 @@ package gitea
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/cloud-nullus/draft/internal/cicd/port"
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 	"github.com/cloud-nullus/draft/internal/shared/externalsecret"
+	"github.com/cloud-nullus/draft/internal/shared/secrets"
 )
 
 const (
@@ -26,9 +29,11 @@ const (
 	CISecretPrefix = "nullus-ci-"
 )
 
-// SecretWriter 는 OpenBao 기록에 필요한 최소 동작만 노출한다.
+// SecretWriter 는 OpenBao 기록과 회수에 필요한 최소 동작만 노출한다.
 type SecretWriter interface {
 	PutTokenForStack(ctx context.Context, provider, stackID, path, value string) error
+	// DeleteTreeForStack 은 접두사 아래의 값을 모두 지운다. 파이프라인을 지울 때 쓴다.
+	DeleteTreeForStack(ctx context.Context, provider, stackID, prefix string) error
 }
 
 // CISecretName 은 앱의 파이프라인 자격증명 Secret 이름이다.
@@ -85,8 +90,9 @@ func (p *CredentialPlane) Provision(
 		return "", nil
 	}
 	appName := strings.TrimSpace(app)
-	if appName == "" {
-		return "", fmt.Errorf("app 이름이 필요합니다")
+	prefix, err := p.pipelinePathPrefix(appName)
+	if err != nil {
+		return "", err
 	}
 
 	// 순서를 고정한다 — 같은 입력이 같은 매니페스트를 내야 재적용이 의미 없는
@@ -94,14 +100,13 @@ func (p *CredentialPlane) Provision(
 	sorted := append([]port.PipelineVariable(nil), vars...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Key < sorted[j].Key })
 
-	prefix := secretPathPrefix(p.env, p.orgID)
 	entries := make([]externalsecret.Entry, 0, len(sorted))
 	for _, v := range sorted {
 		key := strings.TrimSpace(v.Key)
 		if key == "" {
 			continue
 		}
-		path := fmt.Sprintf("%scicd/pipelines/%s/%s", prefix, appName, strings.ToLower(key))
+		path := prefix + strings.ToLower(key)
 		if err := p.secrets.PutTokenForStack(ctx, SecretProvider, p.stackID, path, v.Value); err != nil {
 			return "", fmt.Errorf("자격증명 기록 실패 (%s): %w", path, err)
 		}
@@ -116,6 +121,11 @@ func (p *CredentialPlane) Provision(
 		Namespace:       p.namespace,
 		SecretStoreName: ESOSecretStoreName,
 		Entries:         entries,
+		// 파이프라인을 지울 때 이 표시로 플랫폼이 만든 것만 지운다.
+		Labels: map[string]string{
+			shareddomain.AppManagedByLabel: shareddomain.AppManagedByCICD,
+			"app.kubernetes.io/name":       appName,
+		},
 	})
 	if err != nil {
 		return "", fmt.Errorf("render pipeline credential secret for %q: %w", appName, err)
@@ -123,14 +133,47 @@ func (p *CredentialPlane) Provision(
 	return manifest, nil
 }
 
-// secretPathPrefix 는 이 스택의 OpenBao 경로 접두사다.
-// 스택 모듈의 규약(kv/nullus/{env}/{org_id}/)을 따른다.
-func secretPathPrefix(env, orgID string) string {
-	if env == "" {
-		env = defaultTokenEnv
+// CredentialObject 는 Provision 이 만든 ExternalSecret 의 자리다.
+func (p *CredentialPlane) CredentialObject(app string) (port.PipelineCredentialObject, error) {
+	appName := strings.TrimSpace(app)
+	prefix, err := p.pipelinePathPrefix(appName)
+	if err != nil {
+		return port.PipelineCredentialObject{}, err
 	}
-	if orgID == "" {
-		orgID = "default"
+	return port.PipelineCredentialObject{
+		Namespace:       p.namespace,
+		Name:            CISecretName(appName),
+		RemoteKeyPrefix: prefix,
+	}, nil
+}
+
+// Revoke 는 Provision 이 금고에 쓴 이 파이프라인 몫의 값을 모두 지운다.
+//
+// 키 목록을 기억해 두지 않고 경로 아래를 통째로 지운다 — 재프로비저닝으로 변수가 바뀌었으면
+// 지금 ExternalSecret 이 가리키지 않는 옛 값도 남아 있다.
+func (p *CredentialPlane) Revoke(ctx context.Context, app string) error {
+	if p == nil || p.secrets == nil {
+		return fmt.Errorf("자격증명 저장소가 배선되지 않았습니다")
 	}
-	return fmt.Sprintf("kv/nullus/%s/%s/", env, orgID)
+	prefix, err := p.pipelinePathPrefix(strings.TrimSpace(app))
+	if err != nil {
+		return err
+	}
+	if err := p.secrets.DeleteTreeForStack(ctx, SecretProvider, p.stackID, prefix); err != nil {
+		var denied *secrets.StatusError
+		if secrets.IsForbidden(err) && errors.As(err, &denied) {
+			// 삭제 권한은 스택 부트스트랩 때 정책으로 들어간다. root token 이 폐기된 기존 스택은
+			// 정책을 고칠 수 없어 값이 남는다. 키마다 같은 403 이 나오므로 하나만 싣는다.
+			return fmt.Errorf("금고 정책이 삭제를 막았습니다 — 파이프라인 자격증명 삭제 권한이 생기기 전에 "+
+				"설치한 스택이면 정책에 그 권한이 없습니다. 금고에서 직접 지워야 합니다: %w", denied)
+		}
+		return err
+	}
+	return nil
+}
+
+// pipelinePathPrefix 는 한 파이프라인의 자격증명이 사는 금고 경로다(끝이 / 다). 경로 규칙은
+// 스택 모듈의 금고 정책과 같이 secrets 패키지 한곳에 있다.
+func (p *CredentialPlane) pipelinePathPrefix(app string) (string, error) {
+	return secrets.PipelineCredentialPrefix(p.env, p.orgID, app)
 }

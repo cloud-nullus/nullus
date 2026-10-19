@@ -3,6 +3,8 @@ package secrets
 import (
 	"context"
 	"errors"
+	"fmt"
+	"path"
 	"strings"
 	"sync"
 )
@@ -123,6 +125,76 @@ func (r *Router) GetTokenForStack(ctx context.Context, provider, stackID, path s
 		return "", err
 	}
 	return store.GetToken(ctx, path)
+}
+
+// KVDeleter 는 KV 트리를 지우는 확장 창구다. 파이프라인을 지울 때 그 파이프라인 몫의
+// 자격증명을 회수하는 데 쓴다 — Store 를 넓히지 않는 이유는 KVBrowser 와 같다.
+type KVDeleter interface {
+	ListKeys(ctx context.Context, path string) ([]string, error)
+	DeleteSecret(ctx context.Context, path string) error
+}
+
+// minDeleteTreeDepth 는 트리 삭제가 받는 접두사의 최소 깊이다. "kv/" · "kv/nullus" 처럼
+// 넓은 접두사로 금고를 통째로 비우는 실수를 막는다.
+const minDeleteTreeDepth = 4
+
+// DeleteTreeForStack 은 접두사 아래의 값을 하위 디렉터리까지 모두 지운다. 없으면 성공이다.
+//
+// 하나를 못 지워도 나머지는 지운다 — 중간에 멈추면 무엇이 남았는지 알 수 없다.
+func (r *Router) DeleteTreeForStack(ctx context.Context, provider, stackID, prefix string) error {
+	prefix = strings.Trim(strings.TrimSpace(prefix), "/")
+	// "." · ".." · 빈 세그먼트는 거부한다. proxy 요청은 경로를 정리(path.Join)해서 보내므로
+	// pipelines/../pipelines/other 가 다른 파이프라인을 지운다. 깊이도 정리한 뒤의 것을 센다.
+	if path.Clean(prefix) != prefix || !allSegments(prefix) {
+		return fmt.Errorf("금고 트리 삭제 접두사가 올바르지 않습니다: %q", prefix)
+	}
+	if len(strings.Split(prefix, "/")) < minDeleteTreeDepth {
+		return fmt.Errorf("금고 트리 삭제 접두사가 너무 넓습니다: %q", prefix)
+	}
+	store, err := r.ForStack(ctx, provider, stackID)
+	if err != nil {
+		return err
+	}
+	deleter, ok := store.(KVDeleter)
+	if !ok {
+		return fmt.Errorf("이 금고(%s)는 값 삭제를 지원하지 않습니다", provider)
+	}
+	return deleteTree(ctx, deleter, prefix)
+}
+
+func allSegments(p string) bool {
+	for _, seg := range strings.Split(p, "/") {
+		if !IsPathSegment(seg) {
+			return false
+		}
+	}
+	return true
+}
+
+func deleteTree(ctx context.Context, d KVDeleter, prefix string) error {
+	keys, err := d.ListKeys(ctx, prefix)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, key := range keys {
+		name := strings.TrimSuffix(key, "/")
+		if !IsPathSegment(name) {
+			errs = append(errs, fmt.Errorf("금고가 돌려준 키 이름 %q 을 건너뜁니다 (%s)", key, prefix))
+			continue
+		}
+		child := prefix + "/" + name
+		if strings.HasSuffix(key, "/") {
+			if err := deleteTree(ctx, d, child); err != nil {
+				errs = append(errs, err)
+			}
+			continue
+		}
+		if err := d.DeleteSecret(ctx, child); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (r *Router) CheckForStack(ctx context.Context, provider, stackID string) error {

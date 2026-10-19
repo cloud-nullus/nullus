@@ -105,6 +105,34 @@ func (r *PostgresPipelineRepository) List(ctx context.Context, orgID string) ([]
 	return pipelines, nil
 }
 
+// OtherPipelinesNamed 는 같은 스택에서 같은 이름을 쓰는 다른 파이프라인의 ID 를 모두 돌려준다.
+// 개수를 자르지 않는다 — 하나라도 놓치면 그 파이프라인이 쓰는 자격증명을 지운다.
+func (r *PostgresPipelineRepository) OtherPipelinesNamed(ctx context.Context, stackID, name, excludeID string) ([]string, error) {
+	const q = `
+		SELECT id FROM pipelines
+		WHERE stack_id = $1 AND btrim(name) = btrim($2) AND id <> $3
+		ORDER BY created_at`
+
+	rows, err := r.pool.Query(ctx, q, stackID, name, excludeID)
+	if err != nil {
+		return nil, fmt.Errorf("query pipelines named %q in stack %s: %w", name, stackID, err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan pipeline id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+	return ids, nil
+}
+
 // ListByStackID returns all pipelines linked to a specific stack.
 
 // ListWithStack 은 스택에 묶인 파이프라인을 조직과 무관하게 돌려준다(주기 동기화용).

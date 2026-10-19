@@ -46,6 +46,8 @@ type Spec struct {
 	// 템플릿 값은 블록 스칼라라 끝에 줄바꿈이 붙는다. 자격 문자열처럼 줄바꿈 없이
 	// 읽혀야 하는 값은 템플릿으로 다시 쓰지 말고 이것으로 원본을 남긴다.
 	KeepEntries bool
+	// Labels 는 ExternalSecret 에 붙일 라벨이다. 비우면 붙이지 않는다.
+	Labels map[string]string
 }
 
 // Render 는 ExternalSecret 매니페스트를 만든다.
@@ -79,7 +81,19 @@ kind: ExternalSecret
 metadata:
   name: %s
   namespace: %s
-spec:
+`, name, namespace)
+	if len(spec.Labels) > 0 {
+		b.WriteString("  labels:\n")
+		keys := make([]string, 0, len(spec.Labels))
+		for k := range spec.Labels {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Fprintf(&b, "    %s: %q\n", k, spec.Labels[k])
+		}
+	}
+	fmt.Fprintf(&b, `spec:
   refreshInterval: %s
   secretStoreRef:
     name: %s
@@ -87,7 +101,7 @@ spec:
   target:
     name: %s
     creationPolicy: Owner
-`, name, namespace, refresh, store, name)
+`, refresh, store, name)
 
 	if len(spec.TemplateData) > 0 {
 		b.WriteString("    template:\n      engineVersion: v2\n")

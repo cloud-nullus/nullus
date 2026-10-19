@@ -98,10 +98,26 @@ credential in the Argo CD namespace (`nullus-repo-<app>`). A Secret without the 
 label (`app.kubernetes.io/managed-by=nullus-cicd`) is left alone even if the name matches.
 The app namespace itself is not deleted.
 
-!!! warning "Pipeline credentials on Gitea · Jenkins stacks are left behind"
-    These stacks add one more object — an ExternalSecret `nullus-ci-<app>` in the stack
-    namespace, backed by a value in OpenBao. Deletion does not remove them; delete the
-    ExternalSecret, the Secret ESO created from it, and the OpenBao entry yourself.
+Gitea and Jenkins stacks keep pipeline credentials separately — an ExternalSecret `nullus-ci-<app>`
+in the stack namespace, the Secret ESO creates from it, and the values under
+`kv/nullus/<env>/<org>/cicd/pipelines/<app>/` in OpenBao. Only the CI job uses these credentials, so they
+are deleted together with the CI job **regardless of the checkboxes**. The ExternalSecret goes first (the
+Secret ESO created goes with it through its owner reference), then the vault values. An ExternalSecret
+without the platform label is deleted only when all of its remote keys sit under that pipeline's vault
+path. Anything that cannot be deleted does not stop the rest of the deletion; it is reported in the
+banner.
+
+Credentials are found by pipeline name. If another pipeline with the same name exists on the same stack,
+it uses the same credentials, so they are kept and the banner says why. A name that cannot be a single
+segment of the vault path (one containing `/`, or exactly `.` or `..`) is never deleted either — it would point at
+another pipeline's values.
+
+!!! warning "Stacks installed earlier keep the vault values"
+    Deleting vault values needs a delete permission in the vault policy, and that permission (on the
+    pipeline credential path only) is written when the stack is installed. After installation the root
+    token is revoked, so the policy cannot be changed: on stacks installed before this feature the vault
+    values stay and the banner says the stack has no delete permission. The ExternalSecret and the Secret
+    are still deleted.
 
 ## Pipeline creation screen
 

@@ -18,6 +18,9 @@ type fakePipelineRepo struct {
 	getErr    error
 	deleteErr error
 	deleted   []string
+	// siblings / listErr 는 같은 스택의 파이프라인 목록이다.
+	siblings []*domain.Pipeline
+	listErr  error
 }
 
 func (f *fakePipelineRepo) Create(context.Context, *domain.Pipeline) error { return nil }
@@ -32,7 +35,7 @@ func (f *fakePipelineRepo) GetByID(_ context.Context, _ string) (*domain.Pipelin
 func (f *fakePipelineRepo) List(context.Context, string) ([]*domain.Pipeline, error) { return nil, nil }
 
 func (f *fakePipelineRepo) ListByStackID(context.Context, string) ([]*domain.Pipeline, error) {
-	return nil, nil
+	return f.siblings, f.listErr
 }
 
 func (f *fakePipelineRepo) Update(context.Context, *domain.Pipeline) error { return nil }

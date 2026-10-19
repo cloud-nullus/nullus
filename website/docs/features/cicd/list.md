@@ -92,10 +92,22 @@ GitLab 스택에서는 저장소가 새 커밋을 Argo CD 에 바로 알리는 p
 (`nullus-repo-<앱>`). 플랫폼 표시(`app.kubernetes.io/managed-by=nullus-cicd`)가 없는
 Secret 은 이름이 같아도 남깁니다. 앱 네임스페이스 자체는 지우지 않습니다.
 
-!!! warning "Gitea · Jenkins 스택의 파이프라인 자격증명은 남습니다"
-    이 스택들은 스택 네임스페이스에 ExternalSecret `nullus-ci-<앱>` 을 하나 더 넣고,
-    OpenBao 에 그 값을 둡니다. 삭제는 이것들을 지우지 않습니다 — ExternalSecret 과
-    ESO 가 만든 Secret, OpenBao 의 항목을 직접 지워야 합니다.
+Gitea · Jenkins 스택은 파이프라인 자격증명을 따로 둡니다 — 스택 네임스페이스의 ExternalSecret
+`nullus-ci-<앱>`, ESO 가 그것으로 만든 Secret, OpenBao 의
+`kv/nullus/<env>/<org>/cicd/pipelines/<앱>/` 아래 값. 이 자격증명은 CI job 만 쓰므로 **체크박스와
+상관없이** CI job 과 함께 지웁니다. ExternalSecret 을 먼저 지우고(ESO 가 만든 Secret 은 소유자 참조로
+함께 사라집니다) 금고 값을 지웁니다. 플랫폼 표시가 없는 ExternalSecret 은 원격 키가 모두 그 파이프라인의
+금고 경로 아래일 때만 지웁니다. 지우지 못해도 나머지 삭제는 이어 가고 배너로 알려 줍니다.
+
+자격증명은 파이프라인 이름으로 찾습니다. 같은 스택에 같은 이름의 다른 파이프라인이 있으면 그것도 이
+자격증명을 쓰므로 지우지 않고 그 이유를 알려 줍니다. 이름이 금고 경로의 한 세그먼트로 쓸 수 없는 값
+(`/` 가 든 이름, `.` · `..` 그 자체)이어도 지우지 않습니다 — 다른 파이프라인의 값을 가리키게 됩니다.
+
+!!! warning "이미 설치된 스택은 금고 값이 남습니다"
+    금고 값을 지우려면 금고 정책에 삭제 권한이 있어야 하는데, 그 권한(파이프라인 자격증명 경로에만)은
+    스택을 설치할 때 정책으로 들어갑니다. 설치 뒤에는 root token 이 폐기돼 정책을 고칠 수 없으므로,
+    이 기능 전에 설치한 스택에서는 금고 값이 남고 "삭제 권한이 없습니다" 배너가 뜹니다. ExternalSecret 과
+    Secret 은 지워집니다.
 
 ## 파이프라인 생성 화면
 
