@@ -26,7 +26,8 @@ test.describe("Developer UAT Scenarios", () => {
     await expect(page.getByRole("button", { name: "Test" })).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.getByRole("button", { name: "Security" })).toBeVisible({
+    // 사이드바에도 관측성 › 보안 하위 그룹 단추("Security")가 있다 — 화면 본문 안에서 찾는다.
+    await expect(page.getByRole("main").getByRole("button", { name: "Security" })).toBeVisible({
       timeout: 10000,
     });
     await expect(page.getByRole("button", { name: "Create" })).toBeVisible({
