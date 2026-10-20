@@ -70,11 +70,19 @@ func TestPostgresUpgradeRepository_Integration(t *testing.T) {
 		}
 		assert.ElementsMatch(t, []string{"bnd-18", "bnd-20"}, ids)
 		assert.Equal(t, []string{"amd64", "arm64"}, bundles[0].SupportedArchitectures)
+		assert.Empty(t, bundles[0].FixesCVEs, "고치는 CVE 를 적지 않은 번들")
 
 		b, err := repo.GetVerifiedBundle(ctx, "bnd-20")
 		require.NoError(t, err)
 		assert.Equal(t, "v2.13.5", b.TargetAppVersion)
 		assert.True(t, b.RequiresBackup)
+
+		// 리허설하며 적은 "고치는 CVE" 를 함께 읽는다.
+		_, err = pool.Exec(ctx, `UPDATE upgrade_bundles SET fixes_cves='["CVE-2025-1","CVE-2025-2"]' WHERE id='bnd-20'`)
+		require.NoError(t, err)
+		b, err = repo.GetVerifiedBundle(ctx, "bnd-20")
+		require.NoError(t, err)
+		assert.Equal(t, []string{"CVE-2025-1", "CVE-2025-2"}, b.FixesCVEs)
 
 		_, err = repo.GetVerifiedBundle(ctx, "bnd-draft")
 		assert.ErrorIs(t, err, domain.ErrUpgradeBundleNotFound, "draft 는 실행할 수 없다")

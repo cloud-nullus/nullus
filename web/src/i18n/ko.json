@@ -1211,6 +1211,10 @@
       "start": "업그레이드 시작",
       "started": "업그레이드를 시작했습니다. 이 화면을 떠나도 서버에서 계속됩니다.",
       "failed": "업그레이드를 시작하지 못했습니다.",
+      "fixesFound": "이 스택에서 발견된 CVE {{count}}건을 고칩니다",
+      "fixesNotFound": "알려진 CVE {{count}}건을 고칩니다 — 이 스택의 마지막 이미지 스캔에는 없습니다",
+      "fixesKnown": "알려진 CVE {{count}}건을 고칩니다",
+      "fixesTitle": "이 업그레이드가 고치는 이 스택의 CVE",
       "checks": {
         "stack_state": "스택 상태",
         "active_run": "다른 업그레이드",

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowUpCircle, ExternalLink, GitBranch } from 'lucide-react'
+import { ArrowUpCircle, ExternalLink, GitBranch, ShieldAlert } from 'lucide-react'
 import { iconProps } from '../../../components/ui/icon'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
@@ -132,6 +132,7 @@ function UpgradeRow({ stackId, item, onUpgrade }: { stackId: string; item: Upgra
           {!bundle && (
             <div className="text-[12px] text-[var(--color-text-secondary)]">{t('stackList.upgrade.noVerifiedPathHint')}</div>
           )}
+          {bundle && <CVEFixesLine bundle={bundle} found={item.fixes_found ?? []} checked={item.fixes_checked ?? false} />}
           {item.blocked_reason && <div className="text-[12px] text-[var(--color-error)]">{item.blocked_reason}</div>}
           {lastRun && <LastRunLine run={lastRun} />}
         </div>
@@ -158,6 +159,28 @@ function UpgradeRow({ stackId, item, onUpgrade }: { stackId: string; item: Upgra
           </Button>
         </div>
       )}
+    </div>
+  )
+}
+
+// 번들이 고치는 CVE 중 이 스택에서 발견된 것이 있으면 업그레이드할 이유로 먼저 보인다. 이 스택의 스캔
+// 결과로 확인했는데 없으면 그렇다고 말하고, 확인하지 못했으면(스캐너 없음 · 아직 스캔 전) 고치는 수만
+// 말한다. 번들이 아무것도 적지 않았으면 말하지 않는다.
+function CVEFixesLine({ bundle, found, checked }: { bundle: UpgradeBundle; found: string[]; checked: boolean }) {
+  const { t } = useTranslation()
+  const known = bundle.fixes_cves?.length ?? 0
+  if (found.length > 0) {
+    return (
+      <div className="flex items-center gap-1 text-[12px] font-semibold text-[var(--color-error)]">
+        <ShieldAlert {...iconProps('xs')} />
+        {t('stackList.upgrade.fixesFound', { count: found.length })}
+      </div>
+    )
+  }
+  if (known === 0) return null
+  return (
+    <div className="text-[12px] text-[var(--color-text-secondary)]">
+      {t(checked ? 'stackList.upgrade.fixesNotFound' : 'stackList.upgrade.fixesKnown', { count: known })}
     </div>
   )
 }
@@ -266,6 +289,21 @@ function UpgradeDialog({
         )}
         {bundle.release_notes && !isLink(bundle.release_notes) && (
           <div className="whitespace-pre-wrap text-[var(--color-text-secondary)]">{bundle.release_notes}</div>
+        )}
+        {(candidate.fixes_found?.length ?? 0) > 0 && (
+          <div>
+            <div className="text-[12px] font-semibold text-[var(--color-text-secondary)]">{t('stackList.upgrade.fixesTitle')}</div>
+            <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">
+              {candidate.fixes_found?.map((id) => (
+                <li
+                  key={id}
+                  className="rounded bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] px-1.5 py-0.5 font-mono text-[12px] text-[var(--color-error)]"
+                >
+                  {id}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <div>

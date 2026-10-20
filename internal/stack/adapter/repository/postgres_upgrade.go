@@ -24,7 +24,7 @@ func NewPostgresUpgradeRepository(pool *pgxpool.Pool) *PostgresUpgradeRepository
 const upgradeBundleColumns = `id, tool, release_name, chart_name, repo_url,
  source_chart_version, source_app_version, target_chart_version, target_app_version,
  risk_level, expected_disruption, release_notes, requires_backup,
- supported_architectures, status`
+ supported_architectures, status, fixes_cves`
 
 func (r *PostgresUpgradeRepository) ListVerifiedBundles(ctx context.Context, tool, source string) ([]domain.UpgradeBundle, error) {
 	rows, err := r.pool.Query(ctx, `SELECT `+upgradeBundleColumns+`
@@ -58,16 +58,19 @@ type rowScanner interface{ Scan(...any) error }
 
 func scanUpgradeBundle(row rowScanner) (*domain.UpgradeBundle, error) {
 	var b domain.UpgradeBundle
-	var architectures []byte
+	var architectures, fixes []byte
 	err := row.Scan(&b.ID, &b.Tool, &b.ReleaseName, &b.ChartName, &b.RepoURL,
 		&b.SourceChartVersion, &b.SourceAppVersion, &b.TargetChartVersion, &b.TargetAppVersion,
 		&b.RiskLevel, &b.ExpectedDisruption, &b.ReleaseNotes, &b.RequiresBackup,
-		&architectures, &b.Status)
+		&architectures, &b.Status, &fixes)
 	if err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal(architectures, &b.SupportedArchitectures); err != nil {
 		return nil, fmt.Errorf("decode upgrade bundle architectures: %w", err)
+	}
+	if err := json.Unmarshal(fixes, &b.FixesCVEs); err != nil {
+		return nil, fmt.Errorf("decode upgrade bundle fixes_cves: %w", err)
 	}
 	return &b, nil
 }
