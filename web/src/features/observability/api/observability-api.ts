@@ -1,5 +1,17 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
+import type {
+  SecurityAppsQuery,
+  SecurityAppsReport,
+  SecurityStacksQuery,
+  StackSecurityReport,
+} from '../types/security-posture'
+import {
+  normalizeSecurityAppsReport,
+  normalizeStackSecurityReport,
+  securityAppsParams,
+  securityStacksParams,
+} from '../utils/security-posture'
 import type {
   AlertHistoryEntry,
   AlertRule,
@@ -26,6 +38,11 @@ const queryKeys = {
   alertRule: (id: string) => ['observability', 'alert-rules', id] as const,
   alertHistory: (filters?: Record<string, unknown>) => ['observability', 'alert-history', filters] as const,
   stackAlerts: (state: StackAlertState) => ['observability', 'stack-alerts', state] as const,
+  // 파라미터 객체를 키에 그대로 넣는다. 빈 값은 빼서 "전체" 가 한 키가 되게 한다 — 범위
+  // 필터의 선택지를 만드는 조회와 기본 화면의 조회가 같은 캐시를 쓴다.
+  securityApps: (query: SecurityAppsQuery) => ['observability', 'security', 'apps', securityAppsParams(query)] as const,
+  securityStacks: (query: SecurityStacksQuery) =>
+    ['observability', 'security', 'stacks', securityStacksParams(query)] as const,
 }
 
 /**
@@ -76,6 +93,17 @@ const observabilityApiCalls = {
     api
       .get<{ items: StackAlert[]; total: number }>('/observability/stack-alerts', { params: { state, limit: 200 } })
       .then((r) => r.data.items ?? []),
+
+  // 보안 대시보드 — 앱 축(모든 역할)과 설치 OSS 축(admin · devops, 그 밖은 403)이 따로다.
+  getSecurityApps: (query: SecurityAppsQuery): Promise<SecurityAppsReport> =>
+    api
+      .get<unknown>('/observability/security/apps', { params: securityAppsParams(query) })
+      .then((r) => normalizeSecurityAppsReport(r.data)),
+
+  getSecurityStacks: (query: SecurityStacksQuery): Promise<StackSecurityReport> =>
+    api
+      .get<unknown>('/observability/security/stacks', { params: securityStacksParams(query) })
+      .then((r) => normalizeStackSecurityReport(r.data)),
 
   getAlertHistory: (filters?: { severity?: AlertSeverity }) =>
     api
@@ -157,6 +185,36 @@ export function useStackAlerts(state: StackAlertState) {
     queryKey: queryKeys.stackAlerts(state),
     queryFn: () => observabilityApiCalls.getStackAlerts(state),
     refetchInterval: 60_000,
+  })
+}
+
+/**
+ * 보안 대시보드의 앱 축(설계 §5.2). 서버는 저장된 결과만 읽는다 — 결과는 10분 주기 동기화와
+ * 실행 기록 화면 조회 때 들어오므로 이 화면이 자주 다시 읽을 까닭이 없다. 필터를 바꾸는 사이
+ * 표가 비었다 차는 깜빡임을 막으려고 직전 결과를 잠시 둔다.
+ */
+export function useSecurityApps(query: SecurityAppsQuery) {
+  return useQuery({
+    queryKey: queryKeys.securityApps(query),
+    queryFn: () => observabilityApiCalls.getSecurityApps(query),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  })
+}
+
+/**
+ * 보안 대시보드의 설치 OSS 축. admin · devops 만 부른다 — 개발자에게는 403 이고, 화면은
+ * 개발자에게 이 API 를 부르지도 않는다(enabled=false, 설계 §4.4).
+ */
+export function useSecurityStacks(query: SecurityStacksQuery, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.securityStacks(query),
+    queryFn: () => observabilityApiCalls.getSecurityStacks(query),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+    // 403 은 다시 물어도 바뀌지 않는다.
+    retry: false,
   })
 }
 

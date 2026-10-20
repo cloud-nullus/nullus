@@ -16,6 +16,8 @@
     "monitoringDashboard": "모니터링 대시보드",
     "alertRules": "알림 규칙",
     "alertHistory": "알림 이력",
+    "security": "보안",
+    "securityDashboard": "보안 대시보드",
     "admin": "관리",
     "organization": "조직",
     "userManagement": "사용자 관리",
@@ -943,6 +945,39 @@
       "openInSonarQube": "SonarQube 에서 보기",
       "analyzedAt": "분석 시각"
     },
+    "dependencyScan": {
+      "label": "의존성",
+      "title": "의존성 스캔 (Trivy)",
+      "gate": {
+        "pass": "통과",
+        "warn": "경고와 함께 통과",
+        "block": "정책 차단",
+        "error": "스캔 오류"
+      },
+      "noTargets": "대상 없음",
+      "noTargetsHint": "락파일이나 매니페스트가 없어 검사한 것이 없습니다. 통과가 아닙니다.",
+      "targets": "검사 대상"
+    },
+    "secretScan": {
+      "label": "시크릿",
+      "title": "시크릿 탐지 (gitleaks)",
+      "gate": {
+        "pass": "탐지 없음",
+        "warn": "시크릿 탐지 (경고)",
+        "block": "시크릿 탐지로 차단",
+        "error": "스캔 오류"
+      },
+      "findings": "{{count}}건",
+      "rotateWarning": "커밋된 비밀은 이미 유출됐습니다 — 지금 폐기하고 회전하세요. 커밋을 지워도 유출은 되돌려지지 않습니다.",
+      "errorHint": "스캔을 수행하지 못했거나 리포트가 없습니다. 커밋된 비밀이 없다는 뜻이 아닙니다.",
+      "rules": "규칙",
+      "locations": "탐지 위치",
+      "rule": "규칙",
+      "location": "파일",
+      "commit": "커밋",
+      "fingerprint": "Fingerprint",
+      "valuesHidden": "비밀값은 저장하지도 보여주지도 않습니다 — 어디에 있었는지만 보입니다."
+    },
     "refreshDefinition": {
       "button": "CI 정의 갱신",
       "busy": "갱신 중…",
@@ -992,6 +1027,8 @@
     "alertRulesDesc": "알림 규칙 목록 및 관리",
     "alertHistory": "알림 이력",
     "alertHistoryDesc": "스택마다 Prometheus 가 기본 규칙으로 평가한 심각 경보입니다. 발생 · 해제는 알림 채널로도 갑니다.",
+    "securityDashboard": "보안 대시보드",
+    "securityDashboardDesc": "조직 전체 파이프라인의 보안 게이트와 설치 OSS 취약점",
     "newRule": "새 규칙",
     "connectPanel": {
       "title": "스택 컴포넌트 연결",
@@ -1263,6 +1300,8 @@
     "selectCluster": "— 클러스터 선택 —",
     "stackLabel": "스택",
     "selectStack": "— 스택 선택 —",
+    "allClusters": "전체",
+    "allStacks": "전체 ({{count}})",
     "clear": "초기화"
   },
   "alertHistoryPage": {
@@ -1301,6 +1340,128 @@
       "labels": "라벨"
     },
     "selectAlert": "경보를 고르면 상세가 보입니다."
+  },
+  "securityDashboardPage": {
+    "basedOn": "main 기준 · 실행 기록 10분 주기 동기화",
+    "searchPlaceholder": "앱 이름 검색",
+    "problemsOnly": "문제 있는 것만",
+    "noStack": "스택 없음",
+    "loadError": "보안 결과를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.",
+    "truncated": "앱이 많아 처음 {{count}}개만 보입니다. 클러스터 · 스택 · 검색으로 범위를 좁히세요.",
+    "tabs": {
+      "apps": "앱",
+      "oss": "설치 OSS"
+    },
+    "kpi": {
+      "blocked": "차단된 앱",
+      "blockedHint": "배포가 멈춰 있습니다 — 막힌 단계를 고치세요",
+      "secrets": "시크릿 탐지 앱",
+      "secretsHint": "즉시 폐기 · 회전",
+      "critical": "CRITICAL 보유 앱",
+      "criticalHint": "정책 기준 · 이미지 + 의존성",
+      "undetermined": "판정 불가 앱",
+      "undeterminedHint": "스캐너 · 러너 · 리포트 경로 점검",
+      "noStages": "보안 단계 없음",
+      "oss": "설치 OSS 조치 대상",
+      "ossValue": "{{count}} 이미지",
+      "ossHint": "외부 노출(A) {{exposed}} · 스캔 안 함 {{notScanned}}개 스택"
+    },
+    "stage": {
+      "secret_scan": "시크릿",
+      "dependency_scan": "의존성",
+      "sast": "SAST",
+      "image_scan": "이미지"
+    },
+    "columns": {
+      "app": "앱",
+      "latestRun": "최근 실행",
+      "coverageHint": "앱 {{total}}개 중 {{applied}}개에 적용"
+    },
+    "cell": {
+      "pass": "통과",
+      "warn": "경고",
+      "block": "차단",
+      "error": "판정 불가",
+      "unrecorded": "기록 없음",
+      "notApplied": "미적용",
+      "noTargets": "대상 없음",
+      "findings": "{{count}}건",
+      "vulnerabilities": "취약 {{count}}",
+      "hotspots": "핫스팟 {{count}}",
+      "staleRun": "최근 실행 {{latest}} 에는 이 단계의 결과가 없습니다 — {{version}} 의 결과입니다.",
+      "dbAge": "DB {{days}}일"
+    },
+    "group": {
+      "cluster": "클러스터 {{name}}",
+      "apps": "앱 {{count}}",
+      "blocked": "차단 {{count}}",
+      "secrets": "시크릿 {{count}}",
+      "critical": "CRITICAL {{count}}",
+      "undetermined": "판정 불가 {{count}}",
+      "noProblems": "문제 없음",
+      "allHidden": "문제 있는 앱이 없어 \"문제 있는 것만\" 이 모두 가렸습니다."
+    },
+    "hiddenFooter": "문제 없는 앱 {{count}}개를 숨겼습니다",
+    "showAll": "모두 보기",
+    "empty": {
+      "noApps": "아직 파이프라인이 없습니다",
+      "noAppsHint": "앱의 파이프라인이 생기면 보안 결과가 여기에 보입니다.",
+      "openPipelines": "파이프라인 목록으로",
+      "noStages": "스택에서 보안 스캐너를 고르지 않았습니다",
+      "noStagesHint": "앱 {{count}}개 모두 보안 단계가 없어 판정할 것이 없습니다 — 통과가 아닙니다. 스택의 Security 탭에서 스캐너를 고르세요.",
+      "noMatch": "조건에 맞는 앱이 없습니다",
+      "noProblems": "이 범위에 문제 있는 앱이 없습니다"
+    },
+    "detail": {
+      "select": "앱을 고르면 단계별 보안 요약이 보입니다.",
+      "latestRun": "최근 실행 {{version}} ({{status}})",
+      "noRun": "실행 없음",
+      "report": "리포트",
+      "sonarqube": "SonarQube",
+      "openRunHistory": "실행 기록 열기",
+      "openRun": "실행 {{version}} 열기",
+      "targets": "대상 {{count}}",
+      "failedConditions": "걸린 조건",
+      "notApplied": "미적용 — 파이프라인에 이 단계가 없습니다.",
+      "unrecorded": "단계는 있지만 main 의 결과가 아직 없습니다.",
+      "error": "스캐너 장애나 리포트 누락으로 판정하지 못했습니다 — 통과가 아닙니다."
+    },
+    "oss": {
+      "reportOnly": "보고용 — 설치 · 배포를 막지 않습니다. 건수는 수정판이 있는 취약점만 셉니다.",
+      "summary": "스캔됨 {{scanned}} · 스캔 안 함 {{notScanned}}",
+      "openHint": "행을 고르면 스택 상세의 \"이미지 취약점\" 탭이 열립니다.",
+      "columns": {
+        "stack": "스택",
+        "cluster": "클러스터",
+        "status": "상태",
+        "images": "이미지",
+        "gradeA": "A",
+        "gradeB": "B",
+        "gradeC": "C",
+        "fixable": "수정판 있는 취약점",
+        "worst": "가장 심각한 이미지",
+        "lastScan": "마지막 스캔"
+      },
+      "gradeAHint": "수정판 있는 CRITICAL 을 가진, 클러스터 밖에 노출된 이미지",
+      "gradeBHint": "수정판 있는 CRITICAL 을 가진 내부 이미지",
+      "gradeCHint": "수정판 있는 CRITICAL 은 없고 수정판 있는 HIGH 가 있는 이미지",
+      "state": {
+        "scanned": "스캔됨",
+        "pending": "첫 스캔 대기",
+        "notScanned": "스캔 안 함",
+        "scannerNotInstalled": "스캔 안 함 · 스캐너 미설치",
+        "failed": "실패 {{count}}",
+        "airgap": "에어갭"
+      },
+      "exposed": "외부 노출",
+      "dbAge": "DB {{days}}일",
+      "dbImported": "DB {{days}}일 (반입 기준)",
+      "empty": {
+        "noStacks": "이 범위에 스택이 없습니다",
+        "noneScanned": "설치 이미지를 스캔하는 스택이 없습니다",
+        "noneScannedHint": "스택에 Trivy 를 더하면 설치 직후와 주기적으로 설치 이미지를 스캔합니다."
+      }
+    }
   },
   "alertRulesPage": {
     "table": {

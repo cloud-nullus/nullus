@@ -76,7 +76,27 @@ export function ChartPanel({ title, children }: { title: string; children: React
 }
 
 // ─── KPI card ────────────────────────────────────────────────────────────────
-export function KpiCard({ label, value, icon, color, token, bar }: { label: string; value: string; icon: React.ReactNode; color: string; token: string; bar: number }) {
+/**
+ * 지표 한 칸. bar 는 0~100 의 채움 비율이다 — 비율이 뜻을 갖지 않는 지표(대상 수 같은 것)는
+ * 막대를 생략한다. hint 는 값 아래 한 줄(이어지는 조치 · 기준 · 보조 숫자)이다.
+ */
+export function KpiCard({
+  label,
+  value,
+  icon,
+  color,
+  token,
+  bar,
+  hint,
+}: {
+  label: string
+  value: string
+  icon: React.ReactNode
+  color: string
+  token: string
+  bar?: number
+  hint?: React.ReactNode
+}) {
   return (
     <div className="rounded-[var(--card-radius)] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] p-[var(--card-padding)]">
       <div className="mb-2.5 flex items-center gap-2.5">
@@ -84,11 +104,14 @@ export function KpiCard({ label, value, icon, color, token, bar }: { label: stri
         <span className="text-xs font-medium text-[var(--color-text-secondary)]">{label}</span>
       </div>
       <div className="text-[28px] font-extrabold leading-none text-[var(--color-text-primary)]">{value}</div>
-      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-[3px] bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)]">
-        <svg className="h-full w-full" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true">
-          <rect width={Math.max(0, Math.min(100, bar))} height="6" rx="3" fill={color} />
-        </svg>
-      </div>
+      {bar !== undefined && (
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-[3px] bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)]">
+          <svg className="h-full w-full" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true">
+            <rect width={Math.max(0, Math.min(100, bar))} height="6" rx="3" fill={color} />
+          </svg>
+        </div>
+      )}
+      {hint && <div className="mt-2 text-[12px] leading-snug text-[var(--color-text-secondary)]">{hint}</div>}
     </div>
   )
 }

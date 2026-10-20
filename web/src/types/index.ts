@@ -573,6 +573,71 @@ export interface PipelineSASTResult {
   analyzedAt: string;
 }
 
+/**
+ * 파이프라인 실행 하나의 의존성 취약점 스캔 결과(GET /cicd/pipelines/{id}/dependency-scans).
+ *
+ * 이미지 스캔과 같은 틀이다(판정 어휘 · 심각도 건수 · DB 신선도). 이미지 칸이 없고 검사 대상
+ * 수(targets)가 있다 — 락파일 · 매니페스트 수다. 0 이면 아무것도 검사하지 않은 것이라
+ * 통과여도 "대상 없음" 으로 보인다.
+ */
+export interface PipelineDependencyScan {
+  id: string;
+  pipelineId: string;
+  deploymentId?: string;
+  scanner: string;
+  scannerVersion?: string;
+  dbUpdatedAt?: string;
+  /** 취약점 DB 가 30일보다 오래됐거나 날짜를 모른다. */
+  dbStale: boolean;
+  /** 없으면 건수를 모른다. 0 이 아니다. */
+  counts?: VulnerabilityCounts;
+  /** 검사한 대상(락파일 · 매니페스트) 수. 없으면 모른다. */
+  targets?: number;
+  gateResult: ImageScanGateResult;
+  reportUri?: string;
+  scannedAt: string;
+}
+
+/** 시크릿 탐지 규칙 하나의 탐지 건수. */
+export interface SecretScanRuleCount {
+  ruleId: string;
+  count: number;
+}
+
+/**
+ * 탐지 위치 하나. **비밀값은 없다** — API 가 보내지 않고, 보내더라도 화면 모델로 옮기지
+ * 않는다(매퍼가 이 필드들만 고른다).
+ */
+export interface SecretScanFinding {
+  ruleId: string;
+  file: string;
+  /** 없으면 줄을 모른다. */
+  startLine?: number;
+  commit?: string;
+  fingerprint: string;
+}
+
+/**
+ * 파이프라인 실행 하나의 시크릿 탐지 결과(GET /cicd/pipelines/{id}/secret-scans).
+ *
+ * warn 은 경고 정책이 배포를 통과시켰다는 뜻이지 유출이 없다는 뜻이 아니다 — 커밋에 들어간
+ * 비밀은 커밋을 지워도 이미 유출이다.
+ */
+export interface PipelineSecretScan {
+  id: string;
+  pipelineId: string;
+  deploymentId?: string;
+  scanner: string;
+  scannerVersion?: string;
+  /** 없으면 건수를 모른다. 0 이 아니다. */
+  findingsCount?: number;
+  rules: SecretScanRuleCount[];
+  findings: SecretScanFinding[];
+  gateResult: ImageScanGateResult;
+  reportUri?: string;
+  scannedAt: string;
+}
+
 export interface PipelineResource {
   kind: string;
   name: string;

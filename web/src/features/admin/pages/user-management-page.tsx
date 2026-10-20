@@ -74,6 +74,7 @@ const ROLE_PERMISSIONS: RolePermission[] = [
       { name: 'CI/CD History', access: 'View', category: 'cicd' },
       { name: 'Monitoring', access: 'View', category: 'observability' },
       { name: 'Alert Rules', access: 'Edit', category: 'observability' },
+      { name: 'Security Dashboard', access: 'View', category: 'observability' },
       { name: 'Organization', access: 'Edit', category: 'admin' },
       { name: 'User Management', access: 'Edit', category: 'admin' },
       { name: 'Clusters', access: 'Edit', category: 'admin' },
@@ -105,6 +106,7 @@ const ROLE_PERMISSIONS: RolePermission[] = [
       { name: 'CI/CD History', access: 'View', category: 'cicd' },
       { name: 'Monitoring', access: 'View', category: 'observability' },
       { name: 'Alert Rules', access: 'View', category: 'observability' },
+      { name: 'Security Dashboard', access: 'View', category: 'observability' },
     ],
     buttons: [
       { category: 'stack', items: ['Install Stack', 'Deploy Stack'] },
@@ -127,6 +129,8 @@ const ROLE_PERMISSIONS: RolePermission[] = [
       { name: 'CI/CD History', access: 'View', category: 'cicd' },
       { name: 'Monitoring', access: 'View', category: 'observability' },
       { name: 'Alert History', access: 'View', category: 'observability' },
+      // 개발자도 보안 대시보드를 본다 — 앱 탭만이다(설치 OSS 는 admin · devops).
+      { name: 'Security Dashboard', access: 'View', category: 'observability' },
     ],
     buttons: [
       { category: 'cicd', items: ['Developer Self-Service Deploy'] },

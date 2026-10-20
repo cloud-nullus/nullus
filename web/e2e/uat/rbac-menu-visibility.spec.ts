@@ -55,6 +55,35 @@ test.describe('RBAC Menu Visibility', () => {
     await expectMenuHidden(page, 'Alert Rules')
   })
 
+  // 보안은 관측성 아래 하위 그룹이다(메뉴 3단 — Security Dashboard 설계 §4.1 · §7).
+  // 세 역할 모두 보안 대시보드를 본다. 설치 OSS 탭은 admin · devops 만이다(§4.4).
+  for (const role of ['admin', 'devops', 'developer'] as const) {
+    test(`${role}: 관측성 › 보안 › 보안 대시보드 메뉴 표시`, async ({ page }) => {
+      await loginAs(page, role)
+      await expect(page.locator('aside button[aria-label="Security"]').first()).toBeVisible({ timeout: 5000 })
+      await expect(page.locator('aside a[href="/observability/security/dashboard"]').first()).toBeVisible({ timeout: 5000 })
+    })
+  }
+
+  test('Developer: 보안 대시보드에 설치 OSS 탭 없음', async ({ page }) => {
+    await loginAs(page, 'developer')
+    await page.goto('/observability/security/dashboard')
+    await expect(page.locator('button[data-tab="apps"]')).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('button[data-tab="oss"]')).toHaveCount(0)
+  })
+
+  test('DevOps: 보안 대시보드에 설치 OSS 탭 표시', async ({ page }) => {
+    await loginAs(page, 'devops')
+    await page.goto('/observability/security/dashboard')
+    await expect(page.locator('button[data-tab="oss"]')).toBeVisible({ timeout: 10000 })
+  })
+
+  test('/observability/security → 보안 대시보드 리다이렉트', async ({ page }) => {
+    await loginAs(page, 'developer')
+    await page.goto('/observability/security')
+    await expect(page).toHaveURL(/\/observability\/security\/dashboard/, { timeout: 10000 })
+  })
+
   test('Admin 로그인 → /admin/organization 리다이렉트', async ({ page }) => {
     await loginAs(page, 'admin')
     await expect(page).toHaveURL(/\/admin\/organization/, { timeout: 10000 })

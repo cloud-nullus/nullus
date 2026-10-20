@@ -13,70 +13,20 @@
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  CircleAlert,
-  ExternalLink,
-  ShieldAlert,
-  ShieldCheck,
-  ShieldX,
-  type LucideIcon,
-} from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { iconProps } from "../../../components/ui/icon";
-import { StatusIcon } from "../../../components/ui/status-icon";
-import { Badge } from "../../../components/ui/badge";
+import { ImageScanGateBadge } from "../../../components/shared/gate-badge";
 import { SeverityCounts } from "../../../components/shared/severity-counts";
 import { formatDate, formatDateTime } from "../../../lib/locale";
 import { shortImageDigest } from "../../../lib/vulnerability-counts";
-import type { ImageScanGateResult, PipelineImageScan } from "../../../types";
+import type { PipelineImageScan } from "../../../types";
 
-// 소스 정적 분석 배지(sast-result-summary)도 같은 색 규칙을 쓴다.
-export const TONE_CLASS = {
-  success:
-    "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
-  warning:
-    "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
-  danger:
-    "bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]",
-  neutral:
-    "bg-[color-mix(in_srgb,_var(--color-text-secondary)_15%,_transparent)] text-[var(--color-text-secondary)]",
-} as const;
-
-const GATE_META: Record<
-  ImageScanGateResult,
-  { labelKey: string; tone: keyof typeof TONE_CLASS; icon: LucideIcon }
-> = {
-  pass: { labelKey: "cicdListPage.imageScan.gate.pass", tone: "success", icon: ShieldCheck },
-  warn: { labelKey: "cicdListPage.imageScan.gate.warn", tone: "warning", icon: ShieldAlert },
-  block: { labelKey: "cicdListPage.imageScan.gate.block", tone: "danger", icon: ShieldX },
-  error: { labelKey: "cicdListPage.imageScan.gate.error", tone: "neutral", icon: CircleAlert },
-};
+// 판정 배지는 components/shared/gate-badge 가 갖는다 — 의존성 · 시크릿 · SAST 배지와
+// 보안 대시보드가 같은 배지를 쓴다.
 
 // report_uri 는 CI 가 준 값이다. http(s) 가 아닌 값(javascript: 등)은 링크로 만들지 않는다.
 function reportHref(uri: string | undefined): string | undefined {
   return uri && /^https?:\/\//i.test(uri) ? uri : undefined;
-}
-
-export function ImageScanGateBadge({ scan }: { scan: PipelineImageScan }) {
-  const { t } = useTranslation();
-  const meta = GATE_META[scan.gateResult] ?? GATE_META.error;
-  const tone = scan.gateResult === "pass" && scan.dbStale ? "warning" : meta.tone;
-  const Icon = meta.icon;
-
-  return (
-    <>
-      <Badge pill className={TONE_CLASS[tone]}>
-        <Icon {...iconProps("xs")} />
-        {t(meta.labelKey)}
-      </Badge>
-      {scan.dbStale && (
-        <Badge pill className={TONE_CLASS.warning}>
-          {/* 경고 글리프는 상태 아이콘 단일 출처에서 받는다. 배지가 이미 경고색을 칠했다. */}
-          <StatusIcon tone="warning" size="xs" inheritColor />
-          {t("cicdListPage.imageScan.dbStale")}
-        </Badge>
-      )}
-    </>
-  );
 }
 
 /** 실행 목록 한 줄에 들어가는 요약. 판정과 C/H/M/L 건수만 둔다. */

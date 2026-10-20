@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import type { PipelineSASTResult } from '../../../types'
-import { SASTGateBadge, SASTResultDetail, SASTRowSummary } from './sast-result-summary'
+import { SASTGateBadge } from '../../../components/shared/gate-badge'
+import { SASTResultDetail, SASTRowSummary } from './sast-result-summary'
 
 function result(overrides: Partial<PipelineSASTResult> = {}): PipelineSASTResult {
   return {

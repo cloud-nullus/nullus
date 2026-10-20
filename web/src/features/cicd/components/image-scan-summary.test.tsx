@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import type { PipelineImageScan } from '../../../types'
-import { ImageScanDetail, ImageScanGateBadge, ImageScanRowSummary } from './image-scan-summary'
+import { ImageScanGateBadge } from '../../../components/shared/gate-badge'
+import { ImageScanDetail, ImageScanRowSummary } from './image-scan-summary'
 
 function scan(overrides: Partial<PipelineImageScan> = {}): PipelineImageScan {
   return {

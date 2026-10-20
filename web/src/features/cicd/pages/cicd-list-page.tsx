@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { buildStageStates, type StageState, resolvePipelineStages } from "../utils/stage-states";
 import { useTranslation } from "react-i18next";
@@ -49,10 +49,12 @@ import {
   useDeletePipeline,
   useDeploymentStatus,
   useDeployPipeline,
+  usePipelineDependencyScans,
   usePipelineDeployments,
   usePipelineImageScans,
   usePipelineResources,
   usePipelineSASTResults,
+  usePipelineSecretScans,
   usePipelines,
   useTemplateById,
   useRefreshPipelineDefinition,
@@ -71,6 +73,14 @@ import {
   SASTResultDetail,
   SASTRowSummary,
 } from "../components/sast-result-summary";
+import {
+  DependencyScanDetail,
+  DependencyScanRowSummary,
+} from "../components/dependency-scan-summary";
+import {
+  SecretScanDetail,
+  SecretScanRowSummary,
+} from "../components/secret-scan-summary";
 import type {
   Pipeline,
   PipelineImageScan,
@@ -487,6 +497,13 @@ function ExecuteModal({
 // ── Pipeline inner tabs ────────────────────────────────────────────────────────
 
 type PipelineInnerTab = "info" | "monitoring" | "history";
+
+const PIPELINE_INNER_TAB_IDS: readonly PipelineInnerTab[] = ["info", "monitoring", "history"];
+
+/** 딥링크의 tab 값. 모르는 값은 무시한다(기본 탭으로 연다). */
+function parsePipelineInnerTab(value: string | null): PipelineInnerTab | undefined {
+  return PIPELINE_INNER_TAB_IDS.find((id) => id === value);
+}
 
 const INNER_TABS: Array<{
   key: PipelineInnerTab;
@@ -1465,7 +1482,29 @@ function indexSASTByDeployment(results: PipelineSASTResult[] | undefined) {
   return byDeployment;
 }
 
-function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
+// 의존성 · 시크릿 결과도 실행 하나에 하나다. 같은 실행에 둘 이상 오면 가장 최근 것을 쓴다.
+function indexLatestByDeployment<T extends { deploymentId?: string; scannedAt: string }>(
+  items: T[] | undefined,
+) {
+  const byDeployment = new Map<string, T>();
+  for (const item of items ?? []) {
+    if (!item.deploymentId) continue;
+    const existing = byDeployment.get(item.deploymentId);
+    if (!existing || item.scannedAt > existing.scannedAt) {
+      byDeployment.set(item.deploymentId, item);
+    }
+  }
+  return byDeployment;
+}
+
+function PipelineHistoryTab({
+  pipeline,
+  initialRunId,
+}: {
+  pipeline: Pipeline;
+  /** 딥링크(?run=)로 열 실행. 목록에 없으면(최근 30 개 밖) 첫 실행을 연다. */
+  initialRunId?: string;
+}) {
   const { t, i18n } = useTranslation();
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language);
   const { data: template } = useTemplateById(pipeline.templateId);
@@ -1494,6 +1533,24 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
     () => indexSASTByDeployment(sastResultsData?.items),
     [sastResultsData],
   );
+  // 의존성 스캔 · 시크릿 탐지도 같은 요청이 들인다(Security Dashboard 설계 §8 G1 · G2).
+  // 실패해도(미배선 503) 그 요약만 빠진다.
+  const { data: dependencyScansData } = usePipelineDependencyScans(
+    pipeline.id,
+    deploymentsUpdatedAt,
+  );
+  const dependencyByDeployment = useMemo(
+    () => indexLatestByDeployment(dependencyScansData?.items),
+    [dependencyScansData],
+  );
+  const { data: secretScansData } = usePipelineSecretScans(
+    pipeline.id,
+    deploymentsUpdatedAt,
+  );
+  const secretByDeployment = useMemo(
+    () => indexLatestByDeployment(secretScansData?.items),
+    [secretScansData],
+  );
   const [selectedDeploymentId, setSelectedDeploymentId] = useState<
     string | null
   >(null);
@@ -1512,9 +1569,15 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
       !selectedDeploymentId ||
       !deployments.some((d) => d.id === selectedDeploymentId)
     ) {
-      setSelectedDeploymentId(deployments[0].id);
+      // 딥링크로 온 실행이 목록에 있으면 그 실행을 연다. 보안 대시보드가 "이 단계의 결과는
+      // 실행 #38 의 것" 이라며 보낸 자리다.
+      const requested =
+        initialRunId && deployments.some((d) => d.id === initialRunId)
+          ? initialRunId
+          : deployments[0].id;
+      setSelectedDeploymentId(requested);
     }
-  }, [deployments, selectedDeploymentId]);
+  }, [deployments, selectedDeploymentId, initialRunId]);
 
   const selectedDeployment =
     deployments.find((d) => d.id === selectedDeploymentId) ?? null;
@@ -1523,6 +1586,12 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
     : undefined;
   const selectedSAST = selectedDeployment
     ? sastByDeployment.get(selectedDeployment.id)
+    : undefined;
+  const selectedDependency = selectedDeployment
+    ? dependencyByDeployment.get(selectedDeployment.id)
+    : undefined;
+  const selectedSecret = selectedDeployment
+    ? secretByDeployment.get(selectedDeployment.id)
     : undefined;
   const { data: deploymentStatus, isLoading: isDeploymentStatusLoading } =
     useDeploymentStatus(selectedDeploymentId);
@@ -1569,6 +1638,8 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
         const isSelected = d.id === selectedDeploymentId;
         const rowScan = scanByDeployment.get(d.id);
         const rowSAST = sastByDeployment.get(d.id);
+        const rowDependency = dependencyByDeployment.get(d.id);
+        const rowSecret = secretByDeployment.get(d.id);
 
         return (
           <div
@@ -1594,6 +1665,8 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
             </button>
             {rowScan && <ImageScanRowSummary scan={rowScan} />}
             {rowSAST && <SASTRowSummary result={rowSAST} />}
+            {rowDependency && <DependencyScanRowSummary scan={rowDependency} />}
+            {rowSecret && <SecretScanRowSummary scan={rowSecret} />}
             <span className="flex-1 text-[12px] text-[var(--color-text-secondary)]">
               {d.triggeredBy || "-"}
             </span>
@@ -1623,6 +1696,11 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
             </span>
           </div>
 
+          {/* 시크릿이 맨 위다 — 탐지되면 조치가 "폐기 · 회전" 이라 가장 급하다. */}
+          {selectedSecret && (
+            <SecretScanDetail scan={selectedSecret} locale={locale} />
+          )}
+
           {selectedScan && (
             <ImageScanDetail scan={selectedScan} locale={locale}>
               {/* 실행을 바꾸면 펼침·필터를 처음으로 되돌린다. 앞 실행에서 건 필터가 남으면
@@ -1637,6 +1715,10 @@ function PipelineHistoryTab({ pipeline }: { pipeline: Pipeline }) {
 
           {selectedSAST && (
             <SASTResultDetail result={selectedSAST} locale={locale} />
+          )}
+
+          {selectedDependency && (
+            <DependencyScanDetail scan={selectedDependency} locale={locale} />
           )}
 
           {stages.length > 0 && (
@@ -1766,6 +1848,8 @@ function PipelineDetailPanel({
   isDeleting,
   onRefreshDefinition,
   isRefreshingDefinition,
+  initialTab,
+  initialRunId,
 }: {
   pipeline: Pipeline;
   onExecuteClick: () => void;
@@ -1774,10 +1858,13 @@ function PipelineDetailPanel({
   isDeleting: boolean;
   onRefreshDefinition: () => void;
   isRefreshingDefinition: boolean;
+  /** 딥링크(?tab=)로 열 탭. 패널은 파이프라인마다 새로 그려지므로 처음 한 번만 쓴다. */
+  initialTab?: PipelineInnerTab;
+  initialRunId?: string;
 }) {
   const { t, i18n } = useTranslation();
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language);
-  const [innerTab, setInnerTab] = useState<PipelineInnerTab>("info");
+  const [innerTab, setInnerTab] = useState<PipelineInnerTab>(initialTab ?? "info");
   const statusStyle = getPipelineStatusStyle(pipeline.status);
 
   return (
@@ -1865,7 +1952,9 @@ function PipelineDetailPanel({
         {innerTab === "monitoring" && (
           <PipelineMonitoringTab pipeline={pipeline} />
         )}
-        {innerTab === "history" && <PipelineHistoryTab pipeline={pipeline} />}
+        {innerTab === "history" && (
+          <PipelineHistoryTab pipeline={pipeline} initialRunId={initialRunId} />
+        )}
       </div>
     </div>
   );
@@ -1884,12 +1973,32 @@ export function CicdListPage() {
   const { t, i18n } = useTranslation();
   const locale = resolveLocale(i18n.resolvedLanguage || i18n.language);
   const navigate = useNavigate();
+  // 딥링크 — /cicd/list?pipeline=<id>&tab=history&run=<deploymentId>.
+  // 보안 대시보드가 "이 앱의 실행 기록" 으로 보내는 자리다(설계 §8 G5). 선택한 파이프라인이
+  // 컴포넌트 상태로만 있으면 URL 로 열 수 없다. 읽기만 한다 — 고른 뒤의 선택은 화면 상태다.
+  const [searchParams] = useSearchParams();
+  const linkedPipelineId = searchParams.get("pipeline");
+  const linkedTab = parsePipelineInnerTab(searchParams.get("tab"));
+  const linkedRunId = searchParams.get("run") ?? undefined;
   const [statusFilter, setStatusFilter] = useState("");
   const [clusterFilter, setClusterFilter] = useState("");
   const [search, setSearch] = useState("");
   const [expandedPipelineId, setExpandedPipelineId] = useState<string | null>(
-    null,
+    linkedPipelineId,
   );
+  // 이 화면에 머문 채 다른 딥링크로 오면(대시보드에서 다른 앱) 그 파이프라인을 다시 고른다.
+  useEffect(() => {
+    if (linkedPipelineId) setExpandedPipelineId(linkedPipelineId);
+  }, [linkedPipelineId]);
+  // 딥링크가 가리키는 파이프라인일 때만 탭 · 실행을 넘긴다. 다른 파이프라인을 고르면 기본 탭이다.
+  const deepLinkFor = (pipelineId: string) =>
+    pipelineId === linkedPipelineId
+      ? { initialTab: linkedTab, initialRunId: linkedRunId }
+      : {};
+  const panelKey = (pipelineId: string) =>
+    pipelineId === linkedPipelineId
+      ? `${pipelineId}:${linkedTab ?? ""}:${linkedRunId ?? ""}`
+      : pipelineId;
   const [pipelinePendingDelete, setPipelinePendingDelete] =
     useState<Pipeline | null>(null);
   const [deletingPipelineId, setDeletingPipelineId] = useState<string | null>(
@@ -2355,7 +2464,8 @@ export function CicdListPage() {
             {expandedPipeline ? (
               <div className="h-full pr-1">
                 <PipelineDetailPanel
-                  key={expandedPipeline.id}
+                  key={panelKey(expandedPipeline.id)}
+                  {...deepLinkFor(expandedPipeline.id)}
                   pipeline={expandedPipeline}
                   onDelete={() => void handleDeletePipeline(expandedPipeline)}
                   isDeleting={deletingPipelineId === expandedPipeline.id}
@@ -2386,7 +2496,8 @@ export function CicdListPage() {
         // 같은 여백이 상세 카드를 목록보다 낮게 그려 상단이 어긋난다.
         <div className="mt-2.5">
           <PipelineDetailPanel
-            key={`${expandedPipeline.id}-mobile`}
+            key={`${panelKey(expandedPipeline.id)}-mobile`}
+            {...deepLinkFor(expandedPipeline.id)}
             pipeline={expandedPipeline}
             onDelete={() => void handleDeletePipeline(expandedPipeline)}
             isDeleting={deletingPipelineId === expandedPipeline.id}

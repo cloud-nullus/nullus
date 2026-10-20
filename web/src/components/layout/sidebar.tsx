@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, LogOut, Menu } from 'lucide-react'
 import { iconProps } from '../ui/icon'
@@ -9,7 +9,21 @@ import { useSidebarStore } from '../../stores/sidebar-store'
 import { isOidcMode, getProviderConfig } from '../../lib/oidc-providers'
 import { cn } from '../../lib/utils'
 import { IconButton } from '../ui/icon-button'
-import { navGroups } from './nav-model'
+import { navGroups, type NavItem } from './nav-model'
+
+const itemLinkClass = (collapsed: boolean, depth: 1 | 2) => ({ isActive }: { isActive: boolean }) =>
+  cn(
+    'flex h-8 items-center gap-2 border-l-2 text-[13px] no-underline transition-colors duration-150 ease-in-out',
+    // 하위 그룹 안의 항목은 한 단 더 들여 쓴다. 접힌 레일에서는 들여쓰기가 없다(평평하게 보인다).
+    collapsed ? 'justify-center px-0' : depth === 2 ? 'justify-start pl-10 pr-3' : 'justify-start pl-6 pr-3',
+    isActive
+      ? 'border-l-[var(--color-sidebar-item-active-border)] bg-[var(--color-sidebar-item-active-bg)] font-medium text-[var(--color-sidebar-item-active-text)]'
+      : 'border-l-transparent bg-transparent text-[var(--color-sidebar-item-text)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_5%,_transparent)]'
+  )
+
+/** 경로가 하위 그룹의 자식 화면(또는 그 아래) 인가. */
+const isWithin = (pathname: string, item: NavItem) =>
+  (item.children ?? []).some((child) => pathname === child.path || pathname.startsWith(`${child.path}/`))
 
 export function Sidebar() {
   const navigate = useNavigate()
@@ -24,8 +38,67 @@ export function Sidebar() {
     admin: true,
   })
 
+  // 하위 그룹(3단)의 펼침. 기본은 펼침이다 — 접어 두면 묶음 안 화면이 메뉴에서 안 보인다.
+  // 사용자가 접은 것만 기록한다.
+  const { pathname } = useLocation()
+  const [closedSubGroups, setClosedSubGroups] = useState<Record<string, boolean>>({})
+
+  // 현재 화면이 하위 그룹의 자식이면 그 묶음은 열린 채로 둔다 — 지금 어디에 있는지가
+  // 메뉴에서 사라지면 안 된다(딥링크로 들어온 경우도 같다).
+  useEffect(() => {
+    const active = navGroups
+      .flatMap((group) => group.items)
+      .filter((item) => item.children && isWithin(pathname, item))
+      .map((item) => item.key)
+    if (active.length === 0) return
+    setClosedSubGroups((prev) => {
+      if (!active.some((key) => prev[key])) return prev
+      const next = { ...prev }
+      for (const key of active) delete next[key]
+      return next
+    })
+  }, [pathname])
+
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const toggleSubGroup = (key: string) => {
+    setClosedSubGroups((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const renderLink = (item: NavItem, depth: 1 | 2) => (
+    <NavLink key={item.key} to={item.path} className={itemLinkClass(collapsed, depth)}>
+      {item.icon}
+      {!collapsed && t(item.label)}
+    </NavLink>
+  )
+
+  const renderItem = (item: NavItem) => {
+    const children = (item.children ?? []).filter((child) => child.roles.includes(role))
+    if (!item.children) return renderLink(item, 1)
+    if (children.length === 0) return null
+    // 접힌 아이콘 레일에는 펼침 단추를 둘 자리가 없다. 자식을 평평하게 늘어놓는다.
+    if (collapsed) return children.map((child) => renderLink(child, 1))
+    const open = !closedSubGroups[item.key]
+    return (
+      <div key={item.key}>
+        <button
+          type="button"
+          onClick={() => toggleSubGroup(item.key)}
+          aria-expanded={open}
+          aria-label={t(item.label)}
+          className="flex h-8 w-full cursor-pointer items-center justify-between border-0 border-l-2 border-solid border-l-transparent bg-transparent pl-6 pr-3 text-[13px] text-[var(--color-sidebar-item-text)] transition-colors duration-150 ease-in-out hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_5%,_transparent)]"
+        >
+          <span className="flex items-center gap-2">
+            {item.icon}
+            {t(item.label)}
+          </span>
+          {open ? <ChevronDown {...iconProps('xs')} /> : <ChevronRight {...iconProps('xs')} />}
+        </button>
+        {open && children.map((child) => renderLink(child, 2))}
+      </div>
+    )
   }
 
   const visibleGroups = navGroups.filter((g) => g.roles.includes(role))
@@ -96,24 +169,7 @@ export function Sidebar() {
               <div>
                 {group.items
                   .filter((item) => item.roles.includes(role))
-                  .map((item) => (
-                    <NavLink
-                      key={item.key}
-                      to={item.path}
-                      className={({ isActive }) =>
-                        cn(
-                          'flex h-8 items-center gap-2 border-l-2 text-[13px] no-underline transition-colors duration-150 ease-in-out',
-                          collapsed ? 'justify-center px-0' : 'justify-start pl-6 pr-3',
-                          isActive
-                            ? 'border-l-[var(--color-sidebar-item-active-border)] bg-[var(--color-sidebar-item-active-bg)] font-medium text-[var(--color-sidebar-item-active-text)]'
-                            : 'border-l-transparent bg-transparent text-[var(--color-sidebar-item-text)] hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_5%,_transparent)]'
-                        )
-                      }
-                    >
-                      {item.icon}
-                      {!collapsed && t(item.label)}
-                    </NavLink>
-                  ))}
+                  .map((item) => renderItem(item))}
               </div>
             )}
           </div>

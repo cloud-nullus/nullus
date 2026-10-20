@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { type ReactNode, lazy, Suspense } from 'react'
 import { AppLayout } from './layout'
 import { ProtectedRoute } from '../components/shared/protected-route'
@@ -94,6 +94,10 @@ const AlertHistoryPage = lazy(() =>
   import('../features/observability/pages/alert-history-page').then((m) => ({ default: m.AlertHistoryPage }))
 )
 
+const SecurityDashboardPage = lazy(() =>
+  import('../features/observability/pages/security-dashboard-page').then((m) => ({ default: m.SecurityDashboardPage }))
+)
+
 const OrganizationPage = lazy(() =>
   import('../features/admin/pages/organization-page').then((m) => ({ default: m.OrganizationPage }))
 )
@@ -153,6 +157,10 @@ export const router = createBrowserRouter([
           { path: 'stack/version', element: withSuspense(<StackVersionPage />) },
           { path: 'observability/monitoring', element: withSuspense(<MonitoringPage />) },
           { path: 'observability/alert-history', element: withSuspense(<AlertHistoryPage />) },
+          // 보안 하위 그룹의 첫 화면. 묶음 경로로 들어오면 대시보드로 보낸다(설계 §4.1).
+          // 역할 검사는 로그인만이다 — 개발자도 앱 탭을 본다. 설치 OSS 탭은 화면 안에서 가린다.
+          { path: 'observability/security', element: <Navigate to="/observability/security/dashboard" replace /> },
+          { path: 'observability/security/dashboard', element: withSuspense(<SecurityDashboardPage />) },
         ],
       },
       {

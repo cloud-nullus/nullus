@@ -16,6 +16,8 @@
     "monitoringDashboard": "Monitoring Dashboard",
     "alertRules": "Alert Rules",
     "alertHistory": "Alert History",
+    "security": "Security",
+    "securityDashboard": "Security Dashboard",
     "admin": "Admin",
     "organization": "Organization",
     "userManagement": "User Management",
@@ -943,6 +945,39 @@
       "openInSonarQube": "Open in SonarQube",
       "analyzedAt": "Analyzed"
     },
+    "dependencyScan": {
+      "label": "Dependencies",
+      "title": "Dependency scan (Trivy)",
+      "gate": {
+        "pass": "Passed",
+        "warn": "Passed with warnings",
+        "block": "Blocked by policy",
+        "error": "Scan error"
+      },
+      "noTargets": "No targets",
+      "noTargetsHint": "No lockfile or manifest was found, so nothing was scanned. This is not a pass.",
+      "targets": "Targets"
+    },
+    "secretScan": {
+      "label": "Secrets",
+      "title": "Secret detection (gitleaks)",
+      "gate": {
+        "pass": "No secrets found",
+        "warn": "Secrets found (warn)",
+        "block": "Blocked: secrets found",
+        "error": "Scan error"
+      },
+      "findings": "{{count}} found",
+      "rotateWarning": "Committed secrets are already leaked — revoke and rotate them now. Removing the commit does not undo the leak.",
+      "errorHint": "The scan could not run or its report is missing. This does not mean no secrets were committed.",
+      "rules": "Rules",
+      "locations": "Where secrets were found",
+      "rule": "Rule",
+      "location": "File",
+      "commit": "Commit",
+      "fingerprint": "Fingerprint",
+      "valuesHidden": "Secret values are never stored or shown — only where they were found."
+    },
     "refreshDefinition": {
       "button": "Refresh definition",
       "busy": "Refreshing…",
@@ -992,6 +1027,8 @@
     "alertRulesDesc": "Alert rule list and management",
     "alertHistory": "Alert History",
     "alertHistoryDesc": "Critical alerts from each stack's Prometheus (default rules). Firing and resolved alerts also go to your notification channels.",
+    "securityDashboard": "Security Dashboard",
+    "securityDashboardDesc": "Pipeline security gates and installed OSS vulnerabilities across your organization",
     "newRule": "New Rule",
     "connectPanel": {
       "title": "Connect Stack Components",
@@ -1263,6 +1300,8 @@
     "selectCluster": "— Select Cluster —",
     "stackLabel": "Stack",
     "selectStack": "— Select Stack —",
+    "allClusters": "All clusters",
+    "allStacks": "All stacks ({{count}})",
     "clear": "Clear"
   },
   "alertHistoryPage": {
@@ -1301,6 +1340,128 @@
       "labels": "Labels"
     },
     "selectAlert": "Select an alert to view its detail."
+  },
+  "securityDashboardPage": {
+    "basedOn": "Based on main · run history syncs every 10 min",
+    "searchPlaceholder": "Search apps",
+    "problemsOnly": "Problems only",
+    "noStack": "No stack",
+    "loadError": "Couldn't load security results. Try again shortly.",
+    "truncated": "Showing the first {{count}} apps — there are more. Narrow the scope with the cluster, stack or search filters.",
+    "tabs": {
+      "apps": "Apps",
+      "oss": "Installed OSS"
+    },
+    "kpi": {
+      "blocked": "Blocked apps",
+      "blockedHint": "Deployments are stopped — fix the blocking stage",
+      "secrets": "Apps with secrets",
+      "secretsHint": "Revoke and rotate now",
+      "critical": "Apps with CRITICAL",
+      "criticalHint": "Per stack policy · image + dependencies",
+      "undetermined": "Undetermined apps",
+      "undeterminedHint": "Check scanners, runners and report paths",
+      "noStages": "No security stages yet",
+      "oss": "Installed OSS to act on",
+      "ossValue": "{{count}} images",
+      "ossHint": "Exposed (A) {{exposed}} · stacks not scanned: {{notScanned}}"
+    },
+    "stage": {
+      "secret_scan": "Secrets",
+      "dependency_scan": "Dependencies",
+      "sast": "SAST",
+      "image_scan": "Image"
+    },
+    "columns": {
+      "app": "App",
+      "latestRun": "Latest run",
+      "coverageHint": "Applied to {{applied}} of {{total}} apps"
+    },
+    "cell": {
+      "pass": "Pass",
+      "warn": "Warn",
+      "block": "Blocked",
+      "error": "Undetermined",
+      "unrecorded": "No record",
+      "notApplied": "Not applied",
+      "noTargets": "No targets",
+      "findings": "{{count}} found",
+      "vulnerabilities": "Vuln {{count}}",
+      "hotspots": "Hotspots {{count}}",
+      "staleRun": "The latest run {{latest}} has no result for this stage — this is from {{version}}.",
+      "dbAge": "DB {{days}}d"
+    },
+    "group": {
+      "cluster": "cluster {{name}}",
+      "apps": "Apps {{count}}",
+      "blocked": "Blocked {{count}}",
+      "secrets": "Secrets {{count}}",
+      "critical": "CRITICAL {{count}}",
+      "undetermined": "Undetermined {{count}}",
+      "noProblems": "No problems",
+      "allHidden": "No apps with problems here — hidden by Problems only."
+    },
+    "hiddenFooter": "{{count}} apps without problems are hidden",
+    "showAll": "Show all",
+    "empty": {
+      "noApps": "No pipelines yet",
+      "noAppsHint": "Security results appear here once apps have pipelines.",
+      "openPipelines": "Go to pipelines",
+      "noStages": "No security scanners are selected in your stacks",
+      "noStagesHint": "None of the {{count}} apps has a security stage, so there is nothing to judge — this is not a pass. Pick scanners in the stack's Security tab.",
+      "noMatch": "No apps match these filters",
+      "noProblems": "No apps with problems in this scope"
+    },
+    "detail": {
+      "select": "Select an app to see its security summary.",
+      "latestRun": "Latest run {{version}} ({{status}})",
+      "noRun": "No runs yet",
+      "report": "Report",
+      "sonarqube": "SonarQube",
+      "openRunHistory": "Open run history",
+      "openRun": "Open run {{version}}",
+      "targets": "Targets {{count}}",
+      "failedConditions": "Failed conditions",
+      "notApplied": "Not applied — the pipeline has no such stage.",
+      "unrecorded": "The stage exists, but there is no result on main yet.",
+      "error": "The scanner failed or its report is missing — this is not a pass."
+    },
+    "oss": {
+      "reportOnly": "Report only — these results never block installs or deployments. Counts are fixable vulnerabilities only.",
+      "summary": "Scanned {{scanned}} · Not scanned {{notScanned}}",
+      "openHint": "Select a row to open the stack's Image Vulnerabilities tab.",
+      "columns": {
+        "stack": "Stack",
+        "cluster": "Cluster",
+        "status": "Status",
+        "images": "Images",
+        "gradeA": "A",
+        "gradeB": "B",
+        "gradeC": "C",
+        "fixable": "Fixable",
+        "worst": "Most severe image",
+        "lastScan": "Last scan"
+      },
+      "gradeAHint": "Images with a fixable CRITICAL that are exposed outside the cluster",
+      "gradeBHint": "Images with a fixable CRITICAL that are internal only",
+      "gradeCHint": "Images with a fixable HIGH and no fixable CRITICAL",
+      "state": {
+        "scanned": "Scanned",
+        "pending": "Waiting for first scan",
+        "notScanned": "Not scanned",
+        "scannerNotInstalled": "Not scanned — scanner not installed",
+        "failed": "{{count}} failed",
+        "airgap": "Air-gapped"
+      },
+      "exposed": "Exposed",
+      "dbAge": "DB {{days}}d",
+      "dbImported": "DB {{days}}d (import date)",
+      "empty": {
+        "noStacks": "No stacks in this scope",
+        "noneScanned": "No stack scans its installed images",
+        "noneScannedHint": "Add Trivy to a stack and its installed images are scanned right after install and then periodically."
+      }
+    }
   },
   "alertRulesPage": {
     "table": {
