@@ -124,6 +124,9 @@ const BackupPage = lazy(() =>
 const NotificationChannelsPage = lazy(() =>
   import('../features/admin/pages/notification-channels-page').then((m) => ({ default: m.NotificationChannelsPage }))
 )
+const AssistantSettingsPage = lazy(() =>
+  import('../features/assistant/pages/assistant-settings-page').then((m) => ({ default: m.AssistantSettingsPage }))
+)
 
 
 function Loading() {
@@ -196,6 +199,7 @@ export const router = createBrowserRouter([
           { path: 'admin/stack-versions', element: withSuspense(<StackVersionsAdminPage />) },
           { path: 'admin/backup', element: withSuspense(<BackupPage />) },
           { path: 'admin/notifications', element: withSuspense(<NotificationChannelsPage />) },
+          { path: 'admin/assistant', element: withSuspense(<AssistantSettingsPage />) },
         ],
       },
       { path: '*', element: withSuspense(<NotFoundPage />) },

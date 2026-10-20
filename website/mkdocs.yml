@@ -161,6 +161,7 @@ plugins:
             알려진 이슈: Known Issues
             백업·복구: Backup & Restore
             알림 채널: Notification Channels
+            AI 어시스턴트: AI Assistant
             역할별 사용법: By role
             참고: Reference
             권한 표: Permissions
@@ -224,6 +225,7 @@ nav:
           - 알려진 이슈: features/admin/known-issues.md
           - 백업·복구: features/admin/backup.md
           - 알림 채널: features/admin/notifications.md
+      - AI 어시스턴트: features/assistant.md
   - 역할별 사용법:
       - roles/index.md
       - Admin: roles/admin.md

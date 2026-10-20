@@ -19,6 +19,8 @@ import (
 	"github.com/cloud-nullus/draft/internal/admin/rotation"
 	adminscheduler "github.com/cloud-nullus/draft/internal/admin/scheduler"
 	"github.com/cloud-nullus/draft/internal/admin/usecase"
+	"github.com/cloud-nullus/draft/internal/assistant"
+	assistanthandler "github.com/cloud-nullus/draft/internal/assistant/adapter/handler"
 	authadapter "github.com/cloud-nullus/draft/internal/auth/adapter"
 	authhandler "github.com/cloud-nullus/draft/internal/auth/adapter/handler"
 	keycloakadapter "github.com/cloud-nullus/draft/internal/auth/adapter/keycloak"
@@ -604,7 +606,7 @@ func main() {
 			"(only the IdP can authenticate — an IdP outage locks everyone out)")
 	}
 
-	var admin, stacks, cicd, observability *echo.Group
+	var admin, stacks, cicd, observability, assistantGroup *echo.Group
 	// wsAuth 는 /ws/* 전용 체인이다. 브라우저 WebSocket 은 Authorization 헤더를 못
 	// 붙이므로 서브프로토콜로 온 토큰을 헤더로 옮긴 뒤 평소 인증을 태운다.
 	var wsAuth []echo.MiddlewareFunc
@@ -621,6 +623,7 @@ func main() {
 		stacks = v1.Group("/stacks", userRateLimit)
 		cicd = v1.Group("/cicd", userRateLimit)
 		observability = v1.Group("/observability", userRateLimit)
+		assistantGroup = v1.Group("/assistant", userRateLimit)
 	} else {
 		sessionMW := authmw.AuthMiddleware()
 		oidcProvider, err := authadapter.NewOIDCProvider(cfg.Auth.OIDC.Provider)
@@ -642,6 +645,8 @@ func main() {
 		goldenPathWriteGuards = []echo.MiddlewareFunc{authmw.RequireRole("admin", "devops")}
 		securityStackGuards = []echo.MiddlewareFunc{authmw.RequireRole("admin", "devops")}
 		observability = v1.Group("/observability", authMW, userRateLimit)
+		// 어시스턴트는 인증만 요구한다 — 무엇을 볼 수 있는지는 도구가 부르는 API 가 요청자의 권한으로 정한다.
+		assistantGroup = v1.Group("/assistant", authMW, userRateLimit)
 
 		// OIDC 모드에서만 WebSocket 을 보호한다. session 모드의 인증은 클라이언트가
 		// 보낸 X-User-* 헤더를 그대로 믿는 방식인데, 브라우저 WebSocket 은 그 헤더를
@@ -706,6 +711,20 @@ func main() {
 	stackAlertHandler.RegisterRoutes(observability)
 	// 앱 축은 모든 역할, 설치 OSS 축은 admin · devops 만(설계 결정 11).
 	securityHandler.RegisterRoutes(observability, securityStackGuards...)
+
+	// AI 어시스턴트(nullus-plan#94). Nullus MCP 조회 도구를 조직이 고른 모델(Upstage · OpenAI · Anthropic ·
+	// Gemini · OpenAI 호환)에 물린다. 공급자 · 모델 · API 키는 관리 › AI 어시스턴트에서 조직마다 등록하고, 키는
+	// ENCRYPTION_KEY 로 암호화해 둔다. 도구는 API 자신을 루프백으로, 질문한 사용자의 인증 헤더를 실어 부른다.
+	assistantModule := assistant.New(assistant.Deps{
+		Pool:          pool,
+		EncryptionKey: []byte(os.Getenv("ENCRYPTION_KEY")),
+		ServerURL:     fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.Port),
+		Version:       version,
+	})
+	assistantHandler := assistanthandler.NewAssistantHandler(assistantModule.Chat)
+	assistantHandler.RegisterRoutes(assistantGroup)
+	assistantSettingsHandler := assistanthandler.NewSettingsHandler(assistantModule.Settings, auditLogger)
+	assistantSettingsHandler.RegisterRoutes(admin)
 
 	if cfg.Server.Mode == "development" {
 		e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))

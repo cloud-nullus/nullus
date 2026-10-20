@@ -16,6 +16,10 @@ nullus mcp serve --allow-write   # 변경 도구까지
 !!! warning "리소스와 프롬프트는 등록하지 않습니다"
     도구(tool)만 노출합니다.
 
+!!! note "플랫폼 화면의 AI 어시스턴트도 이 도구를 씁니다"
+    [AI 어시스턴트](../features/assistant.md)는 API 안에서 이 서버를 in-memory 로 띄워 아래 **읽기 도구 6종**만
+    씁니다(변경 도구는 목록에 없음). stdio 밖으로 열리는 전송은 아닙니다.
+
 ## 읽기 도구 6종 (항상)
 
 | 도구 | 입력 | 호출하는 API |
