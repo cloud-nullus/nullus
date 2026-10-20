@@ -276,3 +276,27 @@ func TestSyncPipelineRuns_SyncAll_SecretPolicyOffFromStack(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, secretRows(t, secrets))
 }
+
+// 정책 off 로 건너뛴 실행은 지금 정책이 켜져 있어도 기록하지 않는다 — off → block 으로 바꾼 뒤의 동기화가
+// 지난 실행을 "통과" 로 남기면 탐지하지 않은 앱이 초록이다.
+func TestSyncPipelineRuns_SecretScanSkippedRunNotRecorded(t *testing.T) {
+	repo := newMemSecretScans()
+	syncSecret(t, []port.CIBuild{buildWithSecretStage(7, port.CIStageSuccess)},
+		&stubArtifacts{data: []byte(domain.SecretScanSkippedReport), found: true}, repo, nil)
+	assert.Empty(t, secretRows(t, repo))
+}
+
+// 스택 정책을 읽지 못하면 off 인지 모른다. 기본 정책(차단)으로 판정하면 off 실행의 리포트를 통과로 남길 수
+// 있으니 이번 동기화에서는 남기지 않는다 — 다음 동기화가 다시 본다.
+func TestSyncPipelineRuns_SecretScanPolicyUnavailableRecordsNothing(t *testing.T) {
+	repo := newMemSecretScans()
+	arts := &pathArtifacts{files: map[string][]byte{port.SecretScanReportFile: []byte("[]")}}
+	uc := NewSyncPipelineRuns(&stubBuildReader{builds: []port.CIBuild{buildWithSecretStage(7, port.CIStageSuccess)}}, newMemDeployments()).
+		WithSecretScans(repo).WithArtifacts(arts)
+	_, err := uc.Execute(context.Background(), SyncPipelineRunsInput{
+		PipelineID: "pip_1", JobName: "app", Branch: "main", PolicyUnavailable: true,
+	})
+	require.NoError(t, err)
+	assert.Empty(t, secretRows(t, repo))
+	assert.Zero(t, arts.readsOf(port.SecretScanReportFile))
+}

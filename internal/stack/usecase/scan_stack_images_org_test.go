@@ -69,3 +69,38 @@ func TestScanStackImages_StackOrgID(t *testing.T) {
 	_, err = uc.StackOrgID(context.Background(), "missing")
 	assert.Error(t, err)
 }
+
+// nilOnMissingStackRepo 는 Postgres 저장소처럼 없거나 지운 스택에 (nil, nil) 을 돌려준다. 메모리 가짜는
+// 오류를 돌려줘서 이 경로를 가리지 못했다.
+type nilOnMissingStackRepo struct{ *fakeStackRepo }
+
+func (r nilOnMissingStackRepo) GetByID(ctx context.Context, id string) (*domain.Stack, error) {
+	s, err := r.fakeStackRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, nil
+	}
+	return s, nil
+}
+
+// 저장소가 (nil, nil) 을 돌려줘도 패닉 대신 "not found" 오류다 — 핸들러가 404 로 옮긴다(500 이 아니다).
+func TestScanStackImages_MissingStack_NotFound(t *testing.T) {
+	uc := NewScanStackImages(nilOnMissingStackRepo{newFakeStackRepo()}, fakeCompletedStacks{},
+		&fakeKubeconfigProvider{}, &fakeImageScanner{}, newFakeImageScanResults(), false)
+	ctx := context.Background()
+
+	_, err := uc.StackOrgID(ctx, "stk_gone")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+
+	_, err = uc.Report(ctx, "stk_gone")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+
+	_, err = uc.Vulnerabilities(ctx, "stk_gone", "sha256:x", shareddomain.VulnerabilityFilter{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+
+	_, err = uc.Execute(ctx, "stk_gone")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}

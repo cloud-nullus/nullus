@@ -2054,11 +2054,19 @@ export function CicdListPage() {
     return matchesSearch && matchesStatus && matchesCluster;
   });
 
+  // 링크로 받은 파이프라인이 목록(최근 파이프라인만 담는다)에 없으면 다른 파이프라인을 조용히 열지 않는다 —
+  // 보안 대시보드에서 누른 앱이 아닌 앱의 상세가 열리면 그것을 그 앱의 결과로 읽는다. 대신 알린다.
+  const linkedPipelineMissing =
+    !!linkedPipelineId &&
+    apiData !== undefined &&
+    !pipelines.some((pipeline) => pipeline.id === linkedPipelineId);
   const selectedPipelineId =
     expandedPipelineId &&
     filtered.some((pipeline) => pipeline.id === expandedPipelineId)
       ? expandedPipelineId
-      : (filtered[0]?.id ?? null);
+      : linkedPipelineMissing && expandedPipelineId === linkedPipelineId
+        ? null
+        : (filtered[0]?.id ?? null);
   const expandedPipeline = selectedPipelineId
     ? (filtered.find((pipeline) => pipeline.id === selectedPipelineId) ?? null)
     : null;
@@ -2323,6 +2331,15 @@ export function CicdListPage() {
           </div>
         }
       />
+
+      {linkedPipelineMissing && (
+        <div
+          role="status"
+          className="mb-4 rounded-md border border-[var(--color-warning)] p-3 text-sm text-[var(--color-text-secondary)]"
+        >
+          {t("cicdListPage.linkedPipelineMissing")}
+        </div>
+      )}
 
       {deleteWarnings.length > 0 && (
         <div

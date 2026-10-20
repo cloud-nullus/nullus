@@ -389,7 +389,9 @@ describe('SecurityDashboardPage', () => {
       serve({ apps: () => appsReport({ truncated: true }) })
       renderPage()
       expect(await screen.findByRole('status')).toBeTruthy()
-      expect(screen.getByRole('status').textContent).toContain('Showing the first 2 apps')
+      // 상한은 범위 필터보다 먼저 걸린다 — 보이는 행 수가 아니라 상한을 말하고, "좁히세요" 라고 하지 않는다.
+      expect(screen.getByRole('status').textContent).toContain('more than 1000 pipelines')
+      expect(screen.getByRole('status').textContent).not.toMatch(/narrow/i)
     })
   })
 })

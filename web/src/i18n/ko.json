@@ -862,6 +862,7 @@
     }
   },
   "cicdListPage": {
+    "linkedPipelineMissing": "링크한 파이프라인이 이 목록에 없습니다 — 지워졌거나 여기 보이는 파이프라인보다 오래된 것일 수 있습니다. 목록에서 파이프라인을 고르세요.",
     "title": "CI/CD 목록",
     "description": "CI/CD 파이프라인 목록",
     "table": {
@@ -1347,7 +1348,7 @@
     "problemsOnly": "문제 있는 것만",
     "noStack": "스택 없음",
     "loadError": "보안 결과를 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.",
-    "truncated": "앱이 많아 처음 {{count}}개만 보입니다. 클러스터 · 스택 · 검색으로 범위를 좁히세요.",
+    "truncated": "조직의 파이프라인이 {{count}}개를 넘어 최근 만든 {{count}}개만 집계했습니다. 오래된 파이프라인은 이 화면에 없을 수 있습니다.",
     "tabs": {
       "apps": "앱",
       "oss": "설치 OSS"

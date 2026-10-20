@@ -732,6 +732,17 @@ describe("CicdListPage", () => {
       await waitFor(() => expect(screen.getByText("dep_new")).toBeTruthy());
     });
 
+    // 목록은 최근 파이프라인만 담는다. 링크한 것이 없으면 다른 파이프라인을 조용히 열지 않고 알린다.
+    it("should not open another pipeline when the linked one is not listed", () => {
+      renderWithProviders(<CicdListPage />, {
+        route: "/cicd/list?pipeline=pipeline-gone&tab=history&run=dep_x",
+      });
+
+      expect(screen.getByRole("status").textContent).toContain("The linked pipeline is not in this list");
+      expect(screen.queryByRole("heading", { name: "order-api" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "frontend-web" })).toBeNull();
+    });
+
     it("should ignore an unknown tab value", () => {
       renderWithProviders(<CicdListPage />, { route: "/cicd/list?pipeline=pipeline-2&tab=bogus" });
 

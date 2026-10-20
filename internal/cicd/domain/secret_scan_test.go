@@ -129,3 +129,15 @@ func TestSecretScanGate_VerdictTable(t *testing.T) {
 		})
 	}
 }
+
+// 정책 off 인 스크립트는 탐지 없음([])과 구별되는 표식을 남긴다. 파서는 그것을 "건너뜀" 으로 돌려준다 —
+// [] 로 남기면 나중에 정책을 켠 뒤의 동기화가 그 실행을 "통과" 로 기록한다(탐지하지 않았는데 초록).
+func TestParseGitleaksReport_PolicyOffMarkerIsSkipped(t *testing.T) {
+	r, err := ParseGitleaksReport([]byte(SecretScanSkippedReport))
+	require.NoError(t, err)
+	assert.True(t, r.Skipped)
+	assert.Zero(t, r.Count)
+
+	_, err = ParseGitleaksReport([]byte(`{"something":"else"}`))
+	assert.Error(t, err, "표식이 아닌 객체는 형식 오류다")
+}

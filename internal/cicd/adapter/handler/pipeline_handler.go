@@ -1507,26 +1507,27 @@ func (h *PipelineHandler) pipelineForScanRead(c echo.Context) (pipeline *domain.
 	if pipeline == nil {
 		return nil, true, errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", "pipeline not found")
 	}
-	if orgID := h.scanReaderOrgID(c); orgID != "" && pipeline.OrgID != orgID {
+	if pipeline.OrgID != h.scanReaderOrgID(c) {
 		return nil, true, errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", "pipeline not found")
 	}
 	return pipeline, false, nil
 }
 
-// scanReaderOrgID 는 스캔 결과를 읽는 사람의 조직이다.
+// scanReaderOrgID 는 스캔 결과를 읽는 사람의 조직이다. 빈 값을 돌려주지 않는다 — 비교를 건너뛰는 길이 생기면
+// 조직 클레임이 없는 토큰이 헤더 없이 아무 조직의 결과나 읽는다.
 //
-// 로그인한 사용자(principal)의 조직이 먼저다 — 인증을 거치는 모드에서는 늘 있다. 없으면(인증을 끈 개발
-// 모드) 다른 cicd 조회처럼 X-Org-ID 를 DB 에서 확인해 쓰고, 그것도 없으면 빈 값이다 — 신원이 없어
-// 비교할 조직이 없다.
+// 로그인한 사용자(principal)의 조직이 먼저다. 없으면 다른 cicd 조회(validatedOrgID)와 스택 모듈처럼
+// X-Org-ID 를 DB 에서 확인해 쓰고, 헤더가 없거나 모르는 조직이면 기본 조직이다.
 func (h *PipelineHandler) scanReaderOrgID(c echo.Context) string {
 	if orgID := strings.TrimSpace(middleware.OrgIDFromEchoContext(c)); orgID != "" {
 		return orgID
 	}
 	header := strings.TrimSpace(c.Request().Header.Get("X-Org-ID"))
-	if header == "" {
-		return ""
-	}
 	if h.pool == nil {
+		// DB 없이 도는 핸들러(테스트)는 헤더를 확인할 길이 없다. 헤더가 없으면 기본 조직이다.
+		if header == "" {
+			return defaultOrgID
+		}
 		return header
 	}
 	return h.validatedOrgID(c.Request().Context(), header)

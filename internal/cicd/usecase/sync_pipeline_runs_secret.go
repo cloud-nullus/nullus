@@ -30,7 +30,8 @@ func (uc *SyncPipelineRuns) recordSecretScans(
 	pipelineID string,
 	builds []port.CIBuild,
 ) {
-	if uc.secretScans == nil || uc.artifacts == nil {
+	if uc.secretScans == nil || uc.artifacts == nil || input.PolicyUnavailable {
+		// 정책을 읽지 못했으면 off 인지 모른다 — 기본 정책(차단)으로 판정하면 off 실행을 통과로 남길 수 있다.
 		return
 	}
 	policy := domain.DefaultScanPolicy()
@@ -95,6 +96,10 @@ func (uc *SyncPipelineRuns) recordSecretScans(
 				if err != nil {
 					slog.Warn("시크릿 탐지 리포트 형식이 맞지 않습니다",
 						"pipeline_id", pipelineID, "deployment_id", deploymentID, "error", err)
+					continue
+				}
+				if report.Skipped {
+					// 정책 off 로 스캔하지 않은 실행이다. 지금 정책이 켜져 있어도 "통과" 로 남기지 않는다.
 					continue
 				}
 				count := report.Count

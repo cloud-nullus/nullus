@@ -56,6 +56,11 @@ type SecretFinding struct {
 // 건수는 자르지 않는다 — 오탐 규칙 하나가 수천 건을 내도 행이 커지지 않게 위치만 자른다.
 const MaxStoredSecretFindings = 200
 
+// SecretScanSkippedReport 는 스택 정책이 시크릿 탐지를 끈 실행이 남기는 리포트다. 탐지 없음([])과
+// 구별해야 한다 — 같은 [] 를 남기면 나중에 정책을 켠 뒤의 동기화가 그 실행을 "통과" 로 기록한다.
+// 산출물 업로드가 실패하지 않도록 파일은 남긴다. 스캐폴딩(scaffold/secret_scan.go)이 같은 값을 쓴다.
+const SecretScanSkippedReport = `{"nullus_skipped":"policy_off"}`
+
 // SecretScanResultID 는 실행 하나에 대응하는 시크릿 탐지 결과 ID 다.
 func SecretScanResultID(deploymentID string) string {
 	return "secretscan_" + deploymentID
@@ -69,6 +74,8 @@ type SecretScanReport struct {
 	Rules []SecretRuleCount
 	// Findings 는 리포트 순서대로 앞의 MaxStoredSecretFindings 건이다.
 	Findings []SecretFinding
+	// Skipped 는 정책 off 로 스캔하지 않은 실행의 리포트(SecretScanSkippedReport)라는 뜻이다. 기록하지 않는다.
+	Skipped bool
 }
 
 // gitleaksFinding 은 gitleaks 리포트 항목에서 읽는 필드다. Secret · Match 는 일부러 두지 않는다 —
@@ -83,10 +90,20 @@ type gitleaksFinding struct {
 
 // ParseGitleaksReport 는 gitleaks 의 JSON 리포트(--report-format json, 탐지 배열)를 요약한다.
 //
-// 탐지가 없으면 gitleaks 는 [] 를 쓴다(정책 off 인 스크립트도 [] 를 쓴다). 빈 파일이나 배열이 아닌
-// 것은 형식 오류다 — 0 건으로 읽으면 깨진 리포트가 "탐지 없음" 이 된다.
+// 탐지가 없으면 gitleaks 는 [] 를 쓴다. 정책 off 인 스크립트는 SecretScanSkippedReport 를 쓰고, 그것은
+// Skipped 로 돌려준다. 빈 파일이나 그 밖의 것은 형식 오류다 — 0 건으로 읽으면 깨진 리포트가 "탐지 없음" 이
+// 된다. 이 표식 전에 스캐폴딩한 파이프라인은 off 에서도 [] 를 쓰므로, 정의를 갱신하기 전까지는 구별되지 않는다.
 func ParseGitleaksReport(raw []byte) (*SecretScanReport, error) {
 	trimmed := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(trimmed, "{") {
+		var marker struct {
+			NullusSkipped string `json:"nullus_skipped"`
+		}
+		if err := json.Unmarshal([]byte(trimmed), &marker); err == nil && strings.TrimSpace(marker.NullusSkipped) != "" {
+			return &SecretScanReport{Rules: []SecretRuleCount{}, Findings: []SecretFinding{}, Skipped: true}, nil
+		}
+		return nil, fmt.Errorf("gitleaks 리포트 형식 오류: JSON 배열이 아닙니다")
+	}
 	if !strings.HasPrefix(trimmed, "[") {
 		return nil, fmt.Errorf("gitleaks 리포트 형식 오류: JSON 배열이 아닙니다")
 	}

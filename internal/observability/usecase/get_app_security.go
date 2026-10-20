@@ -116,7 +116,9 @@ func withStackScope(rec domain.AppSecurityRecord, stacks map[string]domain.Secur
 	}
 	ref, ok := stacks[rec.StackID]
 	if !ok {
+		// 스택 없음에는 스택 정책도 없다 — 지워진 스택의 시크릿 off 가 남으면 셀이 이유 없이 "미적용" 이다.
 		rec.StackID = ""
+		rec.SecretPolicyOff = false
 		return rec
 	}
 	if ref.ClusterID != "" {

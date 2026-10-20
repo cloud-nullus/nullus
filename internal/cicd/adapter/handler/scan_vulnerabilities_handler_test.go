@@ -26,7 +26,7 @@ func (vulnPipelineRepo) GetByID(_ context.Context, id string) (*domain.Pipeline,
 	if id != "pip_1" {
 		return nil, errors.New("pipeline not found")
 	}
-	return &domain.Pipeline{ID: "pip_1", Name: "app", StackID: "stk_1"}, nil
+	return &domain.Pipeline{ID: "pip_1", Name: "app", StackID: "stk_1", OrgID: defaultOrgID}, nil
 }
 
 type vulnArtifacts struct{ raw []byte }

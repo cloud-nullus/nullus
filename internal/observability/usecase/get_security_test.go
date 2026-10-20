@@ -275,3 +275,18 @@ func TestGetStackSecurity_Errors(t *testing.T) {
 	_, err = nilUC.Execute(context.Background(), StackSecurityQuery{OrgID: "org-1"})
 	assert.Error(t, err)
 }
+
+// 스택이 지워진 앱은 "스택 없음" 이고, 그 스택의 시크릿 정책(off)도 함께 내려놓는다 — 스택 없음은 단계 유무로만
+// 본다(설계 §4.2). 정책만 남으면 시크릿 셀이 이유 없이 "미적용" 으로 보인다.
+func TestWithStackScope_DeletedStackDropsSecretPolicy(t *testing.T) {
+	rec := domain.AppSecurityRecord{StackID: "stk_gone", SecretPolicyOff: true, ClusterID: "cl-p"}
+	got := withStackScope(rec, map[string]domain.SecurityStackRef{})
+	assert.Equal(t, "", got.StackID)
+	assert.False(t, got.SecretPolicyOff)
+	assert.Equal(t, "cl-p", got.ClusterID, "클러스터는 파이프라인의 것으로 남는다")
+
+	live := withStackScope(domain.AppSecurityRecord{StackID: "stk_a", SecretPolicyOff: true},
+		map[string]domain.SecurityStackRef{"stk_a": {ClusterID: "cl-a"}})
+	assert.True(t, live.SecretPolicyOff, "살아 있는 스택의 정책은 그대로다")
+	assert.Equal(t, "cl-a", live.ClusterID)
+}

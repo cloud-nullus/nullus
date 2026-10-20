@@ -220,6 +220,11 @@ export function securityStacksParams(query: SecurityStacksQuery): Record<string,
 }
 
 /** "문제 있는 것만" 이 남기는 rank(설계 §2.3: 1~4). */
+// MAX_SECURITY_APPS 는 서버가 한 번에 모으는 파이프라인 수의 상한이다(internal/cicd/usecase/
+// list_pipeline_security.go 의 MaxSecurityPipelines). 상한은 범위 필터보다 먼저 걸리므로, 넘으면
+// 필터를 좁혀도 오래된 파이프라인은 보이지 않는다 — 안내가 그것을 말해야 한다.
+export const MAX_SECURITY_APPS = 1000
+
 export const isProblemRank = (rank: number) => rank >= 1 && rank <= 4
 
 export interface SecurityAppSection {

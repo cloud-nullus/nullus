@@ -862,6 +862,7 @@
     }
   },
   "cicdListPage": {
+    "linkedPipelineMissing": "The linked pipeline is not in this list — it may have been deleted, or it is older than the pipelines shown here. Pick a pipeline from the list.",
     "title": "CI/CD List",
     "description": "CI/CD Pipeline List",
     "table": {
@@ -1347,7 +1348,7 @@
     "problemsOnly": "Problems only",
     "noStack": "No stack",
     "loadError": "Couldn't load security results. Try again shortly.",
-    "truncated": "Showing the first {{count}} apps — there are more. Narrow the scope with the cluster, stack or search filters.",
+    "truncated": "This organization has more than {{count}} pipelines — only the {{count}} most recently created are counted, so older pipelines may be missing here.",
     "tabs": {
       "apps": "Apps",
       "oss": "Installed OSS"

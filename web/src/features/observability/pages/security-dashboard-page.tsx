@@ -19,7 +19,7 @@ import { SecurityAppDetail } from '../components/security-app-detail'
 import { SecurityAppsTable } from '../components/security-apps-table'
 import { SecurityOssTable } from '../components/security-oss-table'
 import type { SecurityApp, SecurityAppsReport } from '../types/security-posture'
-import { buildScopeOptions, hiddenAppCount } from '../utils/security-posture'
+import { buildScopeOptions, hiddenAppCount, MAX_SECURITY_APPS } from '../utils/security-posture'
 
 type SecurityTab = 'apps' | 'oss'
 
@@ -375,7 +375,7 @@ function AppsTab({
           className="mb-3 mt-0 flex items-center gap-1.5 rounded-md border border-[color-mix(in_srgb,_var(--color-warning)_35%,_transparent)] bg-[color-mix(in_srgb,_var(--color-warning)_10%,_transparent)] px-3 py-2 text-[13px] text-[var(--color-text-primary)]"
         >
           <StatusIcon tone="warning" size="xs" className="shrink-0" />
-          {t('securityDashboardPage.truncated', { count: report.apps.length })}
+          {t('securityDashboardPage.truncated', { count: MAX_SECURITY_APPS })}
         </p>
       )}
       {/* 상세는 표 아래가 아니라 오른쪽에 붙는다 — 알림 이력과 같은 구성(DESIGN.md §Layout). */}

@@ -109,7 +109,7 @@ func TestPipelineHandler_ListDependencyScans(t *testing.T) {
 		ID: "depscan_dep_1", PipelineID: "pip-1", DeploymentID: "dep_1", Scanner: "trivy",
 		GateResult: domain.GateResultError, ScannedAt: now.Add(-time.Hour),
 	}))
-	e := newScanResultsEcho(t, "", stores)
+	e := newScanResultsEcho(t, "org-1", stores)
 
 	code, body := getScanResults(t, e, "/api/v1/cicd/pipelines/pip-1/dependency-scans", nil)
 	require.Equal(t, http.StatusOK, code, string(body))
@@ -162,7 +162,7 @@ func TestPipelineHandler_ListSecretScans(t *testing.T) {
 		ID: "secretscan_dep_1", PipelineID: "pip-1", DeploymentID: "dep_1", Scanner: "gitleaks",
 		GateResult: domain.GateResultError, ScannedAt: now.Add(-time.Hour),
 	}))
-	e := newScanResultsEcho(t, "", stores)
+	e := newScanResultsEcho(t, "org-1", stores)
 
 	code, body := getScanResults(t, e, "/api/v1/cicd/pipelines/pip-1/secret-scans", nil)
 	require.Equal(t, http.StatusOK, code, string(body))
@@ -235,8 +235,12 @@ func TestPipelineHandler_ScanReads_OtherOrgIsNotFound(t *testing.T) {
 			// principal 이 없으면(인증을 끈 개발 모드) X-Org-ID 를 따른다.
 			code, _ = getScanResults(t, devMode, path, map[string]string{"X-Org-ID": "org-2"})
 			assert.Equal(t, http.StatusNotFound, code)
+			// 신원도 헤더도 없으면 다른 cicd 조회 · 스택 모듈처럼 기본 조직으로 비교한다 — 비교를 건너뛰면
+			// 조직 클레임이 없는 토큰이 헤더 없이 아무 조직의 결과나 읽는다.
 			code, _ = getScanResults(t, devMode, path, nil)
-			assert.Equal(t, http.StatusOK, code, "신원이 없으면 비교할 조직이 없다")
+			assert.Equal(t, http.StatusNotFound, code, "org-1 파이프라인은 기본 조직의 것이 아니다")
+			code, _ = getScanResults(t, devMode, path, map[string]string{"X-Org-ID": "org-1"})
+			assert.Equal(t, http.StatusOK, code)
 
 			// principal 이 헤더보다 먼저다 — 헤더로 다른 조직을 흉내 낼 수 없다.
 			code, _ = getScanResults(t, other, path, map[string]string{"X-Org-ID": "org-1"})

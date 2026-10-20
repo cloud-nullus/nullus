@@ -75,7 +75,7 @@ func NewScanStackImages(
 // 스캔이 실패하면 이전 결과를 그대로 둔다 — 일시적인 장애로 보고서가 비면 알던
 // 취약점이 사라진 것처럼 보인다.
 func (uc *ScanStackImages) Execute(ctx context.Context, stackID string) (*domain.StackImageScanReport, error) {
-	stack, err := uc.stacks.GetByID(ctx, strings.TrimSpace(stackID))
+	stack, err := uc.stackByID(ctx, stackID)
 	if err != nil {
 		return nil, err
 	}
@@ -118,9 +118,23 @@ func (uc *ScanStackImages) Execute(ctx context.Context, stackID string) (*domain
 	return &report, nil
 }
 
+// stackByID 는 스캔 대상 스택이다. Postgres 저장소는 없거나 지운 스택에 (nil, nil) 을 돌려주므로
+// 여기서 "not found" 오류로 바꾼다 — 그대로 두면 다음 줄의 역참조가 패닉이 되고, 핸들러가 404 대신 500 을 낸다.
+func (uc *ScanStackImages) stackByID(ctx context.Context, stackID string) (*domain.Stack, error) {
+	id := strings.TrimSpace(stackID)
+	stack, err := uc.stacks.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if stack == nil {
+		return nil, fmt.Errorf("stack %s not found", id)
+	}
+	return stack, nil
+}
+
 // Report 는 저장된 결과로 보고서를 만든다.
 func (uc *ScanStackImages) Report(ctx context.Context, stackID string) (*domain.StackImageScanReport, error) {
-	stack, err := uc.stacks.GetByID(ctx, strings.TrimSpace(stackID))
+	stack, err := uc.stackByID(ctx, stackID)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +144,7 @@ func (uc *ScanStackImages) Report(ctx context.Context, stackID string) (*domain.
 // StackOrgID 는 스택이 속한 조직이다. 단건 스캔 조회가 다른 조직의 스택을 보이지 않게 쓴다
 // (Security Dashboard 설계 §8 G4).
 func (uc *ScanStackImages) StackOrgID(ctx context.Context, stackID string) (string, error) {
-	stack, err := uc.stacks.GetByID(ctx, strings.TrimSpace(stackID))
+	stack, err := uc.stackByID(ctx, stackID)
 	if err != nil {
 		return "", err
 	}
@@ -185,7 +199,7 @@ func (uc *ScanStackImages) Vulnerabilities(
 	stackID, digest string,
 	filter shareddomain.VulnerabilityFilter,
 ) (*shareddomain.VulnerabilityPage, error) {
-	stack, err := uc.stacks.GetByID(ctx, strings.TrimSpace(stackID))
+	stack, err := uc.stackByID(ctx, stackID)
 	if err != nil {
 		return nil, err
 	}
