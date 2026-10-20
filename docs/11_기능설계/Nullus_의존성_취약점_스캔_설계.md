@@ -99,7 +99,7 @@ trivy fs --server ... --severity ${NULLUS_SCAN_SEVERITY:-CRITICAL} [--ignore-unf
 
 | 항목 | 이유 | 재검토 시점 |
 |---|---|---|
-| 결과 저장·실행 기록 화면(건수·CVE 목록) | 단계 상태와 리포트 산출물로 먼저 선다. 저장 모양은 이미지 스캔(`pipeline_image_scans`)과 같은 틀로 붙일 수 있다 | #65 Security Dashboard |
+| 결과 저장·실행 기록 화면(건수·CVE 목록) | 단계 상태와 리포트 산출물로 먼저 선다. 저장 모양은 이미지 스캔(`image_scan_results`)과 같은 틀로 붙일 수 있다 → **#65 에서 `dependency_scan_results`(000106)로 저장한다**(`Nullus_Security_Dashboard_설계.md` §8 G1) | #65 Security Dashboard |
 | 라이선스 검사 | 조직의 허용 라이선스 정책이 먼저다 | 정책 결정 후 — `--scanners vuln,license` 와 `--license-*` 옵션 |
 | SBOM 축적·이력(Dependency-Track) | 서버 하나가 더 는다. 공급망 증적(#77)은 릴리즈 이미지 단위로 이미 SBOM 을 남긴다 | 사용자 앱 SBOM 요구가 생길 때 |
 | 스캐폴딩이 락파일을 만들도록 | 템플릿 앱은 시작점이고 의존성은 사용자가 정한다. 대신 0 개일 때 로그가 말한다 | 샘플 앱 개편 시 |

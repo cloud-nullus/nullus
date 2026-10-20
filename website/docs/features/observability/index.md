@@ -1,12 +1,14 @@
 # 관측성
 
-설치한 스택과 그 위에서 도는 앱의 상태를 보는 영역입니다. 화면은 둘입니다.
+설치한 스택과 그 위에서 도는 앱의 상태를 보는 영역입니다. 화면은 셋입니다.
 
 <div class="nullus-cards" markdown>
 
 [**모니터링 대시보드**<span>클러스터·스택·CI/CD 를 탭으로 나눠 파드·CPU·메모리·파이프라인 상태를 본다.</span>](monitoring.md)
 
 [**알림 이력**<span>스택에서 발생한 심각 경보를 시간순으로 본다.</span>](alert-history.md)
+
+[**보안 대시보드**<span>모든 스택 · 앱의 보안 게이트 결과와 설치 OSS 취약점을 한 화면에서 본다.</span>](security-dashboard.md)
 
 </div>
 

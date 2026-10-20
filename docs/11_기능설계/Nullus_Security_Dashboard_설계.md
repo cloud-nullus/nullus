@@ -299,8 +299,10 @@ internal/stack/
 }
 ```
 
-- 셀의 `state` 가 `unrecorded` · `not_applied` 면 `state` 만 있다. 숫자 칸은 모르면 **빠지거나 null** 이다 — 0 으로 채우지 않는다.
+- 셀의 `state` 가 `unrecorded` · `not_applied` 면 `state` 만 있다. 숫자 칸은 모르면 **빠진다** — 0 으로 채우지 않는다. 리포트를 못 읽은 셀(`error`)은 `counts` · `db_stale` · `db_updated_at` 이 함께 빠진다.
+- `dependency_scan` · `image_scan` 셀은 `db_updated_at` 도 싣는다(화면의 "DB 34일"). `rules` · `failed_conditions` 는 결과가 있으면 늘 배열이다.
 - `summary` · `coverage` · `groups` 는 범위 필터(cluster · stack · q)만 따르고 `problem_only` 는 따르지 않는다.
+- `groups` 는 범위 안에 앱이 있는 스택만, 가장 위험한 앱의 rank → 문제 수 → 이름 순이고 "스택 없음" 은 늘 마지막이다. 스택이 지워진 앱은 `stack_id: ""` 로 "스택 없음" 에 든다.
 
 ```jsonc
 // GET /observability/security/stacks
@@ -320,6 +322,7 @@ internal/stack/
 }
 ```
 
+- `/security/stacks` 행의 모르는 값은 빠지지 않고 `null` 이다(스캔하지 않는 스택의 이미지 수 · 등급 · 건수 등). `state` 가 `pending`(첫 스캔 대기)인 스택은 `scanned_stacks` · `not_scanned_stacks` 어디에도 세지 않는다. `worst_image` 는 전체 건수로 고르고, `db_updated_at` 은 스캔한 이미지 중 가장 오래된 DB 시각이다.
 - **권한별로 나눈 이유** — `/observability` 그룹은 역할 검사가 없다. 한 응답에 섞으면 핸들러 안에서 필드를 지워야 하고, 빠뜨리면 그대로 샌다. 두 번째 경로에만 admin · devops 검사를 단다.
 - **조직** — `sharedmw.OrgIDFromEchoContext`(principal 먼저). `X-Org-ID` 헤더만 믿는 기존 대시보드 핸들러(`dashboard_handler.go:191`)를 따라 하지 않는다.
 - **규모** — 조직의 앱을 한 번에 돌려준다. 동기화 대상과 같은 상한(1000)을 두고, 넘으면 `truncated: true` 로 화면에 알린다. 행 하나가 작고(셀 넷) "문제 있는 것만" 이 서버에서 먼저 거른다. 상한에 닿는 조직이 생기면 페이지를 나눈다.
@@ -384,7 +387,7 @@ Test/Coverage 설계 §4 는 "데이터가 없는 시점의 전용 대시보드�
 
 **실행 기록 화면** — G1 · G2 를 넣으면 CI/CD 실행 기록의 실행 행과 상세에 두 요약을 이미지 스캔 · SAST 옆에 붙인다. 실행 단위 상세는 그 화면이 갖는다(결정 8). 조회 경로는 기존과 같은 모양이다 — `GET /api/v1/cicd/pipelines/:id/dependency-scans`, `GET /api/v1/cicd/pipelines/:id/secret-scans`.
 
-> SCA · 시크릿 설계 문서는 저장 틀로 `pipeline_image_scans` 를 적었지만 실제 테이블 이름은 `image_scan_results` 다. 이 변경에서 두 문서의 표기를 고친다.
+> SCA · 시크릿 설계 문서는 저장 틀로 `pipeline_image_scans` 를 적었지만 실제 테이블 이름은 `image_scan_results` 다. 두 문서의 표기를 이 변경에서 고쳤다.
 
 ---
 

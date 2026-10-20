@@ -1,12 +1,14 @@
 # Observability
 
-This area shows the state of your installed stacks and the apps running on them. It has two screens.
+This area shows the state of your installed stacks and the apps running on them. It has three screens.
 
 <div class="nullus-cards" markdown>
 
 [**Monitoring Dashboard**<span>View pod, CPU, memory, and pipeline status, split into Cluster, Stack, and CI/CD tabs.</span>](monitoring.md)
 
 [**Alert History**<span>View critical alerts raised by your stacks, in chronological order.</span>](alert-history.md)
+
+[**Security Dashboard**<span>See security gate results and installed OSS vulnerabilities for every stack and app on one screen.</span>](security-dashboard.md)
 
 </div>
 

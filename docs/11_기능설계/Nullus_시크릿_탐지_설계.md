@@ -117,7 +117,7 @@ SAST 가 기본 브랜치에서만 도는 것과 달리 **모든 브랜치**에�
 
 | 항목 | 이유 | 재검토 시점 |
 |---|---|---|
-| 탐지 결과 저장·화면(실행별 건수·규칙·파일) | 단계 상태와 산출물로 먼저 선다. 저장 모양은 이미지 스캔(`pipeline_image_scans`)·SAST(`sast_results`)와 같은 틀 | #65 Security Dashboard |
+| 탐지 결과 저장·화면(실행별 건수·규칙·파일) | 단계 상태와 산출물로 먼저 선다. 저장 모양은 이미지 스캔(`image_scan_results`)·SAST(`sast_results`)와 같은 틀 → **#65 에서 `secret_scan_results`(000107)로 저장한다**(`Nullus_Security_Dashboard_설계.md` §8 G2) | #65 Security Dashboard |
 | 탐지 알림 | 채널이 없다 | #63 Alert 채널 |
 | 온보딩 전체 이력 스캔 자동화 | 게이트가 아니라 점검. 파이프라인 생성 시 1회 Job 으로 돌리고 결과를 사용자에게 돌려줄 자리(결과 저장)가 먼저 필요하다 | 결과 저장 뒤 |
 | SCM push protection 연계(GitHub GHAS · GitLab Ultimate) | 조직 라이선스에 달려 있다. 켤 수 있는 조직은 켜도 이 설계와 겹치지 않는다 | — |

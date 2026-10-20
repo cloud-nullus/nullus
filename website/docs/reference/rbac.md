@@ -29,7 +29,7 @@
 
 | 묶음 | 허용 역할 | 들어 있는 경로 |
 |------|-----------|----------------|
-| `<ProtectedRoute />`<br>(역할 제한 없음 = 로그인만 하면 됨) | admin · devops · developer | `/`<br>`/stack/templates`<br>`/stack/list`<br>`/stack/history/:stackId?`<br>`/stack/version`, `/stack/versions`<br>`/stack/logs/:deploymentId`<br>`/stack/deployments/:deploymentId/retry-history`<br>`/observability/monitoring`<br>`/observability/alert-history` |
+| `<ProtectedRoute />`<br>(역할 제한 없음 = 로그인만 하면 됨) | admin · devops · developer | `/`<br>`/stack/templates`<br>`/stack/list`<br>`/stack/history/:stackId?`<br>`/stack/version`, `/stack/versions`<br>`/stack/logs/:deploymentId`<br>`/stack/deployments/:deploymentId/retry-history`<br>`/observability/monitoring`<br>`/observability/alert-history`<br>`/observability/security/dashboard` |
 | `allowedRoles={['admin','devops']}` | admin · devops | `/stack/install`<br>`/stack/:id/add-tools`<br>`/stack/deploy/:id`<br>`/stack/oss-resource-default` |
 | `allowedRoles={['admin','devops','developer']}` | admin · devops · developer | `/cicd/developer-deploy`<br>`/cicd/templates`<br>`/cicd/create`<br>`/cicd/golden-paths`<br>`/cicd/list`<br>`/cicd/history`<br>`/cicd/pipelines/:id/logs` |
 | `allowedRoles={['admin']}` | admin | `/admin/organization`, `/admin/organizations`<br>`/admin/users`<br>`/admin/clusters`<br>`/admin/known-issues`<br>`/admin/token-management`<br>`/admin/stack-versions`<br>`/admin/backup`<br>`/admin/notifications` |
@@ -61,17 +61,21 @@ API 는 그룹 단위로 역할을 검사합니다. **여기가 진짜 경계입
 | CI/CD | `/api/v1/cicd/**` | admin · devops · developer |
 | 골든패스 쓰기 | `POST`·`PUT`·`DELETE /api/v1/cicd/golden-paths` | admin · devops |
 | 관측성 | `/api/v1/observability/**` | **역할 검사 없음** (인증만) |
+| 보안 대시보드 설치 OSS | `GET /api/v1/observability/security/stacks` | admin · devops |
 | 로그인 | `POST /api/v1/auth/login` | 인증 전 |
 
 역할 검사는 **계층이 아니라 명단**입니다 — admin 도 명단에 적혀 있어야
 통과합니다.
 
-골든패스만 그룹보다 좁습니다. 조직 전체가 고르는 설치 조합이라 읽기는 CI/CD
-그룹 그대로 열어 두고, 바꾸는 쪽은 admin·devops 로 좁혀 두었습니다.
+골든패스와 보안 대시보드의 설치 OSS 경로는 그룹보다 좁습니다. 골든패스는 조직
+전체가 고르는 설치 조합이라 읽기는 CI/CD 그룹 그대로 열어 두고, 바꾸는 쪽은
+admin·devops 로 좁혀 두었습니다. 설치 OSS 경로는 스택 그룹(`/stacks/**`)과 같은
+데이터를 모아 보여 주므로 스택 그룹과 같은 역할만 받습니다.
 
 !!! danger "관측성 그룹은 역할을 보지 않습니다"
     알림 규칙 생성·수정·삭제까지 **인증한 모든 역할**이 호출할 수 있습니다.
-    화면은 내렸지만 API 는 열려 있는 상태입니다.
+    화면은 내렸지만 API 는 열려 있는 상태입니다. 예외는 보안 대시보드의
+    `/observability/security/stacks` 하나로, 경로에 직접 역할 검사를 달았습니다.
 
 !!! danger "development 모드는 모든 검사를 끕니다"
     `server.mode` 가 `development` 면 인증 미들웨어와 역할 검사가 아예
@@ -105,9 +109,10 @@ API 는 그룹 단위로 역할을 검사합니다. **여기가 진짜 경계입
 |------|:-----:|:------:|:---------:|
 | 데브섹옵스 스택 | 6개 | 5개 | — |
 | CI/CD | 4개 | 4개 | 2개 |
-| 관측성 | 2개 | 2개 | 2개 |
+| 관측성 | 3개 | 3개 | 3개 |
 | 관리 | 7개 | — | — |
-| **합계** | **19** | **11** | **4** |
+| **합계** | **20** | **12** | **5** |
 
 - devops 에게 안 보이는 스택 메뉴 1개는 **스택 버전 관리**(`/admin/stack-versions`)로, admin 전용입니다.
-- developer 에게 보이는 4개는 **CI/CD 목록 · CI/CD 이력 · 모니터링 대시보드 · 알림 이력**입니다.
+- developer 에게 보이는 5개는 **CI/CD 목록 · CI/CD 이력 · 모니터링 대시보드 · 알림 이력 · 보안 대시보드**입니다.
+- 관측성의 **보안 대시보드**는 하위 그룹 **보안** 아래에 있습니다(관측성 › 보안 › 보안 대시보드). 하위 그룹은 메뉴 수에 세지 않습니다.
