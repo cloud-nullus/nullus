@@ -27,11 +27,13 @@ make dev-up && make migrate-up                 # 인프라(5433/8180/6380/9000-9
 # API — .env.dev 로드 후 포트만 교체
 set -a; . ./.env.dev; set +a
 NULLUS_SERVER_PORT=8091 go run ./cmd/api       # 또는 빌드본 실행
-# web — proxy 를 8091 로 임시 수정(vite.config.ts, 커밋 금지) 후
-cd web && npm run dev -- --port 5174 --strictPort
+# web — proxy 대상은 env 로 지정 (vite.config.ts 수정 불필요)
+cd web && NULLUS_API_PORT=8091 npm run dev -- --port 5174 --strictPort
 ```
 
 확인: `curl localhost:8091/health` → `{"db":"connected",...}`, 로그인 `admin@nullus.dev / admin123`(dev mock).
+
+기동 후 **`./scripts/e2e-preflight.sh`** 로 환경 등급을 한 번에 판정한다 — T0(인프라+API+web) / T1(+kind 클러스터) / T2(+도구 스택·PF) 중 어디까지 갖춰졌는지와, 부족한 항목의 해소 명령을 출력한다(F5 함정의 수동 점검을 대체). 포트가 다르면 `NULLUS_API_URL`·`NULLUS_WEB_URL` 로 지정.
 
 ### K8s(스택 배포)까지 갈 때
 
@@ -100,10 +102,15 @@ curl -X POST $API/api/v1/cicd/pipelines/<pip-id>/deploy -d '{"version":"v1"}'   
 
 ```bash
 cd web
-npm run e2e              # 전체 (5173/8090 이 기본 — 포트 다르면 base URL 환경변수/설정 확인)
+npm run e2e              # 전체 (기본 5173 — dev 서버 자동 기동)
 npm run e2e:headed       # 브라우저 창을 보면서
 npm run e2e:report       # 리포트 열기
+# 포트 회피 환경(§2)에서는 떠 있는 서버를 지정 — dev 서버를 새로 띄우지 않는다
+E2E_BASE_URL=http://localhost:5174 npx playwright test e2e/tour-regression.spec.ts
 ```
+
+- **`tour-regression.spec.ts`** = 시나리오 기록지의 읽기 전용 구간(S0~S4·S6·S8·S9)을 단정(assert) 스펙으로 옮긴 회귀 게이트. 전제 데이터가 없으면(스택 미배포 등) 해당 스펙이 화면 상태를 보고 스스로 skip 한다 — 어느 등급이 갖춰졌는지는 preflight(§2)로 먼저 본다. **S5·S7(상태 변경 구간)은 제외** — 기록지의 수동 시나리오가 정본.
+- `tour-walkthrough.spec.ts` 는 단정 없는 스크린샷 도구(눈검증용)로 역할이 다르다.
 
 ### 3.2 반응형 점검 (`scripts/responsive-audit.mjs`)
 
@@ -145,8 +152,8 @@ make dev-clean                           # 볼륨까지 초기화
 
 | 함정 | 증상 | 대처 |
 |---|---|---|
-| inotify 기본값 | kind 노드 "Multi-User System" 타임아웃 | §2 preflight |
-| docker 데몬 재시작 | compose 인프라 조용히 다운 | `/health` 확인 습관, `make dev-up` 재실행 |
+| inotify 기본값 | kind 노드 "Multi-User System" 타임아웃 | `./scripts/e2e-preflight.sh` 가 kind 부재 시 값 점검·상향 명령 안내 (§2) |
+| docker 데몬 재시작 | compose 인프라 조용히 다운 | `./scripts/e2e-preflight.sh` 로 일괄 점검 후 `make dev-up` 재실행 |
 | `POST /stacks/:id/config` | **전체 교체형** — 부분 갱신 아님 | 항상 GET 후 전체 config 로 수정·재전송 |
 | API 스택 생성 | `golden_path_id` 는 도구 목록을 펼치지 않음 | `config.artifacts/pipeline` 의 `ToolSelection(enabled+name)` 을 채워야 설치됨 |
 | Add Tools 화면 | "Confirm & Deploy" 가 설정 저장만 하고 배포 미트리거 (버그 후보 F2) | 시나리오 기록지 발견 사항 참조 |
