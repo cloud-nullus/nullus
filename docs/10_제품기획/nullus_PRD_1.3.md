@@ -602,7 +602,8 @@ Nullus는 3개 Phase로 나뉘어 개발된다. 본 PRD는 **Phase 1**을 중점
     - Namespace 격리 지원
 - **취약점 스캔** (운영 정의는 릴리즈 정책 §7.4):
     - 제공하는 컨테이너 이미지는 릴리즈마다 Trivy 스캔을 거친다 — **수정판이 있는 CRITICAL 취약점이 0 이어야 릴리즈된다**(CD 게이트). SBOM(SPDX 2.3)과 빌드 provenance 를 attestation 과 Release 자산으로 함께 제공한다
-    - 수정판이 있는 CRITICAL CVE 는 탐지(릴리즈 스캔·주간 재스캔) 후 **24시간 이내 패치 릴리즈**, HIGH 는 다음 정기 릴리즈. 지킬 수 없으면 만료일을 둔 예외로 기록한다
+    - 수정판이 있는 CRITICAL CVE 는 탐지(릴리즈 스캔·주간 재스캔) 후 **24시간 이내 패치 릴리즈**, HIGH 는 다음 정기 릴리즈. 지킬 수 없으면 만료일을 둔 예외로 기록한다 — **Nullus 자체 이미지**(API · Web · Jenkins · SonarScanner)의 약속이다
+    - **스택이 설치한 OSS**(GitLab · Harbor · Argo CD …)는 상류 이미지라 같은 약속을 할 수 없다. 설치 이미지를 24시간마다 재스캔해 새 "수정판 있는 CRITICAL" 을 알림 채널로 **24시간 이내 고지**하고, 외부 노출 CRITICAL 은 **7일 이내 검증된 업그레이드**(또는 완화책)를 낸다 — 등급 · 기한 · 에어갭은 설치 OSS CVE 대응 정책(`docs/11_기능설계/Nullus_설치_OSS_CVE_대응_정책.md`)
 
 #### OpenBao-first 시크릿 관리 원칙 (신규)
 

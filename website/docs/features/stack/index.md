@@ -17,6 +17,8 @@
 
 [**OSS 기본 리소스**<span>도구별 CPU·메모리 기본값.</span>](oss-defaults.md)
 
+[**설치 OSS CVE 대응**<span>설치된 OSS 의 CVE 를 알리고 고치는 흐름과 기한.</span>](cve-response.md)
+
 </div>
 
 ## 설치까지의 흐름
