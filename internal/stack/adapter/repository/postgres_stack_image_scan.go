@@ -40,8 +40,8 @@ func (r *PostgresStackImageScanRepository) ReplaceForStack(ctx context.Context, 
 		INSERT INTO stack_image_scans (
 			stack_id, image_digest, image, release_name, workloads, status, error,
 			counts, fixable_counts, scanner, scanner_version, db_updated_at, scanned_at,
-			vulnerabilities_recorded, exposed, exposed_hosts
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'trivy', $10, $11, $12, $13, $14, $15)
+			vulnerabilities_recorded, exposed, exposed_hosts, namespace, shared
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'trivy', $10, $11, $12, $13, $14, $15, $16, $17)
 		ON CONFLICT (stack_id, image_digest) DO NOTHING`
 	for _, s := range scans {
 		workloads := s.Workloads
@@ -71,7 +71,7 @@ func (r *PostgresStackImageScanRepository) ReplaceForStack(ctx context.Context, 
 		if _, err := tx.Exec(ctx, q,
 			stackID, s.ImageDigest, s.Image, s.Release, workloadsJSON, string(s.Status), s.Error,
 			counts, fixable, s.ScannerVersion, s.DBUpdatedAt, s.ScannedAt, s.VulnerabilitiesRecorded,
-			s.Exposed, hostsJSON,
+			s.Exposed, hostsJSON, s.Namespace, s.Shared,
 		); err != nil {
 			return fmt.Errorf("insert stack image scan (%s): %w", s.ImageDigest, err)
 		}
@@ -110,7 +110,7 @@ func (r *PostgresStackImageScanRepository) ListByStack(ctx context.Context, stac
 	const q = `
 		SELECT stack_id, image_digest, image, release_name, workloads, status, error,
 			counts, fixable_counts, scanner_version, db_updated_at, scanned_at, vulnerabilities_recorded,
-			exposed, exposed_hosts
+			exposed, exposed_hosts, namespace, shared
 		FROM stack_image_scans
 		WHERE stack_id = $1
 		ORDER BY image_digest`
@@ -131,7 +131,7 @@ func (r *PostgresStackImageScanRepository) ListByStack(ctx context.Context, stac
 		)
 		if err := rows.Scan(&s.StackID, &s.ImageDigest, &s.Image, &s.Release, &workloads, &status, &s.Error,
 			&counts, &fixableCounts, &s.ScannerVersion, &s.DBUpdatedAt, &s.ScannedAt, &s.VulnerabilitiesRecorded,
-			&s.Exposed, &hosts); err != nil {
+			&s.Exposed, &hosts, &s.Namespace, &s.Shared); err != nil {
 			return nil, fmt.Errorf("scan stack image scan: %w", err)
 		}
 		s.Status = domain.ImageScanStatus(status)

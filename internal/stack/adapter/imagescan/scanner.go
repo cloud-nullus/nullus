@@ -91,7 +91,7 @@ func NewScanner(opts ...Option) *Scanner {
 }
 
 // ScanInstalledImages 는 네임스페이스에서 실행 중인 이미지를 digest 단위로 스캔한다.
-func (s *Scanner) ScanInstalledImages(ctx context.Context, kubeconfig []byte, namespace string) ([]domain.StackImageScan, error) {
+func (s *Scanner) ScanInstalledImages(ctx context.Context, kubeconfig []byte, namespace string, shared []domain.SharedComponent) ([]domain.StackImageScan, error) {
 	ns := strings.TrimSpace(namespace)
 	if ns == "" {
 		return nil, fmt.Errorf("스캔할 네임스페이스가 비어 있습니다")
@@ -113,6 +113,10 @@ func (s *Scanner) ScanInstalledImages(ctx context.Context, kubeconfig []byte, na
 	if err != nil {
 		return nil, err
 	}
+	for i := range images {
+		images[i].Namespace = ns
+	}
+	images = append(images, s.sharedImages(ctx, kubeconfig, arch, shared, images)...)
 	if len(images) == 0 {
 		return nil, fmt.Errorf("네임스페이스 %s 에서 digest 가 확정된 실행 중 이미지를 찾지 못했습니다", ns)
 	}
@@ -157,6 +161,8 @@ func (s *Scanner) ScanInstalledImages(ctx context.Context, kubeconfig []byte, na
 			Workloads:      img.Workloads,
 			Exposed:        img.Exposed,
 			ExposedHosts:   img.ExposedHosts,
+			Namespace:      img.Namespace,
+			Shared:         img.Shared,
 			ScannerVersion: version,
 			DBUpdatedAt:    dbUpdatedAt,
 			ScannedAt:      scannedAt,
@@ -179,6 +185,43 @@ func (s *Scanner) ScanInstalledImages(ctx context.Context, kubeconfig []byte, na
 		scans = append(scans, scan)
 	}
 	return scans, nil
+}
+
+// sharedImages 는 스택이 쓰는 공용 구성요소(스택 네임스페이스 밖)의 이미지다. 릴리스 라벨로 고르고,
+// 스택 네임스페이스에서 이미 본 digest 는 빼고, 읽지 못한 구성요소는 건너뛴다 — 공용 구성요소 때문에
+// 스택 스캔이 멈추면 안 된다.
+func (s *Scanner) sharedImages(ctx context.Context, kubeconfig []byte, arch map[string]string,
+	shared []domain.SharedComponent, seen []installedImage) []installedImage {
+	known := map[string]bool{}
+	for _, img := range seen {
+		known[img.Digest] = true
+	}
+	var out []installedImage
+	for _, c := range shared {
+		ns, release := strings.TrimSpace(c.Namespace), strings.TrimSpace(c.Release)
+		if ns == "" || release == "" {
+			continue
+		}
+		podsOut, err := s.kubectl(ctx, kubeconfig, "get", "pods", "-n", ns, "-l", "app.kubernetes.io/instance="+release, "-o", "json")
+		if err != nil {
+			slog.Info("설치 이미지 스캔: 공용 구성요소를 읽지 못해 건너뜁니다", "release", release, "namespace", ns, "error", err)
+			continue
+		}
+		images, err := installedImagesFromPods([]byte(podsOut), arch, nil)
+		if err != nil {
+			slog.Info("설치 이미지 스캔: 공용 구성요소 파드를 해석하지 못해 건너뜁니다", "release", release, "namespace", ns, "error", err)
+			continue
+		}
+		for _, img := range images {
+			if known[img.Digest] {
+				continue
+			}
+			known[img.Digest] = true
+			img.Namespace, img.Shared, img.Release = ns, true, release
+			out = append(out, img)
+		}
+	}
+	return out
 }
 
 // exposure 는 네임스페이스에서 HTTPRoute 로 밖에 열린 파드다. 알아내지 못하면(Gateway API CRD
@@ -249,6 +292,9 @@ type installedImage struct {
 	// Exposed / ExposedHosts 는 이 이미지를 쓰는 파드가 HTTPRoute 로 밖에 열려 있는지와 그 호스트다.
 	Exposed      bool
 	ExposedHosts []string
+	// Namespace / Shared 는 파드의 네임스페이스와, 그것이 스택 밖 공용 구성요소인지다.
+	Namespace string
+	Shared    bool
 }
 
 type containerStatus struct {

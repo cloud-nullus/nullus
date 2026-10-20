@@ -29,6 +29,8 @@ const scannedResponse = {
       workloads: ['nullus-postgresql-0'],
       exposed: true,
       exposed_hosts: ['gitlab.nullus.local'],
+      namespace: 'nullus-stack',
+      shared: false,
       status: 'scanned',
       error: '',
       counts: { critical: 0, high: 2, medium: 5, low: 3, unknown: 0 },
@@ -58,6 +60,8 @@ describe('normalizeStackImageScanReport', () => {
       workloads: ['nullus-postgresql-0'],
       exposed: true,
       exposedHosts: ['gitlab.nullus.local'],
+      namespace: 'nullus-stack',
+      shared: false,
       status: 'scanned',
       error: undefined,
       counts: { critical: 0, high: 2, medium: 5, low: 3, unknown: 0 },
@@ -107,6 +111,8 @@ describe('normalizeStackImageScanReport', () => {
     // 노출을 모르는 응답(이전 서버)은 노출되지 않은 것으로 둔다.
     expect(report.items[1].exposed).toBe(false)
     expect(report.items[1].exposedHosts).toEqual([])
+    expect(report.items[1].shared).toBe(false)
+    expect(report.items[1].namespace).toBeUndefined()
     expect(report.total).toBe(2)
   })
 

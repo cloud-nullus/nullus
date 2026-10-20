@@ -11,7 +11,8 @@ import (
 // 스캐너로 스캔한다. 이미지마다 결과를 돌려주고, 스캔하지 못한 이미지도 빠뜨리지
 // 않는다(상태 failed).
 type InstalledImageScanner interface {
-	ScanInstalledImages(ctx context.Context, kubeconfig []byte, namespace string) ([]domain.StackImageScan, error)
+	// shared 는 스택 네임스페이스 밖에서 함께 스캔할 공용 구성요소다. 읽지 못한 것은 건너뛴다.
+	ScanInstalledImages(ctx context.Context, kubeconfig []byte, namespace string, shared []domain.SharedComponent) ([]domain.StackImageScan, error)
 }
 
 // StackImageScanRepository 는 스택의 설치 이미지 스캔 결과를 보관한다.

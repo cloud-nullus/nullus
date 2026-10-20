@@ -1172,7 +1172,9 @@
         "vulnerabilityListFor": "취약점 목록 — {{image}}",
         "exposed": "외부 노출",
         "exposedHint": "게이트웨이로 클러스터 밖에서 닿습니다: {{hosts}}",
-        "exposedHintNoHosts": "LoadBalancer · NodePort Service 로 클러스터 밖에서 닿습니다(호스트는 모름)"
+        "exposedHintNoHosts": "LoadBalancer · NodePort Service 로 클러스터 밖에서 닿습니다(호스트는 모름)",
+        "shared": "공용",
+        "sharedHint": "스택 네임스페이스 밖의 클러스터 공용 구성요소입니다(네임스페이스 {{namespace}}). 스택이 쓰므로 함께 스캔합니다."
       },
       "columns": {
         "image": "이미지",

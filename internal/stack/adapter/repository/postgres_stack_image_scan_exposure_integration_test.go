@@ -49,7 +49,10 @@ func TestPostgresStackImageScanRepository_ExposureAndCVENotices(t *testing.T) {
 				{ID: "CVE-NOFIX", PkgName: "zlib", InstalledVersion: "1.2", Severity: "CRITICAL", Class: shareddomain.VulnerabilityClassOS},
 				{ID: "CVE-HIGH", PkgName: "curl", InstalledVersion: "8.0", FixedVersion: "8.1", Severity: "high", Class: shareddomain.VulnerabilityClassOS},
 			}},
-		{Image: "redis:7", ImageDigest: "sha256:r", Status: domain.ImageScanStatusScanned, ScannedAt: now},
+		{Image: "redis:7", ImageDigest: "sha256:r", Status: domain.ImageScanStatusScanned, ScannedAt: now,
+			Namespace: "cve"},
+		{Image: "cert-manager-controller:v1.16.3", ImageDigest: "sha256:cm", Status: domain.ImageScanStatusScanned,
+			ScannedAt: now, Release: "cert-manager", Namespace: "cert-manager", Shared: true},
 	}
 	require.NoError(t, repo.ReplaceForStack(ctx, stackID, scans))
 
@@ -63,6 +66,11 @@ func TestPostgresStackImageScanRepository_ExposureAndCVENotices(t *testing.T) {
 	assert.Equal(t, []string{"gitlab.nullus.local"}, byDigest["sha256:w"].ExposedHosts)
 	assert.False(t, byDigest["sha256:r"].Exposed)
 	assert.Empty(t, byDigest["sha256:r"].ExposedHosts)
+	// 공용 구성요소는 어디 있는지와 함께 남는다.
+	assert.Equal(t, "cve", byDigest["sha256:r"].Namespace)
+	assert.False(t, byDigest["sha256:r"].Shared)
+	assert.Equal(t, "cert-manager", byDigest["sha256:cm"].Namespace)
+	assert.True(t, byDigest["sha256:cm"].Shared)
 
 	// 알릴 것을 선점한다. 이미 남은 것은 돌려주지 않고(다른 레플리카가 보냈다) 시각도 바꾸지 않는다.
 	first := now.Add(-time.Hour)
