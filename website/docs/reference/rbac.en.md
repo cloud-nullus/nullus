@@ -32,7 +32,7 @@ outside their permissions would bounce them right away.
 | `<ProtectedRoute />`<br>(no role restriction = login is enough) | admin · devops · developer | `/`<br>`/stack/templates`<br>`/stack/list`<br>`/stack/history/:stackId?`<br>`/stack/version`, `/stack/versions`<br>`/stack/logs/:deploymentId`<br>`/stack/deployments/:deploymentId/retry-history`<br>`/observability/monitoring`<br>`/observability/alert-history`<br>`/observability/security/dashboard` |
 | `allowedRoles={['admin','devops']}` | admin · devops | `/stack/install`<br>`/stack/:id/add-tools`<br>`/stack/deploy/:id`<br>`/stack/oss-resource-default` |
 | `allowedRoles={['admin','devops','developer']}` | admin · devops · developer | `/cicd/developer-deploy`<br>`/cicd/templates`<br>`/cicd/create`<br>`/cicd/golden-paths`<br>`/cicd/list`<br>`/cicd/history`<br>`/cicd/pipelines/:id/logs` |
-| `allowedRoles={['admin']}` | admin | `/admin/organization`, `/admin/organizations`<br>`/admin/users`<br>`/admin/clusters`<br>`/admin/known-issues`<br>`/admin/token-management`<br>`/admin/stack-versions`<br>`/admin/backup`<br>`/admin/notifications` |
+| `allowedRoles={['admin']}` | admin | `/admin/organization`, `/admin/organizations`<br>`/admin/users`<br>`/admin/clusters`<br>`/admin/known-issues`<br>`/admin/token-management`<br>`/admin/stack-versions`<br>`/admin/backup`<br>`/admin/notifications`<br>`/admin/assistant` |
 
 ## Where the sidebar and routes disagree
 

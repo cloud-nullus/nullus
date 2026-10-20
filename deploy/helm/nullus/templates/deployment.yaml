@@ -190,22 +190,6 @@ spec:
               name: {{ include "nullus.fullname" . }}
               key: backup-keycloak-db-password
         {{- end }}
-        {{- if .Values.secrets.assistantApiKey }}
-        # AI 어시스턴트(nullus-plan#94). 키가 없으면 env 자체를 넣지 않아 꺼진다.
-        - name: NULLUS_ASSISTANT_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "nullus.fullname" . }}
-              key: assistant-api-key
-        {{- with .Values.config.assistant.baseURL }}
-        - name: NULLUS_ASSISTANT_BASE_URL
-          value: {{ . | quote }}
-        {{- end }}
-        {{- with .Values.config.assistant.model }}
-        - name: NULLUS_ASSISTANT_MODEL
-          value: {{ . | quote }}
-        {{- end }}
-        {{- end }}
         livenessProbe:
           httpGet:
             path: /health

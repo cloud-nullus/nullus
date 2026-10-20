@@ -19,13 +19,20 @@ import (
 )
 
 type stubChat struct {
-	enabled bool
-	out     *usecase.ChatOutput
-	err     error
-	got     usecase.ChatInput
+	enabled   bool
+	out       *usecase.ChatOutput
+	err       error
+	got       usecase.ChatInput
+	statusOrg string
 }
 
-func (s *stubChat) Enabled() bool { return s.enabled }
+func (s *stubChat) Status(_ context.Context, orgID string) (usecase.Status, error) {
+	s.statusOrg = orgID
+	if !s.enabled {
+		return usecase.Status{}, nil
+	}
+	return usecase.Status{Enabled: true, Provider: "upstage", Model: "solar-pro4"}, nil
+}
 func (s *stubChat) Execute(_ context.Context, in usecase.ChatInput) (*usecase.ChatOutput, error) {
 	s.got = in
 	return s.out, s.err
@@ -34,7 +41,7 @@ func (s *stubChat) Execute(_ context.Context, in usecase.ChatInput) (*usecase.Ch
 func serve(t *testing.T, chat *stubChat, method, path, body string, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 	e := echo.New()
-	NewAssistantHandler(chat, Status{Provider: "upstage", Model: "solar-pro4"}).RegisterRoutes(e.Group("/api/v1/assistant"))
+	NewAssistantHandler(chat).RegisterRoutes(e.Group("/api/v1/assistant"))
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	for k, v := range headers {
@@ -71,6 +78,7 @@ func TestChat_AnswersWithToolsAndForwardsCredentials(t *testing.T) {
 	assert.Equal(t, "org-1", chat.got.Credentials["X-User-OrgID"])
 	// 조직 주장이 없는 토큰 · 개발 모드에서 API 는 X-Org-ID 로 조직을 고른다 — 빠지면 화면과 다른 조직을 본다.
 	assert.Equal(t, "org-1", chat.got.Credentials["X-Org-ID"])
+	assert.Equal(t, "org-1", chat.got.OrgID, "요청자의 조직 설정으로 답한다")
 	assert.NotContains(t, chat.got.Credentials, "Cookie", "인증 헤더만 넘긴다")
 }
 
@@ -82,7 +90,7 @@ func TestChat_Errors(t *testing.T) {
 		status int
 		code   string
 	}{
-		{"꺼져 있다", &stubChat{}, `{"messages":[{"role":"user","content":"a"}]}`, http.StatusServiceUnavailable, "ASSISTANT_NOT_CONFIGURED"},
+		{"꺼져 있다", &stubChat{err: domain.ErrNotConfigured}, `{"messages":[{"role":"user","content":"a"}]}`, http.StatusServiceUnavailable, "ASSISTANT_NOT_CONFIGURED"},
 		{"JSON 이 아니다", &stubChat{enabled: true}, `{`, http.StatusBadRequest, "ASSISTANT_INVALID"},
 		{"대화 규칙 위반", &stubChat{enabled: true, err: fmt.Errorf("%w: 마지막은 사용자 질문", domain.ErrInvalidConversation)},
 			`{"messages":[{"role":"assistant","content":"a"}]}`, http.StatusBadRequest, "ASSISTANT_INVALID"},

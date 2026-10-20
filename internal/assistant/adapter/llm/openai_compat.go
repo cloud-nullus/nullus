@@ -1,5 +1,5 @@
-// Package llm 은 OpenAI 호환 Chat Completions 클라이언트다. 기본은 Upstage(Solar)이고, base URL 을 바꾸면
-// 사내 OpenAI 호환 서버(vLLM 등)로도 쓴다.
+// Package llm 은 모델 API 클라이언트다 — OpenAI 호환 Chat Completions(Upstage · OpenAI · Gemini · 사내 vLLM 등)와
+// Anthropic Messages. 어느 것을 쓸지는 Factory 가 설정의 공급자로 고른다.
 package llm
 
 import (
@@ -65,6 +65,8 @@ type wireToolCall struct {
 	ID       string       `json:"id"`
 	Type     string       `json:"type"`
 	Function wireFunction `json:"function"`
+	// ExtraContent 는 Gemini 의 OpenAI 호환 엔드포인트가 붙이는 공급자 전용 데이터(사고 서명)다. 그대로 되돌려 준다.
+	ExtraContent json.RawMessage `json:"extra_content,omitempty"`
 }
 
 type wireMessage struct {
@@ -119,7 +121,9 @@ func (c *Client) Complete(ctx context.Context, req port.CompletionRequest) (doma
 		return domain.Message{}, fmt.Errorf("요청 생성: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
+	if c.cfg.APIKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
+	}
 
 	resp, err := c.hc.Do(httpReq)
 	if err != nil {
@@ -165,7 +169,7 @@ func toWire(m domain.Message) wireMessage {
 			args = "{}"
 		}
 		w.ToolCalls = append(w.ToolCalls, wireToolCall{ID: tc.ID, Type: "function",
-			Function: wireFunction{Name: tc.Name, Arguments: &args}})
+			Function: wireFunction{Name: tc.Name, Arguments: &args}, ExtraContent: tc.ProviderData})
 	}
 	return w
 }
@@ -180,7 +184,8 @@ func fromWire(w wireMessage) domain.Message {
 		if tc.Function.Arguments != nil {
 			args = *tc.Function.Arguments
 		}
-		m.ToolCalls = append(m.ToolCalls, domain.ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: args})
+		m.ToolCalls = append(m.ToolCalls, domain.ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: args,
+			ProviderData: []byte(tc.ExtraContent)})
 	}
 	return m
 }

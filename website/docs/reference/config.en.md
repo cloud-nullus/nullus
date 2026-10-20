@@ -84,8 +84,6 @@ These bypass the config loader; the code reads them directly.
 | `CICD_RUN_SYNC_INTERVAL` | CI run sync interval | **10m** |
 | `STACK_IMAGE_RESCAN_INTERVAL` | Installed-image rescan interval (air-gapped installs included). Newly found fixable CRITICALs go out as the `stack_cve_found` notification | **24h** |
 | `NULLUS_SCM_GROUP` | GitLab group for pipelines | **`nullus`** |
-| `NULLUS_ASSISTANT_API_KEY` | LLM API key for the [AI Assistant](../features/assistant.md) (Upstage). Empty turns the assistant off | Empty |
-| `NULLUS_ASSISTANT_BASE_URL` / `NULLUS_ASSISTANT_MODEL` | OpenAI-compatible base URL / model name for the assistant | `https://api.upstage.ai/v1` / `solar-pro4` |
 | `NULLUS_DEFAULT_ORG_ID` | Default organization ID | Fixed UUID in code |
 
 ### CLI and MCP only

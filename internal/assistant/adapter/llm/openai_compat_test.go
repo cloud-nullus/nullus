@@ -102,3 +102,47 @@ func TestClient_NoChoicesIsAnError(t *testing.T) {
 		port.CompletionRequest{Messages: []domain.Message{{Role: domain.RoleUser, Content: "a"}}})
 	assert.Error(t, err)
 }
+
+// Gemini 는 도구 호출에 사고 서명(extra_content)을 붙이고, 다음 요청에 그대로 돌려받지 못하면 400 이다.
+func TestClient_EchoesProviderDataOnToolCalls(t *testing.T) {
+	var second map[string]any
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		body, _ := io.ReadAll(r.Body)
+		if calls == 1 {
+			_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"c1","type":"function",
+			  "function":{"name":"stack_list","arguments":"{}"},"extra_content":{"google":{"thought_signature":"sig=="}}}]}}]}`)
+			return
+		}
+		_ = json.Unmarshal(body, &second)
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`)
+	}))
+	defer srv.Close()
+	c := New(Config{BaseURL: srv.URL, APIKey: "k", Model: "gemini-x"})
+
+	first, err := c.Complete(context.Background(), port.CompletionRequest{Messages: []domain.Message{{Role: domain.RoleUser, Content: "a"}}})
+	require.NoError(t, err)
+	require.Len(t, first.ToolCalls, 1)
+	_, err = c.Complete(context.Background(), port.CompletionRequest{Messages: []domain.Message{
+		{Role: domain.RoleUser, Content: "a"}, first, {Role: domain.RoleTool, ToolCallID: "c1", Content: "[]"},
+	}})
+	require.NoError(t, err)
+	call := second["messages"].([]any)[1].(map[string]any)["tool_calls"].([]any)[0].(map[string]any)
+	assert.Equal(t, map[string]any{"google": map[string]any{"thought_signature": "sig=="}}, call["extra_content"])
+}
+
+// 키가 없는 사내 서버에는 Authorization 을 보내지 않는다.
+func TestClient_NoAuthorizationWithoutKey(t *testing.T) {
+	var auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`)
+	}))
+	defer srv.Close()
+
+	_, err := New(Config{BaseURL: srv.URL, Model: "m"}).Complete(context.Background(),
+		port.CompletionRequest{Messages: []domain.Message{{Role: domain.RoleUser, Content: "a"}}})
+	require.NoError(t, err)
+	assert.Empty(t, auth)
+}

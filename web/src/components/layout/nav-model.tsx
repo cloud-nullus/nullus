@@ -6,7 +6,7 @@
 // 정의하고, 두 화면 요소가 같은 트리를 읽는다.
 
 import { type ReactNode } from 'react'
-import { BookOpen, Boxes, Bug, Building2, ChartColumn, Database, DatabaseBackup, FileCode2, GitBranch, History, KeyRound, LayoutDashboard, List, Network, Route, Send, Settings, Shield, ShieldCheck, Tag, Users, Workflow } from 'lucide-react'
+import { BookOpen, Boxes, Bug, Building2, ChartColumn, Database, DatabaseBackup, FileCode2, GitBranch, History, KeyRound, LayoutDashboard, List, Network, Route, Send, Settings, Shield, ShieldCheck, Sparkles, Tag, Users, Workflow } from 'lucide-react'
 import { iconProps } from '../ui/icon'
 import type { Role } from '../../types'
 
@@ -98,6 +98,7 @@ export const navGroups: NavGroup[] = [
       { key: 'tokenManagement', label: 'sidebar.tokenManagement', path: '/admin/token-management', icon: <KeyRound {...iconProps('sm')} />, roles: ['admin'] },
       { key: 'backup', label: 'sidebar.backup', path: '/admin/backup', icon: <DatabaseBackup {...iconProps('sm')} />, roles: ['admin'] },
       { key: 'notifications', label: 'sidebar.notifications', path: '/admin/notifications', icon: <Send {...iconProps('sm')} />, roles: ['admin'] },
+      { key: 'assistant', label: 'sidebar.assistant', path: '/admin/assistant', icon: <Sparkles {...iconProps('sm')} />, roles: ['admin'] },
     ],
   },
 ]

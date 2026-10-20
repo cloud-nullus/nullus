@@ -6,11 +6,13 @@
 
 Open it with the **AI assistant** button at the bottom right of every screen (above the shortcuts badge).
 Ask about stacks, clusters, or install status in plain language; the server checks with the
-[MCP](../reference/mcp.md) read tools and answers. The default model is Upstage Solar.
+[MCP](../reference/mcp.md) read tools and answers. The organization's admin picks the model — Upstage Solar · OpenAI · Anthropic Claude · Google Gemini · an
+OpenAI-compatible in-house server.
 
-!!! note "No key on the server, no button"
-    It turns on only when `NULLUS_ASSISTANT_API_KEY` (chart: `secrets.assistantApiKey`) is set. Without a
-    key, `GET /api/v1/assistant/status` returns `{"enabled": false}` and the screen does not draw the button.
+!!! note "No button until an admin turns it on"
+    An admin has to register a provider and API key and turn it on under **Admin › AI Assistant** (see
+    [Turning it on](#turning-it-on)). It is per organization; while it is off, `GET /api/v1/assistant/status`
+    returns `{"enabled": false}` and the screen does not draw the button.
 
 ## What you can ask
 
@@ -44,8 +46,8 @@ needed, it tells you where on screen to make it.
 
 !!! warning "Tool results are sent to an external model"
     While it is on, the results of the tools above (stack config · status · parts of install logs) go to the
-    configured model (Upstage by default). The panel says so at the bottom. If you do not want that, leave
-    the key unset, or point `NULLUS_ASSISTANT_BASE_URL` at an in-house OpenAI-compatible server.
+    chosen provider. The panel says so at the bottom. If you do not want that, leave it off, or pick
+    **OpenAI-compatible (in-house server)** and use a model running in-house (vLLM · Ollama, for example).
 
 - Before sending, it masks `Bearer` tokens · JWTs · GitLab tokens (`glpat-`) · AWS access keys · private key
   blocks · values such as `password=` inside strings
@@ -54,11 +56,28 @@ needed, it tells you where on screen to make it.
 
 ## Turning it on
 
-| Environment variable | Chart value | Default |
-|----------------------|-------------|---------|
-| `NULLUS_ASSISTANT_API_KEY` | `secrets.assistantApiKey` | None — off |
-| `NULLUS_ASSISTANT_BASE_URL` | `config.assistant.baseURL` | `https://api.upstage.ai/v1` |
-| `NULLUS_ASSISTANT_MODEL` | `config.assistant.model` | `solar-pro4` |
+<span class="route">/admin/assistant</span>
+<span class="role role-admin">admin</span>
+
+Register the organization's provider, model, and API key under **Admin › AI Assistant**.
+
+| Provider | Default model | Address |
+|----------|---------------|---------|
+| Upstage Solar | `solar-pro4` | `https://api.upstage.ai/v1` |
+| OpenAI | Enter it | `https://api.openai.com/v1` |
+| Anthropic Claude | `claude-sonnet-5-5` | `https://api.anthropic.com` |
+| Google Gemini | Enter it | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| OpenAI-compatible (in-house server) | Enter it | Enter it — the key is optional |
+
+1. Pick a provider, and enter a model name and address if needed (empty means the defaults above)
+2. Enter the **API key**. After saving it is never shown again, only its last four characters — leave the
+   field empty when saving to keep the saved key. Switching provider needs the new provider's key
+3. **Test connection** asks the model once with those settings (nothing is saved)
+4. Tick **Turn on the assistant for this organization** and click **Save**
+
+The key is encrypted with the server's `ENCRYPTION_KEY` — without it, the key is not saved. Saving and
+deleting are recorded in the audit log (never the key itself), and **Delete settings** removes the key too and
+turns the assistant off.
 
 ## Limitations
 
@@ -73,4 +92,5 @@ needed, it tells you where on screen to make it.
 
 ## APIs it calls
 
-`GET /api/v1/assistant/status` · `POST /api/v1/assistant/chat`
+`GET /api/v1/assistant/status` · `POST /api/v1/assistant/chat` · admin:
+`GET · PUT · DELETE /api/v1/admin/assistant` · `POST /api/v1/admin/assistant/test`

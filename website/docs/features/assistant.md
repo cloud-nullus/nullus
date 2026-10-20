@@ -5,12 +5,13 @@
 <span class="role role-developer">developer</span>
 
 모든 화면의 오른쪽 아래(단축키 배지 위) **AI 어시스턴트** 버튼으로 엽니다. 스택 · 클러스터 · 설치 상태를
-자연어로 물으면, 서버가 [MCP](../reference/mcp.md) 의 조회 도구로 확인해서 답합니다. 모델은 기본으로
-Upstage Solar 입니다.
+자연어로 물으면, 서버가 [MCP](../reference/mcp.md) 의 조회 도구로 확인해서 답합니다. 답하는 모델은
+조직의 관리자가 고릅니다 — Upstage Solar · OpenAI · Anthropic Claude · Google Gemini · OpenAI 호환 사내 서버.
 
-!!! note "서버에 키가 없으면 버튼이 없습니다"
-    `NULLUS_ASSISTANT_API_KEY`(차트: `secrets.assistantApiKey`)가 있어야 켜집니다. 키가 없으면
-    `GET /api/v1/assistant/status` 가 `{"enabled": false}` 를 돌려주고 화면은 버튼을 그리지 않습니다.
+!!! note "관리자가 켜기 전에는 버튼이 없습니다"
+    **관리 › AI 어시스턴트** 에서 공급자와 API 키를 등록하고 켜야 보입니다(아래 [켜기](#켜기)). 조직마다
+    따로이고, 꺼져 있으면 `GET /api/v1/assistant/status` 가 `{"enabled": false}` 를 돌려주고 화면은 버튼을
+    그리지 않습니다.
 
 ## 물어볼 수 있는 것
 
@@ -43,9 +44,9 @@ Upstage Solar 입니다.
 ## 외부로 나가는 데이터
 
 !!! warning "도구 결과가 외부 모델로 전송됩니다"
-    켜 두면 위 도구의 결과(스택 설정 · 상태 · 설치 로그 일부)가 설정한 모델(기본 Upstage)로 나갑니다.
-    패널 아래에도 그렇게 적혀 있습니다. 원하지 않으면 키를 넣지 않거나, 사내 OpenAI 호환 서버를
-    `NULLUS_ASSISTANT_BASE_URL` 로 지정합니다.
+    켜 두면 위 도구의 결과(스택 설정 · 상태 · 설치 로그 일부)가 고른 공급자로 나갑니다. 패널 아래에도
+    그렇게 적혀 있습니다. 원하지 않으면 켜지 않거나, 공급자로 **OpenAI 호환(사내 서버)** 를 골라 사내에서
+    도는 모델(vLLM · Ollama 등)을 씁니다.
 
 - 보내기 전에 문자열 안의 `Bearer` 토큰 · JWT · GitLab 토큰(`glpat-`) · AWS 액세스 키 · 개인 키 블록 ·
   `password=` 류 값을 가립니다
@@ -54,11 +55,27 @@ Upstage Solar 입니다.
 
 ## 켜기
 
-| 환경 변수 | 차트 값 | 기본값 |
-|-----------|---------|--------|
-| `NULLUS_ASSISTANT_API_KEY` | `secrets.assistantApiKey` | 없음 — 꺼짐 |
-| `NULLUS_ASSISTANT_BASE_URL` | `config.assistant.baseURL` | `https://api.upstage.ai/v1` |
-| `NULLUS_ASSISTANT_MODEL` | `config.assistant.model` | `solar-pro4` |
+<span class="route">/admin/assistant</span>
+<span class="role role-admin">admin</span>
+
+**관리 › AI 어시스턴트** 에서 조직의 공급자 · 모델 · API 키를 등록합니다.
+
+| 공급자 | 기본 모델 | 주소 |
+|--------|-----------|------|
+| Upstage Solar | `solar-pro4` | `https://api.upstage.ai/v1` |
+| OpenAI | 직접 입력 | `https://api.openai.com/v1` |
+| Anthropic Claude | `claude-sonnet-5-5` | `https://api.anthropic.com` |
+| Google Gemini | 직접 입력 | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| OpenAI 호환(사내 서버) | 직접 입력 | 직접 입력 — 키는 없어도 됩니다 |
+
+1. 공급자를 고르고, 필요하면 모델 이름과 주소를 넣습니다(비우면 위 기본값)
+2. **API 키** 를 넣습니다. 저장한 뒤에는 다시 보이지 않고 끝 네 자리만 보입니다 — 칸을 비워 두고 저장하면
+   저장된 키를 그대로 씁니다. 공급자를 바꾸면 새 공급자의 키를 넣어야 합니다
+3. **연결 테스트** 로 그 설정으로 모델에 한 번 물어 봅니다(저장하지 않습니다)
+4. **이 조직에서 어시스턴트 켜기** 를 체크하고 **저장** 합니다
+
+키는 서버의 `ENCRYPTION_KEY` 로 암호화해 둡니다 — 그 값이 없으면 키를 저장하지 않습니다. 저장 · 삭제는
+감사 로그에 남고(키 원문은 남기지 않음), **설정 삭제** 는 키까지 지우고 어시스턴트를 끕니다.
 
 ## 한계
 
@@ -71,4 +88,5 @@ Upstage Solar 입니다.
 
 ## 호출하는 API
 
-`GET /api/v1/assistant/status` · `POST /api/v1/assistant/chat`
+`GET /api/v1/assistant/status` · `POST /api/v1/assistant/chat` · 관리:
+`GET · PUT · DELETE /api/v1/admin/assistant` · `POST /api/v1/admin/assistant/test`

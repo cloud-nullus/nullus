@@ -53,11 +53,13 @@ type Turn struct {
 	Content string
 }
 
-// ToolCall 은 모델이 고른 도구 호출이다. Arguments 는 모델이 만든 JSON 문자열 그대로다.
+// ToolCall 은 모델이 고른 도구 호출이다. Arguments 는 모델이 만든 JSON 문자열 그대로다. ProviderData 는
+// 공급자가 호출에 붙여 보낸 것을 다음 요청에 그대로 되돌려 주는 자리다(Gemini 의 사고 서명 — 빠지면 400).
 type ToolCall struct {
-	ID        string
-	Name      string
-	Arguments string
+	ID           string
+	Name         string
+	Arguments    string
+	ProviderData []byte
 }
 
 // Message 는 모델과 주고받는 메시지다. assistant 는 ToolCalls 를, tool 은 ToolCallID 를 가질 수 있다.

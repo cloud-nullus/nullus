@@ -1,5 +1,6 @@
 {
   "sidebar": {
+    "assistant": "AI 어시스턴트",
     "devsecopsStack": "데브섹옵스 스택",
     "stackTemplate": "스택 템플릿",
     "stackInstall": "스택 설치",
@@ -2471,6 +2472,9 @@
     "toolsUsed": "사용한 도구: {{tools}}",
     "toolFailed": "{{name}}(실패)",
     "providers": {
+      "openai": "OpenAI",
+      "anthropic": "Anthropic",
+      "gemini": "Google Gemini",
       "upstage": "Upstage",
       "openai-compatible": "OpenAI 호환",
       "unknown": "외부 AI"
@@ -2482,5 +2486,47 @@
       "notConfigured": "AI 어시스턴트가 설정되지 않았습니다.",
       "generic": "답을 받지 못했습니다."
     }
+  },
+  "assistantSettings": {
+    "breadcrumb": "관리",
+    "title": "AI 어시스턴트",
+    "description": "어시스턴트 패널에서 답할 모델을 고르고 API 키를 등록합니다. 조직마다 따로 설정합니다.",
+    "loading": "설정을 불러오는 중…",
+    "loadError": "어시스턴트 설정을 불러오지 못했습니다.",
+    "statusOn": "켜짐 — {{provider}} · {{model}}",
+    "statusOff": "꺼짐 — 어시스턴트 버튼이 보이지 않습니다.",
+    "provider": "공급자",
+    "providers": {
+      "upstage": "Upstage Solar",
+      "openai": "OpenAI",
+      "anthropic": "Anthropic Claude",
+      "gemini": "Google Gemini",
+      "openai-compatible": "OpenAI 호환(사내 서버)"
+    },
+    "defaultModel": "기본 모델: {{model}}",
+    "modelRequired": "모델 이름을 입력합니다",
+    "model": "모델",
+    "modelHintDefault": "비워 두면 {{model}} 을 씁니다.",
+    "modelHintRequired": "필수 — 공급자가 적은 모델 이름 그대로 입력합니다.",
+    "baseURL": "주소",
+    "baseURLHintDefault": "비워 두면 공급자 주소를 씁니다. 프록시나 지역 엔드포인트를 쓸 때만 넣습니다.",
+    "baseURLHintRequired": "필수 — 서버의 OpenAI 호환 주소(보통 /v1 로 끝남).",
+    "apiKey": "API 키",
+    "keySaved": "저장된 키 {{hint}} — 비워 두면 그대로 씁니다.",
+    "keyRequired": "이 공급자의 API 키를 입력합니다.",
+    "keyOptional": "사내 서버는 없어도 됩니다.",
+    "removeKey": "키 지우기",
+    "enabled": "이 조직에서 어시스턴트 켜기",
+    "dataNotice": "켜 두면 어시스턴트 조회 도구의 결과(스택 설정 · 상태 · 설치 로그 일부)가 이 공급자로 전송됩니다. 그 안의 토큰 · 비밀번호는 가립니다.",
+    "save": "저장",
+    "saved": "어시스턴트 설정을 저장했습니다.",
+    "test": "연결 테스트",
+    "testOk": "연결됨 — {{model}} 이 {{ms}}ms 에 답했습니다.",
+    "testFailed": "연결 실패: {{error}}",
+    "delete": "설정 삭제",
+    "deleteTitle": "어시스턴트 설정을 삭제할까요?",
+    "deleteDescription": "공급자 · 모델 · 저장된 API 키가 지워지고, 이 조직의 어시스턴트가 꺼집니다.",
+    "deleteConfirm": "삭제",
+    "deleted": "어시스턴트 설정을 삭제했습니다."
   }
 }

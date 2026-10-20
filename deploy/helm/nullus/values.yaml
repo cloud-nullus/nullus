@@ -137,14 +137,6 @@ config:
       monthly: 3
       maxTotalBytes: 0
 
-  # AI 어시스턴트 (docs/11_기능설계/Nullus_AI_어시스턴트_설계.md · nullus-plan#94)
-  #
-  # secrets.assistantApiKey 가 비면 꺼진다 — 화면에 버튼이 나오지 않는다. 켜면 Nullus MCP 조회 도구의
-  # 결과가 이 모델(기본 Upstage)로 전송된다.
-  assistant:
-    baseURL: ""   # 비면 https://api.upstage.ai/v1. 사내 OpenAI 호환 서버(vLLM 등)는 여기에
-    model: ""     # 비면 solar-pro4
-
 # 사설 CA 번들. API 파드가 사내 CA 로 서명된 엔드포인트를 호출해야 할 때만 쓴다.
 # 시크릿(ca.crt 키)이 없으면 시스템 CA 번들만 사용하고 그대로 기동한다.
 caBundle:
@@ -166,8 +158,6 @@ secrets:
   # 백업 목적지의 secret key. 스택 OpenBao 가 아니라 여기서 온다 —
   # 금고에서 조달하면 스택이 죽을 때 백업본을 가져올 수 없다.
   backupDestinationSecretKey: ""
-  # AI 어시스턴트의 LLM API 키(Upstage 콘솔에서 발급). 비면 어시스턴트가 꺼진다.
-  assistantApiKey: ""
 
 # Bitnami 가 2025년에 카탈로그를 정리하면서 docker.io/bitnami/postgresql 의
 # 구버전 태그가 bitnamilegacy 네임스페이스로 옮겨갔다. 서브차트 기본값

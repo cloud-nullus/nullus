@@ -56,6 +56,7 @@
 | [토큰 관리](admin/tokens.md) | `/admin/token-management` | <span class="role role-admin">admin</span> | 외부 도구 토큰 출처와 갱신 상태를 본다 |
 | [백업·복구](admin/backup.md) | `/admin/backup` | <span class="role role-admin">admin</span> | 플랫폼 상태를 백업하고 되돌린다 |
 | [알림 채널](admin/notifications.md) | `/admin/notifications` | <span class="role role-admin">admin</span> | 경보를 받을 채널을 등록하고 시험 발송한다 |
+| [AI 어시스턴트](assistant.md#켜기) | `/admin/assistant` | <span class="role role-admin">admin</span> | 어시스턴트가 쓸 모델 공급자 · 모델 · API 키를 등록한다 |
 
 ## 메뉴에 없는 화면
 
@@ -76,7 +77,7 @@
 | 파이프라인 로그 | `/cicd/pipelines/:id/logs` | CI/CD 목록·이력 |
 | 로그인 | `/login` | 인증이 없을 때 자동 이동 |
 | 404 | 그 외 모든 경로 | — |
-| [AI 어시스턴트](assistant.md) | 경로 없음 — 패널 | 모든 화면 오른쪽 아래 버튼(서버에 키가 있을 때만) |
+| [AI 어시스턴트](assistant.md) | 경로 없음 — 패널 | 모든 화면 오른쪽 아래 버튼(관리자가 켰을 때만) |
 
 ## 사이드바와 라우트가 다를 수 있습니다
 

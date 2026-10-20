@@ -1,6 +1,6 @@
-# Nullus AI 어시스턴트 설계 — MCP 도구 + Upstage Solar
+# Nullus AI 어시스턴트 설계 — MCP 도구 + 여러 벤더의 모델
 
-플랫폼 화면 안에서 자연어로 묻고 답하는 어시스턴트다. 두뇌는 Upstage Solar(LLM)이고, 손발은 이미 있는
+플랫폼 화면 안에서 자연어로 묻고 답하는 어시스턴트다. 두뇌는 조직이 고른 모델(Upstage Solar · OpenAI · Anthropic Claude · Google Gemini · OpenAI 호환 사내 서버)이고, 손발은 이미 있는
 **Nullus MCP 서버의 도구**다. 모델이 고른 도구를 서버가 **질문한 사용자의 권한으로** 실행하고, 결과를 다시
 모델에 넘겨 답을 만든다.
 
@@ -19,10 +19,11 @@
 | 빠진 조각 | MCP 서버는 있다(도구 9종, stdio). 없는 것은 **에이전트 루프** — 대화를 받아 모델에 넘기고, 모델이 고른 도구를 실행해 되돌려 주는 쪽 | "AI API 만 붙이면 된다" 가 아니라 호스트를 하나 만들어야 한다 |
 | 도구 실행 | API 안에서 `internal/mcp` 서버를 **in-memory transport** 로 띄워 MCP 클라이언트로 부른다 | 도구 표면이 하나로 유지된다 — MCP 에 도구를 더하면 외부 클라이언트(Claude Code)와 어시스턴트가 함께 쓴다. MCP 설계의 "transport 는 stdio 만 v1" 과도 부딪히지 않는다(외부로 열리는 transport 가 아니다) |
 | 권한 | 도구는 **질문한 사용자의 인증 헤더**를 그대로 실어 `/api/v1/*` 를 부른다 | RBAC 판정이 서버 한곳에 남는다. 어시스턴트를 거쳐 권한이 늘어나는 길이 없다 |
-| 모델 | Upstage Chat Completions(OpenAI 호환) — 기본 `solar-pro4`, tool calling | 크레딧이 있고 한국어가 강하다. base URL · 모델은 설정이라 사내 OpenAI 호환 서버(vLLM 등)로 바꿀 수 있다 |
+| 모델 | **여러 벤더** — Upstage(기본, `solar-pro4`) · OpenAI · Anthropic · Gemini · OpenAI 호환 사내 서버. 프로토콜은 둘뿐이다: OpenAI 호환 Chat Completions 와 Anthropic Messages(Gemini 는 Google 의 OpenAI 호환 엔드포인트) | Upstage 크레딧으로 시작하되 고객마다 쓰는 벤더가 다르다. 폐쇄망은 사내 서버로 |
+| 키 등록 | **관리 화면**(관리 › AI 어시스턴트)에서 조직마다 공급자 · 모델 · 주소 · API 키를 등록한다. 키는 `ENCRYPTION_KEY` 로 암호화해 `assistant_settings`(000108)에 두고 다시 보여 주지 않는다(끝 네 자리). 저장 전 **연결 테스트** | 환경 변수 · 차트로 넣으면 키를 바꿀 때마다 재배포가 필요하고, 조직마다 다른 벤더를 쓸 수 없다 |
 | 쓰기 도구 | 1단계는 **조회 도구만**(MCP `AllowWrite=false` — 목록에서 아예 빠진다). 2단계에서 "모델은 제안 · 사람이 확인 버튼" 으로 연다 | 로그 속 지시문(프롬프트 인젝션)이 배포를 일으키면 안 된다 |
-| 대화 저장 | 1단계는 **저장하지 않는다** — 화면이 대화를 들고 매 요청에 보낸다(Upstage API 도 상태가 없다) | 저장소 · 보존 기간 · 열람 권한 결정을 미룬다 |
-| 켜고 끄기 | API 키가 없으면 꺼진다 — 상태 API 가 `enabled=false`, 화면은 버튼을 숨긴다 | 폐쇄망 · 미동의 고객은 아무것도 바뀌지 않는다 |
+| 대화 저장 | 1단계는 **저장하지 않는다** — 화면이 대화를 들고 매 요청에 보낸다(벤더의 Chat API 도 상태가 없다) | 저장소 · 보존 기간 · 열람 권한 결정을 미룬다 |
+| 켜고 끄기 | 조직이 설정을 등록하고 켜기 전에는 꺼져 있다 — 상태 API 가 `enabled=false`, 화면은 버튼을 숨긴다 | 폐쇄망 · 미동의 고객은 아무것도 바뀌지 않는다 |
 
 ---
 
@@ -42,7 +43,7 @@
 
 ```
 웹 어시스턴트 패널 ──POST /api/v1/assistant/chat──▶ internal/assistant (에이전트 루프)
-                                                     │ ① 시스템 프롬프트 + 대화 + 도구 목록 → LLM(Upstage)
+                                                     │ ① 시스템 프롬프트 + 대화 + 도구 목록 → 조직이 고른 모델
                                                      │ ② 응답에 tool_calls 가 있으면 도구 실행 → role:tool 로 되돌려 ①로
                                                      │ ③ tool_calls 가 없으면 답을 돌려준다(최대 라운드를 넘기면 도구 없이 한 번 더 물어 마무리)
                                                      ▼
@@ -57,7 +58,8 @@
 | domain | `Turn`(화면이 보낸 대화 한 줄) · `Message`(모델과 주고받는 메시지, tool_calls 포함) · `ToolSpec` · `ToolTrace` · 대화 검증(역할 · 길이 · 마지막은 user) · 도구 결과 가리기(`RedactSecrets`) · 길이 자르기 · 시스템 프롬프트 |
 | port | `LLM.Complete(messages, tools)` · `ToolSessionOpener.Open(credentials)` → `ToolSession{ListTools, CallTool, Close}` |
 | usecase | `Chat.Execute` — 에이전트 루프 |
-| adapter/llm | OpenAI 호환 Chat Completions 클라이언트(Upstage) |
+| adapter/llm | OpenAI 호환 Chat Completions 클라이언트 · Anthropic Messages 클라이언트 · 공급자로 고르는 Factory |
+| adapter/repository | 조직 설정 저장소(`assistant_settings`, 키는 `pkg/crypto` 로 암호화) |
 | adapter/mcphost | `internal/mcp.NewServer` + in-memory transport + MCP 클라이언트 세션. 인증 헤더를 싣는 HTTP 전송 |
 | adapter/handler | `GET /assistant/status` · `POST /assistant/chat` |
 
@@ -85,6 +87,8 @@
 키가 없으면 `{"enabled": false}`. 화면은 이것으로 버튼을 그릴지 정한다.
 
 ### 3.2 `POST /api/v1/assistant/chat`
+
+(아래) 요청자 조직의 저장된 설정으로 모델을 고른다. 꺼져 있으면 503 `ASSISTANT_NOT_CONFIGURED`.
 
 요청:
 ```json
@@ -139,30 +143,48 @@
 
 ## 5. 외부로 나가는 데이터
 
-도구 결과는 Upstage(외부 SaaS)로 전송된다. 그래서:
+도구 결과는 조직이 고른 공급자(외부 SaaS 일 수 있다)로 전송된다. 그래서:
 
 - MCP 도구가 이미 kubeconfig 같은 시크릿 필드를 뺀다(MCP 설계 §5)
 - 어시스턴트가 한 번 더 문자열을 가린다(`RedactSecrets`) — `Authorization: Bearer …`, JWT(`eyJ…`), GitLab 토큰(`glpat-…`), AWS 액세스 키, PEM 개인 키 블록, `password=` · `token:` 류 값
 - 대화 · 도구 결과를 서버에 저장하지 않는다(1단계). 로그에는 라운드 수 · 도구 이름 · 지연만 남긴다
-- 고객이 외부 전송을 원하지 않으면 키를 넣지 않으면 된다(기능이 꺼진다). 사내 LLM 은 base URL 로 바꾼다
+- 고객이 외부 전송을 원하지 않으면 켜지 않으면 된다. 사내 LLM 은 공급자 **OpenAI 호환(사내 서버)** 로 주소를 넣는다
 
 ---
 
-## 6. 설정
+## 6. 설정 — 관리 화면에서 조직마다
 
-| 환경 변수 | 기본값 | 뜻 |
-|---|---|---|
-| `NULLUS_ASSISTANT_API_KEY` | (없음 — 기능 꺼짐) | LLM API 키(Upstage 콘솔에서 발급) |
-| `NULLUS_ASSISTANT_BASE_URL` | `https://api.upstage.ai/v1` | OpenAI 호환 Chat Completions 의 base URL |
-| `NULLUS_ASSISTANT_MODEL` | `solar-pro4` | 모델 이름 |
+| 공급자 ID | 프로토콜 | 기본 주소 | 기본 모델 | 키 |
+|---|---|---|---|---|
+| `upstage` | OpenAI 호환 | `https://api.upstage.ai/v1` | `solar-pro4` | 필수 |
+| `openai` | OpenAI 호환 | `https://api.openai.com/v1` | (입력) | 필수 |
+| `anthropic` | Anthropic Messages(`/v1/messages`, `x-api-key`, `anthropic-version: 2023-06-01`) | `https://api.anthropic.com` | `claude-sonnet-5-5` | 필수 |
+| `gemini` | OpenAI 호환(Google 의 호환 엔드포인트) | `https://generativelanguage.googleapis.com/v1beta/openai` | (입력) | 필수 |
+| `openai-compatible` | OpenAI 호환 | (입력) | (입력) | 선택 — 사내 vLLM · Ollama |
 
-도구는 API 자신(`http://127.0.0.1:<server.port>`)을 부른다. 차트는 `secrets.assistantApiKey`(Secret) · `config.assistant.baseURL` · `config.assistant.model` 로 넣는다 — 키가 없으면 env 자체를 넣지 않는다.
+- 공급자 목록은 서버(`domain.Providers()`)가 정하고 관리 화면은 그것을 그린다
+- **Gemini 3 의 사고 서명** — 도구 호출에 붙은 `extra_content` 를 다음 요청에 그대로 돌려줘야 한다(빠지면 400). 어댑터가 도구 호출의 공급자 전용 데이터(`ToolCall.ProviderData`)로 실어 되돌린다
+- **Anthropic** — 시스템 프롬프트는 `system` 필드, 도구 호출은 `tool_use` 블록, 도구 결과는 user 메시지의 `tool_result` 블록(연달은 결과는 한 메시지로 묶는다)
+
+### 6.1 관리 API (admin)
+
+| 메서드 · 경로 | 하는 일 |
+|---|---|
+| `GET /api/v1/admin/assistant` | 설정 · 공급자 목록. 키는 `has_key` · `key_hint`(끝 네 자리)만 |
+| `PUT /api/v1/admin/assistant` | 저장. `api_key` 가 빠지면 저장된 키를 그대로(같은 공급자일 때), 빈 문자열이면 지운다. **공급자를 바꾸면 이전 공급자의 키는 버린다** — 켜 두려면 새 키가 필요하다 |
+| `DELETE /api/v1/admin/assistant` | 설정과 키를 지운다(꺼진다) |
+| `POST /api/v1/admin/assistant/test` | 보낸 설정(키를 안 보내면 저장된 키)으로 모델에 한 번 묻는다. 저장하지 않는다. 실패해도 200 — `ok` · `error`(키는 가린다) · `latency_ms` |
+
+저장 · 삭제는 감사 로그(`update_assistant_settings` · `delete_assistant_settings`)에 남긴다 — 키 원문은 남기지 않고 바꿨는지(`key_changed`)만. `ENCRYPTION_KEY` 가 없으면 키를 저장하지 않는다(503 `ASSISTANT_KEY_STORAGE_UNAVAILABLE`). 검증: 모르는 공급자 · http(s) 가 아닌 주소 · 주소의 계정 정보 · 모델 200자 초과 · 켰는데 키 없음(필수 공급자) · 기본값 없는 공급자의 모델 · 주소 누락은 400 `ASSISTANT_SETTINGS_INVALID`.
+
+도구는 API 자신(`http://127.0.0.1:<server.port>`)을 부른다.
 
 ---
 
 ## 7. 화면
 
 - 오른쪽 아래(단축키 배지 위)에 **AI 어시스턴트** 버튼. `enabled=false` 면 그리지 않는다
+- 관리 › AI 어시스턴트(`/admin/assistant`, admin): 공급자 라디오 · 모델 · 주소 · API 키(저장된 키는 끝 네 자리, 비우면 유지, **키 지우기**) · 켜기 · 외부 전송 안내 · **연결 테스트** · **저장** · **설정 삭제**. 저장하면 패널 버튼이 바로 따라온다
 - 패널: 대화 목록 · 입력창(Enter 전송, Shift+Enter 줄바꿈) · 비었을 때 추천 질문 · 답마다 "사용한 도구" · 오류 안내
 - 대화는 화면 상태에만 있다 — 패널을 닫았다 열면 이어지고, 새로 고치면 사라진다(1단계). 새 대화를 시작하면 진행 중인 질문을 끊는다
 - Esc 로 닫고, 열면 입력창에 초점이 간다. 답은 `aria-live` 로 읽힌다
@@ -173,14 +195,15 @@
 
 | 단계 | 범위 | 상태 |
 |---|---|---|
-| 1 — 데모 최소 | 모듈 · Upstage 어댑터 · MCP in-memory 호스트(조회 도구 6종) · 상태/대화 API · 패널 · 시나리오 S1 · S2(추천까지) · S5 | 진행 중 |
+| 1 — 데모 최소 | 모듈 · 벤더 어댑터(OpenAI 호환 · Anthropic) · 관리 화면 키 등록 · MCP in-memory 호스트(조회 도구 6종) · 상태/대화 API · 패널 · 시나리오 S1 · S2(추천까지) · S5 | 진행 중 |
 | 2 | 쓰기 도구를 "제안 → 확인 버튼 → 실행" 으로(대화 응답에 실행 대기 카드), 감사 로그, 조직별 토큰 예산 | |
 | 3 | 새 도구: 알려진 이슈 · 설치 이미지 스캔 · 업그레이드 후보/사전 점검 · 파이프라인 실행 로그. 보고 있는 스택 ID 문맥, SSE 스트리밍 | |
 | 후속 | 원격 MCP(Streamable HTTP + OAuth) — 외부 클라이언트도 같은 도구를 쓰게 | |
 
 ## 9. 열린 결정
 
-- 모델: `solar-pro4` 와 mini 계열의 비용 선택(크레딧 소진 속도를 보고 정한다)
+- 기본 공급자 · 모델: Upstage `solar-pro4` 와 mini 계열의 비용 선택(크레딧 소진 속도를 보고 정한다)
+- Azure OpenAI(배포 이름 · `api-key` 헤더 · `api-version`)처럼 OpenAI 호환에서 벗어나는 벤더를 더할지
 - 대화 저장 여부와 보존 기간 · 열람 권한(2단계 감사 로그와 함께)
 - 쓰기 도구를 어디까지 열지(`stack_deploy` · `stack_rollback` · `pipeline_deploy`)
 - 고객 데이터의 외부 LLM 전송 동의 — 설치 시 안내 문구

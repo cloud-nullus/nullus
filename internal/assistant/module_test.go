@@ -1,34 +1,51 @@
 package assistant
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cloud-nullus/draft/internal/assistant/domain"
+	"github.com/cloud-nullus/draft/internal/assistant/usecase"
 )
 
-func env(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+type memSettings struct{ byOrg map[string]domain.Settings }
 
-// 키가 없으면 꺼진다 — 폐쇄망 · 미동의 고객은 아무것도 바뀌지 않는다.
-func TestNewModule_DisabledWithoutKey(t *testing.T) {
-	m := NewModule(ConfigFromEnv(env(nil), "http://127.0.0.1:8090", "dev"))
-	assert.False(t, m.Enabled())
-	assert.NotNil(t, m.Chat)
+func (m *memSettings) Get(_ context.Context, orgID string) (*domain.Settings, error) {
+	s, ok := m.byOrg[orgID]
+	if !ok {
+		return nil, nil
+	}
+	return &s, nil
+}
+func (m *memSettings) Save(_ context.Context, s domain.Settings) error {
+	m.byOrg[s.OrgID] = s
+	return nil
+}
+func (m *memSettings) Delete(_ context.Context, orgID string) error {
+	delete(m.byOrg, orgID)
+	return nil
 }
 
-func TestNewModule_UpstageByDefault(t *testing.T) {
-	m := NewModule(ConfigFromEnv(env(map[string]string{"NULLUS_ASSISTANT_API_KEY": " up_key "}), "http://127.0.0.1:8090", "dev"))
-	assert.True(t, m.Enabled())
-	assert.Equal(t, "upstage", m.Provider)
-	assert.Equal(t, "solar-pro4", m.Model)
-}
+// 관리 화면에서 등록하기 전에는 꺼져 있고, 등록하면 그 조직만 켜진다.
+func TestModule_TurnsOnWhenTheOrgRegistersAKey(t *testing.T) {
+	m := New(Deps{Settings: &memSettings{byOrg: map[string]domain.Settings{}}, ServerURL: "http://127.0.0.1:8090", Version: "dev"})
+	ctx := context.Background()
 
-// base URL 을 바꾸면 사내 OpenAI 호환 서버다.
-func TestNewModule_OpenAICompatibleBaseURL(t *testing.T) {
-	m := NewModule(ConfigFromEnv(env(map[string]string{
-		"NULLUS_ASSISTANT_API_KEY":  "k",
-		"NULLUS_ASSISTANT_BASE_URL": "http://vllm.internal:8000/v1",
-		"NULLUS_ASSISTANT_MODEL":    "qwen3",
-	}), "http://127.0.0.1:8090", "dev"))
-	assert.Equal(t, "openai-compatible", m.Provider)
-	assert.Equal(t, "qwen3", m.Model)
+	st, err := m.Chat.Status(ctx, "org-1")
+	require.NoError(t, err)
+	assert.False(t, st.Enabled)
+
+	key := "up_abcd1234"
+	_, err = m.Settings.Update(ctx, "org-1", "admin", usecase.UpdateSettings{Enabled: true, Provider: domain.ProviderUpstage, APIKey: &key})
+	require.NoError(t, err)
+
+	st, err = m.Chat.Status(ctx, "org-1")
+	require.NoError(t, err)
+	assert.Equal(t, usecase.Status{Enabled: true, Provider: "upstage", Model: "solar-pro4"}, st)
+	other, err := m.Chat.Status(ctx, "org-2")
+	require.NoError(t, err)
+	assert.False(t, other.Enabled)
 }

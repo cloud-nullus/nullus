@@ -6,8 +6,12 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
+
+	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
+	sharedmw "github.com/cloud-nullus/draft/internal/shared/middleware"
 
 	"github.com/cloud-nullus/draft/internal/assistant/domain"
 	"github.com/cloud-nullus/draft/internal/assistant/port"
@@ -20,23 +24,16 @@ import (
 var credentialHeaders = []string{"Authorization", "X-User-ID", "X-User-Email", "X-User-Name", "X-User-Role", "X-User-OrgID", "X-Org-ID"}
 
 type chatter interface {
-	Enabled() bool
+	Status(ctx context.Context, orgID string) (usecase.Status, error)
 	Execute(ctx context.Context, in usecase.ChatInput) (*usecase.ChatOutput, error)
 }
 
-// Status 는 상태 API 가 보이는 모델 정보다.
-type Status struct {
-	Provider string
-	Model    string
-}
-
 type AssistantHandler struct {
-	chat   chatter
-	status Status
+	chat chatter
 }
 
-func NewAssistantHandler(chat chatter, status Status) *AssistantHandler {
-	return &AssistantHandler{chat: chat, status: status}
+func NewAssistantHandler(chat chatter) *AssistantHandler {
+	return &AssistantHandler{chat: chat}
 }
 
 // RegisterRoutes 는 /api/v1/assistant 그룹에 붙는다. 그룹은 인증만 요구한다 — 무엇을 볼 수 있는지는
@@ -46,11 +43,17 @@ func (h *AssistantHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/chat", h.Chat)
 }
 
+// GetStatus 는 요청자 조직의 어시스턴트가 켜져 있는지다. 꺼져 있으면 모델 이름도 알리지 않는다.
 func (h *AssistantHandler) GetStatus(c echo.Context) error {
-	if !h.chat.Enabled() {
+	st, err := h.chat.Status(c.Request().Context(), resolveOrgID(c))
+	if err != nil {
+		slog.Warn("assistant: 상태를 읽지 못했습니다", "error", err)
 		return c.JSON(http.StatusOK, map[string]any{"enabled": false})
 	}
-	return c.JSON(http.StatusOK, map[string]any{"enabled": true, "provider": h.status.Provider, "model": h.status.Model})
+	if !st.Enabled {
+		return c.JSON(http.StatusOK, map[string]any{"enabled": false})
+	}
+	return c.JSON(http.StatusOK, map[string]any{"enabled": true, "provider": st.Provider, "model": st.Model})
 }
 
 type chatRequest struct {
@@ -64,9 +67,6 @@ type chatRequest struct {
 }
 
 func (h *AssistantHandler) Chat(c echo.Context) error {
-	if !h.chat.Enabled() {
-		return errorResponse(c, http.StatusServiceUnavailable, "ASSISTANT_NOT_CONFIGURED", "AI 어시스턴트가 설정되지 않았습니다 (NULLUS_ASSISTANT_API_KEY)")
-	}
 	var req chatRequest
 	if err := c.Bind(&req); err != nil {
 		return errorResponse(c, http.StatusBadRequest, "ASSISTANT_INVALID", "요청 본문을 해석하지 못했습니다")
@@ -83,7 +83,7 @@ func (h *AssistantHandler) Chat(c echo.Context) error {
 	}
 
 	out, err := h.chat.Execute(c.Request().Context(), usecase.ChatInput{
-		Turns: turns, Page: domain.NewPageContext(req.Context.Path), Credentials: creds,
+		OrgID: resolveOrgID(c), Turns: turns, Page: domain.NewPageContext(req.Context.Path), Credentials: creds,
 	})
 	switch {
 	case err == nil:
@@ -91,7 +91,7 @@ func (h *AssistantHandler) Chat(c echo.Context) error {
 	case errors.Is(err, domain.ErrInvalidConversation):
 		return errorResponse(c, http.StatusBadRequest, "ASSISTANT_INVALID", err.Error())
 	case errors.Is(err, domain.ErrNotConfigured):
-		return errorResponse(c, http.StatusServiceUnavailable, "ASSISTANT_NOT_CONFIGURED", err.Error())
+		return errorResponse(c, http.StatusServiceUnavailable, "ASSISTANT_NOT_CONFIGURED", "AI 어시스턴트가 설정되지 않았습니다 — 관리 › AI 어시스턴트에서 모델과 키를 등록하세요")
 	case errors.Is(err, domain.ErrTimeout):
 		slog.Warn("assistant: 시간 초과", "error", err)
 		return errorResponse(c, http.StatusGatewayTimeout, "ASSISTANT_TIMEOUT", "답을 만드는 데 너무 오래 걸렸습니다. 질문을 좁혀 다시 물어보세요")
@@ -108,4 +108,15 @@ func errorResponse(c echo.Context, httpStatus int, code, message string) error {
 	return c.JSON(httpStatus, map[string]any{
 		"error": map[string]any{"code": code, "http_status": httpStatus, "message": message},
 	})
+}
+
+// resolveOrgID 는 로그인한 사용자의 조직, 없으면 X-Org-ID, 그것도 없으면 기본 조직이다(알림 채널 · 백업 API 와 같다).
+func resolveOrgID(c echo.Context) string {
+	if orgID := sharedmw.OrgIDFromEchoContext(c); orgID != "" {
+		return orgID
+	}
+	if orgID := strings.TrimSpace(c.Request().Header.Get("X-Org-ID")); orgID != "" {
+		return orgID
+	}
+	return shareddomain.DefaultOrgID()
 }

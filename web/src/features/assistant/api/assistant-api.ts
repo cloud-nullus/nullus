@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
 
 // AI 어시스턴트(nullus-plan#94). 서버가 Nullus MCP 도구를 Upstage 모델에 물려 답한다.
@@ -45,5 +45,87 @@ export function useAssistantChat() {
   return useMutation({
     mutationFn: ({ input, signal }: { input: AssistantChatInput; signal: AbortSignal }) =>
       api.post<AssistantReply>('/assistant/chat', input, { signal }).then((r) => r.data),
+  })
+}
+
+// ── 관리: 조직의 모델 공급자 · 모델 · API 키 ─────────────────────────────────────────────
+
+export type AssistantProviderId = 'upstage' | 'openai' | 'anthropic' | 'gemini' | 'openai-compatible'
+
+export interface AssistantProvider {
+  id: AssistantProviderId
+  protocol: 'openai' | 'anthropic'
+  default_base_url?: string
+  default_model?: string
+  key_required: boolean
+}
+
+export interface AssistantSettings {
+  enabled: boolean
+  provider: AssistantProviderId
+  base_url: string
+  model: string
+  has_key: boolean
+  key_hint: string
+  effective_base_url: string
+  effective_model: string
+  updated_at?: string
+  updated_by?: string
+  providers: AssistantProvider[]
+}
+
+// api_key 가 빠지면 저장된 키를 그대로 쓰고(공급자가 같을 때), 빈 문자열이면 지운다.
+export interface AssistantSettingsInput {
+  enabled: boolean
+  provider: AssistantProviderId
+  base_url: string
+  model: string
+  api_key?: string
+}
+
+export interface AssistantTestResult {
+  ok: boolean
+  model: string
+  error: string
+  latency_ms: number
+}
+
+const settingsKey = ['assistant', 'settings'] as const
+
+export function useAssistantSettings() {
+  return useQuery({
+    queryKey: settingsKey,
+    queryFn: () => api.get<AssistantSettings>('/admin/assistant').then((r) => r.data),
+    retry: false,
+  })
+}
+
+export function useSaveAssistantSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: AssistantSettingsInput) => api.put<AssistantSettings>('/admin/assistant', input).then((r) => r.data),
+    onSuccess: (data) => {
+      qc.setQueryData(settingsKey, data)
+      // 켜고 끄면 패널 버튼이 바로 따라오게 한다.
+      void qc.invalidateQueries({ queryKey: ['assistant', 'status'] })
+    },
+  })
+}
+
+export function useDeleteAssistantSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.delete('/admin/assistant').then(() => undefined),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: settingsKey })
+      void qc.invalidateQueries({ queryKey: ['assistant', 'status'] })
+    },
+  })
+}
+
+export function useTestAssistantSettings() {
+  return useMutation({
+    mutationFn: (input: AssistantSettingsInput) =>
+      api.post<AssistantTestResult>('/admin/assistant/test', input).then((r) => r.data),
   })
 }

@@ -260,10 +260,10 @@ function ChatBubble({ entry }: { entry: ChatEntry }) {
 }
 
 // providerLabelKey 는 공급자 id 를 읽기 좋은 이름의 i18n 키로 바꾼다.
+const KNOWN_PROVIDERS = ['upstage', 'openai', 'anthropic', 'gemini', 'openai-compatible']
+
 function providerLabelKey(provider: string): string {
-  return provider === 'upstage' || provider === 'openai-compatible'
-    ? `assistant.providers.${provider}`
-    : 'assistant.providers.unknown'
+  return KNOWN_PROVIDERS.includes(provider) ? `assistant.providers.${provider}` : 'assistant.providers.unknown'
 }
 
 function errorText(error: unknown, t: (key: string) => string): string {

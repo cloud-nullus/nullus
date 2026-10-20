@@ -17,8 +17,10 @@ import (
 // fallbackReply 는 모델이 빈 답을 돌려줬을 때 화면에 보일 말이다.
 const fallbackReply = "답을 만들지 못했습니다. 질문을 조금 바꿔 다시 물어봐 주세요."
 
-// ChatInput 은 질문 하나다. Turns 는 화면이 들고 있는 대화 전체(마지막이 이번 질문)다.
+// ChatInput 은 질문 하나다. Turns 는 화면이 들고 있는 대화 전체(마지막이 이번 질문)다. 모델은 OrgID 의
+// 저장된 설정으로 고른다.
 type ChatInput struct {
+	OrgID       string
 	Turns       []domain.Turn
 	Page        domain.PageContext
 	Credentials port.Credentials
@@ -34,39 +36,64 @@ type ChatOutput struct {
 // 504 대신 시간 초과 안내를 받는다.
 const DefaultDeadline = 55 * time.Second
 
-// Chat 은 에이전트 루프다. llm 이 없으면 꺼져 있다.
+// Chat 은 에이전트 루프다. 조직이 관리 화면에서 등록한 설정(공급자 · 모델 · 키)으로 모델을 고른다.
 type Chat struct {
-	llm      port.LLM
+	settings port.SettingsRepository
+	models   port.LLMFactory
 	tools    port.ToolSessionOpener
 	deadline time.Duration
 }
 
-func NewChat(llm port.LLM, tools port.ToolSessionOpener) *Chat {
-	return &Chat{llm: llm, tools: tools, deadline: DefaultDeadline}
+func NewChat(settings port.SettingsRepository, models port.LLMFactory, tools port.ToolSessionOpener) *Chat {
+	return &Chat{settings: settings, models: models, tools: tools, deadline: DefaultDeadline}
 }
 
-// Enabled 는 모델이 설정됐는지다.
-func (uc *Chat) Enabled() bool { return uc != nil && uc.llm != nil }
+// Status 는 화면이 버튼을 그릴지 정하는 정보다.
+type Status struct {
+	Enabled  bool
+	Provider string
+	Model    string
+}
+
+// Status 는 조직의 어시스턴트가 켜져 있는지다.
+func (uc *Chat) Status(ctx context.Context, orgID string) (Status, error) {
+	s, err := uc.settings.Get(ctx, orgID)
+	if err != nil {
+		return Status{}, err
+	}
+	if s == nil || !s.Ready() {
+		return Status{}, nil
+	}
+	return Status{Enabled: true, Provider: s.Provider, Model: s.EffectiveModel()}, nil
+}
 
 // Execute 는 질문에 답한다. 도구 라운드는 domain.MaxToolRounds 까지 — 넘기면 도구 없이 한 번 더 물어
 // 그때까지의 결과로 마무리하게 한다.
 func (uc *Chat) Execute(ctx context.Context, in ChatInput) (*ChatOutput, error) {
-	if !uc.Enabled() {
+	s, err := uc.settings.Get(ctx, in.OrgID)
+	if err != nil {
+		return nil, fmt.Errorf("어시스턴트 설정을 읽지 못했습니다: %w", err)
+	}
+	if s == nil || !s.Ready() {
 		return nil, domain.ErrNotConfigured
 	}
 	if err := domain.ValidateTurns(in.Turns); err != nil {
 		return nil, err
 	}
+	llm, err := uc.models.New(*s)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", domain.ErrNotConfigured, err)
+	}
 	ctx, cancel := context.WithTimeout(ctx, uc.deadline)
 	defer cancel()
-	out, err := uc.run(ctx, in)
+	out, err := uc.run(ctx, llm, in)
 	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return nil, fmt.Errorf("%w: %v", domain.ErrTimeout, err)
 	}
 	return out, err
 }
 
-func (uc *Chat) run(ctx context.Context, in ChatInput) (*ChatOutput, error) {
+func (uc *Chat) run(ctx context.Context, llm port.LLM, in ChatInput) (*ChatOutput, error) {
 	session, err := uc.tools.Open(ctx, in.Credentials)
 	if err != nil {
 		return nil, fmt.Errorf("도구 세션을 열지 못했습니다: %w", err)
@@ -92,7 +119,7 @@ func (uc *Chat) run(ctx context.Context, in ChatInput) (*ChatOutput, error) {
 		if round >= domain.MaxToolRounds || executed >= domain.MaxToolCallsTotal {
 			tools = nil
 		}
-		resp, err := uc.llm.Complete(ctx, port.CompletionRequest{Messages: messages, Tools: tools})
+		resp, err := llm.Complete(ctx, port.CompletionRequest{Messages: messages, Tools: tools})
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", domain.ErrUpstream, err)
 		}

@@ -712,18 +712,19 @@ func main() {
 	// 앱 축은 모든 역할, 설치 OSS 축은 admin · devops 만(설계 결정 11).
 	securityHandler.RegisterRoutes(observability, securityStackGuards...)
 
-	// AI 어시스턴트(nullus-plan#94). Nullus MCP 도구를 Upstage Solar 에 물린다. 도구는 API 자신을 루프백으로,
-	// 질문한 사용자의 인증 헤더를 실어 부른다. NULLUS_ASSISTANT_API_KEY 가 없으면 꺼진다.
-	assistantModule := assistant.NewModule(assistant.ConfigFromEnv(os.Getenv,
-		fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.Port), version))
-	assistantHandler := assistanthandler.NewAssistantHandler(assistantModule.Chat,
-		assistanthandler.Status{Provider: assistantModule.Provider, Model: assistantModule.Model})
+	// AI 어시스턴트(nullus-plan#94). Nullus MCP 조회 도구를 조직이 고른 모델(Upstage · OpenAI · Anthropic ·
+	// Gemini · OpenAI 호환)에 물린다. 공급자 · 모델 · API 키는 관리 › AI 어시스턴트에서 조직마다 등록하고, 키는
+	// ENCRYPTION_KEY 로 암호화해 둔다. 도구는 API 자신을 루프백으로, 질문한 사용자의 인증 헤더를 실어 부른다.
+	assistantModule := assistant.New(assistant.Deps{
+		Pool:          pool,
+		EncryptionKey: []byte(os.Getenv("ENCRYPTION_KEY")),
+		ServerURL:     fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.Port),
+		Version:       version,
+	})
+	assistantHandler := assistanthandler.NewAssistantHandler(assistantModule.Chat)
 	assistantHandler.RegisterRoutes(assistantGroup)
-	if assistantModule.Enabled() {
-		slog.Info("AI assistant enabled", "provider", assistantModule.Provider, "model", assistantModule.Model)
-	} else {
-		slog.Info("AI 어시스턴트가 꺼져 있습니다 (NULLUS_ASSISTANT_API_KEY)")
-	}
+	assistantSettingsHandler := assistanthandler.NewSettingsHandler(assistantModule.Settings, auditLogger)
+	assistantSettingsHandler.RegisterRoutes(admin)
 
 	if cfg.Server.Mode == "development" {
 		e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))

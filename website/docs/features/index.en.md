@@ -57,6 +57,7 @@ Sources: `web/src/components/layout/nav-model.tsx` (sidebar),
 | [Token Management](admin/tokens.md) | `/admin/token-management` | <span class="role role-admin">admin</span> | View external tool token sources and their renewal status |
 | [Backup & Restore](admin/backup.md) | `/admin/backup` | <span class="role role-admin">admin</span> | Back up platform state and restore it |
 | [Notification Channels](admin/notifications.md) | `/admin/notifications` | <span class="role role-admin">admin</span> | Register channels that receive alerts and send test messages |
+| [AI Assistant](assistant.md#turning-it-on) | `/admin/assistant` | <span class="role role-admin">admin</span> | Register the model provider, model, and API key the assistant uses |
 
 ## Screens without a menu entry
 
@@ -77,7 +78,7 @@ These paths have no sidebar item; you reach them from other screens.
 | Pipeline Logs | `/cicd/pipelines/:id/logs` | CI/CD List or CI/CD History |
 | Sign in | `/login` | Automatic redirect when you are not authenticated |
 | 404 | Any other path | — |
-| [AI Assistant](assistant.md) | No path — a panel | The button at the bottom right of every screen (only when the server has a key) |
+| [AI Assistant](assistant.md) | No path — a panel | The button at the bottom right of every screen (only after an admin turns it on) |
 
 ## The sidebar and the routes can disagree
 

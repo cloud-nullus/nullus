@@ -35,3 +35,15 @@ type ToolSession interface {
 type ToolSessionOpener interface {
 	Open(ctx context.Context, creds Credentials) (ToolSession, error)
 }
+
+// SettingsRepository 는 조직의 어시스턴트 설정이다. 키는 저장소가 암호화한다. 설정이 없으면 Get 은 nil, nil 이다.
+type SettingsRepository interface {
+	Get(ctx context.Context, orgID string) (*domain.Settings, error)
+	Save(ctx context.Context, s domain.Settings) error
+	Delete(ctx context.Context, orgID string) error
+}
+
+// LLMFactory 는 설정의 공급자에 맞는 모델 클라이언트를 만든다.
+type LLMFactory interface {
+	New(s domain.Settings) (LLM, error)
+}
