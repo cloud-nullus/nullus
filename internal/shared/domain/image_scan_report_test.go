@@ -57,6 +57,26 @@ func TestParseTrivyReport_MissingDBMetaIsUnknown(t *testing.T) {
 	assert.Equal(t, SeverityCounts{}, s.All)
 }
 
+// 검사 대상 수는 Results 수다. 의존성 스캔(trivy fs)에서 0 이면 락파일이 없어 아무것도 검사하지
+// 않았다는 뜻이다 — "취약점 0건" 과 가른다.
+func TestParseTrivyReport_Targets(t *testing.T) {
+	s, err := ParseTrivyReport(loadNode16Report(t))
+	require.NoError(t, err)
+	assert.Equal(t, 2, s.Targets)
+
+	s, err = ParseTrivyReport([]byte(`{"SchemaVersion":2,"ArtifactName":".","Results":[
+		{"Target":"package-lock.json","Class":"lang-pkgs","Type":"npm"},
+		{"Target":"go.sum","Class":"lang-pkgs","Type":"gomod","Vulnerabilities":[{"Severity":"HIGH","FixedVersion":"1.2.3"}]},
+		{"Target":"requirements.txt","Class":"lang-pkgs","Type":"pip"}]}`))
+	require.NoError(t, err)
+	assert.Equal(t, 3, s.Targets, "취약점이 없는 락파일도 검사 대상이다")
+	assert.Equal(t, SeverityCounts{High: 1}, s.All)
+
+	s, err = ParseTrivyReport([]byte(`{"SchemaVersion":2,"ArtifactName":"."}`))
+	require.NoError(t, err)
+	assert.Zero(t, s.Targets, "락파일이 없으면 Results 가 없다")
+}
+
 func TestParseTrivyReport_RejectsGarbage(t *testing.T) {
 	_, err := ParseTrivyReport([]byte("not json"))
 	assert.Error(t, err)

@@ -48,6 +48,10 @@ type PipelineHandler struct {
 	stepTracker    *kube.StepTracker
 	pool           *pgxpool.Pool
 
+	// dependencyScans · secretScans 는 의존성 스캔 · 시크릿 탐지 결과 조회용이다. nil 이면 조회가 503 이다.
+	dependencyScans port.DependencyScanResultRepository
+	secretScans     port.SecretScanResultRepository
+
 	// syncRuns 는 CI 서버의 빌드 이력을 배포 기록으로 들인다. 선택적으로
 	// 배선되며, 없으면 GitOps 경로의 실행 통계가 비어 있는 채로 남는다.
 	syncRuns *usecase.SyncPipelineRuns
@@ -120,6 +124,18 @@ func (h *PipelineHandler) WithSASTResults(repo port.SASTResultRepository) *Pipel
 	return h
 }
 
+// WithDependencyScans 는 의존성 스캔(SCA) 결과 조회를 배선한다(Security Dashboard 설계 §8 G1).
+func (h *PipelineHandler) WithDependencyScans(repo port.DependencyScanResultRepository) *PipelineHandler {
+	h.dependencyScans = repo
+	return h
+}
+
+// WithSecretScans 는 시크릿 탐지 결과 조회를 배선한다(Security Dashboard 설계 §8 G2).
+func (h *PipelineHandler) WithSecretScans(repo port.SecretScanResultRepository) *PipelineHandler {
+	h.secretScans = repo
+	return h
+}
+
 func (h *PipelineHandler) WithRunSync(uc *usecase.SyncPipelineRuns) *PipelineHandler {
 	h.syncRuns = uc
 	return h
@@ -171,6 +187,8 @@ func (h *PipelineHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/pipelines/:id/image-scans", h.ListImageScans)
 	g.GET("/pipelines/:id/image-scans/:scanId/vulnerabilities", h.ListScanVulnerabilities)
 	g.GET("/pipelines/:id/sast-results", h.ListSASTResults)
+	g.GET("/pipelines/:id/dependency-scans", h.ListDependencyScans)
+	g.GET("/pipelines/:id/secret-scans", h.ListSecretScans)
 	g.GET("/deployments", h.ListDeployments)
 	g.GET("/deployments/:id", h.GetDeployment)
 	g.GET("/app-templates", h.ListAppTemplates)
@@ -1355,7 +1373,7 @@ func (h *PipelineHandler) ListScanVulnerabilities(c echo.Context) error {
 	}
 	filter := shareddomain.NewVulnerabilityFilter(c.QueryParam("severity"), c.QueryParam("class"),
 		c.QueryParam("fixable"), c.QueryParam("q"), c.QueryParam("limit"), c.QueryParam("offset"))
-	page, err := h.scanVulns.Execute(c.Request().Context(), c.Param("id"), c.Param("scanId"), filter)
+	page, err := h.scanVulns.ExecuteInOrg(c.Request().Context(), h.scanReaderOrgID(c), c.Param("id"), c.Param("scanId"), filter)
 	switch {
 	case errors.Is(err, usecase.ErrScanPipelineNotFound):
 		return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
@@ -1374,15 +1392,12 @@ func (h *PipelineHandler) ListImageScans(c echo.Context) error {
 		return errorResponse(c, http.StatusServiceUnavailable, "IMAGE_SCANS_NOT_CONFIGURED",
 			"image scan result store is not configured")
 	}
-	id := strings.TrimSpace(c.Param("id"))
-	if id == "" {
-		return errorResponse(c, http.StatusBadRequest, "PIPELINE_ID_REQUIRED", "pipeline id is required")
-	}
-	if _, err := h.pipelineRepo.GetByID(c.Request().Context(), id); err != nil {
-		return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
+	pipeline, done, err := h.pipelineForScanRead(c)
+	if done {
+		return err
 	}
 
-	results, err := h.imageScans.ListByPipelineID(c.Request().Context(), id)
+	results, err := h.imageScans.ListByPipelineID(c.Request().Context(), pipeline.ID)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "IMAGE_SCANS_LIST_FAILED", err.Error())
 	}
@@ -1403,17 +1418,116 @@ func (h *PipelineHandler) ListSASTResults(c echo.Context) error {
 		return errorResponse(c, http.StatusServiceUnavailable, "SAST_RESULTS_NOT_CONFIGURED",
 			"sast result store is not configured")
 	}
-	id := strings.TrimSpace(c.Param("id"))
-	if id == "" {
-		return errorResponse(c, http.StatusBadRequest, "PIPELINE_ID_REQUIRED", "pipeline id is required")
-	}
-	if _, err := h.pipelineRepo.GetByID(c.Request().Context(), id); err != nil {
-		return errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", err.Error())
+	pipeline, done, err := h.pipelineForScanRead(c)
+	if done {
+		return err
 	}
 
-	results, err := h.sastResults.ListByPipelineID(c.Request().Context(), id)
+	results, err := h.sastResults.ListByPipelineID(c.Request().Context(), pipeline.ID)
 	if err != nil {
 		return errorResponse(c, http.StatusInternalServerError, "SAST_RESULTS_LIST_FAILED", err.Error())
 	}
 	return c.JSON(http.StatusOK, map[string]any{"items": results, "total": len(results)})
+}
+
+// dependencyScanView 는 의존성 스캔 결과 응답이다. DB 가 낡았는지는 이미지 스캔처럼 서버가 판정해 내려준다.
+type dependencyScanView struct {
+	*domain.DependencyScanResult
+	DBStale bool `json:"db_stale"`
+}
+
+// ListDependencyScans handles GET /pipelines/:id/dependency-scans.
+//
+// 실행 기록 동기화가 남긴 의존성 스캔(SCA) 결과다. 건수 · 검사 대상 수는 모르면 빠진다 — 0 으로 채우지 않는다.
+func (h *PipelineHandler) ListDependencyScans(c echo.Context) error {
+	if h.dependencyScans == nil {
+		// 빈 목록을 돌려주지 않는다 — "스캔한 적 없음" 으로 읽힌다.
+		return errorResponse(c, http.StatusServiceUnavailable, "DEPENDENCY_SCANS_NOT_CONFIGURED",
+			"dependency scan result store is not configured")
+	}
+	pipeline, done, err := h.pipelineForScanRead(c)
+	if done {
+		return err
+	}
+
+	results, err := h.dependencyScans.ListByPipelineID(c.Request().Context(), pipeline.ID)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, "DEPENDENCY_SCANS_LIST_FAILED", err.Error())
+	}
+	now := time.Now()
+	items := make([]dependencyScanView, 0, len(results))
+	for _, r := range results {
+		items = append(items, dependencyScanView{DependencyScanResult: r, DBStale: domain.IsDBStale(r.DBUpdatedAt, now)})
+	}
+	return c.JSON(http.StatusOK, map[string]any{"items": items, "total": len(items)})
+}
+
+// ListSecretScans handles GET /pipelines/:id/secret-scans.
+//
+// 실행 기록 동기화가 남긴 시크릿 탐지 결과다. 비밀값은 저장하지 않으므로 응답에도 없다 — 탐지 위치뿐이다.
+func (h *PipelineHandler) ListSecretScans(c echo.Context) error {
+	if h.secretScans == nil {
+		return errorResponse(c, http.StatusServiceUnavailable, "SECRET_SCANS_NOT_CONFIGURED",
+			"secret scan result store is not configured")
+	}
+	pipeline, done, err := h.pipelineForScanRead(c)
+	if done {
+		return err
+	}
+
+	results, err := h.secretScans.ListByPipelineID(c.Request().Context(), pipeline.ID)
+	if err != nil {
+		return errorResponse(c, http.StatusInternalServerError, "SECRET_SCANS_LIST_FAILED", err.Error())
+	}
+	for _, r := range results {
+		// 화면은 rules · findings 를 늘 배열로 받는다. null 이면 "모름" 과 "없음" 을 다시 가려야 한다.
+		if r.Rules == nil {
+			r.Rules = []domain.SecretRuleCount{}
+		}
+		if r.Findings == nil {
+			r.Findings = []domain.SecretFinding{}
+		}
+	}
+	return c.JSON(http.StatusOK, map[string]any{"items": results, "total": len(results)})
+}
+
+// pipelineForScanRead 는 스캔 결과를 읽을 파이프라인이다. done 이 참이면 응답을 이미 썼다.
+//
+// 다른 조직의 파이프라인은 없는 것과 같게 404 로 답한다(Security Dashboard 설계 §8 G4) — 보안 대시보드가
+// 링크하는 단건 조회가 다른 조직의 스캔 결과로 가는 길이 되면 안 되고, 있다는 사실도 알리지 않는다.
+func (h *PipelineHandler) pipelineForScanRead(c echo.Context) (pipeline *domain.Pipeline, done bool, err error) {
+	id := strings.TrimSpace(c.Param("id"))
+	if id == "" {
+		return nil, true, errorResponse(c, http.StatusBadRequest, "PIPELINE_ID_REQUIRED", "pipeline id is required")
+	}
+	pipeline, getErr := h.pipelineRepo.GetByID(c.Request().Context(), id)
+	if getErr != nil {
+		return nil, true, errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", getErr.Error())
+	}
+	if pipeline == nil {
+		return nil, true, errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", "pipeline not found")
+	}
+	if orgID := h.scanReaderOrgID(c); orgID != "" && pipeline.OrgID != orgID {
+		return nil, true, errorResponse(c, http.StatusNotFound, "PIPELINE_NOT_FOUND", "pipeline not found")
+	}
+	return pipeline, false, nil
+}
+
+// scanReaderOrgID 는 스캔 결과를 읽는 사람의 조직이다.
+//
+// 로그인한 사용자(principal)의 조직이 먼저다 — 인증을 거치는 모드에서는 늘 있다. 없으면(인증을 끈 개발
+// 모드) 다른 cicd 조회처럼 X-Org-ID 를 DB 에서 확인해 쓰고, 그것도 없으면 빈 값이다 — 신원이 없어
+// 비교할 조직이 없다.
+func (h *PipelineHandler) scanReaderOrgID(c echo.Context) string {
+	if orgID := strings.TrimSpace(middleware.OrgIDFromEchoContext(c)); orgID != "" {
+		return orgID
+	}
+	header := strings.TrimSpace(c.Request().Header.Get("X-Org-ID"))
+	if header == "" {
+		return ""
+	}
+	if h.pool == nil {
+		return header
+	}
+	return h.validatedOrgID(c.Request().Context(), header)
 }

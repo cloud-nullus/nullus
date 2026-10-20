@@ -36,6 +36,10 @@ type SyncPipelineRuns struct {
 	policies port.ScanPolicyRepository
 	// sastResults 는 분석 단계의 결과를 남긴다. nil 이면 남기지 않는다.
 	sastResults port.SASTResultRepository
+	// dependencyScans · secretScans 는 의존성 스캔 · 시크릿 탐지 단계의 결과를 남긴다(Security Dashboard
+	// 설계 §8 G1 · G2). nil 이면 남기지 않는다.
+	dependencyScans port.DependencyScanResultRepository
+	secretScans     port.SecretScanResultRepository
 }
 
 const (
@@ -125,6 +129,8 @@ func (uc *SyncPipelineRuns) Execute(ctx context.Context, input SyncPipelineRunsI
 
 	uc.recordImageScans(ctx, input, pipelineID, builds)
 	uc.recordSASTResults(ctx, input, pipelineID, builds)
+	uc.recordDependencyScans(ctx, input, pipelineID, builds)
+	uc.recordSecretScans(ctx, input, pipelineID, builds)
 	return synced, nil
 }
 
@@ -534,6 +540,8 @@ func (uc *SyncPipelineRuns) syncWithBundle(ctx context.Context, pipeline *domain
 	sync := NewSyncPipelineRuns(reader, uc.deployments).
 		WithImageScans(uc.imageScans).
 		WithSASTResults(uc.sastResults).
+		WithDependencyScans(uc.dependencyScans).
+		WithSecretScans(uc.secretScans).
 		WithArtifacts(artifacts)
 	return sync.Execute(ctx, SyncPipelineRunsInput{
 		PipelineID: pipeline.ID,

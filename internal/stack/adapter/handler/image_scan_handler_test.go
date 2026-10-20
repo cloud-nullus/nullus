@@ -22,10 +22,22 @@ type fakeImageScanReporter struct {
 	report  *domain.StackImageScanReport
 	err     error
 	vulnErr error
+	// orgID 는 스택의 조직이다. 비면 기본 조직이다 — 인증을 끈 요청의 조직과 같다.
+	orgID string
 }
 
 func (f fakeImageScanReporter) Report(context.Context, string) (*domain.StackImageScanReport, error) {
 	return f.report, f.err
+}
+
+func (f fakeImageScanReporter) StackOrgID(context.Context, string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	if f.orgID == "" {
+		return shareddomain.DefaultOrgID(), nil
+	}
+	return f.orgID, nil
 }
 
 func (f fakeImageScanReporter) Vulnerabilities(_ context.Context, _ string, digest string, filter shareddomain.VulnerabilityFilter) (*shareddomain.VulnerabilityPage, error) {
@@ -173,4 +185,63 @@ func TestImageScanHandler_MarksAirgap(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, code)
 	assert.Equal(t, true, body["airgap"])
+}
+
+// 다른 조직의 스택 보고서 · 취약점 목록은 없는 것과 같게 404 다(Security Dashboard 설계 §8 G4).
+// 조직은 로그인한 사용자(principal)가 먼저다 — 헤더로 다른 조직을 흉내 낼 수 없다.
+func TestImageScanHandler_OtherOrgStackIsNotFound(t *testing.T) {
+	report := domain.BuildImageScanReport("stk_1", "", nil)
+	reporter := fakeImageScanReporter{report: &report, orgID: "org-a"}
+	paths := []string{
+		"/api/v1/stacks/stk_1/image-scans",
+		"/api/v1/stacks/stk_1/image-scans/vulnerabilities?digest=sha256:p",
+	}
+	serve := func(principalOrg, headerOrg, path string) (int, string) {
+		e := echo.New()
+		g := e.Group("/api/v1/stacks", func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error {
+				if principalOrg != "" {
+					c.Set("current_user", &struct{ OrgID string }{OrgID: principalOrg})
+				}
+				return next(c)
+			}
+		})
+		NewImageScanHandler(reporter).RegisterRoutes(g)
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		if headerOrg != "" {
+			req.Header.Set("X-Org-ID", headerOrg)
+		}
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec.Code, rec.Body.String()
+	}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			code, body := serve("org-b", "", path)
+			assert.Equal(t, http.StatusNotFound, code, body)
+			assert.Contains(t, body, "STACK_NOT_FOUND")
+			assert.NotContains(t, body, "org-a", "다른 조직의 것이 있다는 사실도 알리지 않는다")
+
+			code, _ = serve("org-b", "org-a", path)
+			assert.Equal(t, http.StatusNotFound, code, "principal 이 헤더보다 먼저다")
+
+			code, body = serve("org-a", "", path)
+			assert.Equal(t, http.StatusOK, code, body)
+
+			// 인증을 끈 개발 모드는 스택 목록과 같은 규칙(X-Org-ID, 없으면 기본 조직)을 따른다.
+			code, _ = serve("", "org-a", path)
+			assert.Equal(t, http.StatusOK, code)
+			code, _ = serve("", "", path)
+			assert.Equal(t, http.StatusNotFound, code)
+		})
+	}
+}
+
+// 스택이 없으면 404, 조회가 실패하면 500 이다 — 조직 확인이 그 구분을 지우지 않는다.
+func TestImageScanHandler_StackLookupErrors(t *testing.T) {
+	code, _ := getImageScans(t, fakeImageScanReporter{err: errors.New("stack stk_1 not found")}, time.Now())
+	assert.Equal(t, http.StatusNotFound, code)
+	code, _ = getImageScans(t, fakeImageScanReporter{err: errors.New("db down")}, time.Now())
+	assert.Equal(t, http.StatusInternalServerError, code)
 }

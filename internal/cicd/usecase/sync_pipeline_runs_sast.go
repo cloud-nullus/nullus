@@ -17,10 +17,15 @@ func (uc *SyncPipelineRuns) WithSASTResults(repo port.SASTResultRepository) *Syn
 
 // recordSASTResults 는 분석 단계가 남긴 리포트로 Quality Gate 판정·조건·지표를 남긴다.
 //
-// 리포트를 읽은 실행만 남긴다. 이미지 스캔과 달리 단계 결과만으로 판정하지 않는다 — 단계에는
+// 판정은 리포트로 한다. 이미지 스캔과 달리 단계 결과만으로 판정하지 않는다 — 단계에는
 // 정책(경고·장애 허용)이 섞여 있어, 리포트 없이는 "게이트에 걸렸다" 와 "분석을 못 했다" 를
-// 가를 수 없다. 리포트를 남기기 전에 만든 파이프라인도 그래서 기록이 없다. 단계 상태는
-// 실행 기록에 따로 있다.
+// 가를 수 없다.
+//
+// 리포트가 확실히 없을 때는 단계 결과로 둘을 가른다(Security Dashboard 설계 §8 G3).
+//   - 성공: 남기지 않는다. 리포트를 남기기 전에 만든 파이프라인일 수 있다 — 통과로 적으면 분석했다는
+//     근거 없이 초록이 되고, error 로 적으면 멀쩡한 옛 파이프라인이 모두 "판정 불가" 가 된다.
+//   - 실패: error(판정 불가)로 남긴다. 남기지 않으면 분석기가 죽은 것이 대시보드에서 "기록 없음" 으로
+//     가려진다. 차단으로 적지 않는다 — 분석기 장애가 "보안 문제로 막힌 배포" 로 보이면 안 된다.
 //
 // 기록 실패로 실행 기록 동기화를 실패시키지 않는다.
 func (uc *SyncPipelineRuns) recordSASTResults(
@@ -66,6 +71,9 @@ func (uc *SyncPipelineRuns) recordSASTResults(
 				continue
 			}
 			if !found {
+				if st.Status == port.CIStageFailed {
+					uc.recordSASTWithoutReport(ctx, pipelineID, deploymentID, id, analyzedAt)
+				}
 				continue
 			}
 			report, err := domain.ParseSASTReport(raw)
@@ -97,6 +105,22 @@ func (uc *SyncPipelineRuns) recordSASTResults(
 					"pipeline_id", pipelineID, "deployment_id", deploymentID, "error", err)
 			}
 		}
+	}
+}
+
+// recordSASTWithoutReport 는 실패한 분석 단계가 리포트를 남기지 않은 실행을 판정 불가로 남긴다(G3).
+// 지표는 모른다 — 0 으로 채우면 "문제 0건" 으로 읽힌다.
+func (uc *SyncPipelineRuns) recordSASTWithoutReport(ctx context.Context, pipelineID, deploymentID, id string, analyzedAt time.Time) {
+	result := &domain.SASTResult{
+		ID:           id,
+		PipelineID:   pipelineID,
+		DeploymentID: deploymentID,
+		GateResult:   domain.GateResultError,
+		AnalyzedAt:   analyzedAt,
+	}
+	if err := uc.sastResults.Upsert(ctx, result); err != nil {
+		slog.Warn("SAST 결과 기록 실패",
+			"pipeline_id", pipelineID, "deployment_id", deploymentID, "error", err)
 	}
 }
 

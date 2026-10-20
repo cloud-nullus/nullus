@@ -119,3 +119,22 @@ func TestScanVulnerabilities_NotFound(t *testing.T) {
 	_, err = uc.Execute(context.Background(), "pip_1", "scan_other", shareddomain.VulnerabilityFilter{})
 	assert.ErrorIs(t, err, ErrImageScanNotFound)
 }
+
+// 다른 조직의 파이프라인 스캔은 없는 것과 같게 답한다(Security Dashboard 설계 §8 G4). 대시보드가 링크하는
+// 단건 조회가 다른 조직의 결과로 가는 길이 되면 안 된다.
+func TestScanVulnerabilities_ExecuteInOrg_OtherOrgIsNotFound(t *testing.T) {
+	scans := newMemScanResults()
+	require.NoError(t, scans.Upsert(context.Background(), &domain.ImageScanResult{
+		ID: "scan_1", PipelineID: "pip_1", GateResult: domain.GateResultWarn, ScannedAt: time.Now(),
+	}))
+	uc := NewScanVulnerabilities(stubPipelineLookup{pipelines: map[string]*domain.Pipeline{
+		"pip_1": {ID: "pip_1", Name: "app", StackID: "stk_1", OrgID: "org-a"},
+	}}, scans, nil)
+
+	_, err := uc.ExecuteInOrg(context.Background(), "org-b", "pip_1", "scan_1", shareddomain.VulnerabilityFilter{})
+	assert.ErrorIs(t, err, ErrScanPipelineNotFound)
+
+	page, err := uc.ExecuteInOrg(context.Background(), "org-a", "pip_1", "scan_1", shareddomain.VulnerabilityFilter{})
+	require.NoError(t, err, "같은 조직이면 그대로 답한다")
+	assert.Equal(t, shareddomain.VulnerabilityReasonReportMissing, page.Reason)
+}
