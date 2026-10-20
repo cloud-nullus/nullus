@@ -50,7 +50,7 @@ needed, it tells you where on screen to make it.
 - Before sending, it masks `Bearer` tokens · JWTs · GitLab tokens (`glpat-`) · AWS access keys · private key
   blocks · values such as `password=` inside strings
 - Conversations are not stored on the server. The screen keeps the conversation and sends all of it with each
-  question, so a reload clears it
+  question, so closing and reopening the panel keeps it, and a reload clears it
 
 ## Turning it on
 
@@ -63,11 +63,13 @@ needed, it tells you where on screen to make it.
 ## Limitations
 
 - A conversation holds up to 20 turns, each up to 4,000 characters. One question can use up to 6 rounds of
-  tool calls
-- A tool result longer than 12,000 characters is cut, and only the beginning goes to the model
+  tool calls · 8 calls per round · 20 calls in all
+- One question gets up to 55 seconds. Past that, the panel asks you to try a narrower question
+- A tool result longer than 12,000 characters is cut, and only its beginning and end go to the model (an
+  install log has the failure at the end)
 - The answer appears all at once when it is ready (no streaming)
 - Tool calls go to the API itself over loopback (127.0.0.1), so every user's tool calls share one IP ceiling
-  (600 per minute by default)
+  (600 per minute by default), and they also count against the requester's own user rate limit
 
 ## APIs it calls
 

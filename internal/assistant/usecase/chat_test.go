@@ -3,8 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -167,6 +169,64 @@ func TestChat_TruncatesLongToolOutput(t *testing.T) {
 	require.NoError(t, err)
 	msgs := llm.requests[1].Messages
 	assert.Contains(t, msgs[len(msgs)-1].Content, "500자 생략")
+}
+
+// 모델이 한 라운드에 도구를 잔뜩 부르면 상한까지만 실행한다. 나머지에도 답(tool 메시지)은 준다 — 호출 ID 마다
+// 결과가 있어야 다음 요청이 받아들여진다.
+func TestChat_CapsToolCallsPerRound(t *testing.T) {
+	calls := make([]domain.ToolCall, 0, domain.MaxToolCallsPerRound+3)
+	for i := 0; i < domain.MaxToolCallsPerRound+3; i++ {
+		calls = append(calls, domain.ToolCall{ID: fmt.Sprintf("c%d", i), Name: "stack_status", Arguments: `{}`})
+	}
+	uc, llm, opener := newFixture(
+		domain.Message{Role: domain.RoleAssistant, ToolCalls: calls},
+		domain.Message{Role: domain.RoleAssistant, Content: "ok"},
+	)
+	opener.session.results["stack_status"] = toolResult{out: "{}"}
+
+	out, err := uc.Execute(context.Background(), ChatInput{Turns: ask("?")})
+	require.NoError(t, err)
+	assert.Len(t, opener.session.calls, domain.MaxToolCallsPerRound)
+	toolMsgs := 0
+	for _, m := range llm.requests[1].Messages {
+		if m.Role == domain.RoleTool {
+			toolMsgs++
+		}
+	}
+	assert.Equal(t, len(calls), toolMsgs)
+	assert.Len(t, out.Tools, domain.MaxToolCallsPerRound, "실행하지 않은 것은 사용한 도구에 넣지 않는다")
+}
+
+// 질문 하나의 전체 도구 호출에도 상한이 있다 — 넘으면 도구 없이 마무리한다.
+func TestChat_CapsTotalToolCalls(t *testing.T) {
+	calls := make([]domain.ToolCall, 0, domain.MaxToolCallsPerRound)
+	for i := 0; i < domain.MaxToolCallsPerRound; i++ {
+		calls = append(calls, domain.ToolCall{ID: fmt.Sprintf("c%d", i), Name: "stack_status", Arguments: `{}`})
+	}
+	uc, llm, opener := newFixture(domain.Message{Role: domain.RoleAssistant, ToolCalls: calls})
+	opener.session.results["stack_status"] = toolResult{out: "{}"}
+
+	_, err := uc.Execute(context.Background(), ChatInput{Turns: ask("?")})
+	require.NoError(t, err)
+	assert.LessOrEqual(t, len(opener.session.calls), domain.MaxToolCallsTotal)
+	assert.Empty(t, llm.requests[len(llm.requests)-1].Tools, "상한에 닿으면 도구 없이 묻는다")
+}
+
+// 웹 앞단 프록시(60초)보다 먼저 끝낸다 — 넘으면 시간 초과로 알린다.
+func TestChat_TimesOutAsAWhole(t *testing.T) {
+	uc, _, _ := newFixture()
+	uc.deadline = 10 * time.Millisecond
+	uc.llm = slowLLM{}
+
+	_, err := uc.Execute(context.Background(), ChatInput{Turns: ask("?")})
+	assert.ErrorIs(t, err, domain.ErrTimeout)
+}
+
+type slowLLM struct{}
+
+func (slowLLM) Complete(ctx context.Context, _ port.CompletionRequest) (domain.Message, error) {
+	<-ctx.Done()
+	return domain.Message{}, ctx.Err()
 }
 
 // 자르는 경계에 토큰이 걸려도 조각이 새지 않는다 — 가린 뒤 자른다.

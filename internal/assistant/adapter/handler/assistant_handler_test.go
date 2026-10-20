@@ -60,7 +60,7 @@ func TestChat_AnswersWithToolsAndForwardsCredentials(t *testing.T) {
 		Tools: []domain.ToolTrace{{Name: "stack_list", OK: true}}}}
 	rec := serve(t, chat, http.MethodPost, "/api/v1/assistant/chat",
 		`{"messages":[{"role":"user","content":"실패한 스택 있어?"}],"context":{"path":"/stack/list"}}`,
-		map[string]string{"Authorization": "Bearer t", "X-User-Role": "devops", "X-User-OrgID": "org-1", "Cookie": "a=b"})
+		map[string]string{"Authorization": "Bearer t", "X-User-Role": "devops", "X-User-OrgID": "org-1", "X-Org-ID": "org-1", "Cookie": "a=b"})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.JSONEq(t, `{"reply":"실패한 스택은 없습니다.","tools":[{"name":"stack_list","ok":true}]}`, rec.Body.String())
 
@@ -69,6 +69,8 @@ func TestChat_AnswersWithToolsAndForwardsCredentials(t *testing.T) {
 	assert.Equal(t, "Bearer t", chat.got.Credentials["Authorization"])
 	assert.Equal(t, "devops", chat.got.Credentials["X-User-Role"])
 	assert.Equal(t, "org-1", chat.got.Credentials["X-User-OrgID"])
+	// 조직 주장이 없는 토큰 · 개발 모드에서 API 는 X-Org-ID 로 조직을 고른다 — 빠지면 화면과 다른 조직을 본다.
+	assert.Equal(t, "org-1", chat.got.Credentials["X-Org-ID"])
 	assert.NotContains(t, chat.got.Credentials, "Cookie", "인증 헤더만 넘긴다")
 }
 
@@ -86,6 +88,8 @@ func TestChat_Errors(t *testing.T) {
 			`{"messages":[{"role":"assistant","content":"a"}]}`, http.StatusBadRequest, "ASSISTANT_INVALID"},
 		{"모델 실패", &stubChat{enabled: true, err: fmt.Errorf("%w: 401", domain.ErrUpstream)},
 			`{"messages":[{"role":"user","content":"a"}]}`, http.StatusBadGateway, "ASSISTANT_UPSTREAM"},
+		{"시간 초과", &stubChat{enabled: true, err: domain.ErrTimeout},
+			`{"messages":[{"role":"user","content":"a"}]}`, http.StatusGatewayTimeout, "ASSISTANT_TIMEOUT"},
 		{"그 밖", &stubChat{enabled: true, err: errors.New("도구 세션을 열지 못했습니다")},
 			`{"messages":[{"role":"user","content":"a"}]}`, http.StatusInternalServerError, "ASSISTANT_FAILED"},
 	}

@@ -16,7 +16,8 @@ import (
 
 // credentialHeaders 는 도구가 API 를 부를 때 그대로 실을 요청자의 인증 헤더다 — OIDC · 로컬 토큰과 세션
 // 모드의 X-User-*(internal/auth/adapter/middleware). 그 밖의 헤더(쿠키 등)는 넘기지 않는다.
-var credentialHeaders = []string{"Authorization", "X-User-ID", "X-User-Email", "X-User-Name", "X-User-Role", "X-User-OrgID"}
+// X-Org-ID 는 조직 주장이 없는 토큰 · 개발 모드에서 API 가 조직을 고르는 헤더다 — 빠지면 화면과 다른 조직을 본다.
+var credentialHeaders = []string{"Authorization", "X-User-ID", "X-User-Email", "X-User-Name", "X-User-Role", "X-User-OrgID", "X-Org-ID"}
 
 type chatter interface {
 	Enabled() bool
@@ -82,7 +83,7 @@ func (h *AssistantHandler) Chat(c echo.Context) error {
 	}
 
 	out, err := h.chat.Execute(c.Request().Context(), usecase.ChatInput{
-		Turns: turns, Page: domain.PageContext{Path: req.Context.Path}, Credentials: creds,
+		Turns: turns, Page: domain.NewPageContext(req.Context.Path), Credentials: creds,
 	})
 	switch {
 	case err == nil:
@@ -91,6 +92,9 @@ func (h *AssistantHandler) Chat(c echo.Context) error {
 		return errorResponse(c, http.StatusBadRequest, "ASSISTANT_INVALID", err.Error())
 	case errors.Is(err, domain.ErrNotConfigured):
 		return errorResponse(c, http.StatusServiceUnavailable, "ASSISTANT_NOT_CONFIGURED", err.Error())
+	case errors.Is(err, domain.ErrTimeout):
+		slog.Warn("assistant: 시간 초과", "error", err)
+		return errorResponse(c, http.StatusGatewayTimeout, "ASSISTANT_TIMEOUT", "답을 만드는 데 너무 오래 걸렸습니다. 질문을 좁혀 다시 물어보세요")
 	case errors.Is(err, domain.ErrUpstream):
 		slog.Warn("assistant: 모델 호출 실패", "error", err)
 		return errorResponse(c, http.StatusBadGateway, "ASSISTANT_UPSTREAM", "AI 모델 호출에 실패했습니다. 잠시 뒤 다시 시도하세요")

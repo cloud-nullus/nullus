@@ -4,6 +4,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -29,14 +30,19 @@ type ChatOutput struct {
 	Tools []domain.ToolTrace
 }
 
+// DefaultDeadline 은 질문 하나에 쓰는 시간이다. 웹 앞단 프록시(nginx 기본 60초)보다 먼저 끝내야 화면이
+// 504 대신 시간 초과 안내를 받는다.
+const DefaultDeadline = 55 * time.Second
+
 // Chat 은 에이전트 루프다. llm 이 없으면 꺼져 있다.
 type Chat struct {
-	llm   port.LLM
-	tools port.ToolSessionOpener
+	llm      port.LLM
+	tools    port.ToolSessionOpener
+	deadline time.Duration
 }
 
 func NewChat(llm port.LLM, tools port.ToolSessionOpener) *Chat {
-	return &Chat{llm: llm, tools: tools}
+	return &Chat{llm: llm, tools: tools, deadline: DefaultDeadline}
 }
 
 // Enabled 는 모델이 설정됐는지다.
@@ -51,6 +57,16 @@ func (uc *Chat) Execute(ctx context.Context, in ChatInput) (*ChatOutput, error) 
 	if err := domain.ValidateTurns(in.Turns); err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithTimeout(ctx, uc.deadline)
+	defer cancel()
+	out, err := uc.run(ctx, in)
+	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return nil, fmt.Errorf("%w: %v", domain.ErrTimeout, err)
+	}
+	return out, err
+}
+
+func (uc *Chat) run(ctx context.Context, in ChatInput) (*ChatOutput, error) {
 	session, err := uc.tools.Open(ctx, in.Credentials)
 	if err != nil {
 		return nil, fmt.Errorf("도구 세션을 열지 못했습니다: %w", err)
@@ -70,9 +86,10 @@ func (uc *Chat) Execute(ctx context.Context, in ChatInput) (*ChatOutput, error) 
 
 	started := time.Now()
 	out := &ChatOutput{Tools: []domain.ToolTrace{}}
+	executed := 0
 	for round := 0; ; round++ {
 		tools := specs
-		if round >= domain.MaxToolRounds {
+		if round >= domain.MaxToolRounds || executed >= domain.MaxToolCallsTotal {
 			tools = nil
 		}
 		resp, err := uc.llm.Complete(ctx, port.CompletionRequest{Messages: messages, Tools: tools})
@@ -84,13 +101,23 @@ func (uc *Chat) Execute(ctx context.Context, in ChatInput) (*ChatOutput, error) 
 			if out.Reply == "" {
 				out.Reply = fallbackReply
 			}
-			slog.Info("assistant answered", "rounds", round+1, "tools", len(out.Tools), "elapsed", time.Since(started).Round(time.Millisecond))
+			slog.Info("assistant answered", "rounds", round+1, "tools", toolNames(out.Tools), "elapsed", time.Since(started).Round(time.Millisecond))
 			return out, nil
 		}
 		messages = append(messages, domain.Message{Role: domain.RoleAssistant, Content: resp.Content, ToolCalls: resp.ToolCalls})
-		for _, call := range resp.ToolCalls {
+		for i, call := range resp.ToolCalls {
+			// 상한을 넘긴 호출에도 결과 메시지는 준다 — 호출 ID 마다 결과가 있어야 다음 요청이 받아들여진다.
+			if i >= domain.MaxToolCallsPerRound || executed >= domain.MaxToolCallsTotal {
+				messages = append(messages, domain.Message{Role: domain.RoleTool, ToolCallID: call.ID,
+					Content: "실행하지 않음: 도구 호출 상한을 넘었습니다. 지금까지의 결과로 답하세요."})
+				continue
+			}
+			executed++
 			result, isError, err := session.CallTool(ctx, call.Name, call.Arguments)
 			if err != nil {
+				if ctx.Err() != nil {
+					return nil, err
+				}
 				result, isError = "도구 실행 실패: "+err.Error(), true
 			}
 			out.Tools = append(out.Tools, domain.ToolTrace{Name: call.Name, OK: !isError})
@@ -102,4 +129,13 @@ func (uc *Chat) Execute(ctx context.Context, in ChatInput) (*ChatOutput, error) 
 			})
 		}
 	}
+}
+
+// toolNames 는 로그에 남길 도구 이름이다 — 인자 · 결과는 남기지 않는다.
+func toolNames(traces []domain.ToolTrace) []string {
+	names := make([]string, 0, len(traces))
+	for _, t := range traces {
+		names = append(names, t.Name)
+	}
+	return names
 }

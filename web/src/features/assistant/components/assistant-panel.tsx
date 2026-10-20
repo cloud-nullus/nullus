@@ -26,52 +26,32 @@ export function AssistantPanel() {
   return <AssistantLauncher provider={status.data.provider ?? ''} model={status.data.model ?? ''} />
 }
 
+// AssistantLauncher 가 대화를 들고 있다 — 패널을 닫았다 열어도 이어지고, 새로 고치면 사라진다.
 function AssistantLauncher({ provider, model }: { provider: string; model: string }) {
-  const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-label={t('assistant.open')}
-        aria-expanded={open}
-        className="fixed bottom-14 right-4 z-40 flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--color-primary),var(--color-accent-alt))] text-white shadow-lg hover:opacity-90"
-      >
-        <Sparkles {...iconProps('sm')} />
-      </button>
-      {open && <AssistantDialog provider={provider} model={model} onClose={() => setOpen(false)} />}
-    </>
-  )
-}
-
-function AssistantDialog({ provider, model, onClose }: { provider: string; model: string; onClose: () => void }) {
   const { t } = useTranslation()
   const location = useLocation()
   const chat = useAssistantChat()
+  const [open, setOpen] = useState(false)
   const [entries, setEntries] = useState<ChatEntry[]>([])
-  const [input, setInput] = useState('')
   const [error, setError] = useState('')
-  // 새 대화를 시작하면 이전 대화의 늦은 답을 버린다.
+  // 새 대화를 시작하면 이전 대화의 늦은 답을 버리고 요청을 끊는다.
   const conversation = useRef(0)
-  const listRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const el = listRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [entries, chat.isPending, error])
+  const inflight = useRef<AbortController | null>(null)
 
   const send = (text: string) => {
     const content = text.trim()
     if (!content || chat.isPending) return
     const history: ChatEntry[] = [...entries, { role: 'user', content }]
     const id = conversation.current
+    const controller = new AbortController()
+    inflight.current = controller
     setEntries(history)
-    setInput('')
     setError('')
     chat.mutate(
-      { messages: history.map(({ role, content: c }) => ({ role, content: c })), context: { path: location.pathname } },
+      {
+        input: { messages: history.map(({ role, content: c }) => ({ role, content: c })), context: { path: location.pathname } },
+        signal: controller.signal,
+      },
       {
         onSuccess: (r) => {
           if (conversation.current !== id) return
@@ -87,20 +67,72 @@ function AssistantDialog({ provider, model, onClose }: { provider: string; model
 
   const reset = () => {
     conversation.current += 1
+    inflight.current?.abort()
+    inflight.current = null
+    chat.reset()
     setEntries([])
     setError('')
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={t('assistant.open')}
+        aria-expanded={open}
+        className="fixed bottom-14 right-4 z-40 flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--color-primary),var(--color-accent-alt))] text-white shadow-lg hover:opacity-90"
+      >
+        <Sparkles {...iconProps('sm')} />
+      </button>
+      {open && (
+        <AssistantDialog
+          provider={provider}
+          model={model}
+          entries={entries}
+          error={error}
+          pending={chat.isPending}
+          onSend={send}
+          onReset={reset}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+interface AssistantDialogProps {
+  provider: string
+  model: string
+  entries: ChatEntry[]
+  error: string
+  pending: boolean
+  onSend: (text: string) => void
+  onReset: () => void
+  onClose: () => void
+}
+
+function AssistantDialog({ provider, model, entries, error, pending, onSend, onReset, onClose }: AssistantDialogProps) {
+  const { t } = useTranslation()
+  const [input, setInput] = useState('')
+  const listRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = listRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [entries, pending, error])
+
+  const submit = (text: string) => {
+    if (!text.trim() || pending) return
+    onSend(text)
     setInput('')
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Escape') {
-      onClose()
-      return
-    }
     // Enter 로 보내고 Shift+Enter 로 줄을 바꾼다. 한글 조합 중의 Enter 는 조합을 끝내는 것이다.
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault()
-      send(input)
+      submit(input)
     }
   }
 
@@ -108,6 +140,9 @@ function AssistantDialog({ provider, model, onClose }: { provider: string; model
     <section
       role="dialog"
       aria-label={t('assistant.title')}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose()
+      }}
       className="fixed bottom-28 right-4 z-50 flex h-[min(600px,calc(100vh-9rem))] w-[min(420px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-[var(--color-border-default)] bg-[var(--color-surface-card)] shadow-xl"
     >
       <header className="flex items-center gap-2 border-b border-[var(--color-border-default)] px-4 py-3">
@@ -120,7 +155,10 @@ function AssistantDialog({ provider, model, onClose }: { provider: string; model
         </div>
         <button
           type="button"
-          onClick={reset}
+          onClick={() => {
+            onReset()
+            setInput('')
+          }}
           aria-label={t('assistant.newChat')}
           title={t('assistant.newChat')}
           className="rounded p-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
@@ -137,7 +175,8 @@ function AssistantDialog({ provider, model, onClose }: { provider: string; model
         </button>
       </header>
 
-      <div ref={listRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 text-[13px]">
+      {/* 답이 오면 스크린 리더가 읽는다. */}
+      <div ref={listRef} aria-live="polite" className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 text-[13px]">
         {entries.length === 0 && (
           <div className="flex flex-col gap-2">
             <p className="m-0 text-[var(--color-text-secondary)]">{t('assistant.empty')}</p>
@@ -145,7 +184,7 @@ function AssistantDialog({ provider, model, onClose }: { provider: string; model
               <button
                 key={key}
                 type="button"
-                onClick={() => send(t(key))}
+                onClick={() => submit(t(key))}
                 className="rounded-lg border border-[var(--color-border-default)] px-3 py-2 text-left text-[var(--color-text-primary)] hover:border-[var(--color-primary)]"
               >
                 {t(key)}
@@ -156,7 +195,7 @@ function AssistantDialog({ provider, model, onClose }: { provider: string; model
         {entries.map((entry, i) => (
           <ChatBubble key={i} entry={entry} />
         ))}
-        {chat.isPending && <div className="text-[var(--color-text-secondary)]">{t('assistant.thinking')}</div>}
+        {pending && <div className="text-[var(--color-text-secondary)]">{t('assistant.thinking')}</div>}
         {error && (
           <div role="alert" className="text-[var(--color-error)]">
             {error}
@@ -168,6 +207,7 @@ function AssistantDialog({ provider, model, onClose }: { provider: string; model
         <div className="flex items-end gap-2">
           <textarea
             rows={2}
+            autoFocus
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={onKeyDown}
@@ -177,8 +217,8 @@ function AssistantDialog({ provider, model, onClose }: { provider: string; model
           />
           <button
             type="button"
-            onClick={() => send(input)}
-            disabled={chat.isPending || input.trim() === ''}
+            onClick={() => submit(input)}
+            disabled={pending || input.trim() === ''}
             aria-label={t('assistant.send')}
             className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--color-primary)] text-white disabled:opacity-40"
           >
@@ -229,6 +269,7 @@ function providerLabelKey(provider: string): string {
 function errorText(error: unknown, t: (key: string) => string): string {
   const status = typeof error === 'object' && error !== null && 'status' in error ? Number(error.status) : 0
   if (status === 502) return t('assistant.errors.upstream')
+  if (status === 504) return t('assistant.errors.timeout')
   if (status === 503) return t('assistant.errors.notConfigured')
   return t('assistant.errors.generic')
 }

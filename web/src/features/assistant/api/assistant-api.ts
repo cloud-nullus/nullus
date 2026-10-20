@@ -40,9 +40,10 @@ export function useAssistantStatus() {
   })
 }
 
+// signal 로 진행 중인 질문을 끊는다 — 새 대화를 시작하면 이전 답을 기다리지 않는다.
 export function useAssistantChat() {
   return useMutation({
-    mutationFn: (input: AssistantChatInput) =>
-      api.post<AssistantReply>('/assistant/chat', input).then((r) => r.data),
+    mutationFn: ({ input, signal }: { input: AssistantChatInput; signal: AbortSignal }) =>
+      api.post<AssistantReply>('/assistant/chat', input, { signal }).then((r) => r.data),
   })
 }

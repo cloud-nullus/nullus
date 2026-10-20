@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -27,6 +28,12 @@ const (
 	MaxToolRounds = 6
 	// MaxToolOutputChars 는 도구 결과 하나를 모델에 넘기는 길이 상한이다(GitLab 설치 로그는 수만 자다).
 	MaxToolOutputChars = 12000
+	// MaxToolCallsPerRound · MaxToolCallsTotal 은 한 라운드 · 한 질문에서 실행하는 도구 호출 수다. 도구는 API 를
+	// 루프백으로 부르므로 IP 상한(127.0.0.1 하나)과 질문한 사용자의 레이트리밋을 함께 쓴다.
+	MaxToolCallsPerRound = 8
+	MaxToolCallsTotal    = 20
+	// MaxPathChars 는 시스템 프롬프트에 넣는 화면 경로의 길이 상한이다.
+	MaxPathChars = 200
 )
 
 var (
@@ -34,8 +41,10 @@ var (
 	ErrInvalidConversation = errors.New("assistant: invalid conversation")
 	// ErrNotConfigured 는 LLM API 키가 없어 어시스턴트가 꺼져 있다는 뜻이다.
 	ErrNotConfigured = errors.New("assistant: not configured")
-	// ErrUpstream 은 LLM 호출이 실패했다는 뜻이다(키 · 크레딧 · 타임아웃).
+	// ErrUpstream 은 LLM 호출이 실패했다는 뜻이다(키 · 크레딧 · 응답 오류).
 	ErrUpstream = errors.New("assistant: llm request failed")
+	// ErrTimeout 은 질문 하나에 쓸 시간을 넘겼다는 뜻이다.
+	ErrTimeout = errors.New("assistant: timed out")
 )
 
 // Turn 은 화면이 보낸 대화 한 줄이다. 화면은 user · assistant 만 보낼 수 있다.
@@ -72,9 +81,24 @@ type ToolTrace struct {
 	OK   bool   `json:"ok"`
 }
 
-// PageContext 는 사용자가 보고 있는 화면이다.
+// PageContext 는 사용자가 보고 있는 화면이다. NewPageContext 로 만든다.
 type PageContext struct {
 	Path string
+}
+
+// NewPageContext 는 화면 경로를 시스템 프롬프트에 넣을 수 있게 다듬는다 — 줄바꿈 · 제어 문자를 지우고
+// 길이를 묶어, 경로에 지시문을 끼워 넣거나 비용 상한을 우회하지 못하게 한다.
+func NewPageContext(path string) PageContext {
+	cleaned := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(path))
+	if r := []rune(cleaned); len(r) > MaxPathChars {
+		cleaned = string(r[:MaxPathChars])
+	}
+	return PageContext{Path: cleaned}
 }
 
 // ValidateTurns 는 화면이 보낸 대화를 검증한다. system · tool 역할을 꾸며 넣어 지시를 바꾸지 못하게 한다.
@@ -102,12 +126,15 @@ func ValidateTurns(turns []Turn) error {
 	return nil
 }
 
-// TruncateToolOutput 은 도구 결과를 max 자로 자르고 생략한 길이를 적는다.
+// TruncateToolOutput 은 도구 결과를 max 자 안팎으로 줄인다. 앞 1/3 과 뒤 2/3 를 남기고 가운데를 생략한다 —
+// 설치 로그는 오래된 줄부터 와서 실패 원인이 끝에 있다.
 func TruncateToolOutput(s string, max int) string {
 	n := utf8.RuneCountInString(s)
 	if n <= max {
 		return s
 	}
 	r := []rune(s)
-	return fmt.Sprintf("%s\n…(%d자 생략)", string(r[:max]), n-max)
+	head := max / 3
+	tail := max - head
+	return fmt.Sprintf("%s\n…(%d자 생략)…\n%s", string(r[:head]), n-max, string(r[n-tail:]))
 }

@@ -61,10 +61,11 @@ describe('AssistantPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Are any stacks failing?' }))
 
     expect(await screen.findByText('devsecops failed at the harbor step.')).toBeInTheDocument()
-    expect(api.post).toHaveBeenCalledWith('/assistant/chat', {
-      messages: [{ role: 'user', content: 'Are any stacks failing?' }],
-      context: { path: '/stack/list' },
-    })
+    expect(api.post).toHaveBeenCalledWith(
+      '/assistant/chat',
+      { messages: [{ role: 'user', content: 'Are any stacks failing?' }], context: { path: '/stack/list' } },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
     expect(screen.getByText('Tools used: stack_list · stack_status (failed)')).toBeInTheDocument()
   })
 
@@ -132,5 +133,54 @@ describe('AssistantPanel', () => {
 
     expect(screen.queryByText('Nothing failed.')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Are any stacks failing?' })).toBeInTheDocument()
+  })
+
+  // 패널을 닫았다 열어도 대화는 이어진다 — 새로 고치기 전까지는 화면에 남는다.
+  it('keeps the conversation when the panel is closed and reopened', async () => {
+    vi.mocked(api.get).mockResolvedValue(enabled as never)
+    vi.mocked(api.post).mockResolvedValue({ data: { reply: 'Nothing failed.', tools: [] } } as never)
+    renderPanel()
+    await openPanel()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Are any stacks failing?' }))
+    await screen.findByText('Nothing failed.')
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await openPanel()
+    expect(screen.getByText('Nothing failed.')).toBeInTheDocument()
+  })
+
+  // 답을 기다리는 중에 새 대화를 시작하면 이전 요청을 끊고 바로 새로 물을 수 있다.
+  it('aborts a pending answer when a new conversation starts', async () => {
+    vi.mocked(api.get).mockResolvedValue(enabled as never)
+    let firstSignal: AbortSignal | undefined
+    vi.mocked(api.post)
+      .mockImplementationOnce((_url, _body, config) => {
+        firstSignal = (config as { signal: AbortSignal }).signal
+        return new Promise(() => {}) as never
+      })
+      .mockResolvedValueOnce({ data: { reply: 'Fresh answer.', tools: [] } } as never)
+    renderPanel()
+    await openPanel()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Are any stacks failing?' }))
+    expect(await screen.findByText('Thinking…')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'New conversation' }))
+
+    expect(firstSignal?.aborted).toBe(true)
+    expect(screen.queryByText('Thinking…')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Which stack templates are available?' }))
+    expect(await screen.findByText('Fresh answer.')).toBeInTheDocument()
+  })
+
+  it('explains a timeout', async () => {
+    vi.mocked(api.get).mockResolvedValue(enabled as never)
+    vi.mocked(api.post).mockRejectedValue({ status: 504, message: 'timeout' })
+    renderPanel()
+    await openPanel()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Are any stacks failing?' }))
+    expect(await screen.findByText('The answer took too long. Try a narrower question.')).toBeInTheDocument()
   })
 })
