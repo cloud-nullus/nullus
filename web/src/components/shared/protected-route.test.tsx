@@ -11,8 +11,11 @@ const mockOidcConfig = {
 }
 
 vi.mock('react-router-dom', () => ({
-  Navigate: ({ to }: { to: string }) => <div data-testid="navigate" data-to={to} />,
+  Navigate: ({ to, state }: { to: string; state?: { from?: string } }) => (
+    <div data-testid="navigate" data-to={to} data-from={state?.from ?? ''} />
+  ),
   Outlet: () => <div data-testid="outlet">protected content</div>,
+  useLocation: () => ({ pathname: '/cicd/history', search: '?pipeline=p1', hash: '#run-2' }),
 }))
 
 vi.mock('react-oidc-context', () => ({
@@ -78,5 +81,22 @@ describe('ProtectedRoute', () => {
     render(<ProtectedRoute allowedRoles={['admin']} />)
 
     expect(screen.getByTestId('navigate').getAttribute('data-to')).toBe('/')
+  })
+
+  // 세션이 끝난 뒤 링크로 들어오면 로그인 뒤 그 화면으로 돌아가야 한다 — 예전에는 홈으로 떨어졌다.
+  it('carries the requested page to login when the OIDC session has ended', () => {
+    mockOidcConfig.isOidcMode = true
+    mockUseAuth.mockReturnValue({
+      isLoading: false,
+      activeNavigator: null,
+      isAuthenticated: false,
+      user: null,
+    })
+
+    render(<ProtectedRoute />)
+
+    const nav = screen.getByTestId('navigate')
+    expect(nav.getAttribute('data-to')).toBe('/login')
+    expect(nav.getAttribute('data-from')).toBe('/cicd/history?pipeline=p1#run-2')
   })
 })

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderWithProviders } from '../../../__tests__/test-utils'
 import { LoginPage } from './login-page'
 
@@ -123,5 +125,43 @@ describe('LoginPage — OIDC 모드의 이중 경로', () => {
 
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy())
     expect(mockSigninRedirect).not.toHaveBeenCalled()
+  })
+
+  // 세션이 끝난 뒤 링크로 들어온 사람은 IdP 를 다녀와서 그 화면으로 돌아가야 한다.
+  it('IdP 로 보낼 때 열려던 화면을 state 에 싣는다', async () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={[{ pathname: '/login', state: { from: '/cicd/list?tab=history' } }]}>
+          <LoginPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => expect(mockSigninRedirect).toHaveBeenCalledTimes(1))
+    expect(mockSigninRedirect).toHaveBeenCalledWith({ state: { returnTo: '/cicd/list?tab=history' } })
+
+    mockSigninRedirect.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: /Sign in with Keycloak/i }))
+    expect(mockSigninRedirect).toHaveBeenCalledWith({ state: { returnTo: '/cicd/list?tab=history' } })
+  })
+
+  it('열려던 화면이 없으면 state 없이 IdP 로 보낸다', async () => {
+    renderWithProviders(<LoginPage />, { route: '/login' })
+
+    await waitFor(() => expect(mockSigninRedirect).toHaveBeenCalledTimes(1))
+    expect(mockSigninRedirect.mock.calls[0][0]?.state).toBeUndefined()
+  })
+
+  it('앱 밖으로 나가는 경로는 싣지 않는다', async () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={[{ pathname: '/login', state: { from: '//evil.example/x' } }]}>
+          <LoginPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => expect(mockSigninRedirect).toHaveBeenCalledTimes(1))
+    expect(mockSigninRedirect.mock.calls[0][0]?.state).toBeUndefined()
   })
 })

@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from 'react-oidc-context'
 import { isOidcMode } from '../../lib/oidc-config'
 import { extractRoleFromOidc, getHomePathForRole, useAuthStore } from '../../stores/auth-store'
@@ -33,6 +33,7 @@ function MockProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
 
 function OidcProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
   const auth = useAuth()
+  const location = useLocation()
 
   if (auth.isLoading || auth.activeNavigator) {
     return (
@@ -43,7 +44,8 @@ function OidcProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
   }
 
   if (!auth.isAuthenticated) {
-    return <Navigate to="/login" replace />
+    // 로그인 뒤 이 화면으로 돌아오도록 열려던 경로를 넘긴다 — 로그인 화면이 IdP state 에 싣는다.
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }} />
   }
 
   const role = auth.user ? extractRoleFromOidc(auth.user) : 'developer' as Role
