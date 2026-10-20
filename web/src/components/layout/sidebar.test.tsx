@@ -135,3 +135,49 @@ describe('연결되지 않았던 화면의 메뉴 노출', () => {
     expect(screen.getByText('Golden Paths')).toBeInTheDocument()
   })
 })
+
+// 메뉴 3단(그룹 › 하위 그룹 › 항목). 보안은 관측성 아래 하위 그룹이고 첫 항목이 보안 대시보드다.
+describe('하위 그룹(3단 메뉴)', () => {
+  it.each(['admin', 'devops', 'developer'] as const)(
+    'should show the Security sub-group and its dashboard link to %s',
+    (role) => {
+      useAuthStore.setState({ role, user: null, isAuthenticated: true })
+      renderWithProviders(<Sidebar />)
+      const subGroup = screen.getByRole('button', { name: 'Security' })
+      expect(subGroup.getAttribute('aria-expanded')).toBe('true')
+      expect(screen.getByRole('link', { name: 'Security Dashboard' }).getAttribute('href')).toBe(
+        '/observability/security/dashboard',
+      )
+    },
+  )
+
+  it('should collapse and expand the sub-group without closing its group', () => {
+    renderWithProviders(<Sidebar />)
+    fireEvent.click(screen.getByRole('button', { name: 'Security' }))
+    expect(screen.queryByRole('link', { name: 'Security Dashboard' })).toBeNull()
+    // 그룹(관측성)의 다른 항목은 그대로다.
+    expect(screen.getByText('Alert History')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Security' }))
+    expect(screen.getByRole('link', { name: 'Security Dashboard' })).toBeInTheDocument()
+  })
+
+  it('should indent sub-group items one level deeper than group items', () => {
+    renderWithProviders(<Sidebar />)
+    expect(screen.getByRole('link', { name: 'Security Dashboard' }).className).toContain('pl-10')
+    expect(screen.getByText('Alert History').closest('a')?.className).toContain('pl-6')
+  })
+
+  it('should keep the sub-group open on its child route', () => {
+    renderWithProviders(<Sidebar />, { route: '/observability/security/dashboard' })
+    expect(screen.getByRole('button', { name: 'Security' }).getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('link', { name: 'Security Dashboard' })).toBeInTheDocument()
+  })
+
+  // 접힌 아이콘 레일에는 펼침 단추를 둘 자리가 없다 — 자식을 평평하게 늘어놓는다.
+  it('should flatten sub-group children in the collapsed icon rail', () => {
+    useSidebarStore.setState({ collapsed: true })
+    const { container } = renderWithProviders(<Sidebar />)
+    expect(screen.queryByRole('button', { name: 'Security' })).toBeNull()
+    expect(container.querySelector('a[href="/observability/security/dashboard"]')).not.toBeNull()
+  })
+})

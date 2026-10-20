@@ -29,7 +29,7 @@ outside their permissions would bounce them right away.
 
 | Wrapper | Allowed roles | Paths inside |
 |------|-----------|----------------|
-| `<ProtectedRoute />`<br>(no role restriction = login is enough) | admin · devops · developer | `/`<br>`/stack/templates`<br>`/stack/list`<br>`/stack/history/:stackId?`<br>`/stack/version`, `/stack/versions`<br>`/stack/logs/:deploymentId`<br>`/stack/deployments/:deploymentId/retry-history`<br>`/observability/monitoring`<br>`/observability/alert-history` |
+| `<ProtectedRoute />`<br>(no role restriction = login is enough) | admin · devops · developer | `/`<br>`/stack/templates`<br>`/stack/list`<br>`/stack/history/:stackId?`<br>`/stack/version`, `/stack/versions`<br>`/stack/logs/:deploymentId`<br>`/stack/deployments/:deploymentId/retry-history`<br>`/observability/monitoring`<br>`/observability/alert-history`<br>`/observability/security/dashboard` |
 | `allowedRoles={['admin','devops']}` | admin · devops | `/stack/install`<br>`/stack/:id/add-tools`<br>`/stack/deploy/:id`<br>`/stack/oss-resource-default` |
 | `allowedRoles={['admin','devops','developer']}` | admin · devops · developer | `/cicd/developer-deploy`<br>`/cicd/templates`<br>`/cicd/create`<br>`/cicd/golden-paths`<br>`/cicd/list`<br>`/cicd/history`<br>`/cicd/pipelines/:id/logs` |
 | `allowedRoles={['admin']}` | admin | `/admin/organization`, `/admin/organizations`<br>`/admin/users`<br>`/admin/clusters`<br>`/admin/known-issues`<br>`/admin/token-management`<br>`/admin/stack-versions`<br>`/admin/backup`<br>`/admin/notifications` |
@@ -62,18 +62,23 @@ The API checks roles per group. **This is the real boundary.**
 | CI/CD | `/api/v1/cicd/**` | admin · devops · developer |
 | Golden path writes | `POST`·`PUT`·`DELETE /api/v1/cicd/golden-paths` | admin · devops |
 | Observability | `/api/v1/observability/**` | **No role check** (authentication only) |
+| Security Dashboard installed OSS | `GET /api/v1/observability/security/stacks` | admin · devops |
 | Login | `POST /api/v1/auth/login` | Before authentication |
 
 Role checks are **an allowlist, not a hierarchy** — even admin passes only if it is on
 the list.
 
-Golden paths alone are narrower than their group. They are the install combinations
-the whole organization chooses from, so reads stay open as in the CI/CD group, while
-changes are narrowed to admin and devops.
+Golden paths and the Security Dashboard's installed OSS path are narrower than their
+group. Golden paths are the install combinations the whole organization chooses from,
+so reads stay open as in the CI/CD group, while changes are narrowed to admin and
+devops. The installed OSS path gathers the same data as the stack group (`/stacks/**`),
+so it accepts only the stack group's roles.
 
 !!! danger "The observability group does not check roles"
     **Every authenticated role** can call it, up to and including creating, editing,
     and deleting alert rules. The screen has been taken down, but the API is still open.
+    The one exception is the Security Dashboard's `/observability/security/stacks`,
+    which carries its own role check on the path.
 
 !!! danger "development mode turns off all checks"
     If `server.mode` is `development`, the auth middleware and role checks are not
@@ -108,9 +113,10 @@ install wizard**.
 |------|:-----:|:------:|:---------:|
 | DevSecOps Stack | 6 | 5 | — |
 | CI/CD | 4 | 4 | 2 |
-| Observability | 2 | 2 | 2 |
+| Observability | 3 | 3 | 3 |
 | Admin | 7 | — | — |
-| **Total** | **19** | **11** | **4** |
+| **Total** | **20** | **12** | **5** |
 
 - The one stack menu item devops does not see is **Stack Version Management** (`/admin/stack-versions`), which is admin-only.
-- The 4 items developer sees are **CI/CD List · CI/CD History · Monitoring Dashboard · Alert History**.
+- The 5 items developer sees are **CI/CD List · CI/CD History · Monitoring Dashboard · Alert History · Security Dashboard**.
+- **Security Dashboard** sits under the **Security** sub-group of Observability (Observability › Security › Security Dashboard). Sub-groups are not counted as menu items.

@@ -304,6 +304,49 @@ describe("StackListPage", () => {
     expect(screen.queryByText("Another Stack")).toBeNull();
   });
 
+  // 보안 대시보드의 설치 OSS 행이 그 스택의 "이미지 취약점" 탭으로 보낸다(설계 §8 G5).
+  describe("딥링크", () => {
+    const twoStacks = [
+      ...stackRows,
+      {
+        ...stackRows[0],
+        id: "stack-2",
+        name: "Another Stack",
+        templateName: "Jenkins + Flux",
+        clusterId: "cluster-2",
+        clusterName: "dev-cluster",
+      },
+    ];
+
+    beforeEach(() => {
+      mockUseStacks.mockReturnValue({ data: { items: twoStacks, total: 2 }, isLoading: false });
+    });
+
+    it("should open the linked stack on its image vulnerabilities tab", () => {
+      renderWithProviders(<StackListPage />, { route: "/stack/list?stack=stack-2&tab=image-scans" });
+
+      // 첫 스택이 아니라 링크가 가리킨 스택이 열린다.
+      expect(screen.getByRole("heading", { name: "Another Stack" })).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: /Image Vulnerabilities/ }).getAttribute("aria-pressed"),
+      ).toBe("true");
+      expect(screen.getByText("Installed image vulnerabilities")).toBeTruthy();
+    });
+
+    it("should ignore an unknown tab and open the info tab", () => {
+      renderWithProviders(<StackListPage />, { route: "/stack/list?stack=stack-2&tab=bogus" });
+
+      expect(screen.getByRole("heading", { name: "Another Stack" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /^Info$/ }).getAttribute("aria-pressed")).toBe("true");
+    });
+
+    it("should fall back to the first stack when the linked stack is unknown", () => {
+      renderWithProviders(<StackListPage />, { route: "/stack/list?stack=stack-gone&tab=image-scans" });
+
+      expect(screen.getByRole("heading", { name: "DevSecOps Core" })).toBeTruthy();
+    });
+  });
+
   // 데스크톱 폭에서는 ListDetailPanel 의 오른쪽 칸에 상세가 들어간다.
   // jsdom 기본 폭(1024)은 폴백 경로라 위 테스트들은 전부 그쪽만 밟는다.
   describe("데스크톱 폭(≥1280)의 좌우 분할", () => {

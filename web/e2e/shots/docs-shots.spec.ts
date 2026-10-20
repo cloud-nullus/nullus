@@ -81,6 +81,25 @@ const SCREENS: {
   },
   { name: 'monitoring', path: '/observability/monitoring' },
   { name: 'alert-history', path: '/observability/alert-history', wait: 'KubePodCrashLooping' },
+  {
+    // 보안 대시보드 — 앱 탭. 첫 행을 골라 오른쪽 패널(단계별 요약)까지 보이게 한다.
+    name: 'security-dashboard',
+    path: '/observability/security/dashboard',
+    prepare: async (page) => {
+      await page.getByRole('button', { name: 'order-api', exact: true }).click()
+      await page.getByTestId('security-app-detail').waitFor({ timeout: 10000 })
+    },
+    wait: 'payment-api',
+  },
+  {
+    // 보안 대시보드 — 설치 OSS 탭(admin · devops).
+    name: 'security-dashboard-oss',
+    path: '/observability/security/dashboard',
+    prepare: async (page) => {
+      await page.locator('button[data-tab="oss"]').click()
+    },
+    wait: 'gitlab-toolbox-ee:v17.7.0',
+  },
   { name: 'admin-organization', path: '/admin/organization' },
   { name: 'admin-users', path: '/admin/users', wait: 'devops@nullus.dev' },
   { name: 'admin-clusters', path: '/admin/clusters', wait: 'kind-nullus-platform' },
@@ -99,6 +118,10 @@ function fixtureFor(pathname: string): unknown | undefined {
   if (pathname.endsWith('/monitoring-summary')) return fx.CLUSTER_MONITORING
   if (pathname.includes('/history')) return list(fx.STACK_HISTORY)
   if (pathname.includes('/token-sources')) return list(fx.TOKEN_SOURCES)
+
+  // 보안 대시보드. `/stacks` 로 끝나는 설치 OSS 축이 아래 스택 목록에 잡히지 않게 먼저 본다.
+  if (pathname.endsWith('/observability/security/apps')) return fx.SECURITY_APPS
+  if (pathname.endsWith('/observability/security/stacks')) return fx.SECURITY_STACKS
 
   // 서버가 배열을 그대로 돌려주는 엔드포인트들. {items} 로 싸면 화면이 빈 목록으로 읽는다.
   if (pathname.endsWith('/stacks/templates')) return fx.STACK_TEMPLATES

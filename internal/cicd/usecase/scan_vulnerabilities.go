@@ -45,8 +45,22 @@ func (uc *ScanVulnerabilities) Execute(
 	pipelineID, scanID string,
 	filter shareddomain.VulnerabilityFilter,
 ) (*shareddomain.VulnerabilityPage, error) {
+	return uc.ExecuteInOrg(ctx, "", pipelineID, scanID, filter)
+}
+
+// ExecuteInOrg 는 Execute 와 같되, orgID 가 있으면 그 조직의 파이프라인만 본다(Security Dashboard 설계 §8 G4).
+// 다른 조직의 파이프라인은 없는 것과 같게 답한다 — 있다는 사실도 알리지 않는다. orgID 가 비면 확인하지
+// 않는다(신원이 없는 개발 모드).
+func (uc *ScanVulnerabilities) ExecuteInOrg(
+	ctx context.Context,
+	orgID, pipelineID, scanID string,
+	filter shareddomain.VulnerabilityFilter,
+) (*shareddomain.VulnerabilityPage, error) {
 	pipeline, err := uc.pipelines.GetByID(ctx, strings.TrimSpace(pipelineID))
 	if err != nil || pipeline == nil {
+		return nil, fmt.Errorf("%w: %s", ErrScanPipelineNotFound, pipelineID)
+	}
+	if orgID = strings.TrimSpace(orgID); orgID != "" && pipeline.OrgID != orgID {
 		return nil, fmt.Errorf("%w: %s", ErrScanPipelineNotFound, pipelineID)
 	}
 	scan, err := uc.scans.GetByID(ctx, strings.TrimSpace(scanID))

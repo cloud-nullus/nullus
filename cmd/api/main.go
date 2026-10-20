@@ -354,6 +354,10 @@ func main() {
 	// 이미지 스캔 게이트 판정. 대시보드(#65)가 cicd 의 공개 경로로 읽는다.
 	pgImageScanRepo := cicdrepo.NewPostgresImageScanResultRepository(pool)
 	pgSASTResultRepo := cicdrepo.NewPostgresSASTResultRepository(pool)
+	// 의존성 스캔(SCA) · 시크릿 탐지 결과(Security Dashboard 설계 §8 G1 · G2). 이 둘이 없으면 대시보드의
+	// 네 열 중 두 열이 비고, 시크릿 경고를 통과와 가르지 못한다.
+	pgDependencyScanRepo := cicdrepo.NewPostgresDependencyScanResultRepository(pool)
+	pgSecretScanRepo := cicdrepo.NewPostgresSecretScanResultRepository(pool)
 	pgGoldenPathRepo := cicdrepo.NewPostgresCICDGoldenPathRepository(pool)
 	manifestApplier := cicdkube.NewManifestApplier()
 
@@ -426,6 +430,9 @@ func main() {
 		WithImageScans(pgImageScanRepo).
 		// 분석 단계가 남긴 리포트로 Quality Gate 판정·지표를 남긴다.
 		WithSASTResults(pgSASTResultRepo).
+		// 의존성 스캔 · 시크릿 탐지 리포트로 판정 · 건수 · 탐지 위치를 남긴다(비밀값은 남기지 않는다).
+		WithDependencyScans(pgDependencyScanRepo).
+		WithSecretScans(pgSecretScanRepo).
 		// CI 는 스택 정책으로 막는다. 동기화도 같은 정책으로 읽어야 차단과 스캔 오류를 가른다.
 		WithScanPolicies(pgScanPolicyRepo).
 		// 주기 동기화가 돌 파이프라인 목록. 화면을 열 때만 들이면 아무도 보지 않는
@@ -506,7 +513,9 @@ func main() {
 		WithStackReader(cicdStackReader).
 		// 스캔 결과 조회. 빠지면 503 으로 알린다 — 빈 목록은 "스캔한 적 없음" 으로 읽힌다.
 		WithImageScans(pgImageScanRepo).
-		WithSASTResults(pgSASTResultRepo)
+		WithSASTResults(pgSASTResultRepo).
+		WithDependencyScans(pgDependencyScanRepo).
+		WithSecretScans(pgSecretScanRepo)
 
 	// Observability: Prometheus with in-memory fallback
 	var dashboardRepo obsport.DashboardRepository
@@ -539,6 +548,15 @@ func main() {
 	// 스택 심각 경보(nullus-plan#87) — 알림 이력 화면이 읽는다. 수집은 아래 스케줄러가 한다.
 	pgStackAlertRepo := obsrepo.NewPostgresStackAlertRepository(pool)
 	stackAlertHandler := obshandler.NewStackAlertHandler(obsuc.NewListStackAlerts(pgStackAlertRepo))
+	// 보안 대시보드(nullus-plan#65) — 관측 모듈의 읽기 모델이다. 결과 테이블은 cicd · stack 이 소유하고,
+	// 대시보드는 두 모듈의 공개 경로를 bridge 로 읽는다. 클러스터 이름은 admin 의 공개 저장소로 읽는다.
+	securityScope := obsbridge.NewSecurityScope(pgStackRepo, clusterRepo)
+	securityHandler := obshandler.NewSecurityHandler(
+		obsuc.NewGetAppSecurity(
+			obsbridge.NewAppSecuritySource(cicduc.NewListPipelineSecurity(cicdrepo.NewPostgresPipelineSecurityReader(pool))),
+			securityScope),
+		obsuc.NewGetStackSecurity(obsbridge.NewStackSecuritySource(stackImageScanUC), securityScope),
+	)
 
 	// Echo
 	e := echo.New()
@@ -594,6 +612,9 @@ func main() {
 	// 모드에서는 비어 있다 — 그 모드는 권한 검사를 전부 끄는 쪽이므로 여기만 켜 두면
 	// 다른 경로와 어긋난다.
 	var goldenPathWriteGuards []echo.MiddlewareFunc
+	// securityStackGuards 는 보안 대시보드의 설치 OSS 축에만 붙는다 — /stacks 와 같은 admin · devops.
+	// /observability 그룹에는 역할 검사가 없다. development 모드에서는 비어 있다(권한 검사를 전부 끈다).
+	var securityStackGuards []echo.MiddlewareFunc
 	if cfg.Server.Mode == "development" {
 		slog.Info("development mode: auth middleware disabled")
 		admin = v1.Group("/admin", userRateLimit)
@@ -619,6 +640,7 @@ func main() {
 		stacks = v1.Group("/stacks", authMW, userRateLimit, authmw.RequireRole("admin", "devops"))
 		cicd = v1.Group("/cicd", authMW, userRateLimit, authmw.RequireRole("admin", "devops", "developer"))
 		goldenPathWriteGuards = []echo.MiddlewareFunc{authmw.RequireRole("admin", "devops")}
+		securityStackGuards = []echo.MiddlewareFunc{authmw.RequireRole("admin", "devops")}
 		observability = v1.Group("/observability", authMW, userRateLimit)
 
 		// OIDC 모드에서만 WebSocket 을 보호한다. session 모드의 인증은 클라이언트가
@@ -682,6 +704,8 @@ func main() {
 	dashboardHandler.RegisterRoutes(observability)
 	alertHandler.RegisterRoutes(observability)
 	stackAlertHandler.RegisterRoutes(observability)
+	// 앱 축은 모든 역할, 설치 OSS 축은 admin · devops 만(설계 결정 11).
+	securityHandler.RegisterRoutes(observability, securityStackGuards...)
 
 	if cfg.Server.Mode == "development" {
 		e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))

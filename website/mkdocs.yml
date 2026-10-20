@@ -152,6 +152,7 @@ plugins:
             관측성: Observability
             모니터링 대시보드: Monitoring Dashboard
             알림 이력: Alert History
+            보안 대시보드: Security Dashboard
             관리: Admin
             조직: Organization
             사용자 관리: User Management
@@ -213,6 +214,7 @@ nav:
           - features/observability/index.md
           - 모니터링 대시보드: features/observability/monitoring.md
           - 알림 이력: features/observability/alert-history.md
+          - 보안 대시보드: features/observability/security-dashboard.md
       - 관리:
           - features/admin/index.md
           - 조직: features/admin/organization.md

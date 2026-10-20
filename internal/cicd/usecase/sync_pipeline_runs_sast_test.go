@@ -144,17 +144,45 @@ func TestSyncPipelineRuns_SASTGateFailureUnderWarnPolicyIsWarn(t *testing.T) {
 	assert.Equal(t, domain.GateResultWarn, got.GateResult)
 }
 
-// 리포트가 없으면 남기지 않는다 — 리포트를 남기기 전에 만든 파이프라인의 실패를 차단으로
-// 적으면 분석기 장애가 "보안 문제로 막힌 배포" 로 보인다. 단계 상태는 실행 기록에 따로 있다.
+// 성공했는데 리포트가 없으면 남기지 않는다 — 리포트를 남기기 전에 만든 파이프라인일 수 있다. 통과로 적으면
+// 분석했다는 근거 없이 초록이 되고, error 로 적으면 멀쩡한 옛 파이프라인이 모두 "판정 불가" 가 된다.
+// 형식이 깨진 리포트도 판정의 근거가 아니다.
 func TestSyncPipelineRuns_SkipsSASTWithoutReport(t *testing.T) {
 	results := newMemSASTResults()
-	syncSAST(t, []port.CIBuild{buildWithSASTStage(7, port.CIStageFailed)}, &pathArtifacts{files: map[string][]byte{}}, results)
+	syncSAST(t, []port.CIBuild{buildWithSASTStage(7, port.CIStageSuccess)}, &pathArtifacts{files: map[string][]byte{}}, results)
 	assert.Empty(t, results.rows)
 
-	// 형식이 깨진 리포트도 판정의 근거가 아니다.
 	syncSAST(t, []port.CIBuild{buildWithSASTStage(7, port.CIStageFailed)},
 		&pathArtifacts{files: map[string][]byte{port.SASTReportFile: []byte(`{"project_key":"app"}`)}}, results)
 	assert.Empty(t, results.rows)
+}
+
+// 단계가 실패했는데 리포트가 확실히 없으면 흔적을 남긴다(Security Dashboard 설계 §8 G3) — 남기지 않으면
+// 대시보드의 SAST 칸이 "기록 없음" 으로 남아 분석기가 죽은 것이 보이지 않는다. 차단이 아니라 판정 불가다 —
+// 분석기 장애를 "보안 문제로 막힌 배포" 로 세지 않는다. 지표는 모른다.
+func TestSyncPipelineRuns_SASTFailedWithoutReportIsError(t *testing.T) {
+	results := newMemSASTResults()
+	arts := &pathArtifacts{files: map[string][]byte{}}
+	builds := []port.CIBuild{buildWithSASTStage(7, port.CIStageFailed)}
+
+	syncSAST(t, builds, arts, results)
+
+	got := results.rows[domain.SASTResultID("dep_ci_pip_1_7")]
+	require.NotNil(t, got)
+	assert.Equal(t, domain.GateResultError, got.GateResult)
+	assert.Equal(t, "dep_ci_pip_1_7", got.DeploymentID)
+	assert.Nil(t, got.Metrics, "분석하지 못한 실행의 지표를 0 으로 채우지 않는다")
+	assert.Empty(t, got.DashboardURL)
+	assert.True(t, sastStarted().Equal(got.AnalyzedAt))
+
+	// 끝난 실행의 없는 리포트를 화면을 열 때마다 다시 찾지 않는다.
+	syncSAST(t, builds, arts, results)
+	assert.Equal(t, 1, arts.sastReads())
+
+	// 읽지 못한 것(CI 장애)은 없는 것과 다르다 — 남기지 않는다.
+	other := newMemSASTResults()
+	syncSAST(t, builds, &pathArtifacts{err: errors.New("gitlab 503")}, other)
+	assert.Empty(t, other.rows)
 }
 
 // 읽지 못한 것은 모르는 것이다. 다음 동기화 때 다시 읽는다.

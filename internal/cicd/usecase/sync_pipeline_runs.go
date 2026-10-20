@@ -36,6 +36,10 @@ type SyncPipelineRuns struct {
 	policies port.ScanPolicyRepository
 	// sastResults 는 분석 단계의 결과를 남긴다. nil 이면 남기지 않는다.
 	sastResults port.SASTResultRepository
+	// dependencyScans · secretScans 는 의존성 스캔 · 시크릿 탐지 단계의 결과를 남긴다(Security Dashboard
+	// 설계 §8 G1 · G2). nil 이면 남기지 않는다.
+	dependencyScans port.DependencyScanResultRepository
+	secretScans     port.SecretScanResultRepository
 }
 
 const (
@@ -61,6 +65,9 @@ type SyncPipelineRunsInput struct {
 	// Policy 는 판정에 쓸 스택 정책이다. nil 이면 기본 정책이다 — CI 는 푸시된 정책으로
 	// 막으므로, 동기화도 같은 정책으로 읽어야 차단과 스캔 오류를 바르게 가른다.
 	Policy *domain.ScanPolicy
+	// PolicyUnavailable 은 스택 정책을 읽지 못했다는 뜻이다(nil Policy 와 다르다 — 그것은 저장한 적 없음).
+	// 시크릿 탐지는 정책이 off 인지 모르면 기록하지 않는다. 다른 판정은 지금처럼 기본 정책으로 한다.
+	PolicyUnavailable bool
 }
 
 // runDeploymentID 는 빌드 하나에 대응하는 배포 기록 ID 다.
@@ -125,6 +132,8 @@ func (uc *SyncPipelineRuns) Execute(ctx context.Context, input SyncPipelineRunsI
 
 	uc.recordImageScans(ctx, input, pipelineID, builds)
 	uc.recordSASTResults(ctx, input, pipelineID, builds)
+	uc.recordDependencyScans(ctx, input, pipelineID, builds)
+	uc.recordSecretScans(ctx, input, pipelineID, builds)
 	return synced, nil
 }
 
@@ -534,32 +543,37 @@ func (uc *SyncPipelineRuns) syncWithBundle(ctx context.Context, pipeline *domain
 	sync := NewSyncPipelineRuns(reader, uc.deployments).
 		WithImageScans(uc.imageScans).
 		WithSASTResults(uc.sastResults).
+		WithDependencyScans(uc.dependencyScans).
+		WithSecretScans(uc.secretScans).
 		WithArtifacts(artifacts)
+	policy, policyRead := uc.stackPolicy(ctx, pipeline.StackID)
 	return sync.Execute(ctx, SyncPipelineRunsInput{
 		PipelineID: pipeline.ID,
 		JobName:    pipeline.Name,
 		// 스캐폴딩한 파이프라인은 기본 브랜치에서만 돈다
 		// (Jenkinsfile 의 when { branch 'main' }, 워크플로의 on.push.branches).
-		Branch:     defaultRunBranch,
-		Limit:      runSyncLimit,
-		SASTWebURL: bundle.SASTWebURL,
-		Policy:     uc.stackPolicy(ctx, pipeline.StackID),
+		Branch:            defaultRunBranch,
+		Limit:             runSyncLimit,
+		SASTWebURL:        bundle.SASTWebURL,
+		Policy:            policy,
+		PolicyUnavailable: !policyRead,
 	})
 }
 
-// stackPolicy 는 스택에 저장된 정책이다. 저장한 적 없거나 읽지 못하면 nil(기본 정책)이다.
-func (uc *SyncPipelineRuns) stackPolicy(ctx context.Context, stackID string) *domain.ScanPolicy {
+// stackPolicy 는 스택에 저장된 정책이다. 저장한 적 없으면 nil(기본 정책)이고 ok 다. 읽지 못하면 nil 이고
+// ok 가 거짓이다 — 시크릿 탐지는 정책이 off 인지 모르면 기록하지 않으므로 둘을 가른다.
+func (uc *SyncPipelineRuns) stackPolicy(ctx context.Context, stackID string) (*domain.ScanPolicy, bool) {
 	if uc.policies == nil {
-		return nil
+		return nil, true
 	}
 	policy, found, err := uc.policies.Get(ctx, stackID)
 	if err != nil {
-		slog.Warn("CI 실행 기록: 스택 스캔 정책을 읽지 못해 기본 정책으로 판정합니다",
+		slog.Warn("CI 실행 기록: 스택 스캔 정책을 읽지 못해 기본 정책으로 판정합니다(시크릿 탐지는 이번에 남기지 않습니다)",
 			"stack_id", stackID, "error", err)
-		return nil
+		return nil, false
 	}
 	if !found {
-		return nil
+		return nil, true
 	}
-	return &policy
+	return &policy, true
 }

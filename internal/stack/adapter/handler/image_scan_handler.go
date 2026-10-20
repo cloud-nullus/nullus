@@ -17,6 +17,8 @@ import (
 type stackImageScanReporter interface {
 	Report(ctx context.Context, stackID string) (*domain.StackImageScanReport, error)
 	Vulnerabilities(ctx context.Context, stackID, digest string, filter shareddomain.VulnerabilityFilter) (*shareddomain.VulnerabilityPage, error)
+	// StackOrgID 는 스택이 속한 조직이다. 다른 조직의 스택을 이 경로로 보이지 않는다(설계 §8 G4).
+	StackOrgID(ctx context.Context, stackID string) (string, error)
 }
 
 // ImageScanHandler 는 스택이 설치한 OSS 이미지의 취약점 보고서를 내보낸다.
@@ -48,6 +50,9 @@ func (h *ImageScanHandler) GetImageVulnerabilities(c echo.Context) error {
 	}
 	if digest == "" {
 		return errorResponse(c, http.StatusBadRequest, "IMAGE_DIGEST_REQUIRED", "digest query parameter is required")
+	}
+	if done, err := h.ensureStackInCallerOrg(c, stackID); done {
+		return err
 	}
 	filter := shareddomain.NewVulnerabilityFilter(c.QueryParam("severity"), c.QueryParam("class"),
 		c.QueryParam("fixable"), c.QueryParam("q"), c.QueryParam("limit"), c.QueryParam("offset"))
@@ -104,6 +109,9 @@ func (h *ImageScanHandler) GetImageScans(c echo.Context) error {
 	if stackID == "" {
 		return errorResponse(c, http.StatusBadRequest, "STACK_ID_REQUIRED", "stack id is required")
 	}
+	if done, err := h.ensureStackInCallerOrg(c, stackID); done {
+		return err
+	}
 	report, err := h.reporter.Report(c.Request().Context(), stackID)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "not found") {
@@ -152,4 +160,23 @@ func (h *ImageScanHandler) GetImageScans(c echo.Context) error {
 	}
 	resp.Total = len(resp.Items)
 	return c.JSON(http.StatusOK, resp)
+}
+
+// ensureStackInCallerOrg 는 스택이 조회하는 사람의 조직 것인지 본다. done 이 참이면 응답을 이미 썼다.
+//
+// 다른 조직의 스택은 없는 것과 같게 404 로 답한다(Security Dashboard 설계 §8 G4) — 보안 대시보드가
+// 링크하는 단건 조회가 다른 조직의 스캔 결과로 가는 길이 되면 안 되고, 있다는 사실도 알리지 않는다.
+// 조직은 스택 목록과 같은 규칙(resolveOrgID — principal 먼저)으로 정한다.
+func (h *ImageScanHandler) ensureStackInCallerOrg(c echo.Context, stackID string) (done bool, err error) {
+	orgID, lookupErr := h.reporter.StackOrgID(c.Request().Context(), stackID)
+	if lookupErr != nil {
+		if strings.Contains(strings.ToLower(lookupErr.Error()), "not found") {
+			return true, errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", lookupErr.Error())
+		}
+		return true, errorResponse(c, http.StatusInternalServerError, "STACK_IMAGE_SCANS_FAILED", lookupErr.Error())
+	}
+	if orgID != resolveOrgID(c) {
+		return true, errorResponse(c, http.StatusNotFound, "STACK_NOT_FOUND", "stack not found")
+	}
+	return false, nil
 }

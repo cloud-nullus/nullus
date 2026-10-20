@@ -18,7 +18,7 @@ import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Breadcrumb, type BreadcrumbItem } from '../shared/breadcrumb'
 import { SearchInput } from '../ui/search-input'
-import { resolveNavGroupLabel } from './nav-model'
+import { resolveNavTrail } from './nav-model'
 
 /** 아이콘 컨테이너 색. DESIGN.md §Shapes — 해당 기능 색의 15% 알파. */
 export type PageHeaderTone = 'primary' | 'info' | 'success' | 'warning' | 'error' | 'accent'
@@ -65,14 +65,15 @@ export function PageHeader({
   // 브레드크럼 맨 앞은 사이드바의 상위 메뉴다. 화면이 직접 적지 않는다 —
   // 개편 전에는 25화면이 각자 적어서 "Stack List" 처럼 상위가 통째로 빠지거나
   // ('데브섹옵스 스택 >' 이 없다) 'Admin' 만 영어로 남는 식으로 갈렸다.
-  const groupKey = resolveNavGroupLabel(pathname)
-  const groupLabel = groupKey ? t(groupKey) : null
+  // 3단 메뉴(그룹 › 하위 그룹 › 항목)면 하위 그룹도 붙는다 — 관측성 › 보안 › 보안 대시보드.
+  // 화면이 이미 적은 상위는 다시 붙이지 않는다.
   const pageTrail =
     breadcrumb && breadcrumb.length > 0 ? breadcrumb : [{ label: title }]
-  const trail =
-    groupLabel && pageTrail[0]?.label !== groupLabel
-      ? [{ label: groupLabel }, ...pageTrail]
-      : pageTrail
+  const pageLabels = new Set(pageTrail.map((item) => item.label))
+  const ancestors = resolveNavTrail(pathname)
+    .map((key) => ({ label: t(key) }))
+    .filter((item) => !pageLabels.has(item.label))
+  const trail = [...ancestors, ...pageTrail]
 
   const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextQuery = event.target.value

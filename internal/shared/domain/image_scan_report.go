@@ -77,6 +77,9 @@ type TrivyReportSummary struct {
 	// All 은 모든 취약점, Fixable 은 수정본이 있는 것만 센 값이다.
 	All     SeverityCounts
 	Fixable SeverityCounts
+	// Targets 는 리포트의 Results 수다 — 이미지면 OS · 언어 패키지 묶음, 저장소(trivy fs)면 검사한
+	// 락파일 수다. 의존성 스캔에서 0 이면 검사할 것이 없었다는 뜻이라 "취약점 0건" 과 다르다.
+	Targets int
 }
 
 type trivyReport struct {
@@ -124,6 +127,7 @@ func ParseTrivyReport(raw []byte) (*TrivyReportSummary, error) {
 		s.DBUpdatedAt = &updated
 	}
 
+	s.Targets = len(r.Results)
 	for _, res := range r.Results {
 		for _, v := range res.Vulnerabilities {
 			s.All.Add(v.Severity)

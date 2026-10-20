@@ -40,6 +40,7 @@ func TestPipelineHandler_ListImageScans(t *testing.T) {
 	h.RegisterRoutes(e.Group("/api/v1"))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/pipelines/pip-1/image-scans", nil)
+	req.Header.Set("X-Org-ID", "org-1")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -66,6 +67,7 @@ func TestPipelineHandler_ListImageScans_NotConfigured(t *testing.T) {
 	e := newPipelineEcho(t, pipelineRepo, newMockPipelineTemplateRepository(), &mockDeploymentRepository{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/pipelines/pip-1/image-scans", nil)
+	req.Header.Set("X-Org-ID", "org-1")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

@@ -77,6 +77,37 @@ type SASTResultRepository interface {
 	ListByPipelineID(ctx context.Context, pipelineID string) ([]*domain.SASTResult, error)
 }
 
+// DependencyScanResultRepository 는 의존성 취약점 스캔(SCA) 결과 요약을 보관한다(Security Dashboard 설계 §8 G1).
+//
+// cicd 모듈이 소유한다. 대시보드는 PipelineSecurityReader 로 읽는다.
+type DependencyScanResultRepository interface {
+	// Upsert 는 같은 ID 면 덮어쓴다. 같은 실행을 여러 번 동기화해도 기록이 늘지 않아야 한다.
+	Upsert(ctx context.Context, result *domain.DependencyScanResult) error
+	// ListByPipelineID 는 최신 결과부터 돌려준다.
+	ListByPipelineID(ctx context.Context, pipelineID string) ([]*domain.DependencyScanResult, error)
+	// Delete 는 기록을 지운다. 없으면 오류가 아니다 — 동기화가 취소된 실행마다 부른다.
+	Delete(ctx context.Context, id string) error
+}
+
+// SecretScanResultRepository 는 시크릿 탐지 결과 요약을 보관한다(Security Dashboard 설계 §8 G2).
+// 비밀값은 받지도 두지도 않는다 — 도메인 타입에 그 자리가 없다.
+type SecretScanResultRepository interface {
+	// Upsert 는 같은 ID 면 덮어쓴다.
+	Upsert(ctx context.Context, result *domain.SecretScanResult) error
+	// ListByPipelineID 는 최신 결과부터 돌려준다.
+	ListByPipelineID(ctx context.Context, pipelineID string) ([]*domain.SecretScanResult, error)
+	// Delete 는 기록을 지운다. 없으면 오류가 아니다.
+	Delete(ctx context.Context, id string) error
+}
+
+// PipelineSecurityReader 는 조직 파이프라인의 단계별 최신 보안 결과를 한 번에 읽는다(Security Dashboard
+// 설계 §5). 대시보드가 파이프라인마다 네 결과를 따로 묻지 않게 한다.
+type PipelineSecurityReader interface {
+	// ListPipelineSecurity 는 조직의 파이프라인을 최근 만든 것부터 최대 limit 개 돌려준다. 결과가 없는
+	// 칸은 nil 이다. RunVersions 는 채우지 않는다(실행 ID 규칙은 동기화 유스케이스가 안다).
+	ListPipelineSecurity(ctx context.Context, orgID string, limit int) ([]*domain.PipelineSecuritySnapshot, error)
+}
+
 // CICDGoldenPathRepository defines the interface for CI/CD Golden Path persistence.
 type CICDGoldenPathRepository interface {
 	GetByID(ctx context.Context, id string) (*domain.CICDGoldenPath, error)

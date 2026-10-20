@@ -103,6 +103,13 @@ type StackImageScanReport struct {
 	Items   []StackImageScan
 }
 
+// OrgStackImageScan 은 조직 스택 하나와 그 설치 이미지 스캔 보고서다. 보안 대시보드(#65)가 스택 모듈의
+// 공개 경로(usecase.ScanStackImages.ReportsForOrg)로 읽는다.
+type OrgStackImageScan struct {
+	Stack  *Stack
+	Report StackImageScanReport
+}
+
 // HasImageScanner 는 스택 안에 이미지 스캐너를 세우는 선택인지 본다.
 //
 // 이름을 보지 않는다 — 스캐너 슬롯의 선택지는 현재 Trivy 하나뿐이고, 고른 사실

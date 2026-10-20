@@ -51,6 +51,7 @@ func TestPipelineHandler_ListSASTResults(t *testing.T) {
 	e := newSASTEcho(t, results)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/pipelines/pip-1/sast-results", nil)
+	req.Header.Set("X-Org-ID", "org-1")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -102,6 +103,7 @@ func TestPipelineHandler_ListSASTResults_NotConfigured(t *testing.T) {
 	e := newSASTEcho(t, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/pipelines/pip-1/sast-results", nil)
+	req.Header.Set("X-Org-ID", "org-1")
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

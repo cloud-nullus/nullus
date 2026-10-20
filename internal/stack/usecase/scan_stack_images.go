@@ -75,7 +75,7 @@ func NewScanStackImages(
 // 스캔이 실패하면 이전 결과를 그대로 둔다 — 일시적인 장애로 보고서가 비면 알던
 // 취약점이 사라진 것처럼 보인다.
 func (uc *ScanStackImages) Execute(ctx context.Context, stackID string) (*domain.StackImageScanReport, error) {
-	stack, err := uc.stacks.GetByID(ctx, strings.TrimSpace(stackID))
+	stack, err := uc.stackByID(ctx, stackID)
 	if err != nil {
 		return nil, err
 	}
@@ -118,15 +118,68 @@ func (uc *ScanStackImages) Execute(ctx context.Context, stackID string) (*domain
 	return &report, nil
 }
 
-// Report 는 저장된 결과로 보고서를 만든다.
-func (uc *ScanStackImages) Report(ctx context.Context, stackID string) (*domain.StackImageScanReport, error) {
-	stack, err := uc.stacks.GetByID(ctx, strings.TrimSpace(stackID))
+// stackByID 는 스캔 대상 스택이다. Postgres 저장소는 없거나 지운 스택에 (nil, nil) 을 돌려주므로
+// 여기서 "not found" 오류로 바꾼다 — 그대로 두면 다음 줄의 역참조가 패닉이 되고, 핸들러가 404 대신 500 을 낸다.
+func (uc *ScanStackImages) stackByID(ctx context.Context, stackID string) (*domain.Stack, error) {
+	id := strings.TrimSpace(stackID)
+	stack, err := uc.stacks.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	if stack == nil {
+		return nil, fmt.Errorf("stack %s not found", id)
+	}
+	return stack, nil
+}
+
+// Report 는 저장된 결과로 보고서를 만든다.
+func (uc *ScanStackImages) Report(ctx context.Context, stackID string) (*domain.StackImageScanReport, error) {
+	stack, err := uc.stackByID(ctx, stackID)
+	if err != nil {
+		return nil, err
+	}
+	return uc.reportFor(ctx, stack)
+}
+
+// StackOrgID 는 스택이 속한 조직이다. 단건 스캔 조회가 다른 조직의 스택을 보이지 않게 쓴다
+// (Security Dashboard 설계 §8 G4).
+func (uc *ScanStackImages) StackOrgID(ctx context.Context, stackID string) (string, error) {
+	stack, err := uc.stackByID(ctx, stackID)
+	if err != nil {
+		return "", err
+	}
+	return stack.OrgID, nil
+}
+
+// ReportsForOrg 는 조직의 지우지 않은 스택마다 설치 이미지 스캔 보고서를 만든다. 보안 대시보드(#65)가
+// 스택 모듈의 공개 경로로 읽는다 — 결과 테이블(stack_image_scans)은 스택 모듈이 소유한다.
+//
+// 보고서는 단건 조회(Report)와 같은 조립이다. 두 곳이 따로 만들면 같은 스택이 화면마다 다른 숫자로 보인다.
+func (uc *ScanStackImages) ReportsForOrg(ctx context.Context, orgID string) ([]domain.OrgStackImageScan, error) {
+	stacks, err := uc.stacks.List(ctx, strings.TrimSpace(orgID), false)
+	if err != nil {
+		return nil, fmt.Errorf("조직 %s 의 스택 조회 실패: %w", orgID, err)
+	}
+	out := make([]domain.OrgStackImageScan, 0, len(stacks))
+	for _, stack := range stacks {
+		if stack == nil {
+			continue
+		}
+		report, err := uc.reportFor(ctx, stack)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, domain.OrgStackImageScan{Stack: stack, Report: *report})
+	}
+	return out, nil
+}
+
+// reportFor 는 스택 하나의 보고서를 저장된 결과로 만든다.
+func (uc *ScanStackImages) reportFor(ctx context.Context, stack *domain.Stack) (*domain.StackImageScanReport, error) {
 	reason := uc.skipReason(stack)
 	var scans []domain.StackImageScan
 	if reason == "" {
+		var err error
 		scans, err = uc.results.ListByStack(ctx, stack.ID)
 		if err != nil {
 			return nil, fmt.Errorf("스택 %s 설치 이미지 스캔 결과 조회 실패: %w", stack.ID, err)
@@ -146,7 +199,7 @@ func (uc *ScanStackImages) Vulnerabilities(
 	stackID, digest string,
 	filter shareddomain.VulnerabilityFilter,
 ) (*shareddomain.VulnerabilityPage, error) {
-	stack, err := uc.stacks.GetByID(ctx, strings.TrimSpace(stackID))
+	stack, err := uc.stackByID(ctx, stackID)
 	if err != nil {
 		return nil, err
 	}

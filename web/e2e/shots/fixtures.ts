@@ -587,3 +587,93 @@ export const TOKEN_SOURCES = [
   { id: 'ts_2', name: 'Harbor 로봇 계정', kind: 'harbor_robot', stack_id: 'stk_7a31c0', stack_name: 'nullus-gitlab-argocd-sonarqube', status: 'active', rotation_interval: '720h', expires_at: '2026-11-11T00:00:00Z', last_rotated_at: '2026-10-12T02:52:00Z' },
   { id: 'ts_3', name: 'Argo CD 저장소 자격증명', kind: 'argocd_repo_credential', stack_id: 'stk_7a31c0', stack_name: 'nullus-gitlab-argocd-sonarqube', status: 'rotation_due', rotation_interval: '720h', expires_at: '2026-10-14T00:00:00Z', last_rotated_at: '2026-09-14T02:52:00Z' },
 ]
+
+// 보안 대시보드(GET /observability/security/apps · /stacks). 설계 §5.2 의 모양 그대로다.
+// 화면의 셀 상태 여섯 가지와 "대상 없음" 이 한 화면에 다 보이도록 골랐다. 시각은 캡처 시계
+// (2026-10-12T09:30Z) 기준이다.
+const cleanCounts = { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 }
+
+export const SECURITY_APPS = {
+  generated_at: '2026-10-12T09:25:00Z',
+  truncated: false,
+  summary: { apps: 9, with_security_stage: 8, blocked: 2, secrets: 1, critical: 3, undetermined: 1 },
+  coverage: { secret_scan: 8, dependency_scan: 5, sast: 4, image_scan: 8 },
+  groups: [
+    { stack_id: 'stk_7a31c0', stack_name: 'nullus-gitlab-argocd-sonarqube', cluster_id: CLUSTER_PLATFORM, cluster_name: 'kind-nullus-platform', apps: 5, blocked: 2, secrets: 1, critical: 2, undetermined: 1, problems: 3 },
+    { stack_id: 'stk_41b9de', stack_name: 'nullus-lite', cluster_id: CLUSTER_DEVELOP, cluster_name: 'kind-nullus-develop', apps: 3, blocked: 0, secrets: 0, critical: 1, undetermined: 0, problems: 1 },
+    { stack_id: '', stack_name: '', cluster_id: '', cluster_name: '', apps: 1, blocked: 0, secrets: 0, critical: 0, undetermined: 0, problems: 0 },
+  ],
+  apps: [
+    {
+      pipeline_id: 'pl_8c2b74',
+      name: 'order-api',
+      stack_id: 'stk_7a31c0',
+      rank: 1,
+      latest_run: { deployment_id: 'dep_ci_pl_8c2b74_42', version: '#42', status: 'failed', started_at: '2026-10-12T07:30:00Z' },
+      cells: {
+        secret_scan: { state: 'block', deployment_id: 'dep_ci_pl_8c2b74_42', version: '#42', at: '2026-10-12T07:31:00Z', stale_run: false, findings: 2, rules: [{ rule_id: 'github-pat', count: 1 }, { rule_id: 'aws-access-key', count: 1 }], link: 'https://gitlab.nullus.local/apps/order-api/-/jobs/1042/artifacts/file/gitleaks-report.json' },
+        dependency_scan: { state: 'block', deployment_id: 'dep_ci_pl_8c2b74_42', version: '#42', at: '2026-10-12T07:33:00Z', stale_run: false, targets: 2, counts: { critical: 3, high: 5, medium: 12, low: 0, unknown: 0 }, db_stale: false, link: 'https://gitlab.nullus.local/apps/order-api/-/jobs/1043/artifacts/file/dependency-scan-report.json' },
+        sast: { state: 'warn', deployment_id: 'dep_ci_pl_8c2b74_41', version: '#41', at: '2026-10-11T22:10:00Z', stale_run: true, vulnerabilities: 4, security_hotspots: 2, failed_conditions: ['new_violations'], link: 'https://sonarqube.nullus.local/dashboard?id=order-api' },
+        image_scan: { state: 'block', deployment_id: 'dep_ci_pl_8c2b74_41', version: '#41', at: '2026-10-11T22:14:00Z', stale_run: true, image: 'harbor.nullus.local/apps/order-api@sha256:ab5f0c92d1e4a7b3c6d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0', counts: { critical: 2, high: 11, medium: 7, low: 3, unknown: 0 }, db_stale: false, link: 'https://gitlab.nullus.local/apps/order-api/-/jobs/1031/artifacts/file/trivy-report.json' },
+      },
+    },
+    {
+      pipeline_id: 'pl_5d1e08',
+      name: 'payment-api',
+      stack_id: 'stk_7a31c0',
+      rank: 2,
+      latest_run: { deployment_id: 'dep_ci_pl_5d1e08_17', version: '#17', status: 'failed', started_at: '2026-10-11T09:00:00Z' },
+      cells: {
+        secret_scan: { state: 'pass', deployment_id: 'dep_ci_pl_5d1e08_17', version: '#17', stale_run: false, findings: 0 },
+        dependency_scan: { state: 'pass', deployment_id: 'dep_ci_pl_5d1e08_17', version: '#17', stale_run: false, targets: 0, counts: cleanCounts, db_stale: false },
+        sast: { state: 'block', deployment_id: 'dep_ci_pl_5d1e08_17', version: '#17', stale_run: false, vulnerabilities: 7, security_hotspots: 1, failed_conditions: ['new_security_rating'], link: 'https://sonarqube.nullus.local/dashboard?id=payment-api' },
+        image_scan: { state: 'pass', deployment_id: 'dep_ci_pl_5d1e08_16', version: '#16', stale_run: true, counts: { critical: 0, high: 3, medium: 9, low: 4, unknown: 0 }, db_stale: false },
+      },
+    },
+    {
+      pipeline_id: 'pl_b07c3e',
+      name: 'billing-batch',
+      stack_id: 'stk_7a31c0',
+      rank: 3,
+      latest_run: { deployment_id: 'dep_ci_pl_b07c3e_9', version: '#9', status: 'success', started_at: '2026-10-09T03:00:00Z' },
+      cells: {
+        secret_scan: { state: 'pass', deployment_id: 'dep_ci_pl_b07c3e_9', version: '#9', stale_run: false, findings: 0 },
+        dependency_scan: { state: 'unrecorded' },
+        sast: { state: 'not_applied' },
+        image_scan: { state: 'error', deployment_id: 'dep_ci_pl_b07c3e_9', version: '#9', stale_run: false },
+      },
+    },
+    {
+      pipeline_id: 'pl_3f9a21',
+      name: 'web-frontend',
+      stack_id: 'stk_41b9de',
+      rank: 4,
+      latest_run: { deployment_id: 'dep_ci_pl_3f9a21_40', version: '#40', status: 'success', started_at: '2026-10-12T08:30:00Z' },
+      cells: {
+        secret_scan: { state: 'pass', deployment_id: 'dep_ci_pl_3f9a21_40', version: '#40', stale_run: false, findings: 0 },
+        dependency_scan: { state: 'warn', deployment_id: 'dep_ci_pl_3f9a21_40', version: '#40', stale_run: false, targets: 1, counts: { critical: 1, high: 2, medium: 0, low: 0, unknown: 0 }, db_stale: true, db_updated_at: '2026-09-08T00:00:00Z' },
+        sast: { state: 'not_applied' },
+        image_scan: { state: 'warn', deployment_id: 'dep_ci_pl_3f9a21_38', version: '#38', stale_run: true, counts: { critical: 0, high: 4, medium: 6, low: 2, unknown: 0 }, db_stale: false },
+      },
+    },
+  ],
+}
+
+export const SECURITY_STACKS = {
+  generated_at: '2026-10-12T09:25:00Z',
+  summary: { stacks: 2, scanned_stacks: 1, not_scanned_stacks: 1, action_images: 8, grade_a_images: 3, grade_b_images: 5 },
+  stacks: [
+    {
+      stack_id: 'stk_7a31c0', stack_name: 'nullus-gitlab-argocd-sonarqube', cluster_id: CLUSTER_PLATFORM, cluster_name: 'kind-nullus-platform',
+      state: 'scanned', reason: '', airgap: false, images: 36, failed_images: 1, shared_images: 5,
+      grade_a_images: 3, grade_b_images: 5, grade_c_images: 9,
+      fixable: { critical: 8, high: 120, medium: 0, low: 0, unknown: 0 },
+      worst_image: { image: 'registry.gitlab.com/gitlab-org/build/cng/gitlab-toolbox-ee:v17.7.0', critical: 61, high: 1569, exposed: false },
+      scanned_at: '2026-10-12T06:30:00Z', db_updated_at: '2026-10-10T06:00:00Z', db_stale: false,
+    },
+    {
+      stack_id: 'stk_41b9de', stack_name: 'nullus-lite', cluster_id: CLUSTER_DEVELOP, cluster_name: 'kind-nullus-develop',
+      state: 'not_scanned', reason: 'scanner_not_installed', airgap: false, worst_image: null, db_stale: false,
+    },
+  ],
+}

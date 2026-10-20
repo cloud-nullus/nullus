@@ -49,11 +49,17 @@ usage charts, a log panel, and a `Live Resources` list with a refresh button.
 ### History
 
 One row per deployment — status badge · version · image scan gate badge with
-severity counts · SAST gate badge · triggered by · duration · start time.
+severity counts · SAST gate badge · dependency scan gate badge with severity counts ·
+secret detection gate badge with the finding count · triggered by · duration · start time.
 
 Expanding a row shows the deployment ID, scan details (vulnerability list and
-filters), SAST failed conditions and metrics, the **Pipeline Stages** list, and
-the **Detailed Logs** terminal.
+filters), SAST failed conditions and metrics, dependency scan details, secret detection
+details (rule · file:line · commit · fingerprint — never the secret value), the
+**Pipeline Stages** list, and the **Detailed Logs** terminal. Runs with detected secrets
+show the revoke-and-rotate warning first.
+
+**Open run history** in the [Security Dashboard](../observability/security-dashboard.md)
+opens this tab and that run directly via `/cicd/list?pipeline=<ID>&tab=history&run=<deployment ID>`.
 
 !!! note "Some CIs do not report stage results"
     When there is no per-stage data, the list shows

@@ -66,7 +66,8 @@ test.describe("CI/CD UX 개선 검증", () => {
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Build" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Test" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Security" })).toBeVisible();
+    // 사이드바에도 관측성 › 보안 하위 그룹 단추("Security")가 있다 — 화면 본문 안에서 찾는다.
+    await expect(page.getByRole("main").getByRole("button", { name: "Security" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Create" })).toBeVisible();
     // 섹션 제목은 화면의 것과 같아야 한다. 예전에는 "Pipeline Configuration" 과
     // "3. Deploy" 로 적혀 있었는데, 실제 화면은 "Pipeline Setup" 과

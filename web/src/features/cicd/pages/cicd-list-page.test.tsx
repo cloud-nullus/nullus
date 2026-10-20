@@ -18,6 +18,8 @@ const mockUseDeploymentStatus = vi.fn();
 const mockUsePipelineImageScans = vi.fn();
 const mockUsePipelineSASTResults = vi.fn();
 const mockUsePipelineScanVulnerabilities = vi.fn();
+const mockUsePipelineDependencyScans = vi.fn();
+const mockUsePipelineSecretScans = vi.fn();
 const mockDeployPipeline = vi.fn();
 
 vi.mock("react-router-dom", async () => {
@@ -55,6 +57,10 @@ vi.mock("../api/cicd-api", () => ({
     mockUsePipelineSASTResults(...args),
   usePipelineScanVulnerabilities: (...args: unknown[]) =>
     mockUsePipelineScanVulnerabilities(...args),
+  usePipelineDependencyScans: (...args: unknown[]) =>
+    mockUsePipelineDependencyScans(...args),
+  usePipelineSecretScans: (...args: unknown[]) =>
+    mockUsePipelineSecretScans(...args),
 }));
 
 const pipelines = [
@@ -86,6 +92,10 @@ describe("CicdListPage", () => {
     mockUsePipelineSASTResults.mockReset();
     mockUsePipelineSASTResults.mockReturnValue({ data: undefined, isError: false });
     mockUsePipelineScanVulnerabilities.mockReset();
+    mockUsePipelineDependencyScans.mockReset();
+    mockUsePipelineDependencyScans.mockReturnValue({ data: undefined, isError: false });
+    mockUsePipelineSecretScans.mockReset();
+    mockUsePipelineSecretScans.mockReturnValue({ data: undefined, isError: false });
     mockUsePipelineScanVulnerabilities.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -532,6 +542,212 @@ describe("CicdListPage", () => {
 
       expect(screen.getByRole("button", { name: "v0.1.2" })).toBeTruthy();
       expect(screen.queryByText("Static analysis (SonarQube)")).toBeNull();
+    });
+  });
+
+  // 의존성 스캔 · 시크릿 탐지(Security Dashboard 설계 §8 G1 · G2)도 이미지 스캔 · SAST 옆에
+  // 붙는다. 시크릿은 탐지되면 "폐기 · 회전" 이 먼저다 — 경고 정책이어도 이미 유출이다.
+  describe("실행 이력의 의존성 스캔 · 시크릿 탐지", () => {
+    const deployments = [
+      {
+        id: "dep_ci_pip_x_2",
+        pipelineId: "pipeline-1",
+        pipelineName: "frontend-web",
+        version: "v0.1.2",
+        status: "failed",
+        triggeredBy: "kim.dev",
+        startedAt: "2026-10-20T01:20:00Z",
+        completedAt: "2026-10-20T01:30:00Z",
+      },
+      {
+        id: "dep_ci_pip_x_1",
+        pipelineId: "pipeline-1",
+        pipelineName: "frontend-web",
+        version: "v0.1.1",
+        status: "success",
+        triggeredBy: "kim.dev",
+        startedAt: "2026-10-19T13:20:00Z",
+        completedAt: "2026-10-19T13:21:00Z",
+      },
+    ];
+
+    const secretScan = {
+      id: "secret_dep_ci_pip_x_2",
+      pipelineId: "pipeline-1",
+      deploymentId: "dep_ci_pip_x_2",
+      scanner: "gitleaks",
+      scannerVersion: "8.21.0",
+      findingsCount: 2,
+      rules: [
+        { ruleId: "github-pat", count: 1 },
+        { ruleId: "aws-access-key", count: 1 },
+      ],
+      findings: [
+        {
+          ruleId: "github-pat",
+          file: "src/config.ts",
+          startLine: 12,
+          commit: "abcdef1234567890",
+          fingerprint: "abcdef1234567890:src/config.ts:github-pat:12",
+        },
+      ],
+      gateResult: "warn",
+      scannedAt: "2026-10-20T01:21:00Z",
+    };
+
+    const dependencyScan = {
+      id: "depscan_dep_ci_pip_x_1",
+      pipelineId: "pipeline-1",
+      deploymentId: "dep_ci_pip_x_1",
+      scanner: "trivy",
+      dbStale: false,
+      counts: { critical: 0, high: 0, medium: 0, low: 0, unknown: 0 },
+      targets: 0,
+      gateResult: "pass",
+      scannedAt: "2026-10-19T13:21:00Z",
+    };
+
+    function rowOf(version: string) {
+      return screen.getByRole("button", { name: version }).parentElement!;
+    }
+
+    beforeEach(() => {
+      mockUsePipelineDeployments.mockReturnValue({
+        data: { items: deployments, total: deployments.length },
+        isLoading: false,
+        dataUpdatedAt: 4321,
+      });
+      mockUsePipelineSecretScans.mockReturnValue({ data: { items: [secretScan], total: 1 } });
+      mockUsePipelineDependencyScans.mockReturnValue({ data: { items: [dependencyScan], total: 1 } });
+    });
+
+    it("should query both results with the deployments refresh time", () => {
+      renderWithProviders(<CicdListPage />);
+      fireEvent.click(screen.getByRole("button", { name: /^History$/ }));
+
+      const dep = mockUsePipelineDependencyScans.mock.calls;
+      const sec = mockUsePipelineSecretScans.mock.calls;
+      expect(dep[dep.length - 1]).toEqual(["pipeline-1", 4321]);
+      expect(sec[sec.length - 1]).toEqual(["pipeline-1", 4321]);
+    });
+
+    it("should show the secret summary on its run and the rotate warning in the detail", () => {
+      renderWithProviders(<CicdListPage />);
+      fireEvent.click(screen.getByRole("button", { name: /^History$/ }));
+
+      const row = rowOf("v0.1.2");
+      expect(within(row).getByText("Secrets found (warn)")).toBeTruthy();
+      expect(within(row).getAllByText("2 found").length).toBeGreaterThan(0);
+      // 경고 정책이어도 유출이다 — 폐기 · 회전 안내가 먼저 보인다.
+      expect(screen.getByRole("alert").textContent).toContain(
+        "Committed secrets are already leaked — revoke and rotate them now.",
+      );
+      expect(screen.getByText("src/config.ts:12")).toBeTruthy();
+      expect(screen.getByText("Secret values are never stored or shown — only where they were found.")).toBeTruthy();
+    });
+
+    // 락파일이 없어 아무것도 검사하지 않은 통과는 초록이 아니다.
+    it("should show a zero-target dependency pass as No targets, not as passed", () => {
+      renderWithProviders(<CicdListPage />);
+      fireEvent.click(screen.getByRole("button", { name: /^History$/ }));
+
+      const row = rowOf("v0.1.1");
+      expect(within(row).getByText("No targets")).toBeTruthy();
+      expect(within(row).queryByText("Passed")).toBeNull();
+      expect(within(row).queryByLabelText(/Critical/)).toBeNull();
+    });
+
+    it("should keep the history visible when the new results fail to load", () => {
+      mockUsePipelineSecretScans.mockReturnValue({ data: undefined, isError: true });
+      mockUsePipelineDependencyScans.mockReturnValue({ data: undefined, isError: true });
+      renderWithProviders(<CicdListPage />);
+      fireEvent.click(screen.getByRole("button", { name: /^History$/ }));
+
+      expect(screen.getByRole("button", { name: "v0.1.2" })).toBeTruthy();
+      expect(screen.queryByText("Secret detection (gitleaks)")).toBeNull();
+    });
+  });
+
+  // 보안 대시보드가 "이 앱의 실행 기록" 으로 보낸다(설계 §8 G5). 파이프라인 · 탭 · 실행이
+  // URL 로 열려야 한다.
+  describe("딥링크", () => {
+    const otherPipeline = {
+      ...pipelines[0],
+      id: "pipeline-2",
+      name: "order-api",
+    };
+    const deployments = [
+      {
+        id: "dep_new",
+        pipelineId: "pipeline-2",
+        pipelineName: "order-api",
+        version: "#42",
+        status: "failed",
+        triggeredBy: "kim.dev",
+        startedAt: "2026-10-20T01:20:00Z",
+        completedAt: "2026-10-20T01:30:00Z",
+      },
+      {
+        id: "dep_old",
+        pipelineId: "pipeline-2",
+        pipelineName: "order-api",
+        version: "#38",
+        status: "success",
+        triggeredBy: "kim.dev",
+        startedAt: "2026-10-19T13:20:00Z",
+        completedAt: "2026-10-19T13:21:00Z",
+      },
+    ];
+
+    beforeEach(() => {
+      mockUsePipelines.mockReturnValue({
+        data: { items: [pipelines[0], otherPipeline], total: 2 },
+        isLoading: false,
+      });
+      mockUsePipelineDeployments.mockReturnValue({
+        data: { items: deployments, total: deployments.length },
+        isLoading: false,
+        dataUpdatedAt: 99,
+      });
+    });
+
+    it("should open the linked pipeline, history tab and run from the URL", async () => {
+      renderWithProviders(<CicdListPage />, {
+        route: "/cicd/list?pipeline=pipeline-2&tab=history&run=dep_old",
+      });
+
+      // 첫 파이프라인이 아니라 링크가 가리킨 파이프라인이 열린다.
+      expect(screen.getByRole("heading", { name: "order-api" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /^History$/ }).getAttribute("aria-pressed")).toBe("true");
+      // 최신 실행이 아니라 링크가 가리킨 실행(#38)의 상세가 열린다.
+      await waitFor(() => expect(screen.getByText("dep_old")).toBeTruthy());
+      expect(screen.queryByText("dep_new")).toBeNull();
+    });
+
+    it("should fall back to the latest run when the linked run is not listed", async () => {
+      renderWithProviders(<CicdListPage />, {
+        route: "/cicd/list?pipeline=pipeline-2&tab=history&run=dep_gone",
+      });
+
+      await waitFor(() => expect(screen.getByText("dep_new")).toBeTruthy());
+    });
+
+    // 목록은 최근 파이프라인만 담는다. 링크한 것이 없으면 다른 파이프라인을 조용히 열지 않고 알린다.
+    it("should not open another pipeline when the linked one is not listed", () => {
+      renderWithProviders(<CicdListPage />, {
+        route: "/cicd/list?pipeline=pipeline-gone&tab=history&run=dep_x",
+      });
+
+      expect(screen.getByRole("status").textContent).toContain("The linked pipeline is not in this list");
+      expect(screen.queryByRole("heading", { name: "order-api" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "frontend-web" })).toBeNull();
+    });
+
+    it("should ignore an unknown tab value", () => {
+      renderWithProviders(<CicdListPage />, { route: "/cicd/list?pipeline=pipeline-2&tab=bogus" });
+
+      expect(screen.getByRole("heading", { name: "order-api" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /^History$/ }).getAttribute("aria-pressed")).toBe("false");
     });
   });
 

@@ -6,16 +6,27 @@
 // 정의하고, 두 화면 요소가 같은 트리를 읽는다.
 
 import { type ReactNode } from 'react'
-import { BookOpen, Boxes, Bug, Building2, ChartColumn, Database, DatabaseBackup, FileCode2, GitBranch, History, KeyRound, LayoutDashboard, List, Network, Route, Send, Settings, ShieldCheck, Tag, Users, Workflow } from 'lucide-react'
+import { BookOpen, Boxes, Bug, Building2, ChartColumn, Database, DatabaseBackup, FileCode2, GitBranch, History, KeyRound, LayoutDashboard, List, Network, Route, Send, Settings, Shield, ShieldCheck, Tag, Users, Workflow } from 'lucide-react'
 import { iconProps } from '../ui/icon'
 import type { Role } from '../../types'
 
 export interface NavItem {
   key: string
   label: string
+  /**
+   * 화면 경로. 자식이 있는 항목(하위 그룹)은 화면이 아니라 펼침 단추다 — 그때 path 는
+   * 첫 자식의 경로이고, 브레드크럼·접힌 레일이 "이 묶음의 대표 화면" 으로 쓴다.
+   */
   path: string
   icon: ReactNode
   roles: Role[]
+  /**
+   * 하위 그룹(3단 메뉴). 메뉴는 그룹 › 하위 그룹 › 항목까지만 간다.
+   *
+   * 보안 화면이 관측성 아래 한 묶음으로 들어오면서 생겼다 — 대시보드 하나로 시작하지만
+   * 스캔 정책 화면 같은 후속이 같은 묶음에 붙는다(Security Dashboard 설계 §7).
+   */
+  children?: NavItem[]
 }
 
 export interface NavGroup {
@@ -61,6 +72,17 @@ export const navGroups: NavGroup[] = [
     items: [
       { key: 'monitoringDashboard', label: 'sidebar.monitoringDashboard', path: '/observability/monitoring', icon: <LayoutDashboard {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
       { key: 'alertHistory', label: 'sidebar.alertHistory', path: '/observability/alert-history', icon: <History {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
+      {
+        key: 'security',
+        label: 'sidebar.security',
+        path: '/observability/security/dashboard',
+        icon: <Shield {...iconProps('sm')} />,
+        roles: ['admin', 'devops', 'developer'],
+        // 개발자도 본다 — 다만 화면 안에서 설치 OSS 탭은 admin · devops 만이다(설계 §4.4).
+        children: [
+          { key: 'securityDashboard', label: 'sidebar.securityDashboard', path: '/observability/security/dashboard', icon: <ShieldCheck {...iconProps('sm')} />, roles: ['admin', 'devops', 'developer'] },
+        ],
+      },
     ],
   },
   {
@@ -81,30 +103,48 @@ export const navGroups: NavGroup[] = [
 ]
 
 /**
- * 경로가 속한 상위 메뉴의 i18n 키. 못 찾으면 null.
+ * 경로가 속한 상위 메뉴들의 i18n 키 — 그룹부터 하위 그룹까지 바깥에서 안쪽 순서다.
+ * 못 찾으면 빈 배열.
  *
  * 메뉴에 없는 하위 경로(/stack/install, /stack/history/:id 같은 것)가 많아서
  * 두 단계로 찾는다: 먼저 메뉴 항목 경로의 접두사로, 안 되면 첫 세그먼트로.
  * /admin/stack-versions 처럼 URL 세그먼트와 소속 그룹이 다른 항목이 있어
  * 항목 매칭이 먼저다.
+ *
+ * 하위 그룹은 화면이 아니라 묶음이라 잎(자식 없는 항목)만 맞춰 본다. 잎이 하위
+ * 그룹 안에 있으면 그 하위 그룹의 라벨도 상위로 붙는다 — 관측성 › 보안 › 보안 대시보드.
  */
-export function resolveNavGroupLabel(pathname: string): string | null {
-  let best: { length: number; label: string } | null = null
-  for (const group of navGroups) {
-    for (const item of group.items) {
+export function resolveNavTrail(pathname: string): string[] {
+  let best: { length: number; trail: string[] } | null = null
+  const visit = (items: NavItem[], ancestors: string[]) => {
+    for (const item of items) {
+      if (item.children && item.children.length > 0) {
+        visit(item.children, [...ancestors, item.label])
+        continue
+      }
       if (pathname === item.path || pathname.startsWith(`${item.path}/`)) {
         if (!best || item.path.length > best.length) {
-          best = { length: item.path.length, label: group.label }
+          best = { length: item.path.length, trail: ancestors }
         }
       }
     }
   }
-  if (best) {
-    return best.label
+  for (const group of navGroups) {
+    visit(group.items, [group.label])
+  }
+  const found = best as { length: number; trail: string[] } | null
+  if (found) {
+    return found.trail
   }
 
   const segment = pathname.split('/').filter(Boolean)[0]
-  return segment ? (SEGMENT_GROUP[segment] ?? null) : null
+  const fallback = segment ? SEGMENT_GROUP[segment] : undefined
+  return fallback ? [fallback] : []
+}
+
+/** 경로가 속한 그룹(맨 바깥)의 i18n 키. 못 찾으면 null. */
+export function resolveNavGroupLabel(pathname: string): string | null {
+  return resolveNavTrail(pathname)[0] ?? null
 }
 
 const SEGMENT_GROUP: Record<string, string> = {

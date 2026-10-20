@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	"github.com/cloud-nullus/draft/internal/cicd/domain"
 	"github.com/cloud-nullus/draft/internal/cicd/port"
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
 )
@@ -239,4 +240,16 @@ func assertNoEmptyGitleaksAllowlist(t *testing.T, config string) {
 		}
 	}
 	flush()
+}
+
+// 끈 정책의 리포트는 빈 배열이 아니라 건너뜀 표식이다 — 동기화가 탐지 없음(통과)과 가를 수 있어야 한다.
+func TestSecretScanScript_OffWritesSkipMarker(t *testing.T) {
+	dir := t.TempDir()
+	cmd := exec.Command("bash", "-c", "set -euo pipefail\n"+strings.Join(secretScanScriptLines(), "\n"))
+	cmd.Dir = dir
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, port.SecretDetectionVariable + "=off"}
+	require.NoError(t, cmd.Run())
+	report, err := os.ReadFile(filepath.Join(dir, port.SecretScanReportFile))
+	require.NoError(t, err)
+	assert.Equal(t, domain.SecretScanSkippedReport, string(report))
 }

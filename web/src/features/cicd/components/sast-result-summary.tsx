@@ -7,34 +7,17 @@
 // 모르면 0 을 그리지 않는다(0 은 "문제 0건" 으로 읽힌다).
 
 import { useTranslation } from "react-i18next";
-import {
-  CircleAlert,
-  ExternalLink,
-  ShieldAlert,
-  ShieldCheck,
-  ShieldX,
-  type LucideIcon,
-} from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { iconProps } from "../../../components/ui/icon";
-import { Badge } from "../../../components/ui/badge";
+import { SASTGateBadge } from "../../../components/shared/gate-badge";
 import { formatDateTime } from "../../../lib/locale";
 import type {
-  ImageScanGateResult,
   PipelineSASTResult,
   SASTCondition,
   SASTMetrics,
 } from "../../../types";
-import { TONE_CLASS } from "./image-scan-summary";
 
-const GATE_META: Record<
-  ImageScanGateResult,
-  { labelKey: string; tone: keyof typeof TONE_CLASS; icon: LucideIcon }
-> = {
-  pass: { labelKey: "cicdListPage.sast.gate.pass", tone: "success", icon: ShieldCheck },
-  warn: { labelKey: "cicdListPage.sast.gate.warn", tone: "warning", icon: ShieldAlert },
-  block: { labelKey: "cicdListPage.sast.gate.block", tone: "danger", icon: ShieldX },
-  error: { labelKey: "cicdListPage.sast.gate.error", tone: "neutral", icon: CircleAlert },
-};
+// 판정 배지는 components/shared/gate-badge 가 갖는다(이미지 스캔과 한 벌).
 
 // 지표 표시 순서. 앞의 넷은 건수, 뒤의 둘은 백분율, 마지막은 코드 줄 수다.
 const METRICS: {
@@ -84,18 +67,6 @@ function comparatorSymbol(comparator: string | undefined): string {
     default:
       return comparator ?? "";
   }
-}
-
-export function SASTGateBadge({ result }: { result: PipelineSASTResult }) {
-  const { t } = useTranslation();
-  const meta = GATE_META[result.gateResult] ?? GATE_META.error;
-  const Icon = meta.icon;
-  return (
-    <Badge pill className={TONE_CLASS[meta.tone]}>
-      <Icon {...iconProps("xs")} />
-      {t(meta.labelKey)}
-    </Badge>
-  );
 }
 
 /** 실행 목록 한 줄에 들어가는 요약. 이미지 스캔 배지와 나란히 붙으므로 이름을 단다. */

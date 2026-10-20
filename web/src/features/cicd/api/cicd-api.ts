@@ -11,9 +11,11 @@ import type {
   Deployment,
   ImageScanGateResult,
   Pipeline,
+  PipelineDependencyScan,
   PipelineImageScan,
   PipelineResource,
   PipelineSASTResult,
+  PipelineSecretScan,
   SASTMetrics,
   SASTQualityGateStatus,
   RepositoryLocation,
@@ -41,9 +43,11 @@ export type {
   Deployment,
   ImageScanGateResult,
   Pipeline,
+  PipelineDependencyScan,
   PipelineImageScan,
   PipelineResource,
   PipelineSASTResult,
+  PipelineSecretScan,
   PipelineStatus,
   VulnerabilityCounts,
   VulnerabilityListFilter,
@@ -139,6 +143,10 @@ const queryKeys = {
     ["cicd", "pipelineImageScans", pipelineId, deploymentsUpdatedAt] as const,
   pipelineSASTResults: (pipelineId: string, deploymentsUpdatedAt: number) =>
     ["cicd", "pipelineSASTResults", pipelineId, deploymentsUpdatedAt] as const,
+  pipelineDependencyScans: (pipelineId: string, deploymentsUpdatedAt: number) =>
+    ["cicd", "pipelineDependencyScans", pipelineId, deploymentsUpdatedAt] as const,
+  pipelineSecretScans: (pipelineId: string, deploymentsUpdatedAt: number) =>
+    ["cicd", "pipelineSecretScans", pipelineId, deploymentsUpdatedAt] as const,
   // 필터 앞까지가 출처(어느 스캔인가)다. 페이지를 넘길 때 같은 출처의 결과만 잠시 둔다.
   pipelineScanVulnerabilitiesSource: (pipelineId: string, scanId: string) =>
     ["cicd", "pipelineScanVulnerabilities", pipelineId, scanId] as const,
@@ -258,6 +266,72 @@ function mapPipelineSASTResult(raw: Record<string, unknown>): PipelineSASTResult
     metrics,
     dashboardUrl: optionalString(raw.dashboard_url ?? raw.dashboardUrl),
     analyzedAt: String(raw.analyzed_at ?? raw.analyzedAt ?? ""),
+  };
+}
+
+function gateOf(raw: Record<string, unknown>): ImageScanGateResult {
+  const gate = String(raw.gate_result ?? raw.gateResult ?? "");
+  return IMAGE_SCAN_GATE_RESULTS.has(gate) ? (gate as ImageScanGateResult) : "error";
+}
+
+/**
+ * 의존성 스캔 한 건을 화면 모델로 옮긴다. 이미지 스캔과 같은 규칙이다 — 건수 · 검사 대상
+ * 수는 모르면 undefined 로 남기고, 모르는 판정은 error 로 둔다.
+ */
+function mapPipelineDependencyScan(
+  raw: Record<string, unknown>,
+): PipelineDependencyScan {
+  return {
+    id: String(raw.id ?? ""),
+    pipelineId: String(raw.pipeline_id ?? raw.pipelineId ?? ""),
+    deploymentId: optionalString(raw.deployment_id ?? raw.deploymentId),
+    scanner: String(raw.scanner ?? ""),
+    scannerVersion: optionalString(raw.scanner_version ?? raw.scannerVersion),
+    dbUpdatedAt: optionalString(raw.db_updated_at ?? raw.dbUpdatedAt),
+    dbStale: (raw.db_stale ?? raw.dbStale) === true,
+    counts: normalizeVulnerabilityCounts(raw.counts),
+    targets: optionalNumber(raw.targets),
+    gateResult: gateOf(raw),
+    reportUri: optionalString(raw.report_uri ?? raw.reportUri),
+    scannedAt: String(raw.scanned_at ?? raw.scannedAt ?? ""),
+  };
+}
+
+/**
+ * 시크릿 탐지 한 건을 화면 모델로 옮긴다.
+ *
+ * 탐지 위치는 아는 필드(규칙 · 파일 · 줄 · 커밋 · Fingerprint)만 고른다. API 는 비밀값을
+ * 보내지 않지만, 혹시 섞여 와도(Secret · Match) 화면 모델에 들어오지 않게 하는 것이 이
+ * 매퍼의 일이다 — 화면 어디에서도 비밀값을 그릴 길이 없어야 한다.
+ */
+function mapPipelineSecretScan(raw: Record<string, unknown>): PipelineSecretScan {
+  const rawRules = Array.isArray(raw.rules) ? raw.rules : [];
+  const rawFindings = Array.isArray(raw.findings) ? raw.findings : [];
+  return {
+    id: String(raw.id ?? ""),
+    pipelineId: String(raw.pipeline_id ?? raw.pipelineId ?? ""),
+    deploymentId: optionalString(raw.deployment_id ?? raw.deploymentId),
+    scanner: String(raw.scanner ?? ""),
+    scannerVersion: optionalString(raw.scanner_version ?? raw.scannerVersion),
+    findingsCount: optionalNumber(raw.findings_count ?? raw.findingsCount),
+    rules: rawRules
+      .filter((r): r is Record<string, unknown> => r !== null && typeof r === "object")
+      .map((r) => ({
+        ruleId: String(r.rule_id ?? r.ruleId ?? ""),
+        count: optionalNumber(r.count) ?? 0,
+      })),
+    findings: rawFindings
+      .filter((f): f is Record<string, unknown> => f !== null && typeof f === "object")
+      .map((f) => ({
+        ruleId: String(f.rule_id ?? f.ruleId ?? ""),
+        file: String(f.file ?? ""),
+        startLine: optionalNumber(f.start_line ?? f.startLine),
+        commit: optionalString(f.commit),
+        fingerprint: String(f.fingerprint ?? ""),
+      })),
+    gateResult: gateOf(raw),
+    reportUri: optionalString(raw.report_uri ?? raw.reportUri),
+    scannedAt: String(raw.scanned_at ?? raw.scannedAt ?? ""),
   };
 }
 
@@ -699,6 +773,32 @@ export const cicdApiCalls = {
 
   mapPipelineSASTResult,
 
+  mapPipelineDependencyScan,
+
+  mapPipelineSecretScan,
+
+  // 두 조회 모두 이미지 스캔 · SAST 와 같은 모양이다. 저장소가 배선되지 않은 서버(503)는
+  // 훅의 오류 상태로 넘기고, 화면은 그 요약만 뺀다.
+  getPipelineDependencyScans: async (pipelineId: string) => {
+    const raw = await api
+      .get<{ items?: Record<string, unknown>[] | null; total?: number }>(
+        `/cicd/pipelines/${encodeURIComponent(pipelineId)}/dependency-scans`,
+      )
+      .then((r) => r.data);
+    const items = (raw?.items ?? []).map((item) => mapPipelineDependencyScan(item));
+    return { items, total: raw?.total ?? items.length };
+  },
+
+  getPipelineSecretScans: async (pipelineId: string) => {
+    const raw = await api
+      .get<{ items?: Record<string, unknown>[] | null; total?: number }>(
+        `/cicd/pipelines/${encodeURIComponent(pipelineId)}/secret-scans`,
+      )
+      .then((r) => r.data);
+    const items = (raw?.items ?? []).map((item) => mapPipelineSecretScan(item));
+    return { items, total: raw?.total ?? items.length };
+  },
+
   // 저장소가 배선되지 않은 서버는 503(SAST_RESULTS_NOT_CONFIGURED)을 준다. 이미지 스캔과 같이
   // 훅의 오류 상태로 넘기고, 화면은 분석 표시만 뺀다.
   getPipelineSASTResults: async (pipelineId: string) => {
@@ -939,6 +1039,37 @@ export function usePipelineSASTResults(
   return useQuery({
     queryKey: queryKeys.pipelineSASTResults(pipelineId, deploymentsUpdatedAt),
     queryFn: () => cicdApiCalls.getPipelineSASTResults(pipelineId),
+    enabled: !!pipelineId && deploymentsUpdatedAt > 0,
+    retry: false,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * 파이프라인 실행들의 의존성 스캔 결과. 실행 목록 요청이 서버에서 결과를 들이므로 이미지
+ * 스캔과 같이 실행 목록이 갱신된 시각을 키에 넣는다.
+ */
+export function usePipelineDependencyScans(
+  pipelineId: string,
+  deploymentsUpdatedAt: number,
+) {
+  return useQuery({
+    queryKey: queryKeys.pipelineDependencyScans(pipelineId, deploymentsUpdatedAt),
+    queryFn: () => cicdApiCalls.getPipelineDependencyScans(pipelineId),
+    enabled: !!pipelineId && deploymentsUpdatedAt > 0,
+    retry: false,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** 파이프라인 실행들의 시크릿 탐지 결과. 의존성 스캔과 같은 이유로 실행 목록 갱신 시각을 키에 넣는다. */
+export function usePipelineSecretScans(
+  pipelineId: string,
+  deploymentsUpdatedAt: number,
+) {
+  return useQuery({
+    queryKey: queryKeys.pipelineSecretScans(pipelineId, deploymentsUpdatedAt),
+    queryFn: () => cicdApiCalls.getPipelineSecretScans(pipelineId),
     enabled: !!pipelineId && deploymentsUpdatedAt > 0,
     retry: false,
     placeholderData: (previous) => previous,

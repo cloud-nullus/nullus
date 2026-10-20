@@ -136,3 +136,22 @@ func TestRBACByRouteGroup_RejectsDeveloperOnUnknownRoute(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.JSONEq(t, `{"error":"insufficient permissions"}`, rec.Body.String())
 }
+
+// 보안 대시보드 — 앱 축은 모든 역할, 설치 OSS 축은 /stacks 와 같은 admin · devops 만이다.
+func TestRequiredRolesForRoute_SecurityDashboard(t *testing.T) {
+	assert.Equal(t, stackRouteRoles, RequiredRolesForRoute("/api/v1/observability/security/stacks", http.MethodGet))
+	assert.Equal(t, observabilityRouteRoles, RequiredRolesForRoute("/api/v1/observability/security/apps", http.MethodGet))
+
+	for role, want := range map[admindomain.Role]int{
+		admindomain.RoleDeveloper: http.StatusForbidden,
+		admindomain.RoleDevOps:    http.StatusOK,
+		admindomain.RoleAdmin:     http.StatusOK,
+	} {
+		e := echo.New()
+		rec := httptest.NewRecorder()
+		c := e.NewContext(httptest.NewRequest(http.MethodGet, "/api/v1/observability/security/stacks", nil), rec)
+		c.Set(userContextKey, &admindomain.User{ID: "u1", Role: role})
+		require.NoError(t, RBACByRouteGroup()(func(c echo.Context) error { return c.NoContent(http.StatusOK) })(c))
+		assert.Equal(t, want, rec.Code, string(role))
+	}
+}

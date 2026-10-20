@@ -3,7 +3,7 @@ import { ArrowUpCircle, Boxes, ChartColumn, History, Info, Layers, List, Plus, S
 import { iconProps } from '../../../components/ui/icon'
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
 import { DataTable } from "../../../components/shared/data-table";
@@ -58,6 +58,13 @@ import { SearchInput } from '../../../components/ui/search-input'
 import { Badge } from "../../../components/ui/badge"
 
 type InnerTab = "info" | "workloads" | "config" | "image-scans" | "monitoring" | "history" | "version-upgrade";
+
+const INNER_TAB_IDS: readonly InnerTab[] = ["info", "workloads", "config", "image-scans", "monitoring", "history", "version-upgrade"];
+
+/** 딥링크의 tab 값. 모르는 값은 무시한다(기본 탭으로 연다). */
+function parseInnerTab(value: string | null): InnerTab | undefined {
+	return INNER_TAB_IDS.find((id) => id === value);
+}
 
 
 
@@ -189,6 +196,7 @@ function StackDetailPanel({
 	onBackToList,
 	className,
 	flush = false,
+	initialTab,
 }: {
 	stack: Stack;
 	clusterConnectionStatus?: string;
@@ -199,9 +207,11 @@ function StackDetailPanel({
 	className?: string;
 	/** ListDetailPanel 안에 들어갈 때 자기 테두리·모서리를 버린다. */
 	flush?: boolean;
+	/** 딥링크(?tab=)로 열 탭. 패널은 스택마다 새로 그려지므로 처음 한 번만 쓴다. */
+	initialTab?: InnerTab;
 }) {
 	const { t } = useTranslation();
-	const [innerTab, setInnerTab] = useState<InnerTab>("info");
+	const [innerTab, setInnerTab] = useState<InnerTab>(initialTab ?? "info");
 	const normalizedStatus = normalizeStackStatus(stack.status, clusterConnectionStatus);
 	const canShowMonitoring = isHealthyStatus(stack.status, clusterConnectionStatus);
 	// Info → Workloads(파드) → Monitoring(집계) 순. 구체적인 것에서 요약으로 간다.
@@ -287,7 +297,18 @@ export function StackListPage() {
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState("");
 	const [clusterFilter, setClusterFilter] = useState("");
-	const [expandedStackId, setExpandedStackId] = useState<string | null>(null);
+	// 딥링크 — /stack/list?stack=<id>&tab=image-scans. 보안 대시보드의 설치 OSS 행이 그
+	// 스택의 "이미지 취약점" 탭으로 보낸다(설계 §8 G5). 읽기만 한다.
+	const [searchParams] = useSearchParams();
+	const linkedStackId = searchParams.get("stack");
+	const linkedTab = parseInnerTab(searchParams.get("tab"));
+	const [expandedStackId, setExpandedStackId] = useState<string | null>(linkedStackId);
+	useEffect(() => {
+		if (linkedStackId) setExpandedStackId(linkedStackId);
+	}, [linkedStackId]);
+	const linkedTabFor = (stackId: string) => (stackId === linkedStackId ? linkedTab : undefined);
+	const panelKey = (stackId: string) =>
+		stackId === linkedStackId ? `${stackId}:${linkedTab ?? ""}` : stackId;
   const [deleteStackId, setDeleteStackId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -634,7 +655,8 @@ export function StackListPage() {
 						expandedStack ? (
 							<StackDetailPanel
 								flush
-								key={expandedStack.id}
+								key={panelKey(expandedStack.id)}
+								initialTab={linkedTabFor(expandedStack.id)}
 								stack={expandedStack}
 								clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
 								isDeleting={deleteStack.isPending}
@@ -653,7 +675,8 @@ export function StackListPage() {
 					{stackTable}
 					{expandedStack && (
 						<StackDetailPanel
-							key={`${expandedStack.id}-mobile`}
+							key={`${panelKey(expandedStack.id)}-mobile`}
+							initialTab={linkedTabFor(expandedStack.id)}
 							stack={expandedStack}
 							clusterConnectionStatus={clusterConnectionByID.get(expandedStack.clusterId)}
 							isDeleting={deleteStack.isPending}

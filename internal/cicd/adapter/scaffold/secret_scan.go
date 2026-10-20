@@ -68,8 +68,9 @@ func secretScanScriptLines() []string {
 		// 컨테이너 잡은 작업 디렉터리 소유자가 다른 uid 다. git 이 "dubious ownership" 으로 멈추면
 		// gitleaks git 이 이력을 읽지 못한다.
 		`git config --global --add safe.directory '*' >/dev/null 2>&1 || true`,
-		fmt.Sprintf(`if [ "${%s:-%s}" = "%s" ]; then echo "시크릿 탐지가 정책으로 꺼져 있습니다 — 건너뜁니다"; printf '[]' > %s; exit 0; fi`,
-			port.SecretDetectionVariable, defaults.SecretDetectionOrDefault(), domain.SecretDetectionOff, port.SecretScanReportFile),
+		fmt.Sprintf(`if [ "${%s:-%s}" = "%s" ]; then echo "시크릿 탐지가 정책으로 꺼져 있습니다 — 건너뜁니다"; printf '%%s' '%s' > %s; exit 0; fi`,
+			port.SecretDetectionVariable, defaults.SecretDetectionOrDefault(), domain.SecretDetectionOff,
+			domain.SecretScanSkippedReport, port.SecretScanReportFile),
 		fmt.Sprintf(`rc=0; base="${%s:-}"; case "$base" in %s) base="" ;; esac`, port.SecretScanBaseVariable, zeroSHA),
 		fmt.Sprintf(`if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then `+
 			`echo "신규 커밋 $base..HEAD 를 검사합니다"; gitleaks git %s --log-opts "$base..HEAD" . || rc=$?; `+

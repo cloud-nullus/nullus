@@ -128,4 +128,44 @@ describe('ClusterStackFilter', () => {
     expect(onStackChange).toHaveBeenCalledWith('')
     expect(onClear).toHaveBeenCalled()
   })
+
+  // 보안 대시보드는 기본 범위가 조직 전체다. 빈 값을 "선택 안 함" 이 아니라 "전체" 로 적는다.
+  it('should label the empty choice as All when allOption is set', () => {
+    render(
+      <ClusterStackFilter
+        allOption
+        selectedClusterId=""
+        selectedStackId=""
+        onClusterChange={vi.fn()}
+        onStackChange={vi.fn()}
+        onClear={vi.fn()}
+        clusters={[{ id: 'c1', name: 'prod-a' }]}
+        filteredStacks={[{ id: 's1', name: 'stack-prod', clusterId: 'c1' }]}
+        extraStackOptions={[{ value: 'none', label: 'No stack' }]}
+      >
+        <span>trailing control</span>
+      </ClusterStackFilter>
+    )
+
+    expect(screen.getByLabelText('Cluster').textContent).toContain('All clusters')
+    expect(screen.getByLabelText('Stack').textContent).toContain('All stacks (1)')
+    // 상태가 없는 가벼운 선택지는 상태 괄호 없이 이름만 보인다.
+    expect(optionLabels(screen.getByLabelText('Stack'))).toEqual(['All stacks (1)', 'stack-prod', 'No stack'])
+    expect(screen.getByText('trailing control')).toBeTruthy()
+  })
+
+  it('should keep the Select placeholder for existing callers', () => {
+    render(
+      <ClusterStackFilter
+        selectedClusterId=""
+        selectedStackId=""
+        onClusterChange={vi.fn()}
+        onStackChange={vi.fn()}
+        onClear={vi.fn()}
+        clusters={clusters}
+        filteredStacks={stacks}
+      />
+    )
+    expect(screen.getByLabelText('Cluster').textContent).toContain('— Select Cluster —')
+  })
 })
