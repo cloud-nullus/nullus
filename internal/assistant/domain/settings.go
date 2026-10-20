@@ -71,14 +71,16 @@ var (
 
 // Settings 는 조직의 어시스턴트 설정이다. APIKey 는 저장소에서 복호화한 원문이다 — 응답에는 KeyHint 만 싣는다.
 type Settings struct {
-	OrgID     string
-	Enabled   bool
-	Provider  string
-	BaseURL   string
-	Model     string
-	APIKey    string
-	UpdatedAt time.Time
-	UpdatedBy string
+	OrgID    string
+	Enabled  bool
+	Provider string
+	BaseURL  string
+	Model    string
+	APIKey   string
+	// KeyUnreadable 은 키가 저장돼 있지만 복호화하지 못했다는 뜻이다(ENCRYPTION_KEY 가 바뀜). 관리자가 다시 넣는다.
+	KeyUnreadable bool
+	UpdatedAt     time.Time
+	UpdatedBy     string
 }
 
 // EffectiveBaseURL · EffectiveModel 은 비어 있으면 공급자 기본값이다.
@@ -96,6 +98,12 @@ func (s Settings) EffectiveModel() string {
 	}
 	p, _ := ProviderByID(s.Provider)
 	return p.DefaultModel
+}
+
+// SameEndpoint 는 키를 보낼 곳이 같은지다 — 공급자와 실제 주소가 둘 다 같아야 한다. 저장된 키는 같은 곳으로만
+// 이어 쓴다(주소만 바꿔 저장된 키를 다른 서버로 보내 빼내지 못하게).
+func (s Settings) SameEndpoint(o Settings) bool {
+	return s.Provider == o.Provider && s.EffectiveBaseURL() == o.EffectiveBaseURL()
 }
 
 // HasKey 는 키가 저장돼 있는지다.
@@ -128,6 +136,10 @@ func ValidateSettings(s Settings) error {
 		return fmt.Errorf("%w: 모델 이름은 %d자까지다", ErrInvalidSettings, MaxModelChars)
 	}
 	if raw := strings.TrimSpace(s.BaseURL); raw != "" {
+		// query · fragment 는 받지 않는다 — '#' 로 뒤에 붙는 API 경로를 지워 임의 경로를 부를 수 있다.
+		if strings.ContainsAny(raw, "?#") {
+			return fmt.Errorf("%w: 주소에 ? 나 # 를 넣지 않는다", ErrInvalidSettings)
+		}
 		u, err := url.Parse(raw)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return fmt.Errorf("%w: 주소는 http(s) URL 이어야 한다", ErrInvalidSettings)

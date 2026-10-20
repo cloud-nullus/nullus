@@ -146,3 +146,61 @@ func TestClient_NoAuthorizationWithoutKey(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, auth)
 }
+
+// 마무리 라운드: 도구 정의는 보내고 tool_choice 를 none 으로.
+func TestClient_ForbidToolUseSetsNone(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"끝"}}]}`)
+	}))
+	defer srv.Close()
+	_, err := New(Config{BaseURL: srv.URL, APIKey: "k", Model: "m"}).Complete(context.Background(), port.CompletionRequest{
+		Messages: []domain.Message{{Role: domain.RoleUser, Content: "a"}},
+		Tools:    []domain.ToolSpec{{Name: "stack_list", Parameters: map[string]any{"type": "object"}}}, ForbidToolUse: true,
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, got["tools"])
+	assert.Equal(t, "none", got["tool_choice"])
+}
+
+// 리다이렉트를 따라가지 않는다 — 관리자가 넣은 주소가 내부의 다른 곳으로 튀지 않게.
+func TestClient_DoesNotFollowRedirects(t *testing.T) {
+	hit := false
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hit = true }))
+	defer target.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	_, err := New(Config{BaseURL: srv.URL, APIKey: "k", Model: "m"}).Complete(context.Background(),
+		port.CompletionRequest{Messages: []domain.Message{{Role: domain.RoleUser, Content: "a"}}})
+	require.Error(t, err)
+	assert.False(t, hit)
+	assert.Contains(t, err.Error(), "302")
+}
+
+// JSON 오류가 아닌 응답 본문은 싣지 않는다 — 연결 테스트로 내부 서버의 내용을 읽어 내지 못하게.
+func TestClient_NonJSONErrorBodyIsNotEchoed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, "<html>internal admin console secret-token-123</html>")
+	}))
+	defer srv.Close()
+
+	_, err := New(Config{BaseURL: srv.URL, APIKey: "k", Model: "m"}).Complete(context.Background(),
+		port.CompletionRequest{Messages: []domain.Message{{Role: domain.RoleUser, Content: "a"}}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "404")
+	assert.NotContains(t, err.Error(), "secret-token-123")
+}
+
+// 링크로컬(클라우드 메타데이터 169.254.169.254) 대역으로는 연결하지 않는다.
+func TestClient_RefusesLinkLocalAddresses(t *testing.T) {
+	_, err := New(Config{BaseURL: "http://169.254.169.254/latest", APIKey: "k", Model: "m"}).Complete(context.Background(),
+		port.CompletionRequest{Messages: []domain.Message{{Role: domain.RoleUser, Content: "a"}}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "링크로컬")
+}

@@ -7,10 +7,12 @@ import (
 	"github.com/cloud-nullus/draft/internal/assistant/domain"
 )
 
-// CompletionRequest 는 모델에 한 번 묻는 내용이다. Tools 가 비면 도구 없이 답하게 한다.
+// CompletionRequest 는 모델에 한 번 묻는 내용이다. ForbidToolUse 면 도구 정의는 보내되 쓰지 못하게 한다 —
+// 기록에 도구 호출이 있으면 정의가 있어야 받는 공급자(Anthropic)가 있다.
 type CompletionRequest struct {
-	Messages []domain.Message
-	Tools    []domain.ToolSpec
+	Messages      []domain.Message
+	Tools         []domain.ToolSpec
+	ForbidToolUse bool
 }
 
 // LLM 은 OpenAI 호환 Chat Completions 모델이다. 응답 메시지는 답(Content)이거나 도구 호출(ToolCalls)이다.

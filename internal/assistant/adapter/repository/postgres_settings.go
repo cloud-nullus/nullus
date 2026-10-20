@@ -41,11 +41,12 @@ func (r *PostgresSettingsRepository) Get(ctx context.Context, orgID string) (*do
 		return nil, fmt.Errorf("어시스턴트 설정 조회: %w", err)
 	}
 	if enc != "" {
-		plain, err := crypto.Decrypt(r.key, enc)
-		if err != nil {
-			return nil, fmt.Errorf("어시스턴트 API 키를 복호화하지 못했습니다(ENCRYPTION_KEY 가 바뀌었나): %w", err)
+		// 복호화하지 못하면(ENCRYPTION_KEY 가 바뀜) 키만 비우고 설정은 돌려준다 — 관리 화면에서 다시 넣게.
+		if plain, err := crypto.Decrypt(r.key, enc); err != nil {
+			s.KeyUnreadable = true
+		} else {
+			s.APIKey = string(plain)
 		}
-		s.APIKey = string(plain)
 	}
 	return &s, nil
 }

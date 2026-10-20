@@ -2515,6 +2515,8 @@
     "keySaved": "저장된 키 {{hint}} — 비워 두면 그대로 씁니다.",
     "keyRequired": "이 공급자의 API 키를 입력합니다.",
     "keyOptional": "사내 서버는 없어도 됩니다.",
+    "keyAddressChanged": "주소가 바뀌었습니다 — API 키를 다시 입력합니다.",
+    "keyUnreadable": "저장된 키를 읽을 수 없습니다(서버의 ENCRYPTION_KEY 가 바뀜). API 키를 다시 입력합니다.",
     "removeKey": "키 지우기",
     "enabled": "이 조직에서 어시스턴트 켜기",
     "dataNotice": "켜 두면 어시스턴트 조회 도구의 결과(스택 설정 · 상태 · 설치 로그 일부)가 이 공급자로 전송됩니다. 그 안의 토큰 · 비밀번호는 가립니다.",

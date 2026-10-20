@@ -23,7 +23,8 @@ type scriptedLLM struct {
 }
 
 func (l *scriptedLLM) Complete(_ context.Context, req port.CompletionRequest) (domain.Message, error) {
-	cp := port.CompletionRequest{Messages: append([]domain.Message(nil), req.Messages...), Tools: req.Tools}
+	cp := req
+	cp.Messages = append([]domain.Message(nil), req.Messages...)
 	l.requests = append(l.requests, cp)
 	if l.err != nil {
 		return domain.Message{}, l.err
@@ -200,7 +201,10 @@ func TestChat_StopsToolRoundsAtTheCap(t *testing.T) {
 	out, err := uc.Execute(context.Background(), ChatInput{OrgID: testOrg, Turns: ask("?")})
 	require.NoError(t, err)
 	require.Len(t, llm.requests, domain.MaxToolRounds+1)
-	assert.Empty(t, llm.requests[domain.MaxToolRounds].Tools, "마지막은 도구 없이 묻는다")
+	last := llm.requests[domain.MaxToolRounds]
+	// Anthropic 은 기록에 tool_use 가 있으면 도구 정의가 있어야 받는다 — 정의는 보내고 쓰지만 못하게 한다.
+	assert.NotEmpty(t, last.Tools)
+	assert.True(t, last.ForbidToolUse, "마지막은 도구를 쓰지 못하게 묻는다")
 	assert.Len(t, out.Tools, domain.MaxToolRounds)
 	assert.NotEmpty(t, out.Reply)
 }
@@ -256,7 +260,7 @@ func TestChat_CapsTotalToolCalls(t *testing.T) {
 	_, err := uc.Execute(context.Background(), ChatInput{OrgID: testOrg, Turns: ask("?")})
 	require.NoError(t, err)
 	assert.LessOrEqual(t, len(opener.session.calls), domain.MaxToolCallsTotal)
-	assert.Empty(t, llm.requests[len(llm.requests)-1].Tools, "상한에 닿으면 도구 없이 묻는다")
+	assert.True(t, llm.requests[len(llm.requests)-1].ForbidToolUse, "상한에 닿으면 도구를 쓰지 못하게 묻는다")
 }
 
 // 웹 앞단 프록시(60초)보다 먼저 끝낸다 — 넘으면 시간 초과로 알린다.
@@ -342,4 +346,19 @@ func TestChat_UpstreamFailure(t *testing.T) {
 	_, err := uc.Execute(context.Background(), ChatInput{OrgID: testOrg, Turns: ask("a")})
 	assert.ErrorIs(t, err, domain.ErrUpstream)
 	assert.True(t, opener.session.closed, "실패해도 도구 세션을 닫는다")
+}
+
+// 공급자가 응답에 붙인 원본(Anthropic 의 thinking 블록 · 서명)은 다음 라운드의 assistant 메시지에 그대로 실린다.
+func TestChat_CarriesProviderDataToTheNextRound(t *testing.T) {
+	uc, llm, opener := newFixture(
+		domain.Message{Role: domain.RoleAssistant, ProviderData: []byte(`[{"type":"thinking","thinking":"..","signature":"s"}]`),
+			ToolCalls: []domain.ToolCall{{ID: "c1", Name: "stack_status", Arguments: `{}`}}},
+		domain.Message{Role: domain.RoleAssistant, Content: "ok"},
+	)
+	opener.session.results["stack_status"] = toolResult{out: "{}"}
+
+	_, err := uc.Execute(context.Background(), ChatInput{OrgID: testOrg, Turns: ask("?")})
+	require.NoError(t, err)
+	msgs := llm.requests[1].Messages
+	assert.JSONEq(t, `[{"type":"thinking","thinking":"..","signature":"s"}]`, string(msgs[len(msgs)-2].ProviderData))
 }

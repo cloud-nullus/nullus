@@ -115,15 +115,13 @@ func (uc *Chat) run(ctx context.Context, llm port.LLM, in ChatInput) (*ChatOutpu
 	out := &ChatOutput{Tools: []domain.ToolTrace{}}
 	executed := 0
 	for round := 0; ; round++ {
-		tools := specs
-		if round >= domain.MaxToolRounds || executed >= domain.MaxToolCallsTotal {
-			tools = nil
-		}
-		resp, err := llm.Complete(ctx, port.CompletionRequest{Messages: messages, Tools: tools})
+		// 상한에 닿으면 도구 정의는 그대로 보내고 쓰지만 못하게 해, 그때까지의 결과로 마무리하게 한다.
+		forbid := round >= domain.MaxToolRounds || executed >= domain.MaxToolCallsTotal
+		resp, err := llm.Complete(ctx, port.CompletionRequest{Messages: messages, Tools: specs, ForbidToolUse: forbid})
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", domain.ErrUpstream, err)
 		}
-		if len(resp.ToolCalls) == 0 || tools == nil {
+		if len(resp.ToolCalls) == 0 || forbid {
 			out.Reply = strings.TrimSpace(resp.Content)
 			if out.Reply == "" {
 				out.Reply = fallbackReply
@@ -131,7 +129,8 @@ func (uc *Chat) run(ctx context.Context, llm port.LLM, in ChatInput) (*ChatOutpu
 			slog.Info("assistant answered", "rounds", round+1, "tools", toolNames(out.Tools), "elapsed", time.Since(started).Round(time.Millisecond))
 			return out, nil
 		}
-		messages = append(messages, domain.Message{Role: domain.RoleAssistant, Content: resp.Content, ToolCalls: resp.ToolCalls})
+		messages = append(messages, domain.Message{Role: domain.RoleAssistant, Content: resp.Content, ToolCalls: resp.ToolCalls,
+			ProviderData: resp.ProviderData})
 		for i, call := range resp.ToolCalls {
 			// 상한을 넘긴 호출에도 결과 메시지는 준다 — 호출 ID 마다 결과가 있어야 다음 요청이 받아들여진다.
 			if i >= domain.MaxToolCallsPerRound || executed >= domain.MaxToolCallsTotal {

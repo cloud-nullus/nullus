@@ -63,6 +63,7 @@ type settingsResponse struct {
 	Model            string            `json:"model"`
 	HasKey           bool              `json:"has_key"`
 	KeyHint          string            `json:"key_hint"`
+	KeyUnreadable    bool              `json:"key_unreadable"`
 	EffectiveBaseURL string            `json:"effective_base_url"`
 	EffectiveModel   string            `json:"effective_model"`
 	UpdatedAt        *time.Time        `json:"updated_at,omitempty"`
@@ -73,7 +74,7 @@ type settingsResponse struct {
 func toResponse(v usecase.SettingsView) settingsResponse {
 	return settingsResponse{
 		Enabled: v.Enabled, Provider: v.Provider, BaseURL: v.BaseURL, Model: v.Model,
-		HasKey: v.HasKey, KeyHint: v.KeyHint, EffectiveBaseURL: v.EffectiveBaseURL, EffectiveModel: v.EffectiveModel,
+		HasKey: v.HasKey, KeyHint: v.KeyHint, KeyUnreadable: v.KeyUnreadable, EffectiveBaseURL: v.EffectiveBaseURL, EffectiveModel: v.EffectiveModel,
 		UpdatedAt: v.UpdatedAt, UpdatedBy: v.UpdatedBy, Providers: v.Providers,
 	}
 }
@@ -121,10 +122,15 @@ func (h *SettingsHandler) Test(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return errorResponse(c, http.StatusBadRequest, "ASSISTANT_SETTINGS_INVALID", "요청 본문을 해석하지 못했습니다")
 	}
-	res, err := h.svc.Test(c.Request().Context(), resolveOrgID(c), req.toInput())
+	orgID := resolveOrgID(c)
+	res, err := h.svc.Test(c.Request().Context(), orgID, req.toInput())
 	if err != nil {
 		return settingsError(c, err)
 	}
+	// 바꾸는 것은 없어도 키를 바깥으로 보내는 일이라 남긴다 — 키는 빼고.
+	h.log(c, sharedmw.ActorFromContext(c), "test_assistant_settings", orgID, map[string]any{
+		"provider": req.Provider, "model": req.Model, "base_url": req.BaseURL, "key_sent": req.APIKey != nil, "ok": res.OK,
+	})
 	return c.JSON(http.StatusOK, map[string]any{"ok": res.OK, "model": res.Model, "error": res.Error, "latency_ms": res.LatencyMs})
 }
 

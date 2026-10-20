@@ -71,13 +71,21 @@ Register the organization's provider, model, and API key under **Admin › AI As
 
 1. Pick a provider, and enter a model name and address if needed (empty means the defaults above)
 2. Enter the **API key**. After saving it is never shown again, only its last four characters — leave the
-   field empty when saving to keep the saved key. Switching provider needs the new provider's key
+   field empty when saving to keep the saved key. **Changing the provider or the address needs the key again**
+   — so the saved key is never sent to a different server
 3. **Test connection** asks the model once with those settings (nothing is saved)
 4. Tick **Turn on the assistant for this organization** and click **Save**
 
-The key is encrypted with the server's `ENCRYPTION_KEY` — without it, the key is not saved. Saving and
-deleting are recorded in the audit log (never the key itself), and **Delete settings** removes the key too and
-turns the assistant off.
+The key is encrypted with the server's `ENCRYPTION_KEY` — without it, the key is not saved, and if the value
+changes so the saved key cannot be read, the screen says so and asks for the key again. Saving, deleting and
+connection tests are recorded in the audit log (never the key itself), and **Delete settings** removes the key
+too and turns the assistant off.
+
+!!! warning "An address an admin enters can reach the internal network"
+    Private ranges are not blocked, so in-house servers work. Addresses with `?` or `#` are rejected,
+    redirects are not followed, and link-local addresses (cloud metadata such as `169.254.169.254`) are never
+    connected to. When a connection test fails, only the provider's JSON error message is shown — never the rest
+    of the response body.
 
 ## Limitations
 

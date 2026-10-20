@@ -123,3 +123,19 @@ func runMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	return nil
 }
+
+// ENCRYPTION_KEY 가 바뀌어 키를 읽지 못하면 설정은 돌려주고 키만 비운다 — 관리 화면에서 다시 넣을 수 있게.
+func TestPostgresSettingsRepository_UnreadableKey(t *testing.T) {
+	pool := setupPostgres(t)
+	ctx := context.Background()
+	require.NoError(t, NewPostgresSettingsRepository(pool, testKey).Save(ctx,
+		domain.Settings{OrgID: "org-a", Enabled: true, Provider: domain.ProviderUpstage, APIKey: "up_secret"}))
+
+	other := NewPostgresSettingsRepository(pool, []byte("another-key-32bytes-padding-xx!!"))
+	got, err := other.Get(ctx, "org-a")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Empty(t, got.APIKey)
+	assert.True(t, got.KeyUnreadable)
+	assert.Equal(t, domain.ProviderUpstage, got.Provider)
+}

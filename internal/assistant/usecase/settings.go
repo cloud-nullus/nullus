@@ -21,6 +21,7 @@ type SettingsView struct {
 	Model            string
 	HasKey           bool
 	KeyHint          string
+	KeyUnreadable    bool
 	EffectiveBaseURL string
 	EffectiveModel   string
 	UpdatedAt        *time.Time
@@ -28,8 +29,8 @@ type SettingsView struct {
 	Providers        []domain.Provider
 }
 
-// UpdateSettings 는 관리 화면이 보낸 설정이다. APIKey 가 nil 이면 저장된 키를 그대로 쓰고(공급자가 같을 때),
-// 빈 문자열이면 지운다.
+// UpdateSettings 는 관리 화면이 보낸 설정이다. APIKey 가 nil 이면 저장된 키를 그대로 쓰고(공급자와 주소가 같을
+// 때만), 빈 문자열이면 지운다.
 type UpdateSettings struct {
 	Enabled  bool
 	Provider string
@@ -125,8 +126,9 @@ func (s *SettingsService) Test(ctx context.Context, orgID string, in UpdateSetti
 	return res, nil
 }
 
-// merge 는 저장된 설정 위에 보낸 값을 얹는다. 키는 보낸 것이 있으면 그것, 없으면 같은 공급자의 저장된 키다 —
-// 공급자를 바꾸면 이전 공급자의 키는 쓰지 않는다.
+// merge 는 저장된 설정 위에 보낸 값을 얹는다. 키는 보낸 것이 있으면 그것, 없으면 같은 곳(공급자 · 주소)의
+// 저장된 키다 — 공급자나 주소를 바꾸면 저장된 키를 쓰지 않는다. 그러지 않으면 주소만 바꿔 연결 테스트로
+// 저장된 키를 아무 서버로나 보낼 수 있다.
 func (s *SettingsService) merge(ctx context.Context, orgID string, in UpdateSettings) (domain.Settings, error) {
 	if strings.TrimSpace(orgID) == "" {
 		return domain.Settings{}, fmt.Errorf("%w: 조직이 필요하다", domain.ErrInvalidSettings)
@@ -145,7 +147,7 @@ func (s *SettingsService) merge(ctx context.Context, orgID string, in UpdateSett
 	switch {
 	case in.APIKey != nil:
 		next.APIKey = strings.TrimSpace(*in.APIKey)
-	case cur != nil && cur.Provider == next.Provider:
+	case cur != nil && cur.SameEndpoint(next):
 		next.APIKey = cur.APIKey
 	}
 	return next, nil
@@ -154,7 +156,7 @@ func (s *SettingsService) merge(ctx context.Context, orgID string, in UpdateSett
 func view(s domain.Settings) SettingsView {
 	v := SettingsView{
 		Enabled: s.Enabled, Provider: s.Provider, BaseURL: s.BaseURL, Model: s.Model,
-		HasKey: s.HasKey(), KeyHint: s.KeyHint(),
+		HasKey: s.HasKey(), KeyHint: s.KeyHint(), KeyUnreadable: s.KeyUnreadable,
 		EffectiveBaseURL: s.EffectiveBaseURL(), EffectiveModel: s.EffectiveModel(),
 		UpdatedBy: s.UpdatedBy, Providers: domain.Providers(),
 	}

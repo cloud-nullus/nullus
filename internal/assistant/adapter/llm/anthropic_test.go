@@ -104,3 +104,82 @@ func TestAnthropic_OmitsToolsWhenNoneAndReportsErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid x-api-key")
 	assert.NotContains(t, err.Error(), "sk-ant-secret")
 }
+
+// 마무리 라운드: 기록에 tool_use 가 있으면 도구 정의는 보내고 tool_choice 를 none 으로 막는다.
+func TestAnthropic_ForbidToolUseKeepsToolsAndSetsNone(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		_, _ = io.WriteString(w, `{"content":[{"type":"text","text":"끝"}],"stop_reason":"end_turn"}`)
+	}))
+	defer srv.Close()
+
+	_, err := NewAnthropic(Config{BaseURL: srv.URL, APIKey: "k", Model: "m"}).Complete(context.Background(), port.CompletionRequest{
+		Messages:      []domain.Message{{Role: domain.RoleUser, Content: "a"}},
+		Tools:         []domain.ToolSpec{{Name: "stack_list", Parameters: map[string]any{"type": "object"}}},
+		ForbidToolUse: true,
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, got["tools"])
+	assert.Equal(t, map[string]any{"type": "none"}, got["tool_choice"])
+	assert.GreaterOrEqual(t, got["max_tokens"].(float64), float64(16000))
+}
+
+// 응답 content 원본(thinking 블록과 서명 포함)을 다음 요청의 assistant 메시지로 그대로 돌려준다.
+func TestAnthropic_ReplaysRawAssistantContent(t *testing.T) {
+	var second map[string]any
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		body, _ := io.ReadAll(r.Body)
+		if calls == 1 {
+			_, _ = io.WriteString(w, `{"content":[{"type":"thinking","thinking":"생각","signature":"sig=="},
+			  {"type":"tool_use","id":"toolu_1","name":"stack_list","input":{}}],"stop_reason":"tool_use"}`)
+			return
+		}
+		_ = json.Unmarshal(body, &second)
+		_, _ = io.WriteString(w, `{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}`)
+	}))
+	defer srv.Close()
+	c := NewAnthropic(Config{BaseURL: srv.URL, APIKey: "k", Model: "m"})
+
+	first, err := c.Complete(context.Background(), port.CompletionRequest{Messages: []domain.Message{{Role: domain.RoleUser, Content: "a"}}})
+	require.NoError(t, err)
+	_, err = c.Complete(context.Background(), port.CompletionRequest{Messages: []domain.Message{
+		{Role: domain.RoleUser, Content: "a"}, first, {Role: domain.RoleTool, ToolCallID: "toolu_1", Content: "[]"},
+	}})
+	require.NoError(t, err)
+	assistant := second["messages"].([]any)[1].(map[string]any)["content"].([]any)
+	require.Len(t, assistant, 2)
+	assert.Equal(t, "thinking", assistant[0].(map[string]any)["type"])
+	assert.Equal(t, "sig==", assistant[0].(map[string]any)["signature"])
+}
+
+// 토큰 상한에 닿아 아무것도 못 만들었거나 거절했으면 오류로 알린다.
+func TestAnthropic_StopReasons(t *testing.T) {
+	for reason, want := range map[string]string{"max_tokens": "토큰 상한", "refusal": "거절"} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.WriteString(w, `{"content":[],"stop_reason":"`+reason+`"}`)
+		}))
+		_, err := NewAnthropic(Config{BaseURL: srv.URL, APIKey: "k", Model: "m"}).Complete(context.Background(),
+			port.CompletionRequest{Messages: []domain.Message{{Role: domain.RoleUser, Content: "a"}}})
+		srv.Close()
+		require.Error(t, err, reason)
+		assert.Contains(t, err.Error(), want)
+	}
+}
+
+// 주소에 /v1 까지 넣어도 /v1/v1 이 되지 않는다.
+func TestAnthropic_AcceptsBaseURLWithV1(t *testing.T) {
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		_, _ = io.WriteString(w, `{"content":[{"type":"text","text":"ok"}]}`)
+	}))
+	defer srv.Close()
+	_, err := NewAnthropic(Config{BaseURL: srv.URL + "/v1/", APIKey: "k", Model: "m"}).Complete(context.Background(),
+		port.CompletionRequest{Messages: []domain.Message{{Role: domain.RoleUser, Content: "a"}}})
+	require.NoError(t, err)
+	assert.Equal(t, "/v1/messages", path)
+}

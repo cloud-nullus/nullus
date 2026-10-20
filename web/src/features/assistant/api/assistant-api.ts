@@ -67,6 +67,8 @@ export interface AssistantSettings {
   model: string
   has_key: boolean
   key_hint: string
+  // 키가 저장돼 있지만 복호화하지 못했다(서버의 ENCRYPTION_KEY 가 바뀜) — 다시 넣어야 한다.
+  key_unreadable?: boolean
   effective_base_url: string
   effective_model: string
   updated_at?: string
@@ -74,7 +76,7 @@ export interface AssistantSettings {
   providers: AssistantProvider[]
 }
 
-// api_key 가 빠지면 저장된 키를 그대로 쓰고(공급자가 같을 때), 빈 문자열이면 지운다.
+// api_key 가 빠지면 저장된 키를 그대로 쓰고(공급자와 주소가 같을 때), 빈 문자열이면 지운다.
 export interface AssistantSettingsInput {
   enabled: boolean
   provider: AssistantProviderId

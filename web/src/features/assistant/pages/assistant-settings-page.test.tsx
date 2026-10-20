@@ -138,4 +138,25 @@ describe('AssistantSettingsPage', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/admin/assistant'))
   })
+
+  // 주소를 바꾸면 저장된 키를 이어 쓰지 않는다 — 다른 서버로 키를 보내지 않게.
+  it('asks for the key again when the address changes', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: settings() } as never)
+    renderPage()
+
+    fireEvent.change(await screen.findByLabelText('Base URL'), { target: { value: 'https://proxy.example/v1' } })
+    expect(screen.getByText('The address changed — enter the API key again.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove key' })).not.toBeInTheDocument()
+
+    // 기본 주소를 그대로 적어 넣은 것은 같은 곳이다.
+    fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://api.upstage.ai/v1/' } })
+    expect(screen.getByText(/Saved key ••••1234/)).toBeInTheDocument()
+  })
+
+  it('explains a saved key that can no longer be read', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: settings({ has_key: false, key_hint: '', key_unreadable: true }) } as never)
+    renderPage()
+
+    expect(await screen.findByText(/The saved key cannot be read/)).toBeInTheDocument()
+  })
 })

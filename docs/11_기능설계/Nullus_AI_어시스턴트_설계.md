@@ -171,11 +171,26 @@
 | 메서드 · 경로 | 하는 일 |
 |---|---|
 | `GET /api/v1/admin/assistant` | 설정 · 공급자 목록. 키는 `has_key` · `key_hint`(끝 네 자리)만 |
-| `PUT /api/v1/admin/assistant` | 저장. `api_key` 가 빠지면 저장된 키를 그대로(같은 공급자일 때), 빈 문자열이면 지운다. **공급자를 바꾸면 이전 공급자의 키는 버린다** — 켜 두려면 새 키가 필요하다 |
+| `PUT /api/v1/admin/assistant` | 저장. `api_key` 가 빠지면 저장된 키를 그대로 — **공급자와 실제 주소가 둘 다 같을 때만**(`Settings.SameEndpoint`). 빈 문자열이면 지운다. 공급자나 주소를 바꾸면 저장된 키는 쓰지 않는다 — 주소만 바꿔 연결 테스트로 저장된 키를 아무 서버로나 보내 빼낼 수 있기 때문이다(리뷰에서 찾음) |
 | `DELETE /api/v1/admin/assistant` | 설정과 키를 지운다(꺼진다) |
 | `POST /api/v1/admin/assistant/test` | 보낸 설정(키를 안 보내면 저장된 키)으로 모델에 한 번 묻는다. 저장하지 않는다. 실패해도 200 — `ok` · `error`(키는 가린다) · `latency_ms` |
 
-저장 · 삭제는 감사 로그(`update_assistant_settings` · `delete_assistant_settings`)에 남긴다 — 키 원문은 남기지 않고 바꿨는지(`key_changed`)만. `ENCRYPTION_KEY` 가 없으면 키를 저장하지 않는다(503 `ASSISTANT_KEY_STORAGE_UNAVAILABLE`). 검증: 모르는 공급자 · http(s) 가 아닌 주소 · 주소의 계정 정보 · 모델 200자 초과 · 켰는데 키 없음(필수 공급자) · 기본값 없는 공급자의 모델 · 주소 누락은 400 `ASSISTANT_SETTINGS_INVALID`.
+저장 · 삭제 · 연결 테스트는 감사 로그(`update_assistant_settings` · `delete_assistant_settings` · `test_assistant_settings`)에 남긴다 — 키 원문은 남기지 않고 바꿨는지(`key_changed`)만. `ENCRYPTION_KEY` 가 없으면 키를 저장하지 않는다(503 `ASSISTANT_KEY_STORAGE_UNAVAILABLE`). 검증: 모르는 공급자 · http(s) 가 아닌 주소 · 주소의 계정 정보 · 모델 200자 초과 · 켰는데 키 없음(필수 공급자) · 기본값 없는 공급자의 모델 · 주소 누락은 400 `ASSISTANT_SETTINGS_INVALID`.
+
+저장된 키를 복호화하지 못하면(ENCRYPTION_KEY 가 바뀜) 저장소가 키만 비우고 `key_unreadable` 로 알린다 — 화면에서 다시 넣는다.
+
+### 6.2 관리자가 넣은 주소(SSRF)
+
+사내 서버(vLLM · Ollama)를 쓰려고 사설 대역은 막지 않는다 — admin 이 넣은 주소는 내부망에 닿을 수 있다. 대신:
+- 주소에 `?` · `#` 를 받지 않는다(뒤에 붙는 API 경로를 지워 임의 경로를 부르지 못하게)
+- 리다이렉트를 따라가지 않는다
+- 이름을 푼 뒤의 주소가 링크로컬 · 멀티캐스트 · 미지정이면 연결하지 않는다(클라우드 메타데이터 `169.254.169.254`)
+- 2xx 가 아닌 응답은 공급자의 JSON 오류 메시지만 싣는다 — 그 밖의 본문은 연결 테스트 결과에 나오지 않는다
+
+### 6.3 공급자별 주의
+
+- **Anthropic** — 도구 상한에 닿은 마무리 라운드도 도구 정의는 보내고 `tool_choice: none` 으로 막는다(기록에 `tool_use` 가 있으면 정의가 있어야 받는다). 응답 content 원본(thinking 블록 · 서명)을 다음 라운드의 assistant 메시지로 그대로 돌려준다(`Message.ProviderData`). `max_tokens` 16000, `stop_reason` 의 `refusal` · 빈 답의 `max_tokens` 는 오류로. 주소에 `/v1` 을 넣어도 된다
+- **OpenAI 호환** — 마무리 라운드는 `tool_choice: "none"`
 
 도구는 API 자신(`http://127.0.0.1:<server.port>`)을 부른다.
 
@@ -201,6 +216,8 @@
 | 후속 | 원격 MCP(Streamable HTTP + OAuth) — 외부 클라이언트도 같은 도구를 쓰게 | |
 
 ## 9. 열린 결정
+
+- **조직 선택 헤더** — 조직 주장이 없는 OIDC 토큰 · 개발 모드에서는 `X-Org-ID` 로 조직을 고른다(알림 채널 · 백업 API 와 같은 패턴). 그 경우 다른 조직의 설정(키 · 사용량)을 쓸 수 있다 — 도구는 요청자 권한이라 데이터는 안전하고, 키를 빼내는 길은 `SameEndpoint` 로 막았다. 플랫폼 공통으로 조직 주장을 강제할지 정해야 한다
 
 - 기본 공급자 · 모델: Upstage `solar-pro4` 와 mini 계열의 비용 선택(크레딧 소진 속도를 보고 정한다)
 - Azure OpenAI(배포 이름 · `api-key` 헤더 · `api-version`)처럼 OpenAI 호환에서 벗어나는 벤더를 더할지

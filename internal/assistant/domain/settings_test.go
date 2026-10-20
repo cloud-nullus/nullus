@@ -49,7 +49,11 @@ func TestValidateSettings(t *testing.T) {
 		"직접 입력은 주소가 필요하다":      {Enabled: true, Provider: ProviderOpenAICompatible, Model: "m"},
 		"주소는 http(s) 다":        {Enabled: true, Provider: ProviderOpenAICompatible, BaseURL: "file:///etc/passwd", Model: "m"},
 		"주소에 비밀번호를 싣지 않는다":     {Enabled: true, Provider: ProviderOpenAICompatible, BaseURL: "https://u:p@llm.internal/v1", Model: "m"},
-		"모델 이름이 너무 길다":         {Enabled: true, Provider: ProviderUpstage, APIKey: "k", Model: string(make([]byte, 201))},
+
+		// 뒤에 붙는 경로를 지워 임의 경로를 부르지 못하게 한다.
+		"주소에 fragment": {Enabled: true, Provider: ProviderOpenAICompatible, BaseURL: "http://10.0.0.1/any/path#", Model: "m"},
+		"주소에 query":    {Enabled: true, Provider: ProviderOpenAICompatible, BaseURL: "http://10.0.0.1/v1?x=1", Model: "m"},
+		"모델 이름이 너무 길다": {Enabled: true, Provider: ProviderUpstage, APIKey: "k", Model: string(make([]byte, 201))},
 	}
 	for name, s := range bad {
 		t.Run(name, func(t *testing.T) {
@@ -66,4 +70,11 @@ func TestSettings_ReadyAndKeyHint(t *testing.T) {
 	assert.Equal(t, "••••1234", Settings{APIKey: "up_abcd1234"}.KeyHint())
 	assert.Equal(t, "••••", Settings{APIKey: "abc"}.KeyHint(), "짧은 키는 끝자리도 보이지 않는다")
 	assert.Equal(t, "", Settings{}.KeyHint())
+}
+
+func TestSettings_SameEndpoint(t *testing.T) {
+	a := Settings{Provider: ProviderUpstage}
+	assert.True(t, a.SameEndpoint(Settings{Provider: ProviderUpstage, BaseURL: "https://api.upstage.ai/v1/"}), "기본 주소를 적어 넣은 것도 같다")
+	assert.False(t, a.SameEndpoint(Settings{Provider: ProviderUpstage, BaseURL: "https://evil.example/v1"}))
+	assert.False(t, a.SameEndpoint(Settings{Provider: ProviderOpenAI}))
 }

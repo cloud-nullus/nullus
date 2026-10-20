@@ -48,6 +48,10 @@ function toInput(form: FormState): AssistantSettingsInput {
   return input
 }
 
+function trimSlash(url: string): string {
+  return url.replace(/\/+$/, '')
+}
+
 function errorMessage(err: unknown): string {
   if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string') return err.message
   return String(err)
@@ -86,8 +90,11 @@ export function AssistantSettingsPage() {
 
   const saved = settings.data
   const provider: AssistantProvider | undefined = saved.providers.find((p) => p.id === form.provider)
-  const sameProvider = form.provider === saved.provider
-  const keepsSavedKey = sameProvider && saved.has_key && !form.removeKey
+  // 저장된 키는 같은 곳(공급자 · 실제 주소)으로만 이어 쓴다 — 서버도 같은 규칙이다.
+  const effectiveBaseURL = trimSlash(form.baseURL.trim() || provider?.default_base_url || '')
+  const sameEndpoint = form.provider === saved.provider && effectiveBaseURL === trimSlash(saved.effective_base_url)
+  const keepsSavedKey = sameEndpoint && saved.has_key && !form.removeKey
+  const addressChanged = form.provider === saved.provider && saved.has_key && !sameEndpoint
   const update = (patch: Partial<FormState>) => {
     setForm({ ...form, ...patch })
     setResult(null)
@@ -196,7 +203,9 @@ export function AssistantSettingsPage() {
           hint={
             keepsSavedKey
               ? t('assistantSettings.keySaved', { hint: saved.key_hint })
-              : provider && !provider.key_required
+              : addressChanged
+                ? t('assistantSettings.keyAddressChanged')
+                : provider && !provider.key_required
                 ? t('assistantSettings.keyOptional')
                 : t('assistantSettings.keyRequired')
           }
@@ -213,6 +222,11 @@ export function AssistantSettingsPage() {
             />
           )}
         </Field>
+        {saved.key_unreadable && form.provider === saved.provider && (
+          <div role="alert" className="-mt-3 text-[12px] text-[var(--color-warning)]">
+            {t('assistantSettings.keyUnreadable')}
+          </div>
+        )}
         {keepsSavedKey && (
           <div className="-mt-3">
             <Button variant="ghost" size="sm" onClick={() => update({ removeKey: true, apiKey: '' })}>

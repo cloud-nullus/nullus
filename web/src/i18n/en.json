@@ -2515,6 +2515,8 @@
     "keySaved": "Saved key {{hint}} — leave empty to keep it.",
     "keyRequired": "Enter the API key for this provider.",
     "keyOptional": "Optional for an in-house server.",
+    "keyAddressChanged": "The address changed — enter the API key again.",
+    "keyUnreadable": "The saved key cannot be read (the server's ENCRYPTION_KEY changed). Enter the API key again.",
     "removeKey": "Remove key",
     "enabled": "Turn on the assistant for this organization",
     "dataNotice": "While it is on, the results of the assistant's read tools (stack settings, status, parts of install logs) are sent to this provider. Tokens and passwords inside them are masked.",

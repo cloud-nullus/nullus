@@ -96,3 +96,40 @@ func TestSettings_TestRejectsInvalidSettings(t *testing.T) {
 }
 
 var _ port.SettingsRepository = (*fakeSettings)(nil)
+
+// 주소를 바꾸면 저장된 키를 새 주소로 보내지 않는다 — 공급자와 주소가 둘 다 같을 때만 키를 이어 쓴다.
+// 그렇지 않으면 저장된 키를 아무 서버로나 보내 빼낼 수 있다(연결 테스트로도).
+func TestSettings_ChangingTheAddressRequiresTheKeyAgain(t *testing.T) {
+	svc, repo, models := newSettingsFixture(readySettings)
+	ctx := context.Background()
+
+	_, err := svc.Test(ctx, testOrg, UpdateSettings{Provider: domain.ProviderUpstage, BaseURL: "https://evil.example/v1"})
+	assert.ErrorIs(t, err, domain.ErrInvalidSettings, "키 없이 다른 주소로 시험할 수 없다")
+	assert.Empty(t, models.got, "저장된 키로 모델을 만들지 않는다")
+
+	_, err = svc.Update(ctx, testOrg, "admin", UpdateSettings{Enabled: true, Provider: domain.ProviderUpstage, BaseURL: "https://evil.example/v1"})
+	assert.ErrorIs(t, err, domain.ErrInvalidSettings)
+	assert.Equal(t, "", repo.byOrg[testOrg].BaseURL, "저장도 하지 않는다")
+
+	// 기본 주소를 그대로 적어 넣은 것은 같은 주소다.
+	_, err = svc.Update(ctx, testOrg, "admin", UpdateSettings{Enabled: true, Provider: domain.ProviderUpstage, BaseURL: "https://api.upstage.ai/v1/"})
+	require.NoError(t, err)
+	assert.Equal(t, "up_abcd1234", repo.byOrg[testOrg].APIKey)
+}
+
+// 저장된 키를 읽지 못하면(ENCRYPTION_KEY 가 바뀜) 설정은 보이고, 키를 다시 넣으라고 알린다.
+func TestSettings_UnreadableKeyIsReportedAndCanBeReplaced(t *testing.T) {
+	broken := readySettings
+	broken.APIKey, broken.KeyUnreadable = "", true
+	svc, repo, _ := newSettingsFixture(broken)
+
+	v, err := svc.Get(context.Background(), testOrg)
+	require.NoError(t, err)
+	assert.True(t, v.KeyUnreadable)
+	assert.False(t, v.HasKey)
+
+	_, err = svc.Update(context.Background(), testOrg, "admin", UpdateSettings{Enabled: true, Provider: domain.ProviderUpstage, APIKey: strptr("up_new_key_5678")})
+	require.NoError(t, err)
+	assert.Equal(t, "up_new_key_5678", repo.byOrg[testOrg].APIKey)
+	assert.False(t, repo.byOrg[testOrg].KeyUnreadable)
+}

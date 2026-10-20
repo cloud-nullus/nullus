@@ -17,8 +17,9 @@ import (
 // anthropicVersion 은 Messages API 버전 헤더다.
 const anthropicVersion = "2023-06-01"
 
-// anthropicMaxTokens 는 답 하나의 토큰 상한이다(Messages API 는 필수다).
-const anthropicMaxTokens = 2048
+// anthropicMaxTokens 는 답 하나의 토큰 상한이다(Messages API 는 필수다). thinking 토큰도 이 안에 들어간다 —
+// 작으면 도구 입력이 잘리거나 답이 빈다. 스트리밍을 쓰지 않는 요청의 시간 안에 드는 값으로 둔다.
+const anthropicMaxTokens = 16000
 
 // AnthropicClient 는 Anthropic Messages API 클라이언트다. 시스템 프롬프트는 별도 필드, 도구 호출은 tool_use 블록,
 // 도구 결과는 user 메시지의 tool_result 블록이다.
@@ -33,8 +34,9 @@ func NewAnthropic(cfg Config) *AnthropicClient {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 90 * time.Second
 	}
-	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
-	return &AnthropicClient{cfg: cfg, hc: &http.Client{Timeout: cfg.Timeout}}
+	// 주소는 /v1 을 빼고 받지만, 넣어도 /v1/v1 이 되지 않게 한다(OpenAI 계열은 /v1 까지 넣는다).
+	cfg.BaseURL = strings.TrimSuffix(strings.TrimRight(cfg.BaseURL, "/"), "/v1")
+	return &AnthropicClient{cfg: cfg, hc: newHTTPClient(cfg.Timeout)}
 }
 
 type anthropicBlock struct {
@@ -47,9 +49,25 @@ type anthropicBlock struct {
 	Content   string          `json:"content,omitempty"`
 }
 
+// anthropicMessage 는 Raw 가 있으면 그 content 를 그대로 보낸다 — 이전 응답의 원본(thinking 블록 · 서명)을
+// 바꾸지 않고 돌려줘야 한다.
 type anthropicMessage struct {
-	Role    string           `json:"role"`
-	Content []anthropicBlock `json:"content"`
+	Role    string
+	Content []anthropicBlock
+	Raw     json.RawMessage
+}
+
+func (m anthropicMessage) MarshalJSON() ([]byte, error) {
+	if len(m.Raw) > 0 {
+		return json.Marshal(struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		}{m.Role, m.Raw})
+	}
+	return json.Marshal(struct {
+		Role    string           `json:"role"`
+		Content []anthropicBlock `json:"content"`
+	}{m.Role, m.Content})
 }
 
 type anthropicTool struct {
@@ -68,10 +86,8 @@ type anthropicRequest struct {
 }
 
 type anthropicResponse struct {
-	Content []anthropicBlock `json:"content"`
-	Error   *struct {
-		Message string `json:"message"`
-	} `json:"error"`
+	Content    json.RawMessage `json:"content"`
+	StopReason string          `json:"stop_reason"`
 }
 
 func (c *AnthropicClient) Complete(ctx context.Context, req port.CompletionRequest) (domain.Message, error) {
@@ -84,6 +100,10 @@ func (c *AnthropicClient) Complete(ctx context.Context, req port.CompletionReque
 		case domain.RoleUser:
 			body.Messages = append(body.Messages, anthropicMessage{Role: "user", Content: []anthropicBlock{{Type: "text", Text: m.Content}}})
 		case domain.RoleAssistant:
+			if len(m.ProviderData) > 0 && json.Valid(m.ProviderData) {
+				body.Messages = append(body.Messages, anthropicMessage{Role: "assistant", Raw: m.ProviderData})
+				continue
+			}
 			var blocks []anthropicBlock
 			if strings.TrimSpace(m.Content) != "" {
 				blocks = append(blocks, anthropicBlock{Type: "text", Text: m.Content})
@@ -119,6 +139,9 @@ func (c *AnthropicClient) Complete(ctx context.Context, req port.CompletionReque
 	}
 	if len(body.Tools) > 0 {
 		body.ToolChoice = map[string]string{"type": "auto"}
+		if req.ForbidToolUse {
+			body.ToolChoice = map[string]string{"type": "none"}
+		}
 	}
 
 	raw, err := json.Marshal(body)
@@ -142,25 +165,24 @@ func (c *AnthropicClient) Complete(ctx context.Context, req port.CompletionReque
 	if err != nil {
 		return domain.Message{}, fmt.Errorf("모델 응답 읽기: %w", err)
 	}
-	var out anthropicResponse
-	decodeErr := json.Unmarshal(data, &out)
 	if resp.StatusCode/100 != 2 {
-		detail := strings.TrimSpace(string(data))
-		if decodeErr == nil && out.Error != nil && out.Error.Message != "" {
-			detail = out.Error.Message
-		}
-		if len(detail) > 300 {
-			detail = detail[:300]
-		}
-		return domain.Message{}, fmt.Errorf("모델 응답 %d: %s", resp.StatusCode, detail)
+		return domain.Message{}, upstreamError(resp.StatusCode, data)
 	}
-	if decodeErr != nil {
-		return domain.Message{}, fmt.Errorf("모델 응답 해석: %w", decodeErr)
+	var out anthropicResponse
+	if err := json.Unmarshal(data, &out); err != nil {
+		return domain.Message{}, fmt.Errorf("모델 응답 해석: %w", err)
+	}
+	var blocks []anthropicBlock
+	if len(out.Content) > 0 {
+		if err := json.Unmarshal(out.Content, &blocks); err != nil {
+			return domain.Message{}, fmt.Errorf("모델 응답 해석: %w", err)
+		}
 	}
 
-	msg := domain.Message{Role: domain.RoleAssistant}
+	// 원본 content 를 다음 라운드에 그대로 돌려준다(thinking 블록 · 서명 포함).
+	msg := domain.Message{Role: domain.RoleAssistant, ProviderData: []byte(out.Content)}
 	var text []string
-	for _, b := range out.Content {
+	for _, b := range blocks {
 		switch b.Type {
 		case "text":
 			text = append(text, b.Text)
@@ -173,6 +195,12 @@ func (c *AnthropicClient) Complete(ctx context.Context, req port.CompletionReque
 		}
 	}
 	msg.Content = strings.Join(text, "\n")
+	switch {
+	case out.StopReason == "refusal":
+		return domain.Message{}, fmt.Errorf("모델이 답을 거절했습니다")
+	case out.StopReason == "max_tokens" && strings.TrimSpace(msg.Content) == "" && len(msg.ToolCalls) == 0:
+		return domain.Message{}, fmt.Errorf("모델 출력이 토큰 상한(%d)에 닿아 답을 만들지 못했습니다", anthropicMaxTokens)
+	}
 	return msg, nil
 }
 

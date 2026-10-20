@@ -63,11 +63,14 @@ type ToolCall struct {
 }
 
 // Message 는 모델과 주고받는 메시지다. assistant 는 ToolCalls 를, tool 은 ToolCallID 를 가질 수 있다.
+// ProviderData 는 공급자가 응답에 담아 보낸 원본을 다음 라운드에 그대로 돌려주는 자리다(Anthropic 의
+// thinking 블록과 서명 — 빼거나 바꾸면 거부된다).
 type Message struct {
-	Role       Role
-	Content    string
-	ToolCalls  []ToolCall
-	ToolCallID string
+	Role         Role
+	Content      string
+	ToolCalls    []ToolCall
+	ToolCallID   string
+	ProviderData []byte
 }
 
 // ToolSpec 은 모델에 알려 주는 도구 하나다. Parameters 는 JSON Schema 다.

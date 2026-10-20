@@ -119,11 +119,15 @@ func TestSettingsHandler_TestAndDelete(t *testing.T) {
 	rec := serveSettings(t, svc, sink, http.MethodPost, "/api/v1/admin/assistant/test", `{"provider":"upstage","api_key":"k"}`)
 	require.Equal(t, http.StatusOK, rec.Code, "실패해도 200 — 결과는 본문으로")
 	assert.JSONEq(t, `{"ok":false,"model":"solar-pro4","error":"모델 응답 401: invalid key","latency_ms":0}`, rec.Body.String())
-	assert.Empty(t, sink.entries, "테스트는 아무것도 바꾸지 않아 감사 대상이 아니다")
+	// 시험은 바꾸는 것이 없어도 저장된 키를 바깥으로 보내는 일이라 남긴다 — 키는 빼고.
+	require.Len(t, sink.entries, 1)
+	assert.Equal(t, "test_assistant_settings", sink.entries[0].Action)
+	assert.Equal(t, false, sink.entries[0].Details["ok"])
+	assert.NotContains(t, fmt.Sprint(sink.entries), `"k"`)
 
 	rec = serveSettings(t, svc, sink, http.MethodDelete, "/api/v1/admin/assistant", "")
 	require.Equal(t, http.StatusNoContent, rec.Code)
 	assert.Equal(t, "org-1", svc.deleted)
-	require.Len(t, sink.entries, 1)
-	assert.Equal(t, "delete_assistant_settings", sink.entries[0].Action)
+	require.Len(t, sink.entries, 2)
+	assert.Equal(t, "delete_assistant_settings", sink.entries[1].Action)
 }

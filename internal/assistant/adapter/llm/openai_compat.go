@@ -48,7 +48,7 @@ func New(cfg Config) *Client {
 		cfg.Timeout = 90 * time.Second
 	}
 	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
-	return &Client{cfg: cfg, hc: &http.Client{Timeout: cfg.Timeout}}
+	return &Client{cfg: cfg, hc: newHTTPClient(cfg.Timeout)}
 }
 
 // Model 은 쓰는 모델 이름이다(상태 API 가 보인다).
@@ -92,9 +92,6 @@ type wireResponse struct {
 	Choices []struct {
 		Message wireMessage `json:"message"`
 	} `json:"choices"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
 }
 
 // Complete 는 한 번 묻는다. 도구가 있으면 모델이 고르게(tool_choice=auto), 없으면 도구 필드를 보내지 않는다.
@@ -110,6 +107,9 @@ func (c *Client) Complete(ctx context.Context, req port.CompletionRequest) (doma
 	}
 	if len(body.Tools) > 0 {
 		body.ToolChoice = "auto"
+		if req.ForbidToolUse {
+			body.ToolChoice = "none"
+		}
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
@@ -135,23 +135,15 @@ func (c *Client) Complete(ctx context.Context, req port.CompletionRequest) (doma
 		return domain.Message{}, fmt.Errorf("모델 응답 읽기: %w", err)
 	}
 
-	var out wireResponse
-	decodeErr := json.Unmarshal(data, &out)
 	if resp.StatusCode/100 != 2 {
-		detail := strings.TrimSpace(string(data))
-		if decodeErr == nil && out.Error != nil && out.Error.Message != "" {
-			detail = out.Error.Message
-		}
-		if len(detail) > 300 {
-			detail = detail[:300]
-		}
-		return domain.Message{}, fmt.Errorf("모델 응답 %d: %s", resp.StatusCode, detail)
+		return domain.Message{}, upstreamError(resp.StatusCode, data)
 	}
-	if decodeErr != nil {
-		return domain.Message{}, fmt.Errorf("모델 응답 해석: %w", decodeErr)
+	var out wireResponse
+	if err := json.Unmarshal(data, &out); err != nil {
+		return domain.Message{}, fmt.Errorf("모델 응답 해석: %w", err)
 	}
 	if len(out.Choices) == 0 {
-		return domain.Message{}, fmt.Errorf("모델 응답에 choices 가 없다")
+		return domain.Message{}, errNoChoices
 	}
 	return fromWire(out.Choices[0].Message), nil
 }
