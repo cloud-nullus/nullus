@@ -2453,5 +2453,33 @@
       "passwordAgain": "서버나 계정을 바꿨으니 비밀번호를 다시 입력하세요."
     },
     "secretUnreadable": "저장된 비밀을 읽을 수 없습니다(ENCRYPTION_KEY 가 바뀌었나요?). 편집에서 다시 입력하세요."
+  },
+  "assistant": {
+    "open": "AI 어시스턴트",
+    "title": "AI 어시스턴트",
+    "readOnly": "조회 전용",
+    "close": "닫기",
+    "newChat": "새 대화",
+    "send": "보내기",
+    "messageLabel": "메시지",
+    "placeholder": "스택 · 클러스터 · 설치에 대해 물어보세요…",
+    "empty": "스택 상태, 설치 실패 원인, 클러스터, 템플릿에 대해 물어보세요.",
+    "suggestion1": "실패한 스택이 있어?",
+    "suggestion2": "마지막 스택 설치는 왜 실패했어?",
+    "suggestion3": "어떤 스택 템플릿이 있어?",
+    "thinking": "생각하는 중…",
+    "toolsUsed": "사용한 도구: {{tools}}",
+    "toolFailed": "{{name}}(실패)",
+    "providers": {
+      "upstage": "Upstage",
+      "openai-compatible": "OpenAI 호환",
+      "unknown": "외부 AI"
+    },
+    "disclaimer": "답은 {{provider}} 모델이 만듭니다. 이 플랫폼의 도구 결과가 모델로 전송됩니다. 조회만 하며 아무것도 바꾸지 않습니다.",
+    "errors": {
+      "upstream": "AI 모델이 응답하지 않았습니다. 잠시 뒤 다시 시도하세요.",
+      "notConfigured": "AI 어시스턴트가 설정되지 않았습니다.",
+      "generic": "답을 받지 못했습니다."
+    }
   }
 }

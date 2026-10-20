@@ -15,7 +15,7 @@
 | 항목 | 결정 | 근거 |
 |------|------|------|
 | SDK | **공식 `github.com/modelcontextprotocol/go-sdk`** | 공식 SDK(Google 협업 유지보수). generic `mcp.AddTool`이 Go 타입에서 입력/출력 JSON 스키마를 자동 생성 — tool 스키마와 핸들러 시그니처가 컴파일 타임에 묶인다. 커뮤니티 SDK(mark3labs/mcp-go 등)는 기능은 넓지만 공식 대비 스펙 추종 보장이 없다 |
-| Transport | **stdio만 v1** | 로컬 개발자·CI 시나리오가 전부다. HTTP/SSE·원격 서버 모드는 인증 설계(OAuth)가 별도 문제라 범위 밖 (백로그 "범위 밖" 유지) |
+| Transport | **stdio만 v1** | 로컬 개발자·CI 시나리오가 전부다. HTTP/SSE·원격 서버 모드는 인증 설계(OAuth)가 별도 문제라 범위 밖 (백로그 "범위 밖" 유지). 플랫폼 화면의 AI 어시스턴트는 API 안에서 이 서버를 in-memory transport 로 띄워 읽기 도구만 쓴다 — 밖으로 열리는 transport 가 아니다(`Nullus_AI_어시스턴트_설계.md`, 2026-10-20) |
 | 패키징 | **단일 바이너리 서브커맨드 `nullus mcp serve`** | §4 |
 | tool 표면 | 읽기 6종 + 변경 3종 (§2) | 백로그 B-2·B-3 확정 |
 | 변경 tool 정책 | **기본 비활성**, `--allow-write` 옵트인 (§3) | 사고 반경 최소화 |

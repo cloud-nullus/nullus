@@ -83,6 +83,8 @@
 | `CICD_RUN_SYNC_INTERVAL` | CI 실행 동기화 주기 | **10m** |
 | `STACK_IMAGE_RESCAN_INTERVAL` | 설치 이미지 재스캔 주기(에어갭 포함). 새로 발견된 수정판 있는 CRITICAL 은 알림 `stack_cve_found` 로 간다 | **24h** |
 | `NULLUS_SCM_GROUP` | 파이프라인용 GitLab 그룹 | **`nullus`** |
+| `NULLUS_ASSISTANT_API_KEY` | [AI 어시스턴트](../features/assistant.md)의 LLM API 키(Upstage). 비면 어시스턴트가 꺼진다 | 빈 값 |
+| `NULLUS_ASSISTANT_BASE_URL` / `NULLUS_ASSISTANT_MODEL` | 어시스턴트 모델의 OpenAI 호환 base URL / 모델 이름 | `https://api.upstage.ai/v1` / `solar-pro4` |
 | `NULLUS_DEFAULT_ORG_ID` | 기본 조직 ID | 코드의 고정 UUID |
 
 ### CLI·MCP 전용

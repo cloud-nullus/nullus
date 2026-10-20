@@ -77,6 +77,7 @@ These paths have no sidebar item; you reach them from other screens.
 | Pipeline Logs | `/cicd/pipelines/:id/logs` | CI/CD List or CI/CD History |
 | Sign in | `/login` | Automatic redirect when you are not authenticated |
 | 404 | Any other path | — |
+| [AI Assistant](assistant.md) | No path — a panel | The button at the bottom right of every screen (only when the server has a key) |
 
 ## The sidebar and the routes can disagree
 

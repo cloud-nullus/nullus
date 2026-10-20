@@ -16,6 +16,10 @@ The transport is **stdio only**.
 !!! warning "Resources and prompts are not registered"
     Only tools are exposed.
 
+!!! note "The in-app AI Assistant uses these tools too"
+    The [AI Assistant](../features/assistant.md) runs this server in memory inside the API and uses only the
+    **six read tools** below (the change tools are not in its list). It is not a transport exposed beyond stdio.
+
 ## Six read tools (always available)
 
 | Tool | Input | API called |
