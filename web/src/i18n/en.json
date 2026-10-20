@@ -1182,7 +1182,8 @@
         "fixable": "Fixable",
         "status": "Status"
       },
-      "summaryScanner": "Scanner {{scanner}} · Vulnerability DB {{db}}"
+      "summaryScanner": "Scanner {{scanner}} · Vulnerability DB {{db}}",
+      "airgapDB": "Air-gapped install — scanned with the vulnerability DB imported with the bundle. CVEs published after that import appear only after the next bundle import."
     },
     "upgrade": {
       "title": "Available Version Upgrades",

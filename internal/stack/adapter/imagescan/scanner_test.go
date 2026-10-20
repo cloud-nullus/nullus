@@ -135,7 +135,7 @@ func TestScanJobManifest_ExcludesUnsafeRefs(t *testing.T) {
 			{Ref: "quay.io/argoproj/argocd@sha256:aaa", Platform: "linux/arm64"},
 			{Ref: "evil@sha256:x; rm -rf /", Platform: "linux/arm64"},
 			{Ref: "docker.io/library/redis@sha256:ggg", Platform: "linux/$(id)"},
-		}, time.Hour)
+		}, time.Hour, nil)
 
 	assert.Contains(t, manifest, "namespace: harbor-e2e")
 	assert.Contains(t, manifest, "image: aquasec/trivy:0.74.0")

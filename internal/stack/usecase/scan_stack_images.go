@@ -31,8 +31,8 @@ type ScanStackImages struct {
 	kubeconfigs port.KubeconfigProvider
 	scanner     port.InstalledImageScanner
 	results     port.StackImageScanRepository
-	// airgap 이면 스캔하지 않는다. 이미지를 받을 외부 레지스트리에 닿지 못하고,
-	// 취약점 DB 는 사람이 넣은 만큼만 새것이다.
+	// airgap 이면 보고서에 에어갭이라고 남긴다 — 취약점 DB 가 번들을 반입한 날짜 기준이다. 이미지를
+	// 내부 레지스트리에서 받는 일은 스캐너가 한다(imagescan.WithMirrorRegistry).
 	airgap bool
 
 	// notifier 는 새로 발견된 "수정판 있는 CRITICAL" 을 조직의 알림 채널로 보낸다.
@@ -81,6 +81,7 @@ func (uc *ScanStackImages) Execute(ctx context.Context, stackID string) (*domain
 	}
 	if reason := uc.skipReason(stack); reason != "" {
 		report := domain.BuildImageScanReport(stack.ID, reason, nil)
+		report.Airgap = uc.airgap
 		return &report, nil
 	}
 	if stack.State != domain.StateCompleted {
@@ -113,6 +114,7 @@ func (uc *ScanStackImages) Execute(ctx context.Context, stackID string) (*domain
 	uc.notifyNewCVEs(ctx, stack, scans)
 
 	report := domain.BuildImageScanReport(stack.ID, "", scans)
+	report.Airgap = uc.airgap
 	return &report, nil
 }
 
@@ -131,6 +133,7 @@ func (uc *ScanStackImages) Report(ctx context.Context, stackID string) (*domain.
 		}
 	}
 	report := domain.BuildImageScanReport(stack.ID, reason, scans)
+	report.Airgap = uc.airgap
 	return &report, nil
 }
 
@@ -225,7 +228,7 @@ func (uc *ScanStackImages) skipReason(stack *domain.Stack) domain.ImageScanSkipR
 	if !ok {
 		cfg = domain.StackConfig{}
 	}
-	return domain.ImageScanSkipReasonFor(cfg, uc.airgap)
+	return domain.ImageScanSkipReasonFor(cfg)
 }
 
 func (uc *ScanStackImages) acquire(stackID string) bool {

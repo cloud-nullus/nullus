@@ -1182,7 +1182,8 @@
         "fixable": "수정 가능",
         "status": "상태"
       },
-      "summaryScanner": "스캐너 {{scanner}} · 취약점 DB {{db}}"
+      "summaryScanner": "스캐너 {{scanner}} · 취약점 DB {{db}}",
+      "airgapDB": "폐쇄망 설치 — 번들과 함께 반입한 취약점 DB 로 스캔했습니다. 반입 뒤에 공개된 CVE 는 다음 번들을 반입해야 보입니다."
     },
     "upgrade": {
       "title": "버전 업그레이드",

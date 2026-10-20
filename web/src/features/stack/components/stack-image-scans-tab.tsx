@@ -380,6 +380,12 @@ function ReportBody({
               {t("stackList.imageScans.summaryScanner", source)}
             </p>
           )}
+          {/* 에어갭은 번들이 반입한 DB 로 스캔한다 — 반입 뒤에 공개된 CVE 는 다음 반입 전까지 보이지 않는다. */}
+          {report.airgap && (
+            <p className="mb-0 mt-1 text-[11px] font-semibold text-[var(--color-text-secondary)]">
+              {t("stackList.imageScans.airgapDB")}
+            </p>
+          )}
         </div>
       )}
 

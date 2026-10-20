@@ -222,12 +222,14 @@ func main() {
 	// 설치 이미지 취약점 스캔(보고용, 설치를 막지 않는다).
 	//
 	// 스택이 돌리는 OSS 이미지를 스택의 Trivy 서버로 스캔한다 — 설치 직후 한 번,
-	// 이후 주기적으로. 에어갭 설치는 외부 레지스트리에 닿지 못해 스캔하지 않는다.
+	// 이후 주기적으로. 에어갭 설치는 노드가 containerd 미러로 받은 이미지를 내부 레지스트리
+	// (NULLUS_HELM_OCI_REGISTRY 의 호스트)에서 받아 스캔하고, DB 는 번들이 반입한 것을 쓴다.
 	stackImageScanUC := stackuc.NewScanStackImages(
 		pgStackRepo,
 		pgStackRepo,
 		kubeconfigProvider,
-		stackimagescan.NewScanner(),
+		stackimagescan.NewScanner(stackimagescan.WithMirrorRegistry(
+			shareddomain.AirgapRegistryHost(os.Getenv("NULLUS_HELM_OCI_REGISTRY")))),
 		stackrepo.NewPostgresStackImageScanRepository(pool),
 		stackhelm.AirgapMode(),
 	)
@@ -873,21 +875,20 @@ func main() {
 	})
 
 	// 스택이 설치한 OSS 이미지를 주기적으로 다시 스캔한다. 설치 뒤에 공개된 CVE 는
-	// 다시 스캔해야 보인다. 에어갭 설치는 스캔하지 않는다. 기동 직후에는 마지막 스캔이 주기보다
-	// 오래된 스택만 먼저 스캔한다 — 타이머는 재시작마다 처음부터 다시 세어진다.
-	if !stackhelm.AirgapMode() {
-		rescanInterval := durationFromEnv("STACK_IMAGE_RESCAN_INTERVAL", 24*time.Hour)
-		go func() {
-			if scanned := stackImageScanUC.RescanStale(rotationCtx, rescanInterval); scanned > 0 {
-				slog.Info("stale installed images rescanned at startup", "stacks", scanned)
+	// 다시 스캔해야 보인다. 에어갭 설치도 돈다 — DB 는 반입한 것이라 새 CVE 는 번들을 다시
+	// 반입해야 보인다(화면이 DB 기준일을 보인다). 기동 직후에는 마지막 스캔이 주기보다 오래된
+	// 스택만 먼저 스캔한다 — 타이머는 재시작마다 처음부터 다시 세어진다.
+	rescanInterval := durationFromEnv("STACK_IMAGE_RESCAN_INTERVAL", 24*time.Hour)
+	go func() {
+		if scanned := stackImageScanUC.RescanStale(rotationCtx, rescanInterval); scanned > 0 {
+			slog.Info("stale installed images rescanned at startup", "stacks", scanned)
+		}
+		runEvery(rotationCtx, rescanInterval, func(ctx context.Context) {
+			if scanned := stackImageScanUC.RescanAll(ctx); scanned > 0 {
+				slog.Info("installed images rescanned", "stacks", scanned)
 			}
-			runEvery(rotationCtx, rescanInterval, func(ctx context.Context) {
-				if scanned := stackImageScanUC.RescanAll(ctx); scanned > 0 {
-					slog.Info("installed images rescanned", "stacks", scanned)
-				}
-			})
-		}()
-	}
+		})
+	}()
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	go func() {

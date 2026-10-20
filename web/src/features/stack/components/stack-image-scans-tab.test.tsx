@@ -38,6 +38,7 @@ function report(overrides: Partial<StackImageScanReport> = {}): StackImageScanRe
     stackId: 'stk_1',
     status: 'scanned',
     reason: '',
+    airgap: false,
     lastScannedAt: '2026-09-14T01:02:03Z',
     summary: { critical: 1, high: 10, medium: 40, low: 30, unknown: 2 },
     items: [],
@@ -103,7 +104,8 @@ describe('StackImageScansTab', () => {
     expect(container.textContent).not.toMatch(/\b0\b/)
   })
 
-  it('폐쇄망 설치는 설치 이미지를 스캔하지 않는다고 설명한다', () => {
+  // 지금은 에어갭도 스캔한다. 사유 airgap 은 옛 서버의 응답에만 있다 — 그것도 "취약점 없음" 으로 읽히지 않게 설명한다.
+  it('옛 서버의 사유 airgap(스캔하지 않음)을 설명한다', () => {
     mockReport(report({ status: 'not_scanned', reason: 'airgap', summary: undefined, lastScannedAt: undefined }))
 
     render(<StackImageScansTab stackId="stk_1" />)
@@ -371,6 +373,31 @@ describe('StackImageScansTab — 공용 구성요소', () => {
     expect(badges[0].getAttribute('title')).toContain('cert-manager')
     // 툴팁에만 두면 키보드 · 스크린 리더 사용자가 어느 네임스페이스인지 알 수 없다.
     expect(screen.getByText(/Cluster-wide component outside the stack namespace \(namespace cert-manager\)/)).toBeInTheDocument()
+  })
+})
+
+describe('StackImageScansTab — 에어갭', () => {
+  beforeEach(() => {
+    mockUseStackImageScans.mockReset()
+    mockUseStackImageVulnerabilities.mockReset()
+    mockUseStackImageVulnerabilities.mockReturnValue({ data: vulnerabilityList, isLoading: false, isError: false, isFetching: false })
+  })
+
+  // 에어갭도 스캔한다. 다만 DB 가 반입한 날짜에 멈춰 있다는 것을 숨기지 않는다.
+  it('에어갭 결과에 반입한 DB 기준이라는 안내를 붙인다', () => {
+    mockReport(report({ airgap: true, items: [item('redis:7')], total: 1 }))
+
+    render(<StackImageScansTab stackId="stk_1" />)
+
+    expect(screen.getByText(/imported with the bundle/)).toBeTruthy()
+  })
+
+  it('에어갭이 아니면 안내가 없다', () => {
+    mockReport(report({ items: [item('redis:7')], total: 1 }))
+
+    render(<StackImageScansTab stackId="stk_1" />)
+
+    expect(screen.queryByText(/imported with the bundle/)).toBeNull()
   })
 })
 
