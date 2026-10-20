@@ -29,6 +29,11 @@ func RequiredRolesForRoute(path, method string) []admindomain.Role {
 		return cicdRouteRoles
 	}
 	if strings.HasPrefix(path, "/api/v1/observability/") {
+		// 보안 대시보드의 설치 OSS 축은 /stacks 와 같은 역할만 본다(Security Dashboard 설계 결정 11) —
+		// /stacks 를 쓸 수 없는 역할이 이 경로로 같은 숫자를 보면 안 된다.
+		if path == "/api/v1/observability/security/stacks" {
+			return stackRouteRoles
+		}
 		if strings.Contains(path, "/alert-rules") {
 			switch method {
 			case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
