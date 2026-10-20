@@ -2,6 +2,7 @@ package port
 
 import (
 	"context"
+	"time"
 
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 )
@@ -21,6 +22,14 @@ type StackImageScanRepository interface {
 	ListByStack(ctx context.Context, stackID string) ([]domain.StackImageScan, error)
 	// ListVulnerabilities 는 이미지 하나의 저장된 취약점 목록이다.
 	ListVulnerabilities(ctx context.Context, stackID, digest string) (domain.StackImageVulnerabilities, error)
+	// NotifiedCVEIDs 는 스택에 이미 알린 CVE 다. 새 CVE 고지는 저장된 스캔 결과가 아니라 이것으로
+	// 새것을 가린다 — 이미지 하나의 스캔이 실패하면 그 이미지의 취약점 행이 사라진다.
+	NotifiedCVEIDs(ctx context.Context, stackID string) (map[string]bool, error)
+	// ClaimCVENotices 는 ids 중 아직 남지 않은 것을 알린 것으로 남기고, 이번에 남긴 것만 돌려준다 —
+	// API 레플리카 둘이 같은 스캔 결과를 보고도 한 번만 알린다. 이미 남은 것의 시각은 바꾸지 않는다.
+	ClaimCVENotices(ctx context.Context, stackID string, ids []string, at time.Time) ([]string, error)
+	// ReleaseCVENotices 는 보내지 못한 선점을 되돌린다.
+	ReleaseCVENotices(ctx context.Context, stackID string, ids []string) error
 }
 
 // CompletedStackLister 는 설치가 끝난 스택을 조직과 무관하게 돌려준다.

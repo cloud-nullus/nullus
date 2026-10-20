@@ -639,6 +639,8 @@ func main() {
 		TelegramAPIURL: os.Getenv("NULLUS_TELEGRAM_API_URL"),
 		Logger:         slog.Default(),
 	})
+	// 설치 이미지 재스캔이 새로 발견한 "수정판 있는 CRITICAL" 을 조직의 알림 채널로 보낸다(nullus-plan#78).
+	stackImageScanUC.WithNotifier(notificationModule.Publisher)
 	notificationHandler := notificationhandler.NewNotificationHandler(
 		notificationModule.Channels, notificationModule.SendTest, notificationModule.Deliveries)
 	tokenSourceHandler := adminhandler.NewTokenSourceHandler(tokenSourceUC)
@@ -871,13 +873,20 @@ func main() {
 	})
 
 	// 스택이 설치한 OSS 이미지를 주기적으로 다시 스캔한다. 설치 뒤에 공개된 CVE 는
-	// 다시 스캔해야 보인다. 에어갭 설치는 스캔하지 않는다.
+	// 다시 스캔해야 보인다. 에어갭 설치는 스캔하지 않는다. 기동 직후에는 마지막 스캔이 주기보다
+	// 오래된 스택만 먼저 스캔한다 — 타이머는 재시작마다 처음부터 다시 세어진다.
 	if !stackhelm.AirgapMode() {
-		go runEvery(rotationCtx, durationFromEnv("STACK_IMAGE_RESCAN_INTERVAL", 24*time.Hour), func(ctx context.Context) {
-			if scanned := stackImageScanUC.RescanAll(ctx); scanned > 0 {
-				slog.Info("installed images rescanned", "stacks", scanned)
+		rescanInterval := durationFromEnv("STACK_IMAGE_RESCAN_INTERVAL", 24*time.Hour)
+		go func() {
+			if scanned := stackImageScanUC.RescanStale(rotationCtx, rescanInterval); scanned > 0 {
+				slog.Info("stale installed images rescanned at startup", "stacks", scanned)
 			}
-		})
+			runEvery(rotationCtx, rescanInterval, func(ctx context.Context) {
+				if scanned := stackImageScanUC.RescanAll(ctx); scanned > 0 {
+					slog.Info("installed images rescanned", "stacks", scanned)
+				}
+			})
+		}()
 	}
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

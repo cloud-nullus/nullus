@@ -549,6 +549,8 @@ function normalizeStackImageScanItem(raw: unknown): StackImageScanItem {
     imageDigest: optionalScanString(item.image_digest),
     release: optionalScanString(item.release),
     workloads: Array.isArray(item.workloads) ? item.workloads.map((workload) => String(workload)) : [],
+    exposed: item.exposed === true,
+    exposedHosts: Array.isArray(item.exposed_hosts) ? item.exposed_hosts.map((host) => String(host)) : [],
     status: failed ? 'failed' : 'scanned',
     error: optionalScanString(item.error),
     // 실패한 스캔의 건수는 믿을 수 없다. 서버가 실어 보내더라도 모름으로 둔다.

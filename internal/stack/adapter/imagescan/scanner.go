@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"regexp"
@@ -108,7 +109,7 @@ func (s *Scanner) ScanInstalledImages(ctx context.Context, kubeconfig []byte, na
 	if err != nil {
 		return nil, fmt.Errorf("파드 조회 실패: %w", err)
 	}
-	images, err := installedImagesFromPods([]byte(podsOut), arch)
+	images, err := installedImagesFromPods([]byte(podsOut), arch, s.exposure(ctx, kubeconfig, ns, podsOut))
 	if err != nil {
 		return nil, err
 	}
@@ -154,6 +155,8 @@ func (s *Scanner) ScanInstalledImages(ctx context.Context, kubeconfig []byte, na
 			ImageDigest:    img.Digest,
 			Release:        img.Release,
 			Workloads:      img.Workloads,
+			Exposed:        img.Exposed,
+			ExposedHosts:   img.ExposedHosts,
 			ScannerVersion: version,
 			DBUpdatedAt:    dbUpdatedAt,
 			ScannedAt:      scannedAt,
@@ -176,6 +179,28 @@ func (s *Scanner) ScanInstalledImages(ctx context.Context, kubeconfig []byte, na
 		scans = append(scans, scan)
 	}
 	return scans, nil
+}
+
+// exposure 는 네임스페이스에서 HTTPRoute 로 밖에 열린 파드다. 알아내지 못하면(Gateway API CRD
+// 가 없는 클러스터 등) 노출을 모르는 채 스캔한다 — 노출 판정 때문에 스캔을 멈추지 않는다.
+func (s *Scanner) exposure(ctx context.Context, kubeconfig []byte, ns, podsOut string) map[string][]string {
+	routesOut, err := s.kubectl(ctx, kubeconfig, "get", "httproutes.gateway.networking.k8s.io", "-n", ns, "-o", "json")
+	if err != nil {
+		// Gateway API CRD 가 없는 클러스터 — LoadBalancer · NodePort 로 열린 것만 본다.
+		slog.Info("설치 이미지 스캔: HTTPRoute 를 읽지 못해 라우트로 열린 것은 판정하지 않습니다", "namespace", ns, "error", err)
+		routesOut = ""
+	}
+	servicesOut, err := s.kubectl(ctx, kubeconfig, "get", "services", "-n", ns, "-o", "json")
+	if err != nil {
+		slog.Info("설치 이미지 스캔: Service 를 읽지 못해 외부 노출을 판정하지 않습니다", "namespace", ns, "error", err)
+		return nil
+	}
+	exposed, err := exposedPods(ns, []byte(podsOut), []byte(routesOut), []byte(servicesOut))
+	if err != nil {
+		slog.Info("설치 이미지 스캔: 외부 노출을 판정하지 못했습니다", "namespace", ns, "error", err)
+		return nil
+	}
+	return exposed
 }
 
 // waitForJob 은 Job 이 끝날 때까지 기다린다. 실패하거나 시간을 넘기면 오류다.
@@ -221,6 +246,9 @@ type installedImage struct {
 	Platform  string
 	Release   string
 	Workloads []string
+	// Exposed / ExposedHosts 는 이 이미지를 쓰는 파드가 HTTPRoute 로 밖에 열려 있는지와 그 호스트다.
+	Exposed      bool
+	ExposedHosts []string
 }
 
 type containerStatus struct {
@@ -278,7 +306,7 @@ func nodeArchitectures(raw []byte) (map[string]string, error) {
 // 이미지는 파드가 실제로 받은 digest 로 스캔한다 — 태그는 움직인다. 멀티아치 이미지는
 // 노드 아키텍처의 것을 스캔해야 실제로 돌고 있는 것과 같다(Trivy 기본값은 amd64 다).
 // 끝난 파드(Job)는 설치된 것이 아니므로, digest 가 없는 로컬 이미지는 받을 수 없으므로 뺀다.
-func installedImagesFromPods(raw []byte, nodeArch map[string]string) ([]installedImage, error) {
+func installedImagesFromPods(raw []byte, nodeArch map[string]string, exposure map[string][]string) ([]installedImage, error) {
 	var pods podList
 	if err := json.Unmarshal(raw, &pods); err != nil {
 		return nil, fmt.Errorf("파드 목록을 해석하지 못했습니다: %w", err)
@@ -313,6 +341,15 @@ func installedImagesFromPods(raw []byte, nodeArch map[string]string) ([]installe
 			}
 			if !contains(img.Workloads, workload) {
 				img.Workloads = append(img.Workloads, workload)
+			}
+			if hosts, ok := exposure[p.Metadata.Name]; ok {
+				img.Exposed = true
+				for _, h := range hosts {
+					if !contains(img.ExposedHosts, h) {
+						img.ExposedHosts = append(img.ExposedHosts, h)
+					}
+				}
+				sort.Strings(img.ExposedHosts)
 			}
 		}
 	}

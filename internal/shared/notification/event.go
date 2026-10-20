@@ -26,6 +26,9 @@ const (
 	EventAlertFired EventType = "alert_fired"
 	// EventAlertResolved 는 그 경보가 해제됐다는 뜻이다.
 	EventAlertResolved EventType = "alert_resolved"
+	// EventStackCVEFound 는 스택이 설치한 OSS 이미지에서 수정판 있는 CRITICAL 취약점이 새로
+	// 발견됐다는 뜻이다(stack 모듈의 설치 이미지 스캔).
+	EventStackCVEFound EventType = "stack_cve_found"
 )
 
 // Severity 는 알림의 심각도다.

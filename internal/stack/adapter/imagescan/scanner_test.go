@@ -66,7 +66,7 @@ func TestInstalledImagesFromPods(t *testing.T) {
 	arch, err := nodeArchitectures([]byte(nodesJSON))
 	require.NoError(t, err)
 
-	images, err := installedImagesFromPods([]byte(podsJSON), arch)
+	images, err := installedImagesFromPods([]byte(podsJSON), arch, nil)
 	require.NoError(t, err)
 
 	// 끝난 파드(Job), digest 가 없는 로컬 이미지, 스캔 Job 자신은 빠진다.
@@ -224,6 +224,7 @@ type fakeKubectl struct {
 	calls    []string
 	manifest string
 	outputs  map[string]string
+	errs     map[string]error
 }
 
 func (f *fakeKubectl) run(_ context.Context, _ []byte, args ...string) (string, error) {
@@ -237,6 +238,11 @@ func (f *fakeKubectl) run(_ context.Context, _ []byte, args ...string) (string, 
 			return "", err
 		}
 		f.manifest = string(raw)
+	}
+	for prefix, err := range f.errs {
+		if strings.HasPrefix(joined, prefix) {
+			return "", err
+		}
 	}
 	for prefix, out := range f.outputs {
 		if strings.HasPrefix(joined, prefix) {

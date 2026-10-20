@@ -14,8 +14,8 @@ type EventSpec struct {
 	Description string `json:"description"`
 }
 
-// EventCatalog 는 지금 생산자가 있는 이벤트다 — 백업 결과(B3-3)와 스택 심각 경보(#87). 생산자가
-// 생길 때 여기에 더한다.
+// EventCatalog 는 지금 생산자가 있는 이벤트다 — 백업 결과(B3-3), 스택 심각 경보(#87), 설치 OSS 의
+// 새 CVE(#78). 생산자가 생길 때 여기에 더한다.
 func EventCatalog() []EventSpec {
 	return []EventSpec{
 		{Type: sharednotify.EventBackupFailed, DefaultOn: true, Description: "백업이 실패로 끝났을 때"},
@@ -23,6 +23,7 @@ func EventCatalog() []EventSpec {
 		{Type: sharednotify.EventBackupSucceeded, DefaultOn: false, Description: "백업이 성공했을 때"},
 		{Type: sharednotify.EventAlertFired, DefaultOn: true, Description: "스택에서 심각한 경보가 발생했을 때(디스크 · 파드 재시작 · 도구 무응답 등)"},
 		{Type: sharednotify.EventAlertResolved, DefaultOn: true, Description: "그 경보가 해제됐을 때"},
+		{Type: sharednotify.EventStackCVEFound, DefaultOn: true, Description: "스택이 설치한 OSS 이미지에서 수정판 있는 CRITICAL 취약점이 새로 발견됐을 때"},
 	}
 }
 

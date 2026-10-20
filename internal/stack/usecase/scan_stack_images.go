@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
+	sharednotify "github.com/cloud-nullus/draft/internal/shared/notification"
 	"github.com/cloud-nullus/draft/internal/stack/domain"
 	"github.com/cloud-nullus/draft/internal/stack/port"
 )
@@ -33,8 +35,18 @@ type ScanStackImages struct {
 	// 취약점 DB 는 사람이 넣은 만큼만 새것이다.
 	airgap bool
 
+	// notifier 는 새로 발견된 "수정판 있는 CRITICAL" 을 조직의 알림 채널로 보낸다.
+	// 배선되지 않으면 보내지 않는다 — 결과는 화면에서만 본다.
+	notifier sharednotify.Publisher
+
 	mu      sync.Mutex
 	running map[string]struct{}
+}
+
+// WithNotifier 는 새 CVE 고지 경로를 배선한다.
+func (uc *ScanStackImages) WithNotifier(p sharednotify.Publisher) *ScanStackImages {
+	uc.notifier = p
+	return uc
 }
 
 // NewScanStackImages 는 설치 이미지 스캔 유스케이스를 만든다.
@@ -98,6 +110,7 @@ func (uc *ScanStackImages) Execute(ctx context.Context, stackID string) (*domain
 	if err := uc.results.ReplaceForStack(ctx, stack.ID, scans); err != nil {
 		return nil, fmt.Errorf("스택 %s 설치 이미지 스캔 결과 저장 실패: %w", stack.ID, err)
 	}
+	uc.notifyNewCVEs(ctx, stack, scans)
 
 	report := domain.BuildImageScanReport(stack.ID, "", scans)
 	return &report, nil
@@ -157,6 +170,30 @@ func (uc *ScanStackImages) Vulnerabilities(
 //
 // 한 스택의 실패로 나머지를 멈추지 않는다.
 func (uc *ScanStackImages) RescanAll(ctx context.Context) int {
+	return uc.rescan(ctx, func(*domain.Stack) bool { return true })
+}
+
+// RescanStale 은 마지막 스캔이 maxAge 보다 오래됐거나 아직 없는 스택만 다시 스캔한다. 기동 직후에
+// 부른다 — 주기 재스캔의 타이머는 재시작 · 롤아웃마다 처음부터 다시 세어지므로, 그것만으로는 "24시간 안에
+// 새 CVE 를 알린다" 를 지킬 수 없다. 이미 최근에 스캔한 스택은 레플리카마다 다시 스캔하지 않는다.
+func (uc *ScanStackImages) RescanStale(ctx context.Context, maxAge time.Duration) int {
+	cutoff := time.Now().Add(-maxAge)
+	return uc.rescan(ctx, func(stack *domain.Stack) bool {
+		scans, err := uc.results.ListByStack(ctx, stack.ID)
+		if err != nil {
+			slog.Warn("설치 이미지 재스캔: 지난 스캔 시각을 읽지 못해 다시 스캔합니다", "stack_id", stack.ID, "error", err)
+			return true
+		}
+		for _, s := range scans {
+			if s.ScannedAt.After(cutoff) {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+func (uc *ScanStackImages) rescan(ctx context.Context, due func(*domain.Stack) bool) int {
 	if uc.completed == nil {
 		return 0
 	}
@@ -171,7 +208,7 @@ func (uc *ScanStackImages) RescanAll(ctx context.Context) int {
 		if ctx.Err() != nil {
 			break
 		}
-		if stack == nil || uc.skipReason(stack) != "" {
+		if stack == nil || uc.skipReason(stack) != "" || !due(stack) {
 			continue
 		}
 		if _, err := uc.Execute(ctx, stack.ID); err != nil {
@@ -205,4 +242,135 @@ func (uc *ScanStackImages) release(stackID string) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 	delete(uc.running, stackID)
+}
+
+// maxCVEsInNotice · maxImagesPerCVE 는 알림 본문에 싣는 CVE 수와 CVE 하나에 적는 이미지 수다. 나머지는
+// 수만 적는다 — 메신저 본문 한도(Telegram 4096자)가 있고, 목록 전체는 화면에 있다. GitLab 은 공통
+// 베이스 때문에 CVE 하나가 이미지 열 개에 걸친다(실측).
+const (
+	maxCVEsInNotice = 5
+	maxImagesPerCVE = 3
+)
+
+// notifyNewCVEs 는 아직 알리지 않은 "수정판 있는 CRITICAL" 을 스택당 한 건으로 묶어 보낸다.
+//
+// 새것은 알린 기록(stack_cve_notices)으로 가린다. 보내기 전에 기록을 선점해, 레플리카 둘이 같은
+// 결과를 보고도 한 번만 보낸다. 외부에 노출된 이미지의 것이 있으면 심각(critical), 아니면
+// 경고(warning)다 — 정책의 대응 기한이 노출 여부로 갈린다. 보내지 못해도 스캔은 성공이다.
+func (uc *ScanStackImages) notifyNewCVEs(ctx context.Context, stack *domain.Stack, scans []domain.StackImageScan) {
+	if uc.notifier == nil {
+		return
+	}
+	notified, err := uc.results.NotifiedCVEIDs(ctx, stack.ID)
+	if err != nil {
+		// 무엇을 알렸는지 모르면 전부 새것으로 보게 된다 — 이번엔 건너뛰고 다음 스캔이 다시 본다.
+		slog.Warn("설치 이미지 스캔: 알린 CVE 를 읽지 못해 새 CVE 고지를 건너뜁니다", "stack_id", stack.ID, "error", err)
+		return
+	}
+	findings := domain.NewFixableCriticals(notified, scans)
+	if len(findings) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(findings))
+	for _, f := range findings {
+		ids = append(ids, f.ID)
+	}
+	now := time.Now()
+	claimed, err := uc.results.ClaimCVENotices(ctx, stack.ID, ids, now)
+	if err != nil {
+		slog.Warn("설치 이미지 스캔: 알릴 CVE 를 남기지 못해 고지를 건너뜁니다", "stack_id", stack.ID, "error", err)
+		return
+	}
+	findings = onlyCVEs(findings, claimed)
+	if len(findings) == 0 {
+		return // 다른 레플리카가 먼저 보냈다
+	}
+	firstNotice := len(notified) == 0
+	severity := sharednotify.SeverityWarning
+	exposed := 0
+	for _, f := range findings {
+		if f.Exposed {
+			severity = sharednotify.SeverityCritical
+			exposed++
+		}
+	}
+	name := firstNonEmptyString(stack.Name, stack.ID)
+	title := fmt.Sprintf("스택 %s: 수정판 있는 CRITICAL 취약점 %d건 새로 발견", name, len(findings))
+	if firstNotice {
+		title = fmt.Sprintf("스택 %s 설치 이미지 첫 고지: 수정판 있는 CRITICAL 취약점 %d건", name, len(findings))
+	}
+
+	var b strings.Builder
+	for i, f := range findings {
+		if i == maxCVEsInNotice {
+			fmt.Fprintf(&b, "외 %d건 — 스택 상세의 이미지 취약점에서 모두 볼 수 있습니다\n", len(findings)-maxCVEsInNotice)
+			break
+		}
+		fmt.Fprintf(&b, "• %s — %s · %s", f.ID, strings.Join(f.Packages, ", "), limitedList(f.Images, maxImagesPerCVE))
+		if f.Exposed {
+			if len(f.Hosts) > 0 {
+				fmt.Fprintf(&b, " (외부 노출: %s)", strings.Join(f.Hosts, ", "))
+			} else {
+				b.WriteString(" (외부 노출)")
+			}
+		}
+		b.WriteString("\n")
+	}
+
+	event := sharednotify.Event{
+		Type:     sharednotify.EventStackCVEFound,
+		OrgID:    stack.OrgID,
+		Severity: severity,
+		Title:    title,
+		Summary:  strings.TrimRight(b.String(), "\n"),
+		Fields: []sharednotify.Field{
+			{Name: "스택", Value: fmt.Sprintf("%s (%s)", name, stack.ID)},
+			{Name: "새 CVE", Value: fmt.Sprintf("%d건 (외부 노출 이미지에 있는 것 %d건)", len(findings), exposed)},
+		},
+		OccurredAt: now,
+	}
+	if err := uc.notifier.Publish(ctx, event); err != nil {
+		slog.Warn("설치 이미지 스캔: 새 CVE 고지를 보내지 못했습니다", "stack_id", stack.ID, "error", err)
+		// 채널이 실패한 것은 발송 이력에 남고 다시 보내지 않는다(받은 채널에 반복해 가지 않게).
+		// 종료로 취소돼 보내지 못한 것만 되돌려, 다음 기동 뒤 스캔이 보낸다.
+		if ctx.Err() != nil {
+			releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			if err := uc.results.ReleaseCVENotices(releaseCtx, stack.ID, claimed); err != nil {
+				slog.Warn("설치 이미지 스캔: 보내지 못한 고지의 선점을 되돌리지 못했습니다", "stack_id", stack.ID, "error", err)
+			}
+		}
+	}
+}
+
+// onlyCVEs 는 findings 중 ids 에 있는 것만 남긴다(순서 유지).
+func onlyCVEs(findings []domain.CVEFinding, ids []string) []domain.CVEFinding {
+	keep := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		keep[id] = true
+	}
+	out := findings[:0:0]
+	for _, f := range findings {
+		if keep[f.ID] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// limitedList 는 앞의 max 개만 적고 나머지는 수로 적는다.
+func limitedList(items []string, max int) string {
+	if len(items) <= max {
+		return strings.Join(items, ", ")
+	}
+	return fmt.Sprintf("%s 외 %d개", strings.Join(items[:max], ", "), len(items)-max)
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }

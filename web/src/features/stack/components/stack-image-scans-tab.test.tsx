@@ -52,6 +52,8 @@ function item(image: string, overrides: Partial<StackImageScanItem> = {}): Stack
     imageDigest: 'sha256:abcdef0123456789abcdef',
     release: 'nullus-postgresql',
     workloads: ['nullus-postgresql-0'],
+    exposed: false,
+    exposedHosts: [],
     status: 'scanned',
     counts: { critical: 0, high: 2, medium: 5, low: 3, unknown: 0 },
     fixableCounts: { critical: 0, high: 1, medium: 2, low: 0, unknown: 0 },
@@ -303,5 +305,43 @@ describe('StackImageScansTab', () => {
     render(<StackImageScansTab stackId="stk_1" />)
 
     expect(screen.getByText('Loading image scan results...')).toBeTruthy()
+  })
+})
+
+describe('StackImageScansTab — 외부 노출', () => {
+  beforeEach(() => {
+    mockUseStackImageScans.mockReset()
+    mockUseStackImageVulnerabilities.mockReset()
+    mockUseStackImageVulnerabilities.mockReturnValue({ data: vulnerabilityList, isLoading: false, isError: false, isFetching: false })
+  })
+
+  // 같은 CVE 라도 게이트웨이로 밖에 열린 서비스의 것을 먼저 고친다 — 행에서 가려 보인다.
+  it('외부에 노출된 이미지에 표시와 호스트를 보인다', () => {
+    mockReport(report({
+      items: [
+        item('gitlab-webservice:17.7', { exposed: true, exposedHosts: ['gitlab.nullus.local'] }),
+        item('redis:7', { imageDigest: 'sha256:r' }),
+      ],
+      total: 2,
+    }))
+
+    render(<StackImageScansTab stackId="stk_1" />)
+
+    const badges = screen.getAllByText('Exposed')
+    expect(badges).toHaveLength(1)
+    expect(badges[0].getAttribute('title')).toContain('gitlab.nullus.local')
+    // 툴팁에만 두면 키보드 · 스크린 리더 사용자가 호스트를 알 수 없다.
+    expect(screen.getByText('Reachable from outside the cluster through the gateway: gitlab.nullus.local')).toBeInTheDocument()
+  })
+
+  // LoadBalancer · NodePort 로 열린 것은 호스트를 모른다 — 빈 호스트를 "-" 로 적지 않는다.
+  it('호스트를 모르는 노출은 그렇다고 말한다', () => {
+    mockReport(report({ items: [item('redis:7', { exposed: true, exposedHosts: [] })], total: 1 }))
+
+    render(<StackImageScansTab stackId="stk_1" />)
+
+    expect(screen.getByText('Exposed').getAttribute('title')).toBe(
+      'Reachable from outside the cluster through a LoadBalancer or NodePort Service (hosts unknown)',
+    )
   })
 })

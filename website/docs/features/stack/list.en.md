@@ -37,7 +37,7 @@ shortcut goes straight to `/stack/install`.
 | **Workloads** | Pod and workload status in the namespace |
 | **Monitoring** | Appears only when the stack is healthy |
 | **Config** | Pick a release and edit its values in a Monaco editor → **Preview changes** → **Apply** → **Reset** |
-| **Image Vulnerabilities** | Image scan results and the vulnerability list |
+| **Image Vulnerabilities** | Scan results and vulnerability lists for the images the stack installed. Images reachable from outside the cluster through the gateway (HTTPRoute) carry an **Exposed** badge (hover for the hosts). Newly found "fixable CRITICAL" vulnerabilities also go out as the [notification](../admin/notifications.md) `stack_cve_found` |
 | **History** | Buttons that open the install log, change history, and retry history |
 | **Version Upgrade** | See below |
 

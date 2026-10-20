@@ -42,8 +42,14 @@ func TestEventCatalog_HasProducedEventsOnly(t *testing.T) {
 	}
 	assert.Equal(t, []sharednotify.EventType{
 		sharednotify.EventBackupFailed, sharednotify.EventBackupPartial, sharednotify.EventBackupSucceeded,
-		sharednotify.EventAlertFired, sharednotify.EventAlertResolved,
+		sharednotify.EventAlertFired, sharednotify.EventAlertResolved, sharednotify.EventStackCVEFound,
 	}, types)
+	// 설치 OSS 의 새 CVE 는 대응 기한이 있는 고지다 — 새 채널에서 기본으로 받는다.
+	for _, spec := range EventCatalog() {
+		if spec.Type == sharednotify.EventStackCVEFound {
+			assert.True(t, spec.DefaultOn)
+		}
+	}
 	assert.True(t, IsKnownEvent(sharednotify.EventBackupFailed))
 	assert.False(t, IsKnownEvent(EventTest), "테스트 전송은 구독하는 이벤트가 아니다")
 }
