@@ -91,3 +91,29 @@ func TestLoadConfig_PlatformNamespaceEmptyWhenUnset(t *testing.T) {
 		t.Fatalf("expected empty platform namespace, got %q", cfg.Platform.Namespace)
 	}
 }
+
+// 요청 한도는 설정 파일(차트의 ConfigMap 포함)에 없어도 환경변수로 덮을 수 있어야 한다 — CI e2e 가 쓴다.
+func TestLoadConfig_RateLimitFromEnv(t *testing.T) {
+	t.Setenv("NULLUS_SERVER_RATE_LIMIT_AUTHENTICATED", "6000")
+	t.Setenv("NULLUS_SERVER_RATE_LIMIT_UNAUTHENTICATED", "60")
+	t.Setenv("NULLUS_SERVER_RATE_LIMIT_IP_CEILING", "12000")
+	cfg, err := LoadConfig(writeMinimalConfig(t))
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	got := cfg.Server.RateLimit
+	if got.Authenticated != 6000 || got.Unauthenticated != 60 || got.IPCeiling != 12000 {
+		t.Fatalf("expected rate limits from env, got %+v", got)
+	}
+}
+
+// 비워 두면 0 — 미들웨어가 기본값을 쓴다.
+func TestLoadConfig_RateLimitZeroWhenUnset(t *testing.T) {
+	cfg, err := LoadConfig(writeMinimalConfig(t))
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	if got := cfg.Server.RateLimit; got.Authenticated != 0 || got.Unauthenticated != 0 || got.IPCeiling != 0 {
+		t.Fatalf("expected zero rate limits when unset, got %+v", got)
+	}
+}

@@ -13,7 +13,8 @@ Config key `a.b.c` → environment variable **`NULLUS_A_B_C`**.
     and blocked startup.
 
     Keys bound separately: `platform.namespace` · `backup.seal_key` ·
-    `backup.destination.secret_key` · `backup.keycloak_database.password`.
+    `backup.destination.secret_key` · `backup.keycloak_database.password` ·
+    `server.rate_limit.*`.
 
 ## Server and database
 
@@ -21,6 +22,9 @@ Config key `a.b.c` → environment variable **`NULLUS_A_B_C`**.
 |----------|--------|
 | `NULLUS_SERVER_PORT` | 8090 |
 | `NULLUS_SERVER_MODE` | development |
+| `NULLUS_SERVER_RATE_LIMIT_AUTHENTICATED` | 0 → 300 per user per minute |
+| `NULLUS_SERVER_RATE_LIMIT_UNAUTHENTICATED` | 0 → 30 per IP per minute (in development, the same as the user limit — an explicit value wins) |
+| `NULLUS_SERVER_RATE_LIMIT_IP_CEILING` | 0 → 600 per IP per minute (raising the user or anonymous limit lifts it too — an explicit value wins) |
 | `NULLUS_DATABASE_HOST` | localhost |
 | `NULLUS_DATABASE_PORT` | 5433 |
 | `NULLUS_DATABASE_NAME` | nullus |
@@ -29,6 +33,13 @@ Config key `a.b.c` → environment variable **`NULLUS_A_B_C`**.
 | `NULLUS_DATABASE_SSLMODE` | disable |
 | `NULLUS_DATABASE_MAX_OPEN_CONNS` / `_MAX_IDLE_CONNS` | 25 / 10 |
 | `NULLUS_DATABASE_CONN_MAX_LIFETIME` / `_CONN_MAX_IDLE_TIME` | 5m / 1m |
+
+Requests over a limit are rejected with 429. Zero or less means the default. Automation that opens many
+screens at once from one IP (e2e, for example) can pass 300 per minute even in development mode, so CI starts
+the e2e API with higher limits (`AUTHENTICATED=6000` · `IP_CEILING=12000`). Use the same values when you run
+Playwright locally. If an explicit IP ceiling is below the user limit, a warning is logged at startup. The login
+and deploy limits (10 per minute) cannot be changed. The limiter records every request time, so do not set the
+limits higher than you need.
 
 !!! note "The old `NULLUS_DB_*` names do not work"
     Abbreviated names such as `NULLUS_DB_HOST` match no config key and are ignored.
