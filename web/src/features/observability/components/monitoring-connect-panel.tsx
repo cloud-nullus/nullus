@@ -8,6 +8,7 @@ import type { OSSMonitoringStatus } from "../../stack/api/stack-api-types"
 import type { EmbedTab } from "../utils/monitoring-utils"
 import { isValidEmbedUrl, normalizeEmbedUrl } from "../utils/monitoring-utils"
 import { TOOL_STATUS } from "./monitoring-chart-widgets"
+import { toolDisplayName } from "../../stack/utils/tool-logo"
 import { TextInput } from '../../../components/ui/text-input'
 
 // ─── Stack Component Connection UI ───────────────────────────────────────────
@@ -114,7 +115,7 @@ export function StackConnectPanel({
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-sm font-bold text-[var(--color-text-primary)]">{tool.name}</span>
+                        <span className="text-sm font-bold text-[var(--color-text-primary)]">{toolDisplayName(tool.name)}</span>
                         <span className="inline-flex items-center gap-0.5 rounded-[4px] px-1.5 py-0.5 text-[10px] font-semibold" style={cfg?.style}>
                           {cfg?.icon}{cfg?.label}
                         </span>

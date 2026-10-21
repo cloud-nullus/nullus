@@ -1,5 +1,6 @@
 import type { StoragePlanMode, StorageTargetConfig } from '../stores/stack-config-store'
 import type { ManifestInstallType, PlanningSlot } from './install-planning-utils'
+import { MINIO_DISPLAY_NAME } from './tool-logo'
 
 export interface ToolOption {
   id: string
@@ -145,7 +146,7 @@ export const STORAGE_PROVIDER_OPTIONS: Record<'database' | 'objectStorage', Arra
     { id: 'mariadb', label: 'MariaDB' },
   ],
   objectStorage: [
-    { id: 'minio', label: 'MinIO' },
+    { id: 'minio', label: MINIO_DISPLAY_NAME },
     { id: 'seaweedfs', label: 'SeaweedFS' },
     { id: 's3', label: 'Amazon S3' },
     { id: 'gcs', label: 'Google Cloud Storage' },

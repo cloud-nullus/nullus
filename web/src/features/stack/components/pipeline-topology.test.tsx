@@ -46,6 +46,22 @@ describe("PipelineTopologyRail", () => {
     expect(row.textContent).toBe("GitLab CE18.5.1");
   });
 
+  // 스택 설정에는 구현체 id(minio·seaweedfs)가 그대로 들어 있다. minio 를 고르면 서는 것은
+  // MinIO 포크 SILO 라 마크가 silo.svg 다 — 이름도 같은 제품을 가리켜야 한다.
+  it.each([
+    ["minio", "MinIO (SILO)", "/tool-icons/silo.svg"],
+    ["seaweedfs", "SeaweedFS", "/tool-icons/seaweedfs.svg"],
+  ])("names the object storage %s after what gets installed", (stored, label, icon) => {
+    const { container } = render(
+      <PipelineTopologyRail
+        nodes={[{ category: "Storage", tools: [{ name: stored, version: "1", instances: 1 }], instances: 1 }]}
+      />,
+    );
+
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(icon);
+  });
+
   // Nexus 는 레지스트리 두 칸에 다 나오지만 파드는 하나다. 뒤쪽 칸에 "0" 이라고
   // 쓰면 안 떠 있는 것처럼 읽힌다.
   it("marks a tool that belongs to an earlier stage instead of counting it again", () => {

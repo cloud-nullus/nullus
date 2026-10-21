@@ -101,10 +101,11 @@ const (
 // MinIOObjectStorage 는 MinIO(현재 이미지는 커뮤니티 포크 SILO)다.
 //
 // 이름·키·금고 경로는 이 표가 생기기 전 그대로다 — 이미 설치된 스택의 금고와
-// Secret 을 그대로 읽어야 하므로 바꾸지 않는다.
+// Secret 을 그대로 읽어야 하므로 바꾸지 않는다. 표시 이름만 포크를 함께 적는다 —
+// 화면의 마크(silo.svg)가 SILO 라 "MinIO" 만 적으면 다른 제품처럼 읽힌다.
 var MinIOObjectStorage = ObjectStorageBackend{
 	Tool:               ObjectStorageToolMinIO,
-	DisplayName:        "MinIO",
+	DisplayName:        "MinIO (SILO)",
 	Step:               "installing_minio",
 	ReleaseName:        MinIOServiceName,
 	ServiceName:        MinIOServiceName,

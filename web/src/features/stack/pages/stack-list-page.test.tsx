@@ -184,7 +184,8 @@ describe("StackListPage", () => {
     expect(screen.getByTitle("gitlab 콘솔 열기")).not.toBeNull();
     expect(screen.getByTitle("argocd 콘솔 열기")).not.toBeNull();
     expect(screen.getByTitle("grafana 콘솔 열기")).not.toBeNull();
-    expect(screen.getByTitle("minio 콘솔 열기")).not.toBeNull();
+    // 스택 설정의 minio 는 MinIO 포크 SILO 로 선다 — 마크와 이름이 같은 제품을 가리킨다.
+    expect(screen.getByTitle("MinIO (SILO) 콘솔 열기")).not.toBeNull();
     expect(screen.getByAltText("gitlab logo")).toHaveAttribute(
       "src",
       "/tool-icons/gitlab.svg",
@@ -197,7 +198,7 @@ describe("StackListPage", () => {
       "src",
       "/tool-icons/grafana.svg",
     );
-    expect(screen.getByAltText("minio logo")).toHaveAttribute(
+    expect(screen.getByAltText("MinIO (SILO) logo")).toHaveAttribute(
       "src",
       "/tool-icons/silo.svg",
     );
@@ -228,7 +229,7 @@ describe("StackListPage", () => {
       "src",
       "/tool-icons/grafana.svg",
     );
-    expect(screen.getByAltText("minio icon")).toHaveAttribute(
+    expect(screen.getByAltText("MinIO (SILO) icon")).toHaveAttribute(
       "src",
       "/tool-icons/silo.svg",
     );

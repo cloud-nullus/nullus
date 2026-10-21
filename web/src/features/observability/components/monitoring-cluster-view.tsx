@@ -12,6 +12,7 @@ import { cn } from "../../../lib/utils"
 import { CHART_LEGEND_PROPS, CHART_STYLE, KpiCard, ChartPanel } from "./monitoring-chart-widgets"
 import type { TimeRange } from "./monitoring-tab-layout"
 import { formatRangeLabel, selectSeries } from "../utils/monitoring-utils"
+import { toolDisplayName } from "../../stack/utils/tool-logo"
 
 export function ClusterDefault({
   clusterId,
@@ -303,7 +304,7 @@ export function ClusterDefault({
                   <td className="px-3 py-2">{row.status}</td>
                   <td className="px-3 py-2">{row.ready}</td>
                   <td className="px-3 py-2">{row.node}</td>
-                  <td className="px-3 py-2">{row.tool}</td>
+                  <td className="px-3 py-2">{toolDisplayName(row.tool)}</td>
                 </tr>
               ))}
             </tbody>

@@ -574,7 +574,7 @@
         "description": "Official Docker registry"
       },
       "minio": {
-        "label": "MinIO",
+        "label": "MinIO (SILO)",
         "description": "S3-compatible object storage"
       },
       "seaweedfs": {

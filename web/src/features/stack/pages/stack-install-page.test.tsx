@@ -885,7 +885,8 @@ describe('StackInstallPage', () => {
     renderWithProviders(<StackInstallPage />)
     expect(screen.getByText(/Pre-Deploy Compatibility Gate/i)).toBeInTheDocument()
     expect(screen.getByText(/K8s:/)).toBeInTheDocument()
-    expect(screen.getByText(/MinIO:/)).toBeInTheDocument()
+    // 설치되는 실물은 MinIO 포크 SILO 다 — 마크와 같은 이름을 쓴다.
+    expect(screen.getByText(/MinIO \(SILO\):/)).toBeInTheDocument()
     expect(screen.getByText(/Postgres:/)).toBeInTheDocument()
     expect(screen.getByText(/Setup:/)).toBeInTheDocument()
   })
