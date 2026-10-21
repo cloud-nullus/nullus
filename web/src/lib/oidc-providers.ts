@@ -3,6 +3,7 @@
 //   import type { AuthProviderProps } from 'react-oidc-context'
 
 import { resolveConfig } from './runtime-config'
+import { returnPathFromState } from './oidc-return-path'
 
 export interface OIDCUser {
   profile: Record<string, unknown>
@@ -17,7 +18,7 @@ export interface OIDCAuthProviderProps {
   post_logout_redirect_uri?: string
   scope?: string
   automaticSilentRenew?: boolean
-  onSigninCallback?: () => void
+  onSigninCallback?: (user?: { state?: unknown }) => Promise<void> | void
 }
 
 export type OIDCProviderType = 'keycloak' | 'authentik'
@@ -144,7 +145,12 @@ export function getProviderConfig(): OIDCProviderConfig {
   }
 }
 
-export function toAuthProviderProps(config: OIDCProviderConfig): OIDCAuthProviderProps {
+// onReturn 은 로그인 전에 열려던 화면으로 옮기는 함수다(라우터의 navigate). 라우터는 콜백보다 먼저
+// 만들어져 있어 history.replaceState 만으로는 화면이 바뀌지 않는다.
+export function toAuthProviderProps(
+  config: OIDCProviderConfig,
+  onReturn?: (path: string) => Promise<void> | void,
+): OIDCAuthProviderProps {
   return {
     authority: config.authority,
     client_id: config.clientId,
@@ -152,8 +158,11 @@ export function toAuthProviderProps(config: OIDCProviderConfig): OIDCAuthProvide
     post_logout_redirect_uri: window.location.origin + '/',
     scope: config.scope,
     automaticSilentRenew: true,
-    onSigninCallback: () => {
+    // AuthProvider 는 이 함수가 끝난 뒤 로딩을 끝낸다 — 이동을 기다려야 홈이 잠깐 비치지 않는다.
+    onSigninCallback: (user) => {
       window.history.replaceState({}, document.title, window.location.pathname)
+      const returnTo = returnPathFromState(user?.state)
+      if (returnTo) return onReturn?.(returnTo)
     },
   }
 }

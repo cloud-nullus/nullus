@@ -2,10 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../../stores/auth-store'
 import { roleLandingPath } from '../role-landing'
 import { isOidcMode, getProviderConfig } from '../../../lib/oidc-providers'
+import { safeReturnPath, signinArgs } from '../../../lib/oidc-return-path'
 import { NullusMark } from '../../../components/brand/nullus-mark'
 import { loginWithPassword } from '../api/auth-api'
 import type { User } from '../../../types'
@@ -43,6 +44,9 @@ function OidcLoginContent() {
   const auth = useAuth()
   const providerLabel = getProviderConfig().type === 'authentik' ? 'Authentik' : 'Keycloak'
   const triedRef = useRef(false)
+  // ProtectedRoute 가 넘긴, 로그인 전에 열려던 화면. IdP 를 다녀온 뒤 그리로 돌아간다(oidc-return-path).
+  const location = useLocation()
+  const returnTo = safeReturnPath((location.state as { from?: unknown } | null)?.from)
 
   // IdP 가 깨졌을 때가 비밀번호 경로가 필요한 순간이다. 사용자가 전환 버튼을
   // 찾아내야만 들어갈 수 있다면 break-glass 라고 할 수 없으므로, 오류가 나면
@@ -62,9 +66,9 @@ function OidcLoginContent() {
       !triedRef.current
     ) {
       triedRef.current = true
-      void auth.signinRedirect()
+      void auth.signinRedirect(signinArgs(returnTo))
     }
-  }, [usePassword, auth.isLoading, auth.isAuthenticated, auth.activeNavigator, auth.error])
+  }, [usePassword, auth.isLoading, auth.isAuthenticated, auth.activeNavigator, auth.error, returnTo])
 
   return (
     <>
@@ -85,7 +89,7 @@ function OidcLoginContent() {
         type="button"
         onClick={() => {
           triedRef.current = true
-          void auth.signinRedirect()
+          void auth.signinRedirect(signinArgs(returnTo))
         }}
         className="w-full rounded-[10px] border-none bg-[var(--color-primary)] p-3 text-sm font-bold text-[var(--color-on-primary)]"
       >

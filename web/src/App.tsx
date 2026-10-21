@@ -25,6 +25,7 @@ import {
   isRecoverableAuthError,
   shouldAttemptRecovery,
 } from './lib/oidc-recovery'
+import { currentReturnPath, signinArgs } from './lib/oidc-return-path'
 import { isOidcMode } from './lib/oidc-config'
 import type { User } from './types'
 
@@ -115,7 +116,7 @@ function OidcGate({ children }: { children: ReactNode }) {
     if (!shouldAttemptRecovery(auth.error.message)) return
     recoveringRef.current = true
     clearOidcStorage()
-    void auth.signinRedirect()
+    void auth.signinRedirect(signinArgs(currentReturnPath()))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.error])
 
@@ -131,7 +132,7 @@ function OidcGate({ children }: { children: ReactNode }) {
           type="button"
           onClick={() => {
             clearOidcStorage()
-            void auth.signinRedirect()
+            void auth.signinRedirect(signinArgs(currentReturnPath()))
           }}
           className="mt-4 rounded-lg border border-[var(--color-border)] bg-transparent px-4 py-2 text-sm text-[var(--color-text-primary)]"
         >

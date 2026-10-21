@@ -11,8 +11,10 @@ import { isOidcMode } from './lib/oidc-providers'
 //   return <AuthProvider {...authProps}>{children}</AuthProvider>
 import { getProviderConfig, toAuthProviderProps } from './lib/oidc-providers'
 import { AuthProvider } from 'react-oidc-context'
+import { router } from './app/routes'
 
-const authProps = toAuthProviderProps(getProviderConfig())
+// 로그인 콜백 뒤 열려던 화면으로 돌아간다(세션이 끝난 뒤 링크로 들어온 경우).
+const authProps = toAuthProviderProps(getProviderConfig(), (path) => router.navigate(path, { replace: true }))
 
 function OIDCWrapper({ children }: { children: ReactNode }) {
   return <AuthProvider {...authProps}>{children}</AuthProvider>
