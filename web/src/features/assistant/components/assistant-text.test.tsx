@@ -43,6 +43,19 @@ describe('AssistantText', () => {
     expect(container.textContent).toContain('<img src=x onerror=alert(1)>')
   })
 
+  // 모델은 목록 대신 표로 답하기도 한다(로컬 시연 녹화에서 클러스터 목록이 '| 클러스터 | 용도 |' 로 그대로 보였다).
+  it('should render a pipe table as a table without the separator row', () => {
+    const { container } = render(
+      <AssistantText text={'| 클러스터 | 용도 |\n|---|---|\n| kind-nullus-platform | **pipeline** |\n| kind-nullus-develop | target |'} />,
+    )
+
+    expect(container.querySelectorAll('thead th')).toHaveLength(2)
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(2)
+    expect(screen.getByText('pipeline').tagName).toBe('STRONG')
+    expect(container.textContent).not.toContain('|')
+    expect(container.textContent).not.toContain('---')
+  })
+
   it('should keep plain lines as separate paragraphs', () => {
     const { container } = render(<AssistantText text={'첫 줄\n둘째 줄'} />)
 

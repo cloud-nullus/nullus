@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-// 어시스턴트 답변의 마크다운 일부 — 제목 · 목록 · 굵게 · 인라인 코드 · 코드 블록 — 를 그린다.
+// 어시스턴트 답변의 마크다운 일부 — 제목 · 목록 · 표 · 굵게 · 인라인 코드 · 코드 블록 — 를 그린다.
 // 모델은 지시와 무관하게 마크다운으로 답하는 일이 많아, 그대로 두면 **·#### 기호가 화면에 남는다.
 // HTML 은 만들지 않고 React 요소로만 그린다 — 답변에 섞인 태그는 글자로 보인다.
 
@@ -9,12 +9,19 @@ type Block =
   | { kind: 'h'; text: string }
   | { kind: 'ul' | 'ol'; items: string[] }
   | { kind: 'pre'; text: string }
+  | { kind: 'table'; head: string[]; rows: string[][] }
   | { kind: 'gap' }
 
 const HEADING = /^#{1,6}\s+(.*)$/
 const BULLET = /^\s*[-*•]\s+(.*)$/
 const NUMBERED = /^\s*\d+[.)]\s+(.*)$/
 const FENCE = /^\s*```/
+const TABLE_ROW = /^\s*\|.*\|\s*$/
+const TABLE_SEPARATOR = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/
+
+function tableCells(line: string): string[] {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim())
+}
 
 function parseBlocks(text: string): Block[] {
   const blocks: Block[] = []
@@ -25,6 +32,20 @@ function parseBlocks(text: string): Block[] {
       const body: string[] = []
       for (i++; i < lines.length && !FENCE.test(lines[i]); i++) body.push(lines[i])
       blocks.push({ kind: 'pre', text: body.join('\n') })
+      continue
+    }
+    // 표: '|' 로 시작하고 끝나는 줄이 이어진다. 둘째 줄이 구분선(|---|)이면 첫 줄이 머리다.
+    if (TABLE_ROW.test(line)) {
+      const rows: string[] = []
+      for (; i < lines.length && TABLE_ROW.test(lines[i]); i++) rows.push(lines[i])
+      i--
+      const hasHead = rows.length > 1 && TABLE_SEPARATOR.test(rows[1])
+      const body = rows.filter((row, n) => !(hasHead && n === 1) && !TABLE_SEPARATOR.test(row))
+      blocks.push({
+        kind: 'table',
+        head: hasHead ? tableCells(body[0]) : [],
+        rows: (hasHead ? body.slice(1) : body).map(tableCells),
+      })
       continue
     }
     const heading = HEADING.exec(line)
@@ -93,6 +114,35 @@ export function AssistantText({ text }: { text: string }) {
               <pre key={i} className="m-0 overflow-x-auto whitespace-pre rounded bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] p-2 text-[12px]">
                 {block.text}
               </pre>
+            )
+          case 'table':
+            return (
+              <div key={i} className="overflow-x-auto">
+                <table className="w-full border-collapse text-[12px]">
+                  {block.head.length > 0 && (
+                    <thead>
+                      <tr>
+                        {block.head.map((cell, j) => (
+                          <th key={j} className="border-b border-[var(--color-border-default)] px-2 py-1 text-left font-semibold">
+                            {renderInline(cell)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                  )}
+                  <tbody>
+                    {block.rows.map((row, r) => (
+                      <tr key={r}>
+                        {row.map((cell, j) => (
+                          <td key={j} className="border-b border-[var(--color-border-default)] px-2 py-1 align-top">
+                            {renderInline(cell)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )
           case 'gap':
             return <div key={i} className="h-1" aria-hidden />
