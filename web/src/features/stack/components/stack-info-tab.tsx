@@ -17,7 +17,7 @@ import {
 import { RetryStackButton } from "./retry-stack-button";
 import type { StackStatus as RetryStackStatus } from "../utils/retry-policy";
 import type { PipelineNode, LaunchTool } from "../utils/stack-list-utils";
-import { toolLogoURL } from "../utils/tool-logo";
+import { toolDisplayName, toolLogoURL } from "../utils/tool-logo";
 import {
   buildPipelineNodesFromSnapshot,
   buildPipelineNodesFromMonitoring,
@@ -423,14 +423,14 @@ export function StackInfoTab({
                 )}
                 title={
                   tool.url
-                    ? `${tool.name} 콘솔 열기`
-                    : `${tool.name}: 경로 미설정`
+                    ? `${toolDisplayName(tool.name)} 콘솔 열기`
+                    : `${toolDisplayName(tool.name)}: 경로 미설정`
                 }
               >
                 <span className="relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] text-[10px] font-bold uppercase text-[var(--color-text-secondary)]">
-                  <ToolLogo name={tool.name} logo={tool.logo} />
+                  <ToolLogo name={toolDisplayName(tool.name)} logo={tool.logo} />
                 </span>
-                <span className="font-medium">{tool.name}</span>
+                <span className="font-medium">{toolDisplayName(tool.name)}</span>
                 <span className="text-[10px] text-[var(--color-text-secondary)]">
                   {tool.version}
                 </span>
@@ -517,7 +517,7 @@ export function StackInfoTab({
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="font-semibold text-[var(--color-text-primary)]">
-                      {tool.name}
+                      {toolDisplayName(tool.name)}
                     </div>
                     <a
                       href={tool.url ?? undefined}

@@ -15,6 +15,8 @@
 // 카드는 **제품 단위**다. 같은 제품이 마법사에서 역할별로 여러 번 나오는 경우
 // (GitLab = 소스·레지스트리·CI) 카드는 하나이고 wizardIds 가 그 선택지들을 모은다.
 
+import { MINIO_DISPLAY_NAME } from '../../stack/utils/tool-logo'
+
 export interface SupportTool {
   /** 카드에 보이는 제품명. 브랜드명이라 번역하지 않는다. */
   name: string
@@ -62,8 +64,8 @@ export const SUPPORT_TOOLS: SupportTool[] = [
   { name: 'Nexus Repository', icon: 'sonatype', categoryKey: CATEGORY.registry, wizardIds: ['nexus'] },
   // 오브젝트 스토리지는 마법사의 Storage 탭에서 구현체를 고른다(S3 계약 뒤에서 갈아 끼운다).
   // MinIO 로 설치되는 실물은 MinIO 포크인 SILO 다(받을 수 있는 이미지가 그쪽뿐이다 —
-  // shareddomain.MinIOServerImage). 마크도 설치되는 것과 같아야 한다.
-  { name: 'MinIO', icon: 'silo', categoryKey: CATEGORY.objectStorage, wizardIds: ['minio'] },
+  // shareddomain.MinIOServerImage). 마크도 이름도 설치되는 것과 같아야 한다.
+  { name: MINIO_DISPLAY_NAME, icon: 'silo', categoryKey: CATEGORY.objectStorage, wizardIds: ['minio'] },
   { name: 'SeaweedFS', icon: 'seaweedfs', categoryKey: CATEGORY.objectStorage, wizardIds: ['seaweedfs'] },
   { name: 'Prometheus', icon: 'prometheus', categoryKey: CATEGORY.metrics, wizardIds: ['prometheus'] },
   { name: 'Grafana', icon: 'grafana', categoryKey: CATEGORY.visualization, wizardIds: ['grafana'] },

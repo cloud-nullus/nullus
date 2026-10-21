@@ -61,6 +61,17 @@ describe('지원 OSS 목록', () => {
     expect(contradictions, `NOT_INSTALLABLE 인데 카드에 있는 id:\n${contradictions.join('\n')}`).toEqual([])
   })
 
+  // 마크와 이름이 다른 제품을 가리키면 안 된다 — SILO 마크 옆에 "MinIO" 만 적혀 있었다.
+  it('SILO 마크를 쓰는 도구는 이름에도 SILO 를 적는다', () => {
+    const silo = SUPPORT_TOOLS.filter((tool) => tool.icon === 'silo')
+    expect(silo.map((tool) => tool.name)).toEqual(['MinIO (SILO)'])
+  })
+
+  it('오브젝트 스토리지 구현체를 둘 다 적는다', () => {
+    const storage = SUPPORT_TOOLS.filter((tool) => tool.wizardIds.some((id) => IN_CLUSTER_OBJECT_STORAGE_IDS.includes(id)))
+    expect(storage.map((tool) => tool.name)).toEqual(['MinIO (SILO)', 'SeaweedFS'])
+  })
+
   // 마법사에서 사라진 도구가 목록에 남으면 "지원한다" 가 거짓이 된다.
   // 오브젝트 스토리지 구현체(MinIO·SeaweedFS)는 도구 탭이 아니라 Storage 탭에서 고른다.
   it('마법사에 없는 도구를 지원한다고 적지 않는다', () => {

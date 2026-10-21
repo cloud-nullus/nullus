@@ -147,3 +147,17 @@ func TestInstalledToolWorkloads_ObjectStorageFollowsBackend(t *testing.T) {
 		t.Fatal("고르지 않은 오브젝트 스토리지가 목록에 있다")
 	}
 }
+
+// 표시 이름은 오류 메시지·설치 로그에 그대로 나간다. minio 를 고르면 서는 것은 MinIO 포크
+// SILO 라 화면의 마크(silo.svg)와 같은 이름을 쓴다. 그 이름이 다시 돌아와도 같은 구현체다.
+func TestObjectStorageBackends_DisplayNameNamesWhatGetsInstalled(t *testing.T) {
+	if got := MinIOObjectStorage.DisplayName; got != "MinIO (SILO)" {
+		t.Errorf("MinIO DisplayName = %q, want %q", got, "MinIO (SILO)")
+	}
+	for _, b := range ObjectStorageBackends() {
+		got, ok := ObjectStorageBackendNamed(b.DisplayName)
+		if !ok || got.Tool != b.Tool {
+			t.Errorf("ObjectStorageBackendNamed(%q) = %q, %v — want %q", b.DisplayName, got.Tool, ok, b.Tool)
+		}
+	}
+}

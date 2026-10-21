@@ -574,7 +574,7 @@
         "description": "Docker 공식 레지스트리"
       },
       "minio": {
-        "label": "MinIO",
+        "label": "MinIO (SILO)",
         "description": "S3 호환 오브젝트 스토리지"
       },
       "seaweedfs": {

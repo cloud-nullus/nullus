@@ -71,7 +71,7 @@ one of these two.
 
 | Implementation | License | What gets installed | Web console |
 |----------------|---------|---------------------|-------------|
-| **MinIO** | AGPL-3.0 — the image is the community fork SILO (`pgsty/silo`) | release `nullus-minio` (standalone) | `minio.<domain>` (Keycloak sign-in) |
+| **MinIO (SILO)** | AGPL-3.0 — the image is the community fork SILO (`pgsty/silo`); screens show this name with the SILO mark | release `nullus-minio` (standalone) | `minio.<domain>` (Keycloak sign-in) |
 | **SeaweedFS** | Apache-2.0 | release `nullus-seaweedfs` (all-in-one — master, volume, filer and S3 gateway in one pod) | None — S3 API only |
 
 GitLab (artifacts, LFS, uploads, packages, Pages, Container Registry) sees **only the

@@ -64,6 +64,7 @@ import type {
   StorageConnectionResponse,
   ToolCredentialResponse,
 } from "../api/stack-api-types";
+import { toolDisplayName } from "./tool-logo";
 
 export type StorageConnectionInfo = {
   mode: string;
@@ -755,7 +756,7 @@ export function buildConnectionInfoText(
   const ossLines = launchTools
     .map(
       (tool) =>
-        `- ${tool.name}: ${tool.url ?? (isKorean ? "(URL 없음)" : "(No URL)")} | ${buildOssLoginHint(findToolCredential(toolCredentials, tool.name), conn.namespace, isKorean)}`,
+        `- ${toolDisplayName(tool.name)}: ${tool.url ?? (isKorean ? "(URL 없음)" : "(No URL)")} | ${buildOssLoginHint(findToolCredential(toolCredentials, tool.name), conn.namespace, isKorean)}`,
     )
     .join("\n");
   const gatewayLines = gatewayPFCommand

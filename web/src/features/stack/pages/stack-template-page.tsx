@@ -49,6 +49,7 @@ import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from "../../../components/ui/search-input"
 import { TextInput } from "../../../components/ui/text-input"
 import { TemplateToolSections } from "../components/template-tool-editor"
+import { toolDisplayName } from "../utils/tool-logo"
 
 const TOOL_CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
   source_repository: { bg: "color-mix(in srgb, var(--color-info) 12%, transparent)", color: "var(--color-info)" },
@@ -651,7 +652,7 @@ export function StackTemplatePage() {
                     key={tool}
                     className="rounded-md bg-[color-mix(in_srgb,_var(--color-primary)_12%,_transparent)] px-2 py-1 text-[11px] font-semibold text-[var(--color-primary)]"
                   >
-                    {tool}
+                    {toolDisplayName(tool)}
                   </span>
                 ))}
                 {uniqueTools(template.tools).length > 4 && (
@@ -878,7 +879,7 @@ export function StackTemplatePage() {
                             {tool.category}
                           </span>
                           <span className="text-sm font-semibold text-[var(--color-text-primary)]">
-                            {tool.name}
+                            {toolDisplayName(tool.name)}
                           </span>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">

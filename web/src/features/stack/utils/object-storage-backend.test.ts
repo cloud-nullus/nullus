@@ -16,6 +16,13 @@ describe('stack object storage backend', () => {
     expect(isInClusterObjectStorage('s3')).toBe(false)
   })
 
+  // minio 를 고르면 서는 것은 MinIO 포크 SILO 다. 화면의 마크(silo.svg)와 이름이 같은 것을 가리켜야 한다.
+  it('should label each in-cluster implementation by what actually gets installed', () => {
+    const labels = Object.fromEntries(STORAGE_PROVIDER_OPTIONS.objectStorage.map((option) => [option.id, option.label]))
+    expect(labels.minio).toBe('MinIO (SILO)')
+    expect(labels.seaweedfs).toBe('SeaweedFS')
+  })
+
   // 서버(withoutInterchangeableSlots)와 같은 규칙이다. 매트릭스는 MinIO 로 적혀 있으므로
   // 이 슬롯이 대조에 들어가면 SeaweedFS 를 고른 조합이 전부 "일치하는 매트릭스 없음" 이 된다.
   it('should not split matrix matching by in-cluster object storage implementation', () => {
