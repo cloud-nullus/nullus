@@ -20,7 +20,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { cn } from "../../../lib/utils";
 import { useStackMonitoring } from "../../stack/api/stack-api";
-import { toolLogoURL } from "../../stack/utils/tool-logo";
+import { toolDisplayName, toolLogoURL } from "../../stack/utils/tool-logo";
 import { CHART_LEGEND_PROPS, CHART_SERIES, CHART_STYLE } from "./monitoring-chart-widgets";
 
 // recharts 는 SVG 라 CSS 변수를 그대로 쓴다. 이 파일이 chart.js(<canvas>)를 쓰던
@@ -249,7 +249,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       { key: "all", label: "All" },
       ...(monitoring?.oss_statuses ?? []).map((tool) => ({
         key: tool.key,
-        label: tool.name,
+        label: toolDisplayName(tool.name),
       })),
     ],
     [monitoring],
@@ -463,7 +463,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((tool) => ({
           key: tool.key,
-          fullName: tool.name,
+          fullName: toolDisplayName(tool.name),
           iconUrl: toolLogoURL(tool.name),
           pods: tool.pod_count,
           ready: tool.ready_pods,
@@ -473,7 +473,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
     return [
       {
         key: activeTool.key,
-        fullName: activeTool.name,
+        fullName: toolDisplayName(activeTool.name),
         iconUrl: toolLogoURL(activeTool.name),
         pods: activeTool.pod_count,
         ready: activeTool.ready_pods,
@@ -1008,7 +1008,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
             >
               <div className="mb-2 flex items-center justify-between">
                 <div className="text-sm font-semibold text-[var(--color-text-primary)]">
-                  {tool.name} Pod Details
+                  {toolDisplayName(tool.name)} Pod Details
                 </div>
                 <div className="text-xs text-[var(--color-text-secondary)]">
                   ready {tool.ready_pods}/{tool.pod_count}

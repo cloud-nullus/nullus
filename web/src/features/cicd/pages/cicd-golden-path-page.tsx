@@ -8,6 +8,7 @@ import type { CICDGoldenPath, CICDTool } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
 import { useStackConfigStore } from '../../stack/stores/stack-config-store'
+import { toolDisplayName } from '../../stack/utils/tool-logo'
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
 
@@ -251,7 +252,7 @@ export function CicdGoldenPathPage() {
                         className="rounded-md px-2 py-1 text-[11px] font-semibold"
                         style={{ backgroundColor: color.bg, color: color.color }}
                       >
-                        {tool.name}
+                        {toolDisplayName(tool.name)}
                       </span>
                     )
                   })}
@@ -373,7 +374,7 @@ export function CicdGoldenPathPage() {
                           {tool.category}
                         </span>
                         <span className="text-sm font-semibold text-[var(--color-text-primary)]">
-                          {tool.name}
+                          {toolDisplayName(tool.name)}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">

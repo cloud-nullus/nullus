@@ -93,6 +93,7 @@ import {
   createDeployScript,
 } from '../utils/install-manifest-builders'
 import type { ManifestToolEntry } from '../utils/install-manifest-builders'
+import { MINIO_DISPLAY_NAME } from '../utils/tool-logo'
 import { ToolSelector, MultiToolSelector } from '../components/install-tool-selector'
 import { PageHeader } from '../../../components/layout/page-header'
 import { Checkbox } from '../../../components/ui/checkbox'
@@ -2610,7 +2611,7 @@ export function StackInstallPage() {
         <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-4">
           <span><strong>K8s:</strong> {compatibilityGate.baseline.k8s}</span>
           <span>
-            <strong>{objectStorageBackendTool === 'seaweedfs' ? <>SeaweedFS:</> : <>MinIO:</>}</strong>{' '}
+            <strong>{objectStorageBackendTool === 'seaweedfs' ? 'SeaweedFS' : MINIO_DISPLAY_NAME}:</strong>{' '}
             {compatibilityGate.baseline.objectStorage}
           </span>
           <span><strong>Postgres:</strong> {compatibilityGate.baseline.postgres}</span>

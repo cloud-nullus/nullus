@@ -25,7 +25,7 @@ import type {
   PipelineTool,
   ToolRuntimeStatus,
 } from "../utils/stack-list-utils";
-import { toolLogoURL } from "../utils/tool-logo";
+import { toolDisplayName, toolLogoURL } from "../utils/tool-logo";
 
 // 색만으로 상태를 구분하지 않는다 — 색 + 아이콘 + 글자를 함께 쓴다 (DESIGN.md §상태 표시).
 const RUNTIME_STYLE: Record<
@@ -79,7 +79,7 @@ function ToolRow({ tool }: { tool: PipelineTool }) {
           "gitlab-package-…" 로 잘리면 어느 배포인지 구분이 안 된다.
           하이픈에서 접히게 두는 편이 낫다. */}
       <span className="min-w-0 flex-1 break-words text-[12px] leading-[16px] text-[var(--color-text-primary)]">
-        {tool.name}
+        {toolDisplayName(tool.name)}
       </span>
       {/* shrink-0 으로 두면 MinIO 의 RELEASE.2024-12-18T13-15-44Z 처럼 긴 버전이
           제 너비를 다 가져가 이름 칸이 0 이 된다 — 카드 폭이 고정이라 "minio" 가

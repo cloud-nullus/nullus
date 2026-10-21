@@ -9,6 +9,7 @@ import { Tabs } from "../../../components/ui/tabs";
 import { cn } from "../../../lib/utils";
 import type { Stack } from "../../../types";
 import { useAddTools, useStacks } from "../api/stack-api";
+import { MINIO_DISPLAY_NAME } from "../utils/tool-logo";
 import { PageHeader } from "../../../components/layout/page-header";
 
 interface ToolOption {
@@ -115,7 +116,7 @@ const TOOL_CATEGORIES: ToolCategory[] = [
         options: [
           {
             id: "minio",
-            label: "MinIO",
+            label: MINIO_DISPLAY_NAME,
             description: "S3 호환 오브젝트 스토리지",
           },
           {

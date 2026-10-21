@@ -79,4 +79,15 @@ describe("stack connection info helpers", () => {
 		expect(text).toContain("[Database]");
 		expect(text).toContain("[Object Storage]");
 	});
+
+	// 접속 정보 화면과 같은 이름을 쓴다 — 복사한 글에서만 구현체 id 가 보이면 안 된다.
+	it("names the object storage by what gets installed", () => {
+		const info = toConnectionInfoView(serverConnection);
+		const text = buildConnectionInfoText("nullus-devsecops-stack", info, [
+			{ name: "minio", version: "RELEASE.2024", url: "https://minio.example.internal", logo: "" },
+			{ name: "seaweedfs", version: "4.48", url: null, logo: "" },
+		], serverConnection.tools);
+		expect(text).toContain("- MinIO (SILO): https://minio.example.internal");
+		expect(text).toContain("- SeaweedFS: (No URL)");
+	});
 });
