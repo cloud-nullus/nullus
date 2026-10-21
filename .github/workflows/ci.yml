@@ -140,6 +140,10 @@ jobs:
           NULLUS_DATABASE_USER: nullus
           NULLUS_DATABASE_PASSWORD: nullus_test
           NULLUS_SERVER_MODE: development
+          # e2e 는 한 IP 에서 여러 화면을 동시에 열어 개발 모드의 분당 300 을 넘는다 — 넘는 순간
+          # 걸린 테스트가 429 로 빈 화면을 보고 실패했다(조직 목록 0개). 한도 자체는 단위 테스트가 본다.
+          NULLUS_SERVER_RATE_LIMIT_AUTHENTICATED: '6000'
+          NULLUS_SERVER_RATE_LIMIT_IP_CEILING: '12000'
         run: |
           nohup bin/api > /tmp/api.log 2>&1 &
           # sleep 3 은 기동을 보장하지 못한다. 게다가 /health 는 DB 가 끊겨도

@@ -1,6 +1,14 @@
 server:
   port: 8090
   mode: development
+  # 분당 요청 한도. 0 이면 기본값 — 사용자 300 · 미인증 30 · IP 상한 600(development 는 미인증도
+  # 사용자 한도). 사용자 · 미인증 한도를 올리면 IP 상한도 따라 오른다(사용자 한도의 2배). 명시한
+  # 값은 그대로 쓴다. 환경변수 NULLUS_SERVER_RATE_LIMIT_* 로도 덮는다(차트의 ConfigMap 에 이 블록이
+  # 없어도 된다). 로그인 · 배포 한도는 바꾸지 않는다.
+  rate_limit:
+    authenticated: 0
+    unauthenticated: 0
+    ip_ceiling: 0
 
 database:
   host: localhost

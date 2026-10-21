@@ -62,7 +62,13 @@ type limiterState struct {
 // 미인증으로 분류되는데, 여기에 익명 한도(30/분)를 씌우면 5초마다 폴링하는 모니터링
 // 화면 하나만 열어도 곧 429 가 난다. 로컬에서 인증이 없는 것은 설계이지 익명
 // 트래픽이 아니므로, 개발자 본인으로 보고 인증 한도를 적용한다.
-func RateLimitConfigForMode(mode string) RateLimitConfig {
+//
+// overrides 는 설정(server.rate_limit.*)이다. 0 이하인 칸은 기본값을 쓴다. 한 IP 에서
+// 여러 화면을 동시에 여는 e2e 가 분당 300 을 넘어 429 로 흔들려 덮을 자리를 열었다.
+// 사용자 · 미인증 한도만 올리면 IP 상한이 그 아래에 남아 올린 값이 먹지 않으므로 함께
+// 올린다(사용자 한도의 2배 — 기본 비율). 명시한 IP 상한은 그대로 둔다. 로그인 · 배포
+// 한도는 무차별 대입 · 배포 폭주를 막는 보안 한도라 overrides 의 그 칸은 보지 않는다.
+func RateLimitConfigForMode(mode string, overrides RateLimitConfig) RateLimitConfig {
 	cfg := RateLimitConfig{
 		Authenticated:   defaultAuthenticatedLimit,
 		Unauthenticated: defaultUnauthenticatedLimit,
@@ -70,10 +76,27 @@ func RateLimitConfigForMode(mode string) RateLimitConfig {
 		Deploy:          defaultDeployLimit,
 		IPCeiling:       defaultIPCeilingLimit,
 	}
-	if mode == "development" {
+	if overrides.Authenticated > 0 {
+		cfg.Authenticated = overrides.Authenticated
+	}
+	if overrides.Unauthenticated > 0 {
+		cfg.Unauthenticated = overrides.Unauthenticated
+	}
+	if mode == "development" && overrides.Unauthenticated <= 0 {
 		cfg.Unauthenticated = cfg.Authenticated
 	}
+	if overrides.IPCeiling > 0 {
+		cfg.IPCeiling = overrides.IPCeiling
+	} else {
+		cfg.IPCeiling = max(cfg.IPCeiling, 2*cfg.Authenticated, cfg.Unauthenticated)
+	}
 	return cfg
+}
+
+// CeilingBelowUserLimit 는 IP 상한이 사용자 · 미인증 한도보다 낮은지 본다. 명시한 상한이
+// 그렇게 낮으면 한 사용자가 상한에 먼저 막힌다 — 막지는 않고 기동 로그에 알린다.
+func (c RateLimitConfig) CeilingBelowUserLimit() bool {
+	return c.IPCeiling < max(c.Authenticated, c.Unauthenticated)
 }
 
 // IPCeilingRateLimiter guards every route with a per-IP flood ceiling.

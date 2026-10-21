@@ -12,7 +12,8 @@
     키가 그 함정에 걸려 기동이 막힌 적이 있습니다.
 
     따로 묶여 있는 키: `platform.namespace` · `backup.seal_key` ·
-    `backup.destination.secret_key` · `backup.keycloak_database.password`.
+    `backup.destination.secret_key` · `backup.keycloak_database.password` ·
+    `server.rate_limit.*`.
 
 ## 서버·데이터베이스
 
@@ -20,6 +21,9 @@
 |----------|--------|
 | `NULLUS_SERVER_PORT` | 8090 |
 | `NULLUS_SERVER_MODE` | development |
+| `NULLUS_SERVER_RATE_LIMIT_AUTHENTICATED` | 0 → 사용자당 분당 300 |
+| `NULLUS_SERVER_RATE_LIMIT_UNAUTHENTICATED` | 0 → IP 당 분당 30 (development 는 사용자 한도와 같습니다 — 명시하면 그 값) |
+| `NULLUS_SERVER_RATE_LIMIT_IP_CEILING` | 0 → IP 당 분당 600 (사용자 · 미인증 한도를 올리면 따라 오릅니다 — 명시하면 그 값) |
 | `NULLUS_DATABASE_HOST` | localhost |
 | `NULLUS_DATABASE_PORT` | 5433 |
 | `NULLUS_DATABASE_NAME` | nullus |
@@ -28,6 +32,12 @@
 | `NULLUS_DATABASE_SSLMODE` | disable |
 | `NULLUS_DATABASE_MAX_OPEN_CONNS` / `_MAX_IDLE_CONNS` | 25 / 10 |
 | `NULLUS_DATABASE_CONN_MAX_LIFETIME` / `_CONN_MAX_IDLE_TIME` | 5m / 1m |
+
+요청 한도는 넘으면 429 로 거절합니다. 0 이하는 기본값입니다. 한 IP 에서 여러 화면을 한꺼번에 여는
+자동화(e2e 등)는 개발 모드에서도 분당 300 을 넘길 수 있어 CI 의 e2e 는 한도를 넉넉히 올려 띄웁니다
+(`AUTHENTICATED=6000` · `IP_CEILING=12000`). 로컬에서 Playwright 를 돌릴 때도 같은 값을 줍니다.
+명시한 IP 상한이 사용자 한도보다 낮으면 기동 로그에 경고가 남습니다. 로그인 · 배포 한도(분당 10)는 바꿀 수
+없습니다. 한도는 요청 시각을 모두 기록해 세므로 필요 이상으로 크게 잡지 않습니다.
 
 !!! note "옛 `NULLUS_DB_*` 는 먹지 않습니다"
     `NULLUS_DB_HOST` 처럼 줄여 쓴 이름은 어느 설정 키와도 맞지 않아 무시됩니다.

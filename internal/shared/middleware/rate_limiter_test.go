@@ -44,7 +44,7 @@ func TestRateLimiter_AuthenticatedUserLimit(t *testing.T) {
 // "미인증" 으로 분류되는데, 여기에 30/분 을 씌우면 폴링하는 화면 하나만 열어도
 // 곧바로 429 가 난다. 로컬에서 인증이 없는 건 설계이지 익명 트래픽이 아니다.
 func TestRateLimitConfigForMode_DevelopmentDoesNotThrottleTheLocalOperator(t *testing.T) {
-	cfg := RateLimitConfigForMode("development")
+	cfg := RateLimitConfigForMode("development", RateLimitConfig{})
 
 	if cfg.Unauthenticated != cfg.Authenticated {
 		t.Fatalf("development should treat every caller as the local operator: unauth=%d auth=%d",
@@ -57,7 +57,7 @@ func TestRateLimitConfigForMode_DevelopmentDoesNotThrottleTheLocalOperator(t *te
 
 func TestRateLimitConfigForMode_NonDevelopmentKeepsAnonymousLimitTight(t *testing.T) {
 	for _, mode := range []string{"production", "staging", ""} {
-		cfg := RateLimitConfigForMode(mode)
+		cfg := RateLimitConfigForMode(mode, RateLimitConfig{})
 
 		if cfg.Unauthenticated != defaultUnauthenticatedLimit {
 			t.Fatalf("mode %q: expected anonymous limit %d, got %d",
@@ -140,7 +140,7 @@ func TestRateLimiterTiers_UserLimitCountsPerUserAfterAuth(t *testing.T) {
 
 func TestRateLimitConfigForMode_SetsIPCeilingAboveTheUserLimit(t *testing.T) {
 	for _, mode := range []string{"development", "production"} {
-		cfg := RateLimitConfigForMode(mode)
+		cfg := RateLimitConfigForMode(mode, RateLimitConfig{})
 		if cfg.IPCeiling < cfg.Authenticated {
 			t.Fatalf("mode %q: an IP ceiling below the per-user limit would throttle a single legitimate user: ceiling=%d user=%d",
 				mode, cfg.IPCeiling, cfg.Authenticated)
@@ -383,4 +383,104 @@ func execRequest(t *testing.T, e *echo.Echo, h echo.HandlerFunc, path, method st
 	}
 
 	return rec
+}
+
+// 한도는 설정(server.rate_limit.*)으로 덮을 수 있다. e2e 처럼 한 IP 에서 여러 화면을 동시에 여는
+// 곳은 개발 모드의 분당 300 을 넘는다(#360 이 화면마다 어시스턴트 상태 조회를 더하자 넘었다).
+func TestRateLimitConfigForMode_OverridesReplaceDefaults(t *testing.T) {
+	cfg := RateLimitConfigForMode("production", RateLimitConfig{Authenticated: 1000, IPCeiling: 3000})
+
+	if cfg.Authenticated != 1000 || cfg.IPCeiling != 3000 {
+		t.Fatalf("overrides should replace the defaults: auth=%d ceiling=%d", cfg.Authenticated, cfg.IPCeiling)
+	}
+	if cfg.Unauthenticated != defaultUnauthenticatedLimit {
+		t.Fatalf("an unset override must keep the default anonymous limit, got %d", cfg.Unauthenticated)
+	}
+}
+
+// development 는 모든 호출을 로컬 운영자로 본다 — 사용자 한도를 올렸으면 미인증 한도도 따라간다.
+func TestRateLimitConfigForMode_DevelopmentFollowsOverriddenAuthenticatedLimit(t *testing.T) {
+	cfg := RateLimitConfigForMode("development", RateLimitConfig{Authenticated: 5000})
+
+	if cfg.Unauthenticated != 5000 {
+		t.Fatalf("development anonymous limit should follow the overridden user limit, got %d", cfg.Unauthenticated)
+	}
+	if cfg.IPCeiling < cfg.Authenticated {
+		t.Fatalf("raising the user limit must not leave the IP ceiling below it: ceiling=%d user=%d", cfg.IPCeiling, cfg.Authenticated)
+	}
+}
+
+func TestRateLimitConfigForMode_ExplicitUnauthenticatedWinsInDevelopment(t *testing.T) {
+	cfg := RateLimitConfigForMode("development", RateLimitConfig{Authenticated: 5000, Unauthenticated: 50})
+
+	if cfg.Unauthenticated != 50 {
+		t.Fatalf("an explicit anonymous limit should win over the development rule, got %d", cfg.Unauthenticated)
+	}
+}
+
+// 명시한 IP 상한은 그대로 둔다 — 낮게 잡은 것도 운영자의 선택이다.
+func TestRateLimitConfigForMode_ExplicitIPCeilingIsKept(t *testing.T) {
+	cfg := RateLimitConfigForMode("production", RateLimitConfig{Authenticated: 5000, IPCeiling: 400})
+
+	if cfg.IPCeiling != 400 {
+		t.Fatalf("an explicit IP ceiling should be kept, got %d", cfg.IPCeiling)
+	}
+}
+
+func TestRateLimitConfigForMode_IgnoresNonPositiveOverrides(t *testing.T) {
+	cfg := RateLimitConfigForMode("production", RateLimitConfig{Authenticated: -1, Unauthenticated: 0, IPCeiling: -5})
+
+	if cfg.Authenticated != defaultAuthenticatedLimit || cfg.Unauthenticated != defaultUnauthenticatedLimit || cfg.IPCeiling != defaultIPCeilingLimit {
+		t.Fatalf("non-positive overrides should keep the defaults, got %+v", cfg)
+	}
+}
+
+// 덮은 값이 없으면 예전과 같다 — 운영 기본값이 이 변경으로 바뀌지 않았다.
+func TestRateLimitConfigForMode_NoOverridesKeepsPreviousDefaults(t *testing.T) {
+	want := map[string]RateLimitConfig{
+		"production":  {Authenticated: 300, Unauthenticated: 30, Login: 10, Deploy: 10, IPCeiling: 600},
+		"development": {Authenticated: 300, Unauthenticated: 300, Login: 10, Deploy: 10, IPCeiling: 600},
+	}
+	for mode, w := range want {
+		if got := RateLimitConfigForMode(mode, RateLimitConfig{}); got != w {
+			t.Fatalf("mode %q: got %+v, want %+v", mode, got, w)
+		}
+	}
+}
+
+func TestRateLimitConfigForMode_LiftedIPCeilingIsTwiceTheUserLimit(t *testing.T) {
+	if got := RateLimitConfigForMode("production", RateLimitConfig{Authenticated: 5000}).IPCeiling; got != 10000 {
+		t.Fatalf("expected the IP ceiling lifted to 2x the user limit, got %d", got)
+	}
+	// 사용자 한도를 낮추면 상한은 기본값에 남는다 — 낮추는 쪽으로는 따라가지 않는다.
+	if got := RateLimitConfigForMode("production", RateLimitConfig{Authenticated: 100}).IPCeiling; got != defaultIPCeilingLimit {
+		t.Fatalf("lowering the user limit should keep the default IP ceiling, got %d", got)
+	}
+}
+
+// 미인증 한도만 올려도 IP 상한이 그 아래에 남으면 올린 값이 먹지 않는다.
+func TestRateLimitConfigForMode_LiftedIPCeilingCoversTheAnonymousLimit(t *testing.T) {
+	cfg := RateLimitConfigForMode("production", RateLimitConfig{Unauthenticated: 1000})
+
+	if cfg.IPCeiling < cfg.Unauthenticated {
+		t.Fatalf("the IP ceiling must not stay below a raised anonymous limit: ceiling=%d anon=%d", cfg.IPCeiling, cfg.Unauthenticated)
+	}
+}
+
+// 로그인 · 배포 한도는 보안 한도라 설정으로 덮지 않는다.
+func TestRateLimitConfigForMode_LoginAndDeployAreNotOverridable(t *testing.T) {
+	cfg := RateLimitConfigForMode("production", RateLimitConfig{Login: 1000, Deploy: 1000})
+
+	if cfg.Login != defaultLoginLimit || cfg.Deploy != defaultDeployLimit {
+		t.Fatalf("login/deploy limits must stay at their defaults, got login=%d deploy=%d", cfg.Login, cfg.Deploy)
+	}
+}
+
+func TestRateLimitConfig_CeilingBelowUserLimit(t *testing.T) {
+	if !(RateLimitConfig{Authenticated: 5000, IPCeiling: 400}).CeilingBelowUserLimit() {
+		t.Fatal("a ceiling below the user limit should be reported")
+	}
+	if (RateLimitConfig{Authenticated: 300, Unauthenticated: 30, IPCeiling: 600}).CeilingBelowUserLimit() {
+		t.Fatal("the defaults should not be reported")
+	}
 }

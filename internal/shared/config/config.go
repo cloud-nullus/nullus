@@ -98,8 +98,17 @@ type PlatformConfig struct {
 
 // ServerConfig holds HTTP server configuration.
 type ServerConfig struct {
-	Port int    `mapstructure:"port"`
-	Mode string `mapstructure:"mode"`
+	Port      int             `mapstructure:"port"`
+	Mode      string          `mapstructure:"mode"`
+	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
+}
+
+// RateLimitConfig 는 분당 요청 한도다. 0 이면 미들웨어의 기본값(사용자 300 · 미인증 30 ·
+// IP 상한 600, development 는 미인증도 사용자 한도)을 쓴다.
+type RateLimitConfig struct {
+	Authenticated   int `mapstructure:"authenticated"`
+	Unauthenticated int `mapstructure:"unauthenticated"`
+	IPCeiling       int `mapstructure:"ip_ceiling"`
 }
 
 // DatabaseConfig holds database connection configuration.
@@ -172,6 +181,10 @@ func LoadConfig(path string) (*Config, error) {
 	// Downward API 로만 넣어 주므로 명시적으로 묶는다.
 	_ = v.BindEnv("platform.namespace", "NULLUS_PLATFORM_NAMESPACE")
 	bindBackupSecretEnv(v)
+	// 요청 한도도 차트의 ConfigMap 에는 없다 — 환경변수로만 덮는다(CI e2e 가 쓴다).
+	_ = v.BindEnv("server.rate_limit.authenticated", "NULLUS_SERVER_RATE_LIMIT_AUTHENTICATED")
+	_ = v.BindEnv("server.rate_limit.unauthenticated", "NULLUS_SERVER_RATE_LIMIT_UNAUTHENTICATED")
+	_ = v.BindEnv("server.rate_limit.ip_ceiling", "NULLUS_SERVER_RATE_LIMIT_IP_CEILING")
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, err

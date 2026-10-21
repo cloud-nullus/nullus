@@ -576,7 +576,15 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           7200,
 	}))
-	rateLimits := middleware.RateLimitConfigForMode(cfg.Server.Mode)
+	rateLimits := middleware.RateLimitConfigForMode(cfg.Server.Mode, middleware.RateLimitConfig{
+		Authenticated:   cfg.Server.RateLimit.Authenticated,
+		Unauthenticated: cfg.Server.RateLimit.Unauthenticated,
+		IPCeiling:       cfg.Server.RateLimit.IPCeiling,
+	})
+	if rateLimits.CeilingBelowUserLimit() {
+		slog.Warn("IP 상한이 사용자 한도보다 낮다 — 한 사용자가 IP 상한에 먼저 막힌다",
+			"ip_ceiling", rateLimits.IPCeiling, "authenticated", rateLimits.Authenticated, "unauthenticated", rateLimits.Unauthenticated)
+	}
 	// 1단: 모든 경로를 덮는 IP 기준 폭주 상한. 전역 미들웨어는 인증보다 먼저 돌아
 	// 호출자를 알 수 없으므로, 여기서는 신원을 따지지 않고 총량만 막는다.
 	e.Use(middleware.IPCeilingRateLimiter(rateLimits))
