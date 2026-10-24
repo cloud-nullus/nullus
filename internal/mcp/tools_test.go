@@ -163,10 +163,18 @@ func TestClusterList_RedactsSecrets(t *testing.T) {
 	assert.NotContains(t, text, "sekrit")
 }
 
+const testClusterID = "6f1c2a9e-3b7d-4c1e-9a52-0d8e7f6a5b41"
+
+// clustersRoute 는 stack_deploy 가 클러스터 이름을 ID 로 해석할 때 부르는 목록이다.
+func clustersRoute(items ...map[string]any) map[string]any {
+	return map[string]any{"items": items, "total": len(items)}
+}
+
 func TestStackDeploy_CreatesThenDeploys_SCMTokenFromEnvOnly(t *testing.T) {
 	t.Setenv(EnvSCMToken, "pat-from-env")
 
 	api := newMockAPI(t, map[string]any{
+		"GET /api/v1/admin/clusters":         clustersRoute(map[string]any{"id": testClusterID, "name": "prod-01"}),
 		"POST /api/v1/stacks":                map[string]any{"id": "stk-new"},
 		"POST /api/v1/stacks/stk-new/deploy": map[string]any{"status": "accepted"},
 	})
@@ -174,8 +182,13 @@ func TestStackDeploy_CreatesThenDeploys_SCMTokenFromEnvOnly(t *testing.T) {
 
 	text, isErr := callTool(t, cs, "stack_deploy", map[string]any{
 		"stack": map[string]any{
-			"name": "demo",
-			"scm":  map[string]any{"url": "https://github.com/org/repo", "token": "leaked-arg"},
+			"apiVersion": "nullus.io/v1alpha1",
+			"kind":       "Stack",
+			"name":       "demo",
+			"cluster":    "prod-01",
+			"config": map[string]any{
+				"source_control": map[string]any{"owner": "org", "personal_access_token": "leaked-arg"},
+			},
 		},
 		"acknowledge_warnings": true,
 	})
@@ -183,43 +196,139 @@ func TestStackDeploy_CreatesThenDeploys_SCMTokenFromEnvOnly(t *testing.T) {
 	assert.Contains(t, text, "stk-new")
 
 	reqs := api.recorded()
-	require.Len(t, reqs, 2)
+	require.Len(t, reqs, 3)
 
 	// 1) 생성 본문 — stacks.config 는 평문 JSONB 라 시크릿성 키는 제거돼야 한다.
-	create := reqs[0]
+	create := reqs[1]
 	assert.Equal(t, "POST", create.Method)
 	assert.Equal(t, "/api/v1/stacks", create.Path)
-	scm, _ := create.Body["scm"].(map[string]any)
-	assert.Equal(t, "https://github.com/org/repo", scm["url"])
-	_, hasToken := scm["token"]
+	cfg, _ := create.Body["config"].(map[string]any)
+	sc, _ := cfg["source_control"].(map[string]any)
+	assert.Equal(t, "org", sc["owner"])
+	_, hasToken := sc["personal_access_token"]
 	assert.False(t, hasToken, "생성 본문에 토큰이 실렸다: %v", create.Body)
 
 	// 2) deploy 본문 — PAT 는 env 값이 source_control 로만 나간다.
-	deploy := reqs[1]
+	deploy := reqs[2]
 	assert.Equal(t, "/api/v1/stacks/stk-new/deploy", deploy.Path)
 	assert.Equal(t, true, deploy.Body["acknowledge_warnings"])
-	sc, _ := deploy.Body["source_control"].(map[string]any)
-	assert.Equal(t, "pat-from-env", sc["personal_access_token"])
+	dsc, _ := deploy.Body["source_control"].(map[string]any)
+	assert.Equal(t, "pat-from-env", dsc["personal_access_token"])
 }
 
-func TestStackDeploy_NoEnvToken_OmitsSourceControl(t *testing.T) {
+// stack.yaml top-level 은 생성 API payload 로 매핑돼야 한다 (스키마 §1.2) —
+// 그대로 보내면 서버는 cluster_id·golden_path_id 를 빈 값으로 받는다.
+func TestStackDeploy_MapsStackYAMLToCreatePayload(t *testing.T) {
+	api := newMockAPI(t, map[string]any{
+		"GET /api/v1/admin/clusters": clustersRoute(
+			map[string]any{"id": "c0a8f3d2-0000-4000-8000-000000000001", "name": "dev"},
+			map[string]any{"id": testClusterID, "name": "prod-01"},
+		),
+		"POST /api/v1/stacks":                map[string]any{"id": "stk-new"},
+		"POST /api/v1/stacks/stk-new/deploy": map[string]any{"status": "accepted"},
+	})
+	cs := newTestSession(t, api, true)
+
+	text, isErr := callTool(t, cs, "stack_deploy", map[string]any{
+		"stack": map[string]any{
+			"apiVersion": "nullus.io/v1alpha1",
+			"kind":       "Stack",
+			"name":       "team-alpha",
+			"cluster":    "prod-01",
+			"namespace":  "nullus-team-alpha",
+			"template":   "gitlab-argocd-v1",
+			"config":     map[string]any{"access_domain": "team-alpha.internal"},
+		},
+	})
+	require.False(t, isErr, "stack_deploy 실패: %s", text)
+
+	reqs := api.recorded()
+	require.Len(t, reqs, 3)
+	assert.Equal(t, "/api/v1/admin/clusters", reqs[0].Path)
+	assert.Equal(t, map[string]any{
+		"name":           "team-alpha",
+		"cluster_id":     testClusterID,
+		"namespace":      "nullus-team-alpha",
+		"golden_path_id": "gitlab-argocd-v1",
+		"config":         map[string]any{"access_domain": "team-alpha.internal"},
+	}, reqs[1].Body)
+}
+
+// cluster 가 이미 ID(UUID)면 조회하지 않는다 — /admin/clusters 는 admin 전용이라
+// devops 사용자도 ID 로는 배포할 수 있어야 한다.
+func TestStackDeploy_ClusterIDUsedWithoutLookup(t *testing.T) {
 	api := newMockAPI(t, map[string]any{
 		"POST /api/v1/stacks":                map[string]any{"id": "stk-new"},
 		"POST /api/v1/stacks/stk-new/deploy": map[string]any{"status": "accepted"},
 	})
 	cs := newTestSession(t, api, true)
 
-	_, isErr := callTool(t, cs, "stack_deploy", map[string]any{
-		"stack": map[string]any{"name": "demo"},
+	text, isErr := callTool(t, cs, "stack_deploy", map[string]any{
+		"stack": map[string]any{"name": "demo", "cluster": testClusterID},
 	})
-	assert.False(t, isErr)
+	require.False(t, isErr, "stack_deploy 실패: %s", text)
 
 	reqs := api.recorded()
 	require.Len(t, reqs, 2)
-	_, has := reqs[1].Body["source_control"]
-	assert.False(t, has, "env 없이 source_control 이 실렸다: %v", reqs[1].Body)
+	assert.Equal(t, "/api/v1/stacks", reqs[0].Path)
+	assert.Equal(t, testClusterID, reqs[0].Body["cluster_id"])
+	_, hasSC := reqs[1].Body["source_control"]
+	assert.False(t, hasSC, "env 없이 source_control 이 실렸다: %v", reqs[1].Body)
 	_, hasAck := reqs[1].Body["acknowledge_warnings"]
 	assert.False(t, hasAck, "명시하지 않은 acknowledge_warnings 가 실렸다")
+}
+
+func TestStackDeploy_InvalidStackRejectedBeforeCreate(t *testing.T) {
+	cases := []struct {
+		name     string
+		clusters map[string]any
+		stack    map[string]any
+		wantMsg  string
+	}{
+		{"name 누락", nil, map[string]any{"cluster": testClusterID}, "name"},
+		{"cluster 누락", nil, map[string]any{"name": "demo"}, "cluster"},
+		{"없는 클러스터 이름", clustersRoute(map[string]any{"id": testClusterID, "name": "prod-01"}),
+			map[string]any{"name": "demo", "cluster": "nope"}, "nope"},
+		{"중복 클러스터 이름", clustersRoute(
+			map[string]any{"id": testClusterID, "name": "prod-01"},
+			map[string]any{"id": "c0a8f3d2-0000-4000-8000-000000000001", "name": "prod-01"},
+		), map[string]any{"name": "demo", "cluster": "prod-01"}, "prod-01"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			routes := map[string]any{"POST /api/v1/stacks": map[string]any{"id": "stk-new"}}
+			if tc.clusters != nil {
+				routes["GET /api/v1/admin/clusters"] = tc.clusters
+			}
+			api := newMockAPI(t, routes)
+			cs := newTestSession(t, api, true)
+
+			text, isErr := callTool(t, cs, "stack_deploy", map[string]any{"stack": tc.stack})
+			assert.True(t, isErr, "잘못된 입력이 통과했다: %s", text)
+			assert.Contains(t, text, tc.wantMsg)
+			for _, r := range api.recorded() {
+				assert.NotEqual(t, "POST", r.Method, "검증 실패인데 생성 요청이 나갔다: %s", r.Path)
+			}
+		})
+	}
+}
+
+// 생성 후 배포만 실패하면 스택은 이미 있다 — 모델이 재시도로 중복 스택을 만들지
+// 않도록 에러에 stack_id 를 담아야 한다.
+func TestStackDeploy_DeployFailureReportsCreatedStackID(t *testing.T) {
+	api := newMockAPI(t, map[string]any{
+		"POST /api/v1/stacks": map[string]any{"id": "stk-new"},
+		// deploy 경로 없음 → 404
+	})
+	cs := newTestSession(t, api, true)
+
+	text, isErr := callTool(t, cs, "stack_deploy", map[string]any{
+		"stack": map[string]any{"name": "demo", "cluster": testClusterID},
+	})
+	assert.True(t, isErr)
+	// 경로가 아니라 "생성됐다"는 사실로 stack_id 를 알려야 한다.
+	assert.Contains(t, text, "스택 stk-new 은 생성됐")
+	assert.Contains(t, text, "404")
 }
 
 func TestStackRollback_CamelCaseVersionID(t *testing.T) {

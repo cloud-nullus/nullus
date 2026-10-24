@@ -49,6 +49,15 @@ nullus mcp serve --allow-write   # 변경 도구까지
     `stack_deploy` 는 입력에서 비밀성 항목을 제거하고, SCM PAT 는 서버 프로세스의
     `NULLUS_SCM_TOKEN` 에서 읽어 배포 요청에만 넣습니다.
 
+!!! note "`stack_deploy` 의 `cluster` 는 이름이나 ID 입니다"
+    stack.yaml 의 `name` · `cluster` 는 필수입니다. `cluster` 가 ID(UUID)면 그대로 쓰고,
+    이름이면 `GET /api/v1/admin/clusters` 로 ID 를 찾습니다 — 이 목록은 admin 전용이라
+    다른 역할은 ID 를 넣어야 합니다. 같은 이름이 둘 이상이면 거부합니다.
+    `template` 은 `golden_path_id` 로 보냅니다.
+
+    생성은 됐는데 배포 요청만 실패하면 오류에 만들어진 스택 ID 를 담아 돌려줍니다.
+    다시 부르면 스택이 하나 더 생기니 `stack_status` 로 상태부터 확인하세요.
+
 !!! warning "`stack_rollback` 은 지금 실패합니다"
     [스택 이력](../features/stack/history.md#롤백)에 적은 것과 같은 이유로 서버의
     롤백 경로가 아직 맞물려 있지 않습니다.

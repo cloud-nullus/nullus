@@ -130,9 +130,11 @@ func registerReadTools(server *sdk.Server, c *nullusclient.Client) {
 var secretKeys = map[string]bool{
 	"kubeconfig":           true,
 	"kubeconfig_encrypted": true,
-	"token":                true,
-	"password":             true,
-	"secret":               true,
+	// stack.yaml 의 SCM PAT 키다 (config.source_control) — 스키마 §1.3.
+	"personal_access_token": true,
+	"token":                 true,
+	"password":              true,
+	"secret":                true,
 }
 
 // redactSecrets 는 디코딩된 JSON 트리를 내려가며 시크릿 키를 제거한다.
