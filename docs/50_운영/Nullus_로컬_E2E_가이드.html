@@ -1038,7 +1038,7 @@ ON CONFLICT (id) DO NOTHING"</code></pre></div>
     <p><b>③ 터미널로 확인.</b></p>
     <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>source ~/.nullus-e2e.env
 helm --kube-context $CTX -n $NS list -f '^argo-cd$'              <span class="c"># CHART argo-cd-7.7.22, APP VERSION v2.13.4</span>
-kubectl --context $CTX -n $NS get deploy argocd-server \
+kubectl --context $CTX -n $NS get deploy argo-cd-argocd-server \
   -o jsonpath='{.spec.template.spec.containers[0].image}'; echo  <span class="c"># …argocd:v2.13.4</span>
 kubectl --context $CTX -n $NS get applications.argoproj.io $APP  <span class="c"># 기존 앱이 Synced / Healthy 그대로</span></code></pre></div>
     <div class="callout"><b>사전 점검이 "24시간 내 백업 없음"으로 막히면</b> 10단계의 full 백업을 먼저 한다. 백업이 24시간보다 오래됐으면 다시 뜬다. 후보가 아예 보이지 않으면 번들의 <code>source_chart_version</code> 이 설치된 차트 버전과 같은지 <code>helm list</code> 로 대조한다 — 번들은 설치된 버전에서 출발하는 것만 후보가 된다.</div>
