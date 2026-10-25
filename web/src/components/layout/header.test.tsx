@@ -71,6 +71,16 @@ describe('Header', () => {
     expect(tutorial.nextElementSibling).toBe(screen.getByRole('link', { name: FEEDBACK_LABEL }))
   })
 
+  // 상단 헤더의 드롭다운(작업 알림 패널 등)은 화면마다 sticky 로 붙는 페이지 헤더(z 30) 위에 떠야 한다.
+  // 예전에는 둘 다 z 30 이라 DOM 순서가 뒤인 페이지 헤더가 패널을 덮어, 홈을 뺀 거의 모든 화면에서
+  // 종을 눌러도 그림자만 보였다(로컬 시연 녹화에서 발견).
+  it('상단 헤더가 페이지 헤더보다 위 층에 선다', () => {
+    renderWithProviders(<Header />)
+    const header = screen.getByRole('banner')
+    expect(header.className).toContain('relative')
+    expect(header.className).toContain('z-[var(--z-app-header)]')
+  })
+
   it('renders the header element', () => {
     renderWithProviders(<Header />)
     expect(screen.getByRole('banner')).toBeInTheDocument()

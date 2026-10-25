@@ -322,6 +322,8 @@ ${Object.entries(design.spacing ?? {})
   --transition-fast: 150ms ease;
 
   --z-page-header: 30;
+  /* 상단 앱 헤더 — 드롭다운(작업 알림 패널 등)이 sticky 페이지 헤더 위에 떠야 한다. */
+  --z-app-header: 35;
   --z-sidebar: 40;
   --z-modal: 50;
   --z-toast: 60;

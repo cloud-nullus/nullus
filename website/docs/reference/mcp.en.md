@@ -50,6 +50,15 @@ flag takes precedence over the environment variable (you can turn it off with
     `stack_deploy` strips secret-like fields from its input. It reads the SCM PAT from
     `NULLUS_SCM_TOKEN` in the server process and adds it only to the deploy request.
 
+!!! note "`cluster` in `stack_deploy` is a name or an ID"
+    `name` and `cluster` are required in stack.yaml. If `cluster` is an ID (UUID) it is
+    used as-is; if it is a name, the ID is looked up with `GET /api/v1/admin/clusters`.
+    That list is admin-only, so other roles must pass the ID. A name shared by more than
+    one cluster is rejected. `template` is sent as `golden_path_id`.
+
+    If the stack is created but the deploy request fails, the error carries the new
+    stack's ID. Calling the tool again creates a second stack, so check `stack_status` first.
+
 !!! warning "`stack_rollback` fails today"
     For the same reason described in [Stack History](../features/stack/history.md#rollback),
     the server's rollback path is not wired up yet.
