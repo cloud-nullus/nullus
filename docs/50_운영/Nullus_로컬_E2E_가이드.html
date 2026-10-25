@@ -426,7 +426,9 @@ footer { max-width: 46rem; margin-top: 64px; padding-top: 18px; border-top: 1px 
     <li><a href="#s13"><span class="num">13</span><span class="t">복구 후 배선</span></a></li>
     <li class="phase">이어서</li>
     <li><a href="#s14"><span class="num">14</span><span class="t">파이프라인 이어 가기</span></a></li>
-    <li><a href="#s15"><span class="num">15</span><span class="t">정리</span></a></li>
+    <li><a href="#s15"><span class="num">15</span><span class="t">OSS 업그레이드</span></a></li>
+    <li><a href="#s16"><span class="num">16</span><span class="t">AI 어시스턴트</span></a></li>
+    <li><a href="#s17"><span class="num">17</span><span class="t">정리</span></a></li>
     <li class="phase">부록</li>
     <li><a href="#ax-a"><span class="num">A</span><span class="t">문제 해결</span></a></li>
     <li><a href="#ax-b"><span class="num">B</span><span class="t">SonarQube 쓰기</span></a></li>
@@ -582,6 +584,7 @@ echo "export STACK_ID=$STACK_ID" &gt;&gt; ~/.nullus-e2e.env      <span class="c"
     <div class="code"><div class="code-head"><span>다른 터미널</span><button class="copy" type="button">복사</button></div><pre><code>source ~/.nullus-e2e.env
 kubectl --context $CTX -n $NS get pods -w</code></pre></div>
     <div class="callout warn"><b>60분에서 기다림이 끊기면</b><code>--wait</code>는 60분까지만 기다린다. 끊겼으면 <code>./scripts/runbook_local.sh stack-status $STACK_ID --wait</code>로 이어서 기다린다 — 완료되면 노드 배선과 GitLab 포트포워드까지 같이 한다. 화면에서 설치했거나 복구로 되살아난 스택처럼 런북이 끝을 보지 못한 스택은 <code>./scripts/runbook_local.sh wire</code>(또는 <code>wire --stack=$STACK_ID</code>)로 같은 배선을 한다. 몇 번 돌려도 안전하다.</div>
+    <div class="callout"><b>보안 도구를 더 넣으려면</b> <code>--security=image_scanner,sca</code>(Trivy 이미지 스캔 · 의존성 스캔)를 붙인다 — 설치 마법사 Security 탭과 같다. 시연 영상은 이 옵션으로 깔아 파이프라인이 시크릿 · 의존성 · 빌드 · SAST · 이미지 · 배포 6단계가 되고 보안 대시보드의 설치 OSS 탭이 채워진다.</div>
     <div class="callout"><b>SonarQube 없이 가볍게 하려면</b><code>--template=gitlab-argocd-v1</code>로 깔고 환경 파일의 <code>NS</code>를 <code>nullus-gitlab-argocd</code>로 바꾼다. 5단계의 SonarQube 줄과 <a href="#ax-b">부록 B</a>는 건너뛴다.</div>
     <p class="check-title">확인</p>
     <ul class="check">
@@ -1010,9 +1013,80 @@ curl -s "$API/api/v1/cicd/deployments?pipeline_id=$PIPELINE_ID" \
 <section class="step" id="s15">
   <div class="step-head">
     <span class="step-num">15</span>
+    <div><h3>OSS 업그레이드</h3>
+      <div class="badges"><span class="badge ok" title="2026-10-21·10-25 kind 에서 Argo CD 7.7.16 → 7.7.22 (OSS 업그레이드 설계 Phase 0 리허설 경로)">실측 기록</span></div></div>
+    <label class="donebox"><input type="checkbox" data-step="s15"> 완료</label>
+  </div>
+  <div class="step-body">
+    <p>설치된 OSS 를 <b>검증된 경로로만</b> 올린다. 후보는 <code>upgrade_bundles</code> 의 <code>verified</code> 번들 중 지금 설치된 차트 버전에서 출발하는 것만 보이고, 경로가 없으면 "검증된 업그레이드 경로 없음"이다(최신이라고 말하지 않는다). 실행 전 <b>사전 점검</b>(스택 상태 · 진행 중인 다른 업그레이드 · Helm 릴리스 · 현재 버전 · 24시간 내 백업 · 서버 측 dry-run)을 통과해야 시작되고, Helm 적용 뒤 <b>상태 검사</b>가 대상 앱 버전을 확인한다. 실패하면 자동으로 되돌린다. 10단계의 백업이 "24시간 내 백업" 조건을 채운다.</p>
+    <p><b>① 번들 등록.</b> 번들 등록 화면은 아직 없다. 리허설을 마친 경로를 <a href="../11_기능설계/Nullus_OSS_업그레이드_설계.md">OSS 업그레이드 설계</a> §12.4 의 SQL 로 넣는다 — 이 가이드의 스택은 Argo CD 차트 7.7.16(v2.13.3)이므로 7.7.22(v2.13.4)로 가는 번들을 쓴다.</p>
+    <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>docker compose -f docker-compose.dev.yaml exec -T postgres psql -U nullus -d nullus -v ON_ERROR_STOP=1 -c "
+INSERT INTO upgrade_bundles (id, tool, release_name, chart_name, repo_url,
+  source_chart_version, source_app_version, target_chart_version, target_app_version,
+  risk_level, expected_disruption, release_notes, requires_backup, supported_architectures, status, fixes_cves)
+VALUES ('argocd-7.7.16-7.7.22','argocd','argo-cd','argo-cd','https://argoproj.github.io/argo-helm',
+  '7.7.16','v2.13.3','7.7.22','v2.13.4',
+  'low','API 서버 · 컨트롤러가 차례로 재시작(약 1~2분)',
+  'https://github.com/argoproj/argo-cd/releases/tag/v2.13.4', TRUE, jsonb_build_array('amd64','arm64'), 'verified', '[]'::jsonb)
+ON CONFLICT (id) DO NOTHING"</code></pre></div>
+    <p><b>② 화면에서 업그레이드.</b> 스택 목록에서 스택을 고르고 <b>버전 업그레이드</b> 탭을 연다(<code>/stack/list?stack=$STACK_ID&amp;tab=version-upgrade</code>). 후보 카드에 <code>Argo CD 7.7.16 (v2.13.3) → 7.7.22 (v2.13.4) · 위험 낮음 · 백업 필요</code>가 보인다.</p>
+    <ol>
+      <li><b>업그레이드</b>를 누르면 사전 점검 6항목이 돈다. 모두 통과해야 시작 버튼이 열린다.</li>
+      <li>사유를 적고(예: <code>Argo CD 패치 릴리스 적용</code>) <b>업그레이드 시작</b>을 누른다. 화면을 떠나도 서버에서 계속 진행된다.</li>
+      <li>Helm 적용 → 상태 검사가 끝나면 탭의 현재 버전이 <code>7.7.22</code>로 바뀌고 이력에 실행 기록이 남는다(2~4분).</li>
+    </ol>
+    <p><b>③ 터미널로 확인.</b></p>
+    <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>source ~/.nullus-e2e.env
+helm --kube-context $CTX -n $NS list -f '^argo-cd$'              <span class="c"># CHART argo-cd-7.7.22, APP VERSION v2.13.4</span>
+kubectl --context $CTX -n $NS get deploy argocd-server \
+  -o jsonpath='{.spec.template.spec.containers[0].image}'; echo  <span class="c"># …argocd:v2.13.4</span>
+kubectl --context $CTX -n $NS get applications.argoproj.io $APP  <span class="c"># 기존 앱이 Synced / Healthy 그대로</span></code></pre></div>
+    <div class="callout"><b>사전 점검이 "24시간 내 백업 없음"으로 막히면</b> 10단계의 full 백업을 먼저 한다. 백업이 24시간보다 오래됐으면 다시 뜬다. 후보가 아예 보이지 않으면 번들의 <code>source_chart_version</code> 이 설치된 차트 버전과 같은지 <code>helm list</code> 로 대조한다 — 번들은 설치된 버전에서 출발하는 것만 후보가 된다.</div>
+    <p class="check-title">확인</p>
+    <ul class="check">
+      <li>사전 점검 6항목이 모두 통과하고 업그레이드가 <code>succeeded</code>로 끝났다 — 탭의 현재 버전이 <code>7.7.22</code>다</li>
+      <li><code>argocd-server</code> 이미지가 <code>v2.13.4</code>다</li>
+      <li><code>https://argocd.nullus.local</code>이 다시 열리고 <code>demo-api</code>가 Synced / Healthy 그대로다</li>
+    </ul>
+  </div>
+</section>
+
+<section class="step" id="s16">
+  <div class="step-head">
+    <span class="step-num">16</span>
+    <div><h3>AI 어시스턴트</h3>
+      <div class="badges"><span class="badge ok" title="2026-10-21·10-25 Upstage Solar(solar-pro4)로 실측">실측 기록</span></div></div>
+    <label class="donebox"><input type="checkbox" data-step="s16"> 완료</label>
+  </div>
+  <div class="step-body">
+    <p>자연어로 플랫폼 상태를 묻는 패널이다. 1단계는 <b>조회 도구만</b> 쓴다 — MCP 도구 <code>stack_list</code> · <code>stack_status</code> · <code>stack_logs_tail</code> · <code>template_list</code> · <code>compat_check</code> · <code>cluster_list</code>. 배포 · 롤백 같은 쓰기 도구는 목록에서 아예 빠져 있어 모델이 부를 수 없다. 도구는 질문한 사용자의 권한으로 돈다(권한 밖이면 403 을 받아 "권한이 없다"고 답한다).</p>
+    <p><b>준비물.</b> 모델 공급자 API 키 하나. 기본은 <b>Upstage Solar</b>(모델 <code>solar-pro4</code>)이고 OpenAI · Anthropic · Gemini · OpenAI 호환 사내 서버도 고를 수 있다. 키는 환경 변수나 차트가 아니라 <b>관리 화면에서 조직마다</b> 넣고, 서버가 <code>ENCRYPTION_KEY</code> 로 암호화해 보관한다. 감사 로그에는 키 원문이 남지 않는다.</p>
+    <p><b>① 키 등록.</b> 관리 › <b>AI 어시스턴트</b>(<code>/admin/assistant</code>)에서 공급자를 고르고 API 키를 넣은 뒤 <b>연결 테스트</b>를 누른다(저장 전에 모델을 한 번 부른다). <code>연결됨</code>이 뜨면 <b>이 조직에서 어시스턴트 켜기</b>를 켜고 <b>저장</b>한다. 저장 뒤 화면은 키의 끝 네 자리만 힌트로 보인다.</p>
+    <div class="callout warn"><b>키가 화면 · 로그 · 녹화에 남지 않게</b>입력칸은 비밀번호 칸이라 글자가 보이지 않지만, 화면을 녹화하거나 캡처할 때는 입력칸과 힌트를 가린다. 키를 터미널에 <code>echo</code> 하거나 파일로 <code>cat</code> 하지 않는다.</div>
+    <p><b>② 질문.</b> 모든 화면의 오른쪽 아래 <b>AI 어시스턴트</b> 버튼이 패널을 연다. 빈 대화에는 추천 질문 3개가 뜬다.</p>
+    <ol>
+      <li>추천 질문 <code>실패한 스택이 있어?</code> — <code>stack_list</code> 로 스택 상태를 읽고 답한다. 답변 아래 <b>사용한 도구</b>가 붙는다.</li>
+      <li><code>등록된 클러스터 목록과 각 클러스터 용도를 알려줘</code> — <code>cluster_list</code>. platform(pipeline) · develop(target) 두 개가 나온다.</li>
+      <li><code>설치할 수 있는 스택 템플릿은 몇 개야?</code> — <code>template_list</code>.</li>
+    </ol>
+    <p>답변의 목록 · 굵게 · 코드 · 표가 서식대로 그려진다. 앞 대화의 조회 결과를 다시 쓰면 '사용한 도구' 줄이 안 생길 수 있다 — 끝 판정은 "생각하는 중…"이 사라지는 것으로 본다.</p>
+    <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>curl -s $API/api/v1/assistant/status | jq            <span class="c"># 켜짐 여부 · 공급자 · 모델</span>
+curl -s $API/api/v1/admin/assistant -H "X-Org-Id: $ORG" | jq '{provider, effective_model, has_key, key_hint, enabled}'</code></pre></div>
+    <p class="check-title">확인</p>
+    <ul class="check">
+      <li>연결 테스트가 <code>연결됨</code>이고 저장 뒤 <code>has_key</code>가 <code>true</code>다(힌트는 끝 네 자리만)</li>
+      <li>세 질문 모두 답을 받았고 적어도 하나에 <b>사용한 도구</b>가 보인다</li>
+      <li>패널에 배포 · 롤백을 시키는 질문을 하면 할 수 없다고 답한다(쓰기 도구 없음)</li>
+    </ul>
+  </div>
+</section>
+
+<section class="step" id="s17">
+  <div class="step-head">
+    <span class="step-num">17</span>
     <div><h3>정리</h3>
       <div class="badges"><span class="badge ok" title="README §4-2">실측 기록</span></div></div>
-    <label class="donebox"><input type="checkbox" data-step="s15"> 완료</label>
+    <label class="donebox"><input type="checkbox" data-step="s17"> 완료</label>
   </div>
   <div class="step-body">
     <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code><span class="c"># 포트포워딩 반복문과 게이트웨이 라우터</span>
@@ -1048,7 +1122,10 @@ curl -s "$API/api/v1/cicd/deployments?pipeline_id=$PIPELINE_ID" \
         <tr><td>설정을 넣었더니 API가 안 뜬다</td><td>백업 설정 검증 실패(키 길이, 같은 키 재사용, 빈 Keycloak 호스트)</td><td><code>./scripts/runbook_local.sh logs api</code>의 마지막 오류</td></tr>
         <tr><td>복구가 <code>is being terminated</code>로 실패</td><td>지운 네임스페이스가 아직 Terminating</td><td><code>wait --for=delete</code> 뒤 다시 복구</td></tr>
         <tr><td>복구 뒤 앱 이미지가 <code>:bootstrap</code></td><td>Argo CD가 아직 조정하지 않았다</td><td><code>argocd.argoproj.io/refresh=hard</code> 주석을 단다(14단계)</td></tr>
-      </tbody>
+              <tr><td>업그레이드 후보가 없다 ("검증된 업그레이드 경로 없음")</td><td>번들이 등록되지 않았거나 <code>source_chart_version</code> 이 설치된 차트 버전과 다르다</td><td>15단계 ① 의 SQL 로 번들을 넣고 <code>helm list</code> 의 차트 버전과 대조한다</td></tr>
+        <tr><td>사전 점검이 "24시간 내 백업"에서 막힌다</td><td>최근 24시간 안의 성공한 백업이 없다</td><td>10단계 full 백업을 먼저 한다</td></tr>
+        <tr><td>어시스턴트 연결 테스트 실패</td><td>키가 틀리거나 공급자 주소에 API 서버가 못 나간다</td><td>키를 다시 넣고 <code>logs api</code>의 마지막 오류를 본다. 사내 OpenAI 호환 서버는 base URL 을 함께 적는다</td></tr>
+</tbody>
     </table></div>
     <p><b>노드 배선</b> — <code>stack-up --wait</code>·<code>stack-status --wait</code>·<code>wire</code>가 하는 일을 손으로 한다. 보통은 <code>./scripts/runbook_local.sh wire</code> 한 줄로 끝난다.</p>
     <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>GW_IP=$(kubectl --context $CTX -n $NS get svc -l gateway.envoyproxy.io/owning-gateway-name \
@@ -1132,7 +1209,7 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
 
 <footer>
   main <code>0bbbb25</code>에 SonarQube Keycloak 로그인 변경을 더한 코드(2026-10-10)를 기준으로 스크립트·코드·기존 문서(로컬 테스트 가이드, 백업복구 로컬 테스트 가이드, CHANGELOG)를 대조해 썼다. 그 뒤 컨테이너·클러스터·볼륨·<code>/etc/hosts</code>까지 비운 호스트에서 1단계부터 15단계까지 글자 그대로 다시 돌렸고(2026-10-17), 그때 드러난 결함은 #327 · #328 · #330 · #331 · #332 로 고쳤다. <span class="badge warn">코드 기준</span> 은 그 실행 기록이 아니라 코드를 읽어 쓴 단계라는 표시다. 진행 체크는 이 브라우저에만 저장된다.
-</footer>
+ 2026-10-25 에 15 · 16단계(OSS 업그레이드 · AI 어시스턴트)를 더하고, 같은 순서로 2단계부터 다시 돌려 한 편의 연속 시연 영상으로 남겼다.</footer>
 </main>
 </div>
 
