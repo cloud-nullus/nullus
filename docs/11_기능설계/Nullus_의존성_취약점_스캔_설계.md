@@ -60,7 +60,7 @@
 `scaffold.dependencyScanScriptLines` — CI 3종 공통.
 
 ```
-trivy fs --server $NULLUS_TRIVY_SERVER --scanners vuln [--ignore-unfixed] --skip-dirs node_modules --skip-dirs .git \
+trivy fs --server $NULLUS_TRIVY_SERVER --scanners vuln --offline-scan [--ignore-unfixed] --skip-dirs node_modules --skip-dirs .git \
          --format json --output dependency-scan-report.json .      # 리포트 — 실패하면 스캐너 장애 정책
 echo "의존성 스캔 대상(락파일): N 개"                                 # 0 이면 "락파일을 커밋하세요"
 trivy fs --server ... --severity ${NULLUS_SCAN_SEVERITY:-CRITICAL} [--ignore-unfixed] --exit-code 1 --quiet .   # 게이트
@@ -71,6 +71,8 @@ trivy fs --server ... --severity ${NULLUS_SCAN_SEVERITY:-CRITICAL} [--ignore-unf
 | GitLab CI | `stages` 의 `secret-scan` 다음 · `build` 앞, `needs: []` | 전역 변수 `NULLUS_TRIVY_SERVER` | `$NULLUS_TRIVY_IMAGE`, `entrypoint: [""]` |
 | GitHub Actions | 잡 `dependency-scan`, `build.needs: [secret-scan, dependency-scan]` | 잡 env | `vars.NULLUS_TRIVY_IMAGE` 또는 기본 |
 | Jenkins | `stage('DependencyScan')` 를 Build 앞에 | stage environment | 이미지 스캔과 같은 `scanner` 컨테이너(ConfigMap 정책 envFrom) |
+
+`--offline-scan`(2026-10-26): Trivy 는 pom.xml 의 전이 의존성을 풀려고 pom 을 하나씩 Maven Central 에서 받는데, 전자정부 표준프레임워크 샘플(Boot · Web) 파이프라인이 둘 다 `429 Too Many Requests`(Retry-After 1800) 로 스캔 자체가 죽어 장애 차단 정책에 걸렸다. 이제 원격 저장소를 묻지 않고 락파일 · pom 에 적힌 것만 본다. Maven 의 전이 의존성은 이미지 스캔 단계가 빌드된 이미지의 jar 로 본다 — 실제로 들어간 것을 보는 쪽이 그쪽이다. 에어갭에서는 원래 이렇게 돌았다.
 
 단계 이름은 `PipelineStageNames` 가 `SecretScan · DependencyScan · Build · … · Deploy` 순으로 준다. 정책 푸시 대상(`readsScanPolicy`)에 `DependencyScan` 과 `SecretScan`(#80 에서 빠져 있던 것)을 더했다 — 빠지면 정책을 바꿔도 그 단계는 기본값으로 돈다.
 
