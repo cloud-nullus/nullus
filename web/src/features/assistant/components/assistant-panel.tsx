@@ -10,6 +10,7 @@ import {
   type AssistantToolTrace,
   type AssistantTurn,
 } from '../api/assistant-api'
+import { AssistantText } from './assistant-text'
 
 // AI 어시스턴트 패널(nullus-plan#94). 서버에 키가 없으면(또는 엔드포인트가 없는 옛 서버면) 아무것도 그리지 않는다.
 // 대화는 이 컴포넌트의 상태에만 있다 — 새로 고치면 사라진다(1단계).
@@ -240,13 +241,14 @@ function ChatBubble({ entry }: { entry: ChatEntry }) {
     <div className={cn('flex flex-col', mine ? 'items-end' : 'items-start')}>
       <div
         className={cn(
-          'max-w-[85%] whitespace-pre-wrap break-words rounded-lg px-3 py-2',
+          'max-w-[85%] break-words rounded-lg px-3 py-2',
           mine
-            ? 'bg-[var(--color-primary)] text-white'
+            ? 'whitespace-pre-wrap bg-[var(--color-primary)] text-white'
             : 'bg-[color-mix(in_srgb,_var(--color-text-primary)_6%,_transparent)] text-[var(--color-text-primary)]',
         )}
       >
-        {entry.content}
+        {/* 사용자가 쓴 글은 그대로, 모델의 답은 마크다운 일부를 그려서 보인다. */}
+        {mine ? entry.content : <AssistantText text={entry.content} />}
       </div>
       {entry.tools && entry.tools.length > 0 && (
         <div className="mt-1 text-[11px] text-[var(--color-text-secondary)]">

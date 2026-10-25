@@ -37,7 +37,8 @@ export function Header() {
   }
 
   return (
-    <header className="flex h-[var(--header-height)] shrink-0 items-center justify-end gap-3 border-b border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-[var(--page-padding)]">
+    // relative + z: 드롭다운(작업 알림 패널 등)이 화면의 sticky 페이지 헤더(--z-page-header) 위에 뜨게 한다.
+    <header className="relative z-[var(--z-app-header)] flex h-[var(--header-height)] shrink-0 items-center justify-end gap-3 border-b border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-[var(--page-padding)]">
       {/* Role badge */}
       <div className="flex items-center gap-1.5 rounded-[var(--radius-full)] bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-primary)]">
         {roleIcons[role]}
