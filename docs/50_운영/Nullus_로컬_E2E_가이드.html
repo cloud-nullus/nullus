@@ -426,9 +426,10 @@ footer { max-width: 46rem; margin-top: 64px; padding-top: 18px; border-top: 1px 
     <li><a href="#s13"><span class="num">13</span><span class="t">복구 후 배선</span></a></li>
     <li class="phase">이어서</li>
     <li><a href="#s14"><span class="num">14</span><span class="t">파이프라인 이어 가기</span></a></li>
-    <li><a href="#s15"><span class="num">15</span><span class="t">OSS 업그레이드</span></a></li>
-    <li><a href="#s16"><span class="num">16</span><span class="t">AI 어시스턴트</span></a></li>
-    <li><a href="#s17"><span class="num">17</span><span class="t">정리</span></a></li>
+    <li><a href="#s15"><span class="num">15</span><span class="t">전자정부 앱</span></a></li>
+    <li><a href="#s16"><span class="num">16</span><span class="t">OSS 업그레이드</span></a></li>
+    <li><a href="#s17"><span class="num">17</span><span class="t">AI 어시스턴트</span></a></li>
+    <li><a href="#s18"><span class="num">18</span><span class="t">정리</span></a></li>
     <li class="phase">부록</li>
     <li><a href="#ax-a"><span class="num">A</span><span class="t">문제 해결</span></a></li>
     <li><a href="#ax-b"><span class="num">B</span><span class="t">SonarQube 쓰기</span></a></li>
@@ -1013,12 +1014,42 @@ curl -s "$API/api/v1/cicd/deployments?pipeline_id=$PIPELINE_ID" \
 <section class="step" id="s15">
   <div class="step-head">
     <span class="step-num">15</span>
-    <div><h3>OSS 업그레이드</h3>
-      <div class="badges"><span class="badge ok" title="2026-10-21·10-25 kind 에서 Argo CD 7.7.16 → 7.7.22 (OSS 업그레이드 설계 Phase 0 리허설 경로)">실측 기록</span></div></div>
+    <div><h3>전자정부 표준프레임워크 앱 배포</h3>
+      <div class="badges"><span class="badge ok" title="2026-10-26 kind 에서 eGovFrame Boot · Web 샘플 v5.0.0 을 가져와 6단계 통과 · Argo CD 배포까지">실측 기록</span></div></div>
     <label class="donebox"><input type="checkbox" data-step="s15"> 완료</label>
   </div>
   <div class="step-body">
-    <p>설치된 OSS 를 <b>검증된 경로로만</b> 올린다. 후보는 관리자가 등록한 <b>업그레이드 번들</b> 중 상태가 <b>검증됨</b>이고 지금 설치된 차트 버전에서 출발하는 것만 보이고, 경로가 없으면 "검증된 업그레이드 경로 없음"이다(최신이라고 말하지 않는다). 실행 전 <b>사전 점검</b>(스택 상태 · 진행 중인 다른 업그레이드 · Helm 릴리스 · 현재 버전 · 24시간 내 백업 · 서버 측 dry-run)을 통과해야 시작되고, Helm 적용 뒤 <b>상태 검사</b>가 대상 앱 버전을 확인한다. 실패하면 자동으로 되돌린다. 10단계의 백업이 "24시간 내 백업" 조건을 채운다.</p>
+    <p>CI/CD 템플릿에는 <b>원본 저장소를 가져오는</b> 템플릿이 있다 — 전자정부 표준프레임워크 샘플 2종이다. 파이프라인을 만들면 원본(<code>eGovFramework/egovframe-boot-sample-java-config</code> · <code>eGovFramework/egovframe-web-sample</code>, v5.0.0)의 파일을 새 GitLab 저장소의 첫 커밋으로 복사하고(fork 가 아니다 — 이력은 가져오지 않고, 그 뒤 원본이 바뀌어도 따라가지 않는다), 8단계와 같은 보안 게이트(시크릿 탐지 · 의존성 스캔 · 빌드 · 이미지 스캔 · SAST · 배포)를 거쳐 Argo CD 로 배포한다. 둘 다 내장 HSQLDB 로 돌아 DB 를 따로 띄우지 않는다. 원본을 받으려면 인터넷이 필요하다.</p>
+    <table><thead><tr><th>템플릿</th><th>앱 이름(예)</th><th>무엇</th><th>빌드</th></tr></thead><tbody>
+      <tr><td>eGovFrame Boot Sample (Spring Boot)</td><td><code>egov-boot</code></td><td>부트 기반 심플 게시판(Java Config) — 백엔드</td><td>Maven · 플랫폼 Dockerfile(원본 v5.0.0 에는 없다)</td></tr>
+      <tr><td>eGovFrame Web Sample (JSP)</td><td><code>egov-web</code></td><td>웹 기반 심플 게시판(XML 설정 · JSP) — 프런트엔드</td><td>Maven WAR → Tomcat</td></tr>
+    </tbody></table>
+    <p><b>① 템플릿에서 파이프라인 만들기.</b> CI/CD 템플릿(<code>/cicd/templates</code>)에서 <code>eGovFrame Boot Sample (Spring Boot)</code> 카드의 <b>템플릿 사용</b>을 누른다(<code>/cicd/developer-deploy?template=egovframe-boot-sample-v1</code> 로 바로 가도 된다). 8단계와 같은 화면이다 — 앱 이름 <code>egov-boot</code>, 스택은 설치한 스택, 네임스페이스는 8단계에서 만든 <code>demo</code> 를 고른다. 원본 저장소 · 버전을 새 저장소로 복사한다는 안내가 보인다. <b>실행</b>을 누르면 원본 복사 · 첫 커밋 · Argo CD Application 등록이 끝나고 파이프라인 로그 화면으로 간다(1~2분). <code>eGovFrame Web Sample (JSP)</code> 로 <code>egov-web</code> 도 같은 순서로 만든다.</p>
+    <p><b>② 빌드 · 배포 확인.</b> GitLab(<code>https://gitlab.nullus.local/nullus/egov-boot/-/pipelines</code>)에서 6단계가 모두 성공할 때까지 기다린다. Maven 빌드라 앱마다 5~10분 걸리고 둘은 동시에 돈다. 끝나면 Argo CD 에 <code>egov-boot</code> · <code>egov-web</code> 이 Synced / Healthy 로 보이고, 5단계처럼 <code>/etc/hosts</code> 에 <code>egov-boot.nullus.local</code> · <code>egov-web.nullus.local</code> 을 더하면 게이트웨이 라우터를 통해 게시판이 열린다.</p>
+    <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code>source ~/.nullus-e2e.env
+kubectl --context $CTX -n $NS get applications.argoproj.io      <span class="c"># demo-api · egov-boot · egov-web 모두 Synced / Healthy</span>
+kubectl --context $CTX -n $APP_NS get deploy,httproute          <span class="c"># egov-boot · egov-web 1/1, 호스트 egov-*.nullus.local</span>
+curl -sk -o /dev/null -w '%{http_code}\n' https://egov-boot.nullus.local/   <span class="c"># 200 — 라우터를 8443 으로 띄웠으면 :8443</span></code></pre></div>
+    <div class="callout"><b>의존성 스캔이 <code>429 Too Many Requests</code> 로 막히면</b> 파이프라인 정의가 오래된 것이다. Trivy 가 Maven 의존성을 풀려고 Maven Central 에서 pom 을 하나씩 받다 차단당한다 — 2026-10-26 부터 <code>--offline-scan</code> 으로 원격 저장소를 묻지 않는다(전이 의존성은 이미지 스캔이 본다). 파이프라인 정의를 다시 만들고(<code>POST /api/v1/cicd/pipelines/$PIPELINE_ID/refresh-definition</code>) 다시 실행한다. 빌드 단계가 Maven Central 429 로 실패하면 30분 뒤 다시 실행한다.</div>
+    <p class="check-title">확인</p>
+    <ul class="check">
+      <li>GitLab 의 <code>nullus/egov-boot</code> · <code>nullus/egov-web</code> 저장소에 원본 파일이 첫 커밋으로 들어 있고 <code>.gitlab-ci.yml</code> 이 붙어 있다</li>
+      <li>두 파이프라인의 6단계가 모두 성공했다</li>
+      <li>Argo CD 에서 <code>egov-boot</code> · <code>egov-web</code> 이 Synced / Healthy 이고 게시판 화면이 열린다</li>
+      <li>CI/CD 목록에 <code>demo-api</code> 와 함께 두 파이프라인이 보인다</li>
+    </ul>
+  </div>
+</section>
+
+<section class="step" id="s16">
+  <div class="step-head">
+    <span class="step-num">16</span>
+    <div><h3>OSS 업그레이드</h3>
+      <div class="badges"><span class="badge ok" title="2026-10-21·10-25 kind 에서 Argo CD 7.7.16 → 7.7.22 (OSS 업그레이드 설계 Phase 0 리허설 경로)">실측 기록</span></div></div>
+    <label class="donebox"><input type="checkbox" data-step="s16"> 완료</label>
+  </div>
+  <div class="step-body">
+    <p>설치된 OSS 를 <b>검증된 경로로만</b> 올린다. 후보는 관리자가 등록한 <b>업그레이드 번들</b> 중 상태가 <b>검증됨</b>이고 지금 설치된 차트 버전에서 출발하는 것만 보이고, 경로가 없으면 "검증된 업그레이드 경로 없음"이다(최신이라고 말하지 않는다). 실행 전 <b>사전 점검</b>(스택 상태 · 진행 중인 다른 업그레이드 · Helm 릴리스 · 현재 버전 · 24시간 내 백업 · 서버 측 dry-run)을 통과해야 시작되고, Helm 적용 뒤 <b>상태 검사</b>가 대상 앱 버전을 확인한다. 실패하면 자동으로 되돌린다. 10단계의 백업이 "24시간 내 백업" 조건을 채운다(15단계의 Maven 빌드가 길어 24시간을 넘겼으면 백업을 다시 받는다).</p>
     <p><b>① 번들 등록.</b> 관리 › <b>스택 버전 관리</b>의 <b>업그레이드 번들</b> 탭을 연다(<code>/admin/stack-versions?tab=upgrade-bundles</code>). 리허설을 마친 경로만 등록한다 — 이 가이드의 스택은 Argo CD 차트 7.7.16(v2.13.3)이므로 7.7.22(v2.13.4)로 가는 번들을 넣는다(<a href="../11_기능설계/Nullus_OSS_업그레이드_설계.md">OSS 업그레이드 설계</a> §12.2 의 리허설 경로).</p>
     <ol>
       <li><b>새 번들</b>을 누른다. 도구 <code>Argo CD</code>를 고르면 Helm 릴리스 이름 · 차트 이름 · 차트 저장소가 채워진다.</li>
@@ -1062,12 +1093,12 @@ kubectl --context $CTX -n $NS get applications.argoproj.io $APP  <span class="c"
   </div>
 </section>
 
-<section class="step" id="s16">
+<section class="step" id="s17">
   <div class="step-head">
-    <span class="step-num">16</span>
+    <span class="step-num">17</span>
     <div><h3>AI 어시스턴트</h3>
       <div class="badges"><span class="badge ok" title="2026-10-21·10-25 Upstage Solar(solar-pro4)로 실측">실측 기록</span></div></div>
-    <label class="donebox"><input type="checkbox" data-step="s16"> 완료</label>
+    <label class="donebox"><input type="checkbox" data-step="s17"> 완료</label>
   </div>
   <div class="step-body">
     <p>자연어로 플랫폼 상태를 묻는 패널이다. 1단계는 <b>조회 도구만</b> 쓴다 — MCP 도구 <code>stack_list</code> · <code>stack_status</code> · <code>stack_logs_tail</code> · <code>template_list</code> · <code>compat_check</code> · <code>cluster_list</code>. 배포 · 롤백 같은 쓰기 도구는 목록에서 아예 빠져 있어 모델이 부를 수 없다. 도구는 질문한 사용자의 권한으로 돈다(권한 밖이면 403 을 받아 "권한이 없다"고 답한다).</p>
@@ -1092,12 +1123,12 @@ curl -s $API/api/v1/admin/assistant -H "X-Org-Id: $ORG" | jq '{provider, effecti
   </div>
 </section>
 
-<section class="step" id="s17">
+<section class="step" id="s18">
   <div class="step-head">
-    <span class="step-num">17</span>
+    <span class="step-num">18</span>
     <div><h3>정리</h3>
       <div class="badges"><span class="badge ok" title="README §4-2">실측 기록</span></div></div>
-    <label class="donebox"><input type="checkbox" data-step="s17"> 완료</label>
+    <label class="donebox"><input type="checkbox" data-step="s18"> 완료</label>
   </div>
   <div class="step-body">
     <div class="code"><div class="code-head"><span>터미널</span><button class="copy" type="button">복사</button></div><pre><code><span class="c"># 포트포워딩 반복문과 게이트웨이 라우터</span>
@@ -1133,7 +1164,8 @@ curl -s $API/api/v1/admin/assistant -H "X-Org-Id: $ORG" | jq '{provider, effecti
         <tr><td>설정을 넣었더니 API가 안 뜬다</td><td>백업 설정 검증 실패(키 길이, 같은 키 재사용, 빈 Keycloak 호스트)</td><td><code>./scripts/runbook_local.sh logs api</code>의 마지막 오류</td></tr>
         <tr><td>복구가 <code>is being terminated</code>로 실패</td><td>지운 네임스페이스가 아직 Terminating</td><td><code>wait --for=delete</code> 뒤 다시 복구</td></tr>
         <tr><td>복구 뒤 앱 이미지가 <code>:bootstrap</code></td><td>Argo CD가 아직 조정하지 않았다</td><td><code>argocd.argoproj.io/refresh=hard</code> 주석을 단다(14단계)</td></tr>
-              <tr><td>업그레이드 후보가 없다 ("검증된 업그레이드 경로 없음")</td><td>번들이 없거나 상태가 <b>검증됨</b>이 아니거나, 출발 차트 버전이 설치된 차트 버전과 다르다</td><td>15단계 ① 처럼 관리 › 스택 버전 관리 › 업그레이드 번들에서 번들을 등록하고(검증됨) <code>helm list</code> 의 차트 버전과 대조한다</td></tr>
+              <tr><td>전자정부 파이프라인이 <code>dependency-scan</code> 에서 <code>429 Too Many Requests</code></td><td>Trivy 가 Maven Central 에서 pom 을 받다 차단됐다(오래된 파이프라인 정의)</td><td>정의를 다시 만들어(<code>--offline-scan</code>) 다시 실행한다 — 15단계 안내문</td></tr>
+              <tr><td>업그레이드 후보가 없다 ("검증된 업그레이드 경로 없음")</td><td>번들이 없거나 상태가 <b>검증됨</b>이 아니거나, 출발 차트 버전이 설치된 차트 버전과 다르다</td><td>16단계 ① 처럼 관리 › 스택 버전 관리 › 업그레이드 번들에서 번들을 등록하고(검증됨) <code>helm list</code> 의 차트 버전과 대조한다</td></tr>
         <tr><td>사전 점검이 "24시간 내 백업"에서 막힌다</td><td>최근 24시간 안의 성공한 백업이 없다</td><td>10단계 full 백업을 먼저 한다</td></tr>
         <tr><td>어시스턴트 연결 테스트 실패</td><td>키가 틀리거나 공급자 주소에 API 서버가 못 나간다</td><td>키를 다시 넣고 <code>logs api</code>의 마지막 오류를 본다. 사내 OpenAI 호환 서버는 base URL 을 함께 적는다</td></tr>
 </tbody>
@@ -1220,7 +1252,7 @@ curl -s -u "admin:$SQ_PW" "http://localhost:19000/api/qualitygates/project_statu
 
 <footer>
   main <code>0bbbb25</code>에 SonarQube Keycloak 로그인 변경을 더한 코드(2026-10-10)를 기준으로 스크립트·코드·기존 문서(로컬 테스트 가이드, 백업복구 로컬 테스트 가이드, CHANGELOG)를 대조해 썼다. 그 뒤 컨테이너·클러스터·볼륨·<code>/etc/hosts</code>까지 비운 호스트에서 1단계부터 15단계까지 글자 그대로 다시 돌렸고(2026-10-17), 그때 드러난 결함은 #327 · #328 · #330 · #331 · #332 로 고쳤다. <span class="badge warn">코드 기준</span> 은 그 실행 기록이 아니라 코드를 읽어 쓴 단계라는 표시다. 진행 체크는 이 브라우저에만 저장된다.
- 2026-10-25 에 15 · 16단계(OSS 업그레이드 · AI 어시스턴트)를 더하고, 같은 순서로 2단계부터 다시 돌려 한 편의 연속 시연 영상으로 남겼다.</footer>
+ 2026-10-25 에 OSS 업그레이드 · AI 어시스턴트 단계를 더해 2단계부터 다시 돌렸고, 2026-10-26 에 전자정부 표준프레임워크 앱 단계(15)를 더해 1단계부터 다시 돌려 한 편의 연속 시연 영상으로 남겼다.</footer>
 </main>
 </div>
 
