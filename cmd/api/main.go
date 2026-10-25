@@ -859,7 +859,8 @@ func main() {
 	upgradeHandler := stackhandler.NewUpgradeHandler(upgradeUC, auditLogger)
 	upgradeHandler.RegisterRoutes(stacks)
 	// 번들 등록 · 상태 변경은 관리자만(admin 그룹). 번들은 플랫폼 전체의 것이다(설계 §12.4).
-	stackhandler.NewUpgradeBundleHandler(stackuc.NewManageUpgradeBundles(upgradeRepo), auditLogger).RegisterRoutes(admin)
+	upgradeBundleHandler := stackhandler.NewUpgradeBundleHandler(stackuc.NewManageUpgradeBundles(upgradeRepo), auditLogger)
+	upgradeBundleHandler.RegisterRoutes(admin)
 	if backupModule != nil {
 		backupHandler := backuphandler.NewBackupHandler(
 			backupModule, backupModule.Verify, backupModule.Repo, cfg.Platform.Namespace,
