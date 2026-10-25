@@ -107,6 +107,9 @@ func (c *Client) Complete(ctx context.Context, req port.CompletionRequest) (doma
 	}
 	if len(body.Tools) > 0 {
 		body.ToolChoice = "auto"
+		if req.RequireToolUse {
+			body.ToolChoice = "required"
+		}
 		if req.ForbidToolUse {
 			body.ToolChoice = "none"
 		}

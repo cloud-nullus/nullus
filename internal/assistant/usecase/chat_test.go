@@ -362,3 +362,45 @@ func TestChat_CarriesProviderDataToTheNextRound(t *testing.T) {
 	msgs := llm.requests[1].Messages
 	assert.JSONEq(t, `[{"type":"thinking","thinking":"..","signature":"s"}]`, string(msgs[len(msgs)-2].ProviderData))
 }
+
+// 조회 질문의 첫 라운드는 도구 호출을 강제한다 — 모델이 도구 없이 "클러스터가 없다" 고 지어낸 적이 있다.
+func TestChat_ForcesAToolOnTheFirstRoundForLookupQuestions(t *testing.T) {
+	uc, llm, opener := newFixture(
+		domain.Message{Role: domain.RoleAssistant, ToolCalls: []domain.ToolCall{{ID: "c1", Name: "stack_status", Arguments: `{"stack_id":"stk_1"}`}}},
+		domain.Message{Role: domain.RoleAssistant, Content: "클러스터는 2개입니다."},
+	)
+	opener.session.results["stack_status"] = toolResult{out: `{"items":[]}`}
+
+	out, err := uc.Execute(context.Background(), ChatInput{OrgID: testOrg, Turns: ask("등록된 클러스터 목록과 각 클러스터 용도를 알려줘")})
+	require.NoError(t, err)
+	assert.Equal(t, "클러스터는 2개입니다.", out.Reply)
+	require.Len(t, llm.requests, 2)
+	assert.True(t, llm.requests[0].RequireToolUse, "첫 라운드는 도구를 강제한다")
+	assert.False(t, llm.requests[0].ForbidToolUse)
+	assert.False(t, llm.requests[1].RequireToolUse, "도구 결과를 받은 뒤에는 모델이 고른다")
+}
+
+// 인사 · 일반 질문에는 강제하지 않는다 — 엉뚱한 도구를 부르게 된다.
+func TestChat_DoesNotForceToolsForSmallTalk(t *testing.T) {
+	uc, llm, _ := newFixture(domain.Message{Role: domain.RoleAssistant, Content: "안녕하세요"})
+
+	_, err := uc.Execute(context.Background(), ChatInput{OrgID: testOrg, Turns: ask("안녕")})
+	require.NoError(t, err)
+	require.Len(t, llm.requests, 1)
+	assert.False(t, llm.requests[0].RequireToolUse)
+}
+
+// 이어지는 대화는 마지막 사용자 발화로 판단한다.
+func TestChat_ToolFirstLooksAtTheLatestUserTurn(t *testing.T) {
+	uc, llm, _ := newFixture(domain.Message{Role: domain.RoleAssistant, Content: "천만에요"})
+
+	turns := []domain.Turn{
+		{Role: domain.RoleUser, Content: "실패한 스택이 있어?"},
+		{Role: domain.RoleAssistant, Content: "없습니다."},
+		{Role: domain.RoleUser, Content: "고마워"},
+	}
+	_, err := uc.Execute(context.Background(), ChatInput{OrgID: testOrg, Turns: turns})
+	require.NoError(t, err)
+	require.Len(t, llm.requests, 1)
+	assert.False(t, llm.requests[0].RequireToolUse)
+}
