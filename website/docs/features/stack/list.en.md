@@ -45,8 +45,13 @@ shortcut goes straight to `/stack/install`.
     The tab lists only the Argo CD release actually installed in the cluster, and only
     paths (source chart → target chart) registered as `verified` after a rehearsal on a
     real cluster. With no such path it says **No verified upgrade path** — that does not
-    mean you are on the latest version. Paths are not shipped in the migrations; operators
-    register only the ones they have rehearsed.
+    mean you are on the latest version. Paths are not shipped in the migrations; an admin
+    registers only the ones they have rehearsed, on the **Upgrade Bundles** tab of
+    [Stack Version Management](versions.md#upgrade-bundles).
+
+    Below the tab, **Run history** lists the upgrades attempted on this stack (when · path ·
+    status · requested by · reason), including attempts blocked by preflight
+    (`GET /api/v1/stacks/{stackId}/upgrade-runs`).
 
     Click **Upgrade** to open a dialog with the **Preflight checks** (Stack state · Other
     upgrades · Helm release · Version path · a backup from the last 24 hours · Helm

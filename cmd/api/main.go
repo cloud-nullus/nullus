@@ -843,10 +843,11 @@ func main() {
 	// --atomic 으로 스스로 되돌리게 한다(아래 종료 처리).
 	upgradeCtx, stopUpgrades := context.WithCancel(context.Background())
 	defer stopUpgrades()
+	upgradeRepo := stackrepo.NewPostgresUpgradeRepository(pool)
 	upgradeUC := stackuc.NewUpgradeStack(stackuc.UpgradeStackDeps{
 		Context:     upgradeCtx,
 		Stacks:      pgStackRepo,
-		Runs:        stackrepo.NewPostgresUpgradeRepository(pool),
+		Runs:        upgradeRepo,
 		Kubeconfigs: kubeconfigProvider,
 		Releases:    func(kubeconfig []byte) stackport.HelmReleaseManager { return stackhelm.NewHelmInstaller(kubeconfig) },
 		Executors:   func(kubeconfig []byte) stackport.ChartUpgradeExecutor { return stackhelm.NewHelmInstaller(kubeconfig) },
@@ -857,6 +858,8 @@ func main() {
 	})
 	upgradeHandler := stackhandler.NewUpgradeHandler(upgradeUC, auditLogger)
 	upgradeHandler.RegisterRoutes(stacks)
+	// 번들 등록 · 상태 변경은 관리자만(admin 그룹). 번들은 플랫폼 전체의 것이다(설계 §12.4).
+	stackhandler.NewUpgradeBundleHandler(stackuc.NewManageUpgradeBundles(upgradeRepo), auditLogger).RegisterRoutes(admin)
 	if backupModule != nil {
 		backupHandler := backuphandler.NewBackupHandler(
 			backupModule, backupModule.Verify, backupModule.Repo, cfg.Platform.Namespace,

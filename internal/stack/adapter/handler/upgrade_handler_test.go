@@ -23,9 +23,11 @@ type stubUpgrades struct {
 	candidates []domain.UpgradeCandidate
 	checks     []domain.UpgradeCheck
 	run        *domain.UpgradeRun
+	runs       []domain.UpgradeRun
 	err        error
 	started    []usecase.StartUpgradeInput
 	preflights []string
+	listed     []string
 }
 
 func (s *stubUpgrades) Candidates(context.Context, string) ([]domain.UpgradeCandidate, error) {
@@ -44,6 +46,40 @@ func (s *stubUpgrades) Start(_ context.Context, in usecase.StartUpgradeInput) (*
 
 func (s *stubUpgrades) GetRun(context.Context, string, string) (*domain.UpgradeRun, error) {
 	return s.run, s.err
+}
+
+func (s *stubUpgrades) ListRuns(_ context.Context, stackID string) ([]domain.UpgradeRun, error) {
+	s.listed = append(s.listed, stackID)
+	return s.runs, s.err
+}
+
+func TestUpgradeHandler_ListRuns(t *testing.T) {
+	svc := &stubUpgrades{runs: []domain.UpgradeRun{
+		{ID: "run-2", StackID: "stk_1", Status: domain.UpgradeStatusBlocked, Checks: []domain.UpgradeCheck{}},
+		{ID: "run-1", StackID: "stk_1", Status: domain.UpgradeStatusSucceeded, Checks: []domain.UpgradeCheck{}},
+	}}
+	rec := serveUpgrade(t, svc, nil, http.MethodGet, "/api/v1/stacks/stk_1/upgrade-runs", "", nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var out struct {
+		Items []domain.UpgradeRun `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+	require.Len(t, out.Items, 2)
+	assert.Equal(t, "run-2", out.Items[0].ID)
+	assert.Equal(t, []string{"stk_1"}, svc.listed)
+}
+
+func TestUpgradeHandler_ListRuns_EmptyIsEmptyArray(t *testing.T) {
+	svc := &stubUpgrades{runs: []domain.UpgradeRun{}}
+	rec := serveUpgrade(t, svc, nil, http.MethodGet, "/api/v1/stacks/stk_1/upgrade-runs", "", nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.JSONEq(t, `{"items":[]}`, rec.Body.String())
+}
+
+func TestUpgradeHandler_ListRuns_StackNotFound(t *testing.T) {
+	svc := &stubUpgrades{err: usecase.ErrStackNotFound}
+	rec := serveUpgrade(t, svc, nil, http.MethodGet, "/api/v1/stacks/stk_x/upgrade-runs", "", nil)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
 type recordingAudit struct{ entries []audit.AuditEntry }

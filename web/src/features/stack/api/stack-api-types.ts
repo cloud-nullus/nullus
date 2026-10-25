@@ -34,19 +34,54 @@ export interface ClusterSummary {
 }
 
 // 설치된 OSS 업그레이드 — 검증된 번들(출발 차트 버전 → 대상 차트 버전)만 실행할 수 있다.
+export type UpgradeBundleStatus =
+  | "draft"
+  | "verified"
+  | "deprecated"
+  | "revoked";
+export type UpgradeRiskLevel = "low" | "medium" | "high";
+
 export interface UpgradeBundle {
   id: string;
   tool: string;
+  release_name?: string;
+  chart_name?: string;
+  repo_url?: string;
   source_chart_version: string;
   source_app_version: string;
   target_chart_version: string;
   target_app_version: string;
-  risk_level: "low" | "medium" | "high";
+  risk_level: UpgradeRiskLevel;
   expected_disruption: string;
   release_notes?: string;
   requires_backup: boolean;
+  supported_architectures?: string[];
+  // 관리 목록에만 실린다. 후보 조회는 verified 만 돌려주므로 거기서는 없다.
+  status?: UpgradeBundleStatus;
   // 이 업그레이드가 고치는 CVE — 번들을 리허설하며 적는다.
   fixes_cves?: string[];
+  created_at?: string;
+}
+
+// 관리자의 번들 등록(POST /admin/upgrade-bundles). verified 는 rehearsal_confirmed 없이 받지 않는다.
+export interface RegisterUpgradeBundleInput {
+  id?: string;
+  tool: string;
+  release_name: string;
+  chart_name: string;
+  repo_url: string;
+  source_chart_version: string;
+  source_app_version?: string;
+  target_chart_version: string;
+  target_app_version?: string;
+  risk_level: UpgradeRiskLevel;
+  expected_disruption?: string;
+  release_notes?: string;
+  requires_backup: boolean;
+  supported_architectures?: string[];
+  fixes_cves?: string[];
+  status: "draft" | "verified";
+  rehearsal_confirmed: boolean;
 }
 
 export type UpgradeRunStatus =

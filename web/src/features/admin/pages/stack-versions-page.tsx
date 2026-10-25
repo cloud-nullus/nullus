@@ -1,87 +1,149 @@
-import { useMemo, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { CircleCheck, CircleX, FolderOpen, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
-import { iconProps } from '../../../components/ui/icon'
-import { Skeleton } from '../../../components/ui/skeleton'
-import { PageHeader } from '../../../components/layout/page-header'
-import { ListDetailPanel } from '../../../components/shared/list-detail-panel'
-import { ConfirmDialog } from '../../../components/shared/confirm-dialog'
-import { Button } from '../../../components/ui/button'
-import { Input } from '../../../components/ui/input'
-import { Select } from '../../../components/ui/select'
-import { useCompatibilityMatrix, useDeleteMatrix } from '../../stack/api/stack-api'
-import { useClusters, useRefreshDiscovery } from '../api/admin-api'
-import { MatrixEditModal } from '../components/matrix-edit-modal'
-import type { CompatibilityMatrix, CompatibilityTier } from '../../../types'
-import { cn } from '../../../lib/utils'
+import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
+import {
+  CircleCheck,
+  CircleX,
+  FolderOpen,
+  Pencil,
+  Plus,
+  RefreshCw,
+  ShieldCheck,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
+import { Tabs } from "../../../components/ui/tabs";
+import { UpgradeBundlesPanel } from "../components/upgrade-bundles-panel";
+import { iconProps } from "../../../components/ui/icon";
+import { Skeleton } from "../../../components/ui/skeleton";
+import { PageHeader } from "../../../components/layout/page-header";
+import { ListDetailPanel } from "../../../components/shared/list-detail-panel";
+import { ConfirmDialog } from "../../../components/shared/confirm-dialog";
+import { Button } from "../../../components/ui/button";
+import { Input } from "../../../components/ui/input";
+import { Select } from "../../../components/ui/select";
+import {
+  useCompatibilityMatrix,
+  useDeleteMatrix,
+} from "../../stack/api/stack-api";
+import { useClusters, useRefreshDiscovery } from "../api/admin-api";
+import { MatrixEditModal } from "../components/matrix-edit-modal";
+import type { CompatibilityMatrix, CompatibilityTier } from "../../../types";
+import { cn } from "../../../lib/utils";
 import {
   isMatrixCompatibleWithCluster,
   matrixArchMismatches,
-} from '../../stack/utils/compatibility-arch'
-import { thClass } from '../../../components/shared/table-chrome'
-import { Badge } from '../../../components/ui/badge'
+} from "../../stack/utils/compatibility-arch";
+import { thClass } from "../../../components/shared/table-chrome";
+import { Badge } from "../../../components/ui/badge";
 
-const STATUS_BADGE_CLASS: Record<CompatibilityMatrix['status'], string> = {
-  verified: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
-  untested: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
-  unsupported: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
-}
+const STATUS_BADGE_CLASS: Record<CompatibilityMatrix["status"], string> = {
+  verified:
+    "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
+  untested:
+    "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
+  unsupported:
+    "bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]",
+};
 
 const TIER_BADGE_CLASS: Record<CompatibilityTier, string> = {
-  stable: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
-  beta: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
-  deprecated: 'bg-[color-mix(in_srgb,_var(--color-text-secondary)_15%,_transparent)] text-[var(--color-text-secondary)]',
+  stable:
+    "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
+  beta: "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
+  deprecated:
+    "bg-[color-mix(in_srgb,_var(--color-text-secondary)_15%,_transparent)] text-[var(--color-text-secondary)]",
+};
+
+// 화면의 두 탭. 업그레이드 번들은 ?tab=upgrade-bundles 로 바로 연다(가이드 · 시연이 링크한다).
+type AdminVersionsTab = "matrices" | "upgrade-bundles";
+
+export function parseAdminVersionsTab(raw: string | null): AdminVersionsTab {
+  return raw === "upgrade-bundles" ? "upgrade-bundles" : "matrices";
 }
 
 export function StackVersionsAdminPage() {
-  const { t } = useTranslation()
-  const { data: matrices, isLoading: matricesLoading, isError: matricesError } = useCompatibilityMatrix()
-  const { data: clustersData } = useClusters()
-  const refreshDiscovery = useRefreshDiscovery()
-  const deleteMatrix = useDeleteMatrix()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [modal, setModal] = useState<{ mode: 'create' | 'edit'; initial?: CompatibilityMatrix } | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<CompatibilityMatrix | null>(null)
+  const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = parseAdminVersionsTab(searchParams.get("tab"));
+  const setTab = (next: AdminVersionsTab) => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (next === "matrices") params.delete("tab");
+        else params.set("tab", next);
+        return params;
+      },
+      { replace: true },
+    );
+  };
+  const [bundleModalOpen, setBundleModalOpen] = useState(false);
+  const {
+    data: matrices,
+    isLoading: matricesLoading,
+    isError: matricesError,
+  } = useCompatibilityMatrix();
+  const { data: clustersData } = useClusters();
+  const refreshDiscovery = useRefreshDiscovery();
+  const deleteMatrix = useDeleteMatrix();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [modal, setModal] = useState<{
+    mode: "create" | "edit";
+    initial?: CompatibilityMatrix;
+  } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CompatibilityMatrix | null>(
+    null,
+  );
   // F8-UIUX-MatrixListOps — list search + status filter (rendered only when
   // more than 5 matrices exist so small lists stay quiet).
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | CompatibilityMatrix['status']>('all')
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | CompatibilityMatrix["status"]
+  >("all");
 
   // Determinism: always render by id so server order doesn't leak into UI.
   const sortedMatrices = useMemo(
     () => (matrices ?? []).slice().sort((a, b) => a.id.localeCompare(b.id)),
     [matrices],
-  )
+  );
 
   const filteredMatrices = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = search.trim().toLowerCase();
     return sortedMatrices.filter((m) => {
-      if (statusFilter !== 'all' && m.status !== statusFilter) return false
-      if (!q) return true
-      return m.id.toLowerCase().includes(q) || (m.name ?? '').toLowerCase().includes(q)
-    })
-  }, [sortedMatrices, search, statusFilter])
+      if (statusFilter !== "all" && m.status !== statusFilter) return false;
+      if (!q) return true;
+      return (
+        m.id.toLowerCase().includes(q) ||
+        (m.name ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [sortedMatrices, search, statusFilter]);
 
-  const showFilterBar = sortedMatrices.length > 5
+  const showFilterBar = sortedMatrices.length > 5;
 
   const sortedClusters = useMemo(
-    () => (clustersData?.items ?? []).slice().sort((a, b) => a.id.localeCompare(b.id)),
+    () =>
+      (clustersData?.items ?? [])
+        .slice()
+        .sort((a, b) => a.id.localeCompare(b.id)),
     [clustersData],
-  )
+  );
 
   const selectedMatrix = useMemo(
-    () => filteredMatrices.find((m) => m.id === (selectedId ?? filteredMatrices[0]?.id)) ?? null,
+    () =>
+      filteredMatrices.find(
+        (m) => m.id === (selectedId ?? filteredMatrices[0]?.id),
+      ) ?? null,
     [filteredMatrices, selectedId],
-  )
+  );
 
   const handleRefresh = async (clusterId: string) => {
     try {
-      await refreshDiscovery.mutateAsync(clusterId)
+      await refreshDiscovery.mutateAsync(clusterId);
     } catch {
       // Error is surfaced via the mutation state + status column below; do
       // not rethrow — the button should remain usable for retries.
     }
-  }
+  };
 
   const listContent = (
     <div>
@@ -89,37 +151,65 @@ export function StackVersionsAdminPage() {
         <div className="flex items-center justify-between gap-2">
           <div>
             <div className="text-sm font-medium text-[var(--color-text-primary)]">
-              {t('stackVersionsAdmin.listTitle', 'Compatibility Matrices')}
+              {t("stackVersionsAdmin.listTitle", "Compatibility Matrices")}
             </div>
             <div className="text-xs text-[var(--color-text-secondary)]">
-              {t('stackVersionsAdmin.listSubtitle', 'Golden Path 3 canonical matrices')}
+              {t(
+                "stackVersionsAdmin.listSubtitle",
+                "Golden Path 3 canonical matrices",
+              )}
             </div>
           </div>
           <div
             className="hidden items-center gap-3 text-[11px] text-[var(--color-text-secondary)] md:flex"
-            aria-label={t('stackVersionsAdmin.legend.aria', 'Matrix status legend')}
+            aria-label={t(
+              "stackVersionsAdmin.legend.aria",
+              "Matrix status legend",
+            )}
           >
-            <LegendDot color="var(--color-success)" label={t('stackVersionsAdmin.legend.verified', 'verified')} />
-            <LegendDot color="var(--color-warning)" label={t('stackVersionsAdmin.legend.untested', 'untested')} />
-            <LegendDot color="var(--color-error)" label={t('stackVersionsAdmin.legend.unsupported', 'unsupported')} />
+            <LegendDot
+              color="var(--color-success)"
+              label={t("stackVersionsAdmin.legend.verified", "verified")}
+            />
+            <LegendDot
+              color="var(--color-warning)"
+              label={t("stackVersionsAdmin.legend.untested", "untested")}
+            />
+            <LegendDot
+              color="var(--color-error)"
+              label={t("stackVersionsAdmin.legend.unsupported", "unsupported")}
+            />
           </div>
         </div>
       </div>
       {showFilterBar && (
         <div className="flex items-center gap-2 border-b border-[var(--color-border-default)] px-4 py-2">
           <Input
-            placeholder={t('stackVersionsAdmin.filter.searchPlaceholder', 'ID 또는 이름으로 검색')}
+            placeholder={t(
+              "stackVersionsAdmin.filter.searchPlaceholder",
+              "ID 또는 이름으로 검색",
+            )}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1"
-            aria-label={t('stackVersionsAdmin.filter.searchAria', 'Matrix search')}
+            aria-label={t(
+              "stackVersionsAdmin.filter.searchAria",
+              "Matrix search",
+            )}
           />
           <Select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-            aria-label={t('stackVersionsAdmin.filter.statusAria', 'Filter by status')}
+            onChange={(e) =>
+              setStatusFilter(e.target.value as typeof statusFilter)
+            }
+            aria-label={t(
+              "stackVersionsAdmin.filter.statusAria",
+              "Filter by status",
+            )}
           >
-            <option value="all">{t('stackVersionsAdmin.filter.all', '전체')}</option>
+            <option value="all">
+              {t("stackVersionsAdmin.filter.all", "전체")}
+            </option>
             <option value="verified">verified</option>
             <option value="untested">untested</option>
             <option value="unsupported">unsupported</option>
@@ -127,7 +217,10 @@ export function StackVersionsAdminPage() {
         </div>
       )}
       {matricesLoading && (
-        <div className="flex flex-col gap-2 p-4" data-testid="matrix-list-loading">
+        <div
+          className="flex flex-col gap-2 p-4"
+          data-testid="matrix-list-loading"
+        >
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
@@ -137,7 +230,10 @@ export function StackVersionsAdminPage() {
       )}
       {matricesError && (
         <div className="p-4 text-xs text-[var(--color-error)]">
-          {t('stackVersionsAdmin.loadError', 'Failed to load compatibility matrices.')}
+          {t(
+            "stackVersionsAdmin.loadError",
+            "Failed to load compatibility matrices.",
+          )}
         </div>
       )}
       {!matricesLoading && !matricesError && sortedMatrices.length === 0 && (
@@ -145,12 +241,18 @@ export function StackVersionsAdminPage() {
           className="flex flex-col items-center gap-2 py-12 text-center text-[var(--color-text-secondary)]"
           data-testid="matrix-empty-state"
         >
-          <FolderOpen {...iconProps('lg')} className="opacity-40" />
+          <FolderOpen {...iconProps("lg")} className="opacity-40" />
           <p className="text-sm">
-            {t('stackVersionsAdmin.empty.title', '등록된 호환성 매트릭스가 없습니다')}
+            {t(
+              "stackVersionsAdmin.empty.title",
+              "등록된 호환성 매트릭스가 없습니다",
+            )}
           </p>
           <p className="text-[11px]">
-            {t('stackVersionsAdmin.empty.hint', '새 매트릭스를 생성해 시작하세요')}
+            {t(
+              "stackVersionsAdmin.empty.hint",
+              "새 매트릭스를 생성해 시작하세요",
+            )}
           </p>
         </div>
       )}
@@ -159,50 +261,63 @@ export function StackVersionsAdminPage() {
         sortedMatrices.length > 0 &&
         filteredMatrices.length === 0 && (
           <div className="p-4 text-xs text-[var(--color-text-secondary)]">
-            {t('stackVersionsAdmin.filter.empty', '조건에 맞는 매트릭스가 없습니다.')}
+            {t(
+              "stackVersionsAdmin.filter.empty",
+              "조건에 맞는 매트릭스가 없습니다.",
+            )}
           </div>
         )}
       <ul>
         {filteredMatrices.map((m) => {
-          const active = selectedMatrix?.id === m.id
+          const active = selectedMatrix?.id === m.id;
           return (
             <li key={m.id}>
               <button
                 type="button"
                 onClick={() => setSelectedId(m.id)}
                 className={cn(
-                  'flex w-full flex-col items-start gap-1 border-b border-[var(--color-border-default)] px-4 py-3 text-left transition-colors hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)]',
-                  active && 'bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)]',
+                  "flex w-full flex-col items-start gap-1 border-b border-[var(--color-border-default)] px-4 py-3 text-left transition-colors hover:bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)]",
+                  active &&
+                    "bg-[color-mix(in_srgb,_var(--color-primary)_8%,_transparent)]",
                 )}
                 aria-pressed={active}
               >
                 <div className="flex w-full items-center justify-between gap-2">
-                  <span className="truncate text-sm text-[var(--color-text-primary)]">{m.name}</span>
-                  <Badge pill
-                    className={cn('rounded-full px-2 py-0.5 text-[10px] uppercase', STATUS_BADGE_CLASS[m.status])}
-                    aria-label={`status ${m.status}`}>
+                  <span className="truncate text-sm text-[var(--color-text-primary)]">
+                    {m.name}
+                  </span>
+                  <Badge
+                    pill
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[10px] uppercase",
+                      STATUS_BADGE_CLASS[m.status],
+                    )}
+                    aria-label={`status ${m.status}`}
+                  >
                     {t(`stackVersionsAdmin.status.${m.status}`, m.status)}
                   </Badge>
                 </div>
-                <span className="font-mono text-[11px] text-[var(--color-text-secondary)]">{m.id}</span>
+                <span className="font-mono text-[11px] text-[var(--color-text-secondary)]">
+                  {m.id}
+                </span>
                 <span className="text-[11px] text-[var(--color-text-secondary)]">
                   K8s {m.k8sRange} · {m.tools.length} tools
                 </span>
               </button>
             </li>
-          )
+          );
         })}
       </ul>
     </div>
-  )
+  );
 
   const renderArchBadges = (archs: string[] | undefined) => {
     if (!archs || archs.length === 0) {
       return (
         <span className="text-xs text-[var(--color-text-secondary)]">
-          {t('stackVersionsAdmin.archBadge.unknown', '—')}
+          {t("stackVersionsAdmin.archBadge.unknown", "—")}
         </span>
-      )
+      );
     }
     return (
       <div className="flex flex-wrap gap-1">
@@ -215,112 +330,160 @@ export function StackVersionsAdminPage() {
           </span>
         ))}
       </div>
-    )
-  }
+    );
+  };
 
   const renderCrossEval = (archs: string[]) => {
-    if (!selectedMatrix) return null
-    const verdict = isMatrixCompatibleWithCluster(selectedMatrix, archs)
-    if (verdict === 'compatible') {
+    if (!selectedMatrix) return null;
+    const verdict = isMatrixCompatibleWithCluster(selectedMatrix, archs);
+    if (verdict === "compatible") {
       return (
         <span className="inline-flex items-center gap-1 text-[var(--color-success)]">
-          <CircleCheck {...iconProps('sm')} />
-          {t('stackVersionsAdmin.crossEval.compatible', 'Compatible')}
+          <CircleCheck {...iconProps("sm")} />
+          {t("stackVersionsAdmin.crossEval.compatible", "Compatible")}
         </span>
-      )
+      );
     }
-    if (verdict === 'incompatible') {
-      const mismatches = matrixArchMismatches(selectedMatrix, archs)
+    if (verdict === "incompatible") {
+      const mismatches = matrixArchMismatches(selectedMatrix, archs);
       const title = mismatches
-        .map((m) => `${m.toolName}: missing ${m.missingArchs.join(', ')}`)
-        .join('\n')
+        .map((m) => `${m.toolName}: missing ${m.missingArchs.join(", ")}`)
+        .join("\n");
       return (
         <span
           className="inline-flex items-center gap-1 text-[var(--color-error)]"
-          title={title || t('stackVersionsAdmin.crossEval.incompatible', 'Incompatible')}
+          title={
+            title ||
+            t("stackVersionsAdmin.crossEval.incompatible", "Incompatible")
+          }
         >
-          <CircleX {...iconProps('sm')} />
-          {t('stackVersionsAdmin.crossEval.incompatible', 'Incompatible')}
+          <CircleX {...iconProps("sm")} />
+          {t("stackVersionsAdmin.crossEval.incompatible", "Incompatible")}
         </span>
-      )
+      );
     }
     return (
       <span className="inline-flex items-center gap-1 text-[var(--color-warning)]">
-        <TriangleAlert {...iconProps('sm')} />
-        {t('stackVersionsAdmin.crossEval.unknown', 'Unknown')}
+        <TriangleAlert {...iconProps("sm")} />
+        {t("stackVersionsAdmin.crossEval.unknown", "Unknown")}
       </span>
-    )
-  }
+    );
+  };
 
   const detailContent = selectedMatrix ? (
     <div className="flex flex-col gap-4 p-6">
       <header className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">{selectedMatrix.name}</h2>
-          <p className="font-mono text-xs text-[var(--color-text-secondary)]">{selectedMatrix.id}</p>
+          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
+            {selectedMatrix.name}
+          </h2>
+          <p className="font-mono text-xs text-[var(--color-text-secondary)]">
+            {selectedMatrix.id}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge pill className={cn('rounded-full px-2 py-0.5 text-[11px] uppercase', STATUS_BADGE_CLASS[selectedMatrix.status])}>
-            {t(`stackVersionsAdmin.status.${selectedMatrix.status}`, selectedMatrix.status)}
+          <Badge
+            pill
+            className={cn(
+              "rounded-full px-2 py-0.5 text-[11px] uppercase",
+              STATUS_BADGE_CLASS[selectedMatrix.status],
+            )}
+          >
+            {t(
+              `stackVersionsAdmin.status.${selectedMatrix.status}`,
+              selectedMatrix.status,
+            )}
           </Badge>
           <Button
             size="sm"
             variant="outline"
-            onClick={() => setModal({ mode: 'edit', initial: selectedMatrix })}
-            aria-label={t('stackVersionsAdmin.actions.edit', 'Edit matrix')}
+            onClick={() => setModal({ mode: "edit", initial: selectedMatrix })}
+            aria-label={t("stackVersionsAdmin.actions.edit", "Edit matrix")}
           >
-            <Pencil {...iconProps('xs')} className="mr-1" />
-            {t('stackVersionsAdmin.actions.edit', 'Edit')}
+            <Pencil {...iconProps("xs")} className="mr-1" />
+            {t("stackVersionsAdmin.actions.edit", "Edit")}
           </Button>
           <Button
             size="sm"
             variant="outline"
             onClick={() => setDeleteTarget(selectedMatrix)}
-            aria-label={t('stackVersionsAdmin.actions.delete', 'Delete matrix')}
+            aria-label={t("stackVersionsAdmin.actions.delete", "Delete matrix")}
           >
-            <Trash2 {...iconProps('xs')} className="mr-1 text-[var(--color-error)]" />
-            {t('stackVersionsAdmin.actions.delete', 'Delete')}
+            <Trash2
+              {...iconProps("xs")}
+              className="mr-1 text-[var(--color-error)]"
+            />
+            {t("stackVersionsAdmin.actions.delete", "Delete")}
           </Button>
         </div>
       </header>
 
       <div className="rounded-md border border-[var(--color-border-default)] p-4">
         <div className="text-xs text-[var(--color-text-secondary)]">
-          {t('stackVersionsAdmin.k8sRangeLabel', 'Kubernetes version range')}
+          {t("stackVersionsAdmin.k8sRangeLabel", "Kubernetes version range")}
         </div>
-        <div className="mt-1 text-sm text-[var(--color-text-primary)]">{selectedMatrix.k8sRange}</div>
+        <div className="mt-1 text-sm text-[var(--color-text-primary)]">
+          {selectedMatrix.k8sRange}
+        </div>
       </div>
 
       <section>
         <h3 className="mb-2 text-sm font-semibold text-[var(--color-text-primary)]">
-          {t('stackVersionsAdmin.toolsHeading', 'Tools')}
+          {t("stackVersionsAdmin.toolsHeading", "Tools")}
         </h3>
         <div className="overflow-x-auto rounded-md border border-[var(--color-border-default)]">
           <table className="min-w-full text-left text-xs">
             <thead className="bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]">
               <tr>
-                <th className={thClass}>{t('stackVersionsAdmin.col.name', 'Name')}</th>
-                <th className={thClass}>{t('stackVersionsAdmin.col.helm', 'Helm')}</th>
-                <th className={thClass}>{t('stackVersionsAdmin.col.app', 'App')}</th>
-                <th className={thClass}>{t('stackVersionsAdmin.col.arch', 'Arch')}</th>
-                <th className={thClass}>{t('stackVersionsAdmin.col.minK8s', 'Min K8s')}</th>
-                <th className={thClass}>{t('stackVersionsAdmin.col.tier', 'Tier')}</th>
+                <th className={thClass}>
+                  {t("stackVersionsAdmin.col.name", "Name")}
+                </th>
+                <th className={thClass}>
+                  {t("stackVersionsAdmin.col.helm", "Helm")}
+                </th>
+                <th className={thClass}>
+                  {t("stackVersionsAdmin.col.app", "App")}
+                </th>
+                <th className={thClass}>
+                  {t("stackVersionsAdmin.col.arch", "Arch")}
+                </th>
+                <th className={thClass}>
+                  {t("stackVersionsAdmin.col.minK8s", "Min K8s")}
+                </th>
+                <th className={thClass}>
+                  {t("stackVersionsAdmin.col.tier", "Tier")}
+                </th>
               </tr>
             </thead>
             <tbody>
               {selectedMatrix.tools.map((tool) => (
-                <tr key={`${tool.name}-${tool.helmVersion}`} className="border-t border-[var(--color-border-default)]">
-                  <td className="px-3 py-2 text-[var(--color-text-primary)]">{tool.name}</td>
-                  <td className="px-3 py-2 font-mono text-[11px]">{tool.helmVersion}</td>
-                  <td className="px-3 py-2 font-mono text-[11px]">{tool.appVersion}</td>
-                  <td className="px-3 py-2">{renderArchBadges(tool.archSupport)}</td>
-                  <td className="px-3 py-2 font-mono text-[11px]">{tool.minK8sVersion || '—'}</td>
+                <tr
+                  key={`${tool.name}-${tool.helmVersion}`}
+                  className="border-t border-[var(--color-border-default)]"
+                >
+                  <td className="px-3 py-2 text-[var(--color-text-primary)]">
+                    {tool.name}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[11px]">
+                    {tool.helmVersion}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[11px]">
+                    {tool.appVersion}
+                  </td>
                   <td className="px-3 py-2">
-                    <Badge pill
+                    {renderArchBadges(tool.archSupport)}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[11px]">
+                    {tool.minK8sVersion || "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge
+                      pill
                       className={cn(
-                        'rounded-full px-2 py-0.5 text-[10px] uppercase',
+                        "rounded-full px-2 py-0.5 text-[10px] uppercase",
                         TIER_BADGE_CLASS[tool.tier] ?? TIER_BADGE_CLASS.stable,
-                      )}>
+                      )}
+                    >
                       {t(`stackVersionsAdmin.tier.${tool.tier}`, tool.tier)}
                     </Badge>
                   </td>
@@ -333,45 +496,79 @@ export function StackVersionsAdminPage() {
 
       <section>
         <h3 className="mb-2 text-sm font-semibold text-[var(--color-text-primary)]">
-          {t('stackVersionsAdmin.clustersHeading', 'Clusters')}
+          {t("stackVersionsAdmin.clustersHeading", "Clusters")}
         </h3>
         <div className="overflow-x-auto rounded-md border border-[var(--color-border-default)]">
           <table className="min-w-full text-left text-xs">
             <thead className="bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]">
               <tr>
-                <th className={thClass}>{t('stackVersionsAdmin.col.cluster', 'Cluster')}</th>
-                <th className={thClass}>{t('stackVersionsAdmin.col.nodeArch', 'Node Architectures')}</th>
-                <th className={thClass}>{t('stackVersionsAdmin.col.crossEval', 'Compatibility')}</th>
-                <th className="px-3 py-2 text-right">{t('stackVersionsAdmin.col.actions', 'Actions')}</th>
+                <th className={thClass}>
+                  {t("stackVersionsAdmin.col.cluster", "Cluster")}
+                </th>
+                <th className={thClass}>
+                  {t("stackVersionsAdmin.col.nodeArch", "Node Architectures")}
+                </th>
+                <th className={thClass}>
+                  {t("stackVersionsAdmin.col.crossEval", "Compatibility")}
+                </th>
+                <th className="px-3 py-2 text-right">
+                  {t("stackVersionsAdmin.col.actions", "Actions")}
+                </th>
               </tr>
             </thead>
             <tbody>
               {sortedClusters.length === 0 && (
                 <tr>
-                  <td className="px-3 py-4 text-[var(--color-text-secondary)]" colSpan={4}>
-                    {t('stackVersionsAdmin.noClusters', 'No clusters registered.')}
+                  <td
+                    className="px-3 py-4 text-[var(--color-text-secondary)]"
+                    colSpan={4}
+                  >
+                    {t(
+                      "stackVersionsAdmin.noClusters",
+                      "No clusters registered.",
+                    )}
                   </td>
                 </tr>
               )}
               {sortedClusters.map((cluster) => (
-                <tr key={cluster.id} className="border-t border-[var(--color-border-default)]">
+                <tr
+                  key={cluster.id}
+                  className="border-t border-[var(--color-border-default)]"
+                >
                   <td className="px-3 py-2">
-                    <div className="text-[var(--color-text-primary)]">{cluster.name}</div>
-                    <div className="font-mono text-[11px] text-[var(--color-text-secondary)]">{cluster.id}</div>
+                    <div className="text-[var(--color-text-primary)]">
+                      {cluster.name}
+                    </div>
+                    <div className="font-mono text-[11px] text-[var(--color-text-secondary)]">
+                      {cluster.id}
+                    </div>
                   </td>
-                  <td className="px-3 py-2">{renderArchBadges(cluster.nodeArchitectures)}</td>
-                  <td className="px-3 py-2">{renderCrossEval(cluster.nodeArchitectures)}</td>
+                  <td className="px-3 py-2">
+                    {renderArchBadges(cluster.nodeArchitectures)}
+                  </td>
+                  <td className="px-3 py-2">
+                    {renderCrossEval(cluster.nodeArchitectures)}
+                  </td>
                   <td className="px-3 py-2 text-right">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={() => handleRefresh(cluster.id)}
-                      disabled={refreshDiscovery.isPending && refreshDiscovery.variables === cluster.id}
-                      aria-label={t('stackVersionsAdmin.refreshDiscovery.button', 'Refresh Discovery')}
+                      disabled={
+                        refreshDiscovery.isPending &&
+                        refreshDiscovery.variables === cluster.id
+                      }
+                      aria-label={t(
+                        "stackVersionsAdmin.refreshDiscovery.button",
+                        "Refresh Discovery",
+                      )}
                     >
-                      <RefreshCw {...iconProps('xs')} className="mr-1" />
-                      {t('stackVersionsAdmin.refreshDiscovery.button', 'Refresh Discovery')}
+                      <RefreshCw {...iconProps("xs")} className="mr-1" />
+                      {t(
+                        "stackVersionsAdmin.refreshDiscovery.button",
+                        "Refresh Discovery",
+                      )}
                     </Button>
                   </td>
                 </tr>
@@ -381,48 +578,98 @@ export function StackVersionsAdminPage() {
         </div>
       </section>
     </div>
-  ) : null
+  ) : null;
 
   const handleConfirmDelete = () => {
-    if (!deleteTarget) return
+    if (!deleteTarget) return;
     deleteMatrix.mutate(deleteTarget.id, {
       onSettled: () => setDeleteTarget(null),
       onSuccess: () => {
         if (selectedId === deleteTarget.id) {
-          setSelectedId(null)
+          setSelectedId(null);
         }
       },
-    })
-  }
+    });
+  };
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader
         breadcrumb={[
-          { label: t('stackVersionsAdmin.breadcrumb.devsecops', 'DevSecOps Stack') },
-          { label: t('stackVersionsAdmin.breadcrumb.stackVersions', 'Stack Version Management') },
+          {
+            label: t(
+              "stackVersionsAdmin.breadcrumb.devsecops",
+              "DevSecOps Stack",
+            ),
+          },
+          {
+            label: t(
+              "stackVersionsAdmin.breadcrumb.stackVersions",
+              "Stack Version Management",
+            ),
+          },
         ]}
-        icon={<ShieldCheck {...iconProps('sm')} />}
+        icon={<ShieldCheck {...iconProps("sm")} />}
         tone="info"
-        title={t('stackVersionsAdmin.title', 'Stack Version Management')}
+        title={t("stackVersionsAdmin.title", "Stack Version Management")}
         subtitle={t(
-          'stackVersionsAdmin.subtitle',
-          'Review the compatibility matrices used for installation and verify cluster architecture fit.',
+          "stackVersionsAdmin.subtitle",
+          "Review the compatibility matrices used for installation and verify cluster architecture fit.",
         )}
         actions={
-          <Button size="sm" onClick={() => setModal({ mode: 'create' })}>
-            <Plus {...iconProps('sm')} className="mr-1" />
-            {t('stackVersionsAdmin.actions.new', 'New matrix')}
-          </Button>
+          tab === "matrices" ? (
+            <Button size="sm" onClick={() => setModal({ mode: "create" })}>
+              <Plus {...iconProps("sm")} className="mr-1" />
+              {t("stackVersionsAdmin.actions.new", "New matrix")}
+            </Button>
+          ) : (
+            <Button size="sm" onClick={() => setBundleModalOpen(true)}>
+              <Plus {...iconProps("sm")} className="mr-1" />
+              {t("stackVersionsAdmin.actions.newBundle", "New bundle")}
+            </Button>
+          )
         }
       />
-      <div className="flex-1 min-h-0">
-        <ListDetailPanel
-          listContent={listContent}
-          detailContent={detailContent}
-          emptyDetailMessage={t('stackVersionsAdmin.selectMatrix', 'Select a matrix to view details.')}
-        />
-      </div>
+      <Tabs<AdminVersionsTab>
+        className="px-6"
+        value={tab}
+        onChange={setTab}
+        items={[
+          {
+            id: "matrices",
+            label: t(
+              "stackVersionsAdmin.tabs.matrices",
+              "Compatibility Matrices",
+            ),
+          },
+          {
+            id: "upgrade-bundles",
+            label: t(
+              "stackVersionsAdmin.tabs.upgradeBundles",
+              "Upgrade Bundles",
+            ),
+          },
+        ]}
+      />
+      {tab === "matrices" ? (
+        <div className="flex-1 min-h-0">
+          <ListDetailPanel
+            listContent={listContent}
+            detailContent={detailContent}
+            emptyDetailMessage={t(
+              "stackVersionsAdmin.selectMatrix",
+              "Select a matrix to view details.",
+            )}
+          />
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 overflow-auto">
+          <UpgradeBundlesPanel
+            registerOpen={bundleModalOpen}
+            onRegisterClose={() => setBundleModalOpen(false)}
+          />
+        </div>
+      )}
 
       {modal && (
         <MatrixEditModal
@@ -431,8 +678,8 @@ export function StackVersionsAdminPage() {
           initial={modal.initial}
           onClose={() => setModal(null)}
           onSaved={(id) => {
-            setSelectedId(id)
-            setModal(null)
+            setSelectedId(id);
+            setModal(null);
           }}
         />
       )}
@@ -441,23 +688,29 @@ export function StackVersionsAdminPage() {
         open={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleConfirmDelete}
-        title={t('stackVersionsAdmin.deleteConfirm.title', 'Delete compatibility matrix')}
-        description={t(
-          'stackVersionsAdmin.deleteConfirm.description',
-          'Deleting this matrix means stacks that previously matched it will be treated as untested. Continue?',
+        title={t(
+          "stackVersionsAdmin.deleteConfirm.title",
+          "Delete compatibility matrix",
         )}
-        confirmLabel={t('stackVersionsAdmin.deleteConfirm.confirm', 'Delete')}
+        description={t(
+          "stackVersionsAdmin.deleteConfirm.description",
+          "Deleting this matrix means stacks that previously matched it will be treated as untested. Continue?",
+        )}
+        confirmLabel={t("stackVersionsAdmin.deleteConfirm.confirm", "Delete")}
         loading={deleteMatrix.isPending}
       />
     </div>
-  )
+  );
 }
 
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+      <span
+        className="h-2 w-2 rounded-full"
+        style={{ backgroundColor: color }}
+      />
       {label}
     </span>
-  )
+  );
 }

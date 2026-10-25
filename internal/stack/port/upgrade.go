@@ -12,10 +12,25 @@ import (
 // CreateRun 이 돌려준다. 유스케이스는 그 실행을 찾아 그대로 돌려준다.
 var ErrUpgradeIdempotencyConflict = errors.New("upgrade run with the same idempotency key exists")
 
+// UpgradeBundleStore 는 번들 관리(관리 화면)가 쓰는 쪽이다. 상태와 무관하게 다룬다 — 후보 조회는
+// UpgradeRepository 의 verified 전용 메서드를 쓴다.
+type UpgradeBundleStore interface {
+	ListBundles(ctx context.Context) ([]domain.UpgradeBundle, error)
+	// GetBundle 은 없으면 domain.ErrUpgradeBundleUnknown.
+	GetBundle(ctx context.Context, id string) (*domain.UpgradeBundle, error)
+	// CreateBundle 은 같은 ID 나 같은 경로(도구 · 출발 · 대상)가 있으면 domain.ErrUpgradeBundleExists.
+	CreateBundle(ctx context.Context, bundle *domain.UpgradeBundle) error
+	// UpdateBundleStatus 는 없으면 domain.ErrUpgradeBundleUnknown.
+	UpdateBundleStatus(ctx context.Context, id, status string) error
+}
+
 type UpgradeRepository interface {
+	UpgradeBundleStore
 	ListVerifiedBundles(ctx context.Context, tool, sourceChartVersion string) ([]domain.UpgradeBundle, error)
 	// GetVerifiedBundle 은 verified 번들만 돌려준다. 없으면 domain.ErrUpgradeBundleNotFound.
 	GetVerifiedBundle(ctx context.Context, id string) (*domain.UpgradeBundle, error)
+	// ListRuns 는 스택의 실행을 최근 것부터 limit 개 돌려준다. 막힌 시도도 들어간다 — 감사 기록이다.
+	ListRuns(ctx context.Context, stackID string, limit int) ([]domain.UpgradeRun, error)
 	// CreateRun 은 진행 중 실행이 이미 있으면 domain.ErrUpgradeInProgress, 같은 키의 실행이
 	// 있으면 ErrUpgradeIdempotencyConflict 를 돌려준다. 동시에 들어온 요청은 DB 가 가린다.
 	CreateRun(ctx context.Context, run *domain.UpgradeRun) error
