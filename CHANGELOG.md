@@ -307,6 +307,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **게이트웨이 라우터가 앱 주소(demo-api.<도메인> 등)를 끊던 것** (`scripts/port-forward-gateway.sh`): 로컬 SNI 라우터가 스택 네임스페이스의 HTTPRoute 호스트(gitlab · argocd …)만 알아, 다른 네임스페이스에 배포한 앱의 HTTPRoute 호스트로 들어오면 `no host in upstream` 으로 연결을 끊었다 — 배포한 앱을 브라우저로 열 수 없었다(10-26). 이제 모든 네임스페이스의 HTTPRoute 중 parentRefs 가 그 게이트웨이를 가리키는 것의 호스트도 넣는다. `--hosts` 가 내는 /etc/hosts 줄에도 앱 주소가 들어간다.
+
 - **상단 헤더의 작업 알림 패널이 페이지 헤더에 가려 홈 말고는 보이지 않았다 — 상단 헤더를 페이지 헤더 위 층에 세운다** (`web/src/components/layout/header.tsx`, `web/scripts/generate-theme.mjs`, `web/src/theme/tokens.generated.css`): 종(진행 중 작업)을 누르면 패널이 열리지만, 화면마다 sticky 로 붙는 페이지 헤더(`--z-page-header: 30`)와 패널(`z-30`)의 층이 같아 DOM 순서가 뒤인 페이지 헤더가 패널을 덮었다 — 페이지 헤더가 있는 거의 모든 화면에서 그림자만 보였다(로컬 시연 녹화의 파이프라인 로그 화면에서 발견). 상단 헤더를 `relative` 로 세우고 새 층 `--z-app-header: 35`(페이지 헤더 30 과 사이드바 40 사이)를 준다 — 헤더 안의 드롭다운이 함께 올라간다. 모달(50)은 여전히 위다.
 
 - **AI 어시스턴트 답변의 마크다운 기호가 그대로 보였다 — 제목 · 목록 · 굵게 · 코드를 그려서 보인다** (`web/src/features/assistant/components/{assistant-text.tsx,assistant-panel.tsx}`): 모델(Upstage Solar 등)은 지시와 무관하게 마크다운으로 답하는 일이 많아 패널에 `**completed**`, `#### 스토리지 구성` 이 그대로 찍혔다(로컬 시연 녹화에서 발견). 답변의 제목(`#`) · 글머리 목록(`-` · `*`) · 번호 목록 · 표(`| … |`) · 굵게(`**`) · 인라인 코드 · 코드 블록만 그린다. HTML 은 만들지 않고 React 요소로만 그려 답변에 섞인 태그는 글자로 보인다. 사용자가 쓴 글은 그대로 둔다.
