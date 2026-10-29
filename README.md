@@ -7,7 +7,7 @@ Kubernetes 기반 DevSecOps 자동화 오픈소스 플랫폼
 ![Kubernetes 1.34+](https://img.shields.io/badge/Kubernetes-1.34%2B-326CE5?logo=kubernetes&logoColor=white)
 ![Helm v3](https://img.shields.io/badge/Helm-v3-0F1689?logo=helm&logoColor=white)
 
-**[📖 문서 사이트](https://cloud-nullus.github.io/nullus/)** · **[🚀 라이브 데모](https://cloud-nullus.github.io)** · **[▶️ 시연 영상](https://www.youtube.com/watch?v=BDwy0FUZpB4)** · **[📊 발표 장표](https://cloud-nullus.github.io/nullus/presentations/stp3-v0.4.html)**
+**[⚡ 빠른 시작](./QUICKSTART.md)** · **[📖 문서 사이트](https://cloud-nullus.github.io/nullus/)** · **[🚀 라이브 데모](https://cloud-nullus.github.io)** · **[▶️ 시연 영상](https://www.youtube.com/watch?v=BDwy0FUZpB4)** · **[📊 발표 장표](https://cloud-nullus.github.io/nullus/presentations/stp3-v0.4.html)**
 
 ## Nullus 란
 
@@ -20,6 +20,8 @@ Kubernetes 기반 DevSecOps 자동화 오픈소스 플랫폼
 지원하는 조합은 세 가지입니다 — **GitLab**(All-in-One · Argo CD · Harbor · Nexus · SonarQube · OTel), **GitHub + Argo CD**(저장소·Actions·GHCR 은 외부 서비스, 클러스터에는 Argo CD 와 관측만), **Gitea + Jenkins + Argo CD**(Lite 포함). 가장 많이 검증된 경로는 GitLab 입니다. 화면별 사용법은 [문서 사이트](https://cloud-nullus.github.io/nullus/features/)에 있습니다.
 
 ## 설치
+
+처음이라면 [빠른 시작](./QUICKSTART.md)을 따라가세요 — 설치부터 스택 설치, 샘플 파이프라인 배포 확인까지 한 문서로 이어집니다.
 
 ### 요구사항
 
