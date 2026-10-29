@@ -53,7 +53,6 @@ The **Stack Version Management** screen, where you edit the compatibility matrix
     |------|------|------|
     | **Rollback** in Stack History | Request format mismatch, returns 400 | Edit values directly on the Config tab in [Stack List](../features/stack/list.md) |
     | **Validate Current Stack** in Stack Version | Missing server wiring, returns 400 | Dry Run in the install wizard |
-    | **Version Upgrade** tab in Stack List | Shows fixed values; the button only shows a toast | — |
     | **Status filter** in CI/CD List | Values do not match, so the table empties | Use the search box |
     | Build and deploy settings in the Execute dialog | Not sent | — |
     | Server-side Pre-Deploy Gate | Disabled | Client-side checks and Dry Run |

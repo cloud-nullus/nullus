@@ -177,3 +177,11 @@ func TestDependencyScanScript_ScannerFailureFollowsUnreachablePolicy(t *testing.
 	code, _ = runDependencyScanScript(t, 1, 0, map[string]string{port.ScanOnUnreachableVariable: "allow"})
 	assert.Equal(t, 0, code)
 }
+
+// 원격 저장소를 묻지 않는다 — Maven 프로젝트에서 Trivy 가 pom 을 Maven Central 에서 하나씩 받다 429 로 죽었다.
+func TestDependencyScanScriptLines_DoNotReachRemoteRepositories(t *testing.T) {
+	lines := dependencyScanScriptLines()
+	require.Len(t, lines, 3)
+	assert.Contains(t, lines[0], "--offline-scan", "리포트 스캔")
+	assert.Contains(t, lines[2], "--offline-scan", "게이트 스캔")
+}

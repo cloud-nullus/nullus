@@ -1277,6 +1277,27 @@
         "rolled_back": "Failed and rolled back to {{from}}",
         "manual_intervention_required": "Manual intervention required",
         "blocked": "Last attempt was blocked by preflight"
+      },
+      "history": {
+        "title": "Run history",
+        "empty": "No upgrade has run yet.",
+        "loadError": "Could not load the run history.",
+        "col": {
+          "when": "When",
+          "path": "Path",
+          "status": "Status",
+          "requestedBy": "Requested by",
+          "reason": "Reason"
+        }
+      },
+      "runShort": {
+        "upgrading": "Upgrading",
+        "rolling_back": "Rolling back",
+        "failed": "Not applied",
+        "succeeded": "Succeeded",
+        "rolled_back": "Rolled back",
+        "manual_intervention_required": "Manual intervention required",
+        "blocked": "Blocked by preflight"
       }
     }
   },
@@ -1994,7 +2015,8 @@
     "actions": {
       "new": "New matrix",
       "edit": "Edit",
-      "delete": "Delete"
+      "delete": "Delete",
+      "newBundle": "New bundle"
     },
     "filter": {
       "searchPlaceholder": "Search by ID or name",
@@ -2038,6 +2060,91 @@
       "title": "Delete compatibility matrix",
       "description": "Deleting this matrix means stacks that previously matched it will be treated as untested. Continue?",
       "confirm": "Delete"
+    },
+    "tabs": {
+      "matrices": "Compatibility Matrices",
+      "upgradeBundles": "Upgrade Bundles"
+    },
+    "bundles": {
+      "subtitle": "Verified paths for upgrading installed OSS. Register only paths you have rehearsed on a real cluster as verified — the Version Upgrade tab of a stack offers verified bundles only.",
+      "loadError": "Failed to load upgrade bundles.",
+      "empty": {
+        "title": "No upgrade bundles registered",
+        "hint": "Register a rehearsed path with New bundle"
+      },
+      "col": {
+        "tool": "Tool",
+        "path": "Path",
+        "risk": "Risk",
+        "backup": "Backup",
+        "cves": "Fixed CVEs",
+        "status": "Status",
+        "createdAt": "Registered",
+        "actions": "Actions"
+      },
+      "backupRequired": "Required",
+      "backupOptional": "Optional",
+      "status": {
+        "draft": "Draft",
+        "verified": "Verified",
+        "deprecated": "Deprecated",
+        "revoked": "Revoked"
+      },
+      "statusHint": {
+        "draft": "Hidden from candidates. Mark it verified once the rehearsal is done.",
+        "verified": "Offered as a candidate on every stack running the source version.",
+        "deprecated": "No longer offered. Verify it again or revoke it.",
+        "revoked": "Withdrawn. It cannot be restored."
+      },
+      "action": {
+        "verified": "Mark verified",
+        "deprecated": "Deprecate",
+        "revoked": "Revoke"
+      },
+      "change": {
+        "title": "Change bundle status",
+        "description": "Change {{id}} from {{from}} to {{to}}.",
+        "revokeWarning": "Revoking cannot be undone. To use the same path again, rehearse it and register a new bundle.",
+        "confirm": "Change",
+        "done": "Bundle status changed.",
+        "failed": "Could not change the bundle status."
+      },
+      "rehearsal": {
+        "label": "I rehearsed this path on a real cluster",
+        "hint": "Verified bundles are offered as upgrade candidates on every stack running the source version. Mark only paths you have actually run end to end.",
+        "required": "Confirm the rehearsal to register the bundle as verified."
+      },
+      "register": {
+        "title": "Register upgrade bundle",
+        "intro": "Registers one path from a source chart version to a target chart version. The Version Upgrade tab of a stack offers only verified bundles whose source matches the installed chart version.",
+        "tool": "Tool",
+        "releaseName": "Helm release name",
+        "chartName": "Chart name",
+        "repoUrl": "Chart repository",
+        "sourceChart": "Source chart version",
+        "sourceApp": "Source app version",
+        "targetChart": "Target chart version",
+        "targetApp": "Target app version",
+        "targetAppHint": "The health check compares this with the server image tag after the upgrade — a wrong value rolls the upgrade back.",
+        "risk": "Risk level",
+        "disruption": "Expected disruption",
+        "releaseNotes": "Release notes (URL or memo)",
+        "fixesCves": "Fixed CVEs (comma separated)",
+        "fixesCvesHint": "Example: CVE-2025-12345, CVE-2025-23456. Leave it empty and the screen says nothing about CVEs.",
+        "requiresBackup": "Require a backup from the last 24 hours before running",
+        "requiresBackupHint": "Preflight blocks the upgrade without a restorable backup. Keep this on unless the rehearsal proved it unnecessary.",
+        "architectures": "Supported architectures",
+        "status": "Register as",
+        "statusVerified": "Verified — offered as an upgrade candidate",
+        "statusDraft": "Draft — hidden from candidates until verified",
+        "submit": "Register",
+        "required": "Required.",
+        "versionFormat": "Not a version (example: 7.7.22).",
+        "targetSameAsSource": "Target must differ from the source version.",
+        "cveFormat": "Not a CVE id (example: CVE-2025-12345).",
+        "done": "Upgrade bundle registered.",
+        "failed": "Could not register the bundle."
+      }
     }
   },
   "stackDeployment": {

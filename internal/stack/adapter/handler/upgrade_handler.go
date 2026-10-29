@@ -20,6 +20,7 @@ type UpgradeService interface {
 	Preflight(ctx context.Context, stackID, bundleID string) ([]domain.UpgradeCheck, error)
 	Start(ctx context.Context, in usecase.StartUpgradeInput) (*domain.UpgradeRun, error)
 	GetRun(ctx context.Context, stackID, runID string) (*domain.UpgradeRun, error)
+	ListRuns(ctx context.Context, stackID string) ([]domain.UpgradeRun, error)
 }
 
 type UpgradeHandler struct {
@@ -37,7 +38,20 @@ func (h *UpgradeHandler) RegisterRoutes(g *echo.Group) {
 	// 사전 점검은 클러스터를 바꾸지 않지만 본문(번들)이 필요하므로 POST 다.
 	g.POST("/:stackId/upgrades/preflight", h.Preflight)
 	g.POST("/:stackId/upgrade-runs", h.Start)
+	g.GET("/:stackId/upgrade-runs", h.ListRuns)
 	g.GET("/:stackId/upgrade-runs/:runId", h.GetRun)
+}
+
+// ListRuns 는 스택의 업그레이드 실행 목록이다(최근 것부터, 막힌 시도 포함).
+func (h *UpgradeHandler) ListRuns(c echo.Context) error {
+	runs, err := h.upgrades.ListRuns(c.Request().Context(), stackIDParam(c))
+	if err != nil {
+		return upgradeError(c, err)
+	}
+	if runs == nil {
+		runs = []domain.UpgradeRun{}
+	}
+	return c.JSON(http.StatusOK, map[string]any{"items": runs})
 }
 
 func (h *UpgradeHandler) ListCandidates(c echo.Context) error {
