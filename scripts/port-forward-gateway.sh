@@ -76,9 +76,11 @@ discover_gateways() {
       node_ip="$(docker inspect "$node_name" --format "{{.NetworkSettings.Networks.${ROUTER_NETWORK}.IPAddress}}" 2>/dev/null || true)"
       [[ -n "$node_ip" ]] || continue
 
-      # 이 게이트웨이가 받는 이름은 HTTPRoute 가 알고 있다.
-      kubectl --context "$ctx" get httproute -n "$ns" \
-        -o jsonpath='{range .items[*]}{range .spec.hostnames[*]}{@}{"\n"}{end}{end}' 2>/dev/null |
+      # 이 게이트웨이가 받는 이름은 HTTPRoute 가 알고 있다 — 같은 네임스페이스의 도구 경로(gitlab · argocd …)뿐
+      # 아니라 다른 네임스페이스(앱)에서 parentRefs 로 이 게이트웨이에 붙인 경로(demo-api.<도메인> 등)도 넣는다.
+      # 앱 경로를 빠뜨리면 라우터가 "no host in upstream" 으로 끊어 배포한 앱을 브라우저로 열 수 없었다(10-26).
+      kubectl --context "$ctx" get httproute --all-namespaces -o json 2>/dev/null |
+        jq -r --arg ns "$ns" '.items[] | . as $r | ($r.spec.parentRefs // [])[] | select((.namespace // $r.metadata.namespace) == $ns) | $r.spec.hostnames[]?' 2>/dev/null |
         sort -u | while IFS= read -r host; do
           [[ -z "$host" ]] && continue
           printf '%s %s:%s\n' "$host" "$node_ip" "$node_port"
