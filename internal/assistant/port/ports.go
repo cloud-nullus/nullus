@@ -13,6 +13,9 @@ type CompletionRequest struct {
 	Messages      []domain.Message
 	Tools         []domain.ToolSpec
 	ForbidToolUse bool
+	// RequireToolUse 는 이번 라운드에 도구를 반드시 하나 부르게 한다(조회 질문의 첫 라운드). ForbidToolUse 가
+	// 참이면 그쪽이 이긴다.
+	RequireToolUse bool
 }
 
 // LLM 은 OpenAI 호환 Chat Completions 모델이다. 응답 메시지는 답(Content)이거나 도구 호출(ToolCalls)이다.

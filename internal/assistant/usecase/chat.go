@@ -114,10 +114,13 @@ func (uc *Chat) run(ctx context.Context, llm port.LLM, in ChatInput) (*ChatOutpu
 	started := time.Now()
 	out := &ChatOutput{Tools: []domain.ToolTrace{}}
 	executed := 0
+	// 조회 질문이면 첫 라운드에 도구를 강제한다 — 모델이 도구 없이 "없다" 고 지어내지 못하게(domain.RequiresToolFirst).
+	toolFirst := len(specs) > 0 && domain.RequiresToolFirst(domain.LastUserQuestion(in.Turns))
 	for round := 0; ; round++ {
 		// 상한에 닿으면 도구 정의는 그대로 보내고 쓰지만 못하게 해, 그때까지의 결과로 마무리하게 한다.
 		forbid := round >= domain.MaxToolRounds || executed >= domain.MaxToolCallsTotal
-		resp, err := llm.Complete(ctx, port.CompletionRequest{Messages: messages, Tools: specs, ForbidToolUse: forbid})
+		resp, err := llm.Complete(ctx, port.CompletionRequest{Messages: messages, Tools: specs, ForbidToolUse: forbid,
+			RequireToolUse: round == 0 && toolFirst && !forbid})
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", domain.ErrUpstream, err)
 		}

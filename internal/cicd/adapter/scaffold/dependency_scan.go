@@ -40,7 +40,10 @@ var dependencyScanPolicyVariableNames = scanPolicyVariableNames
 // 예외는 저장소의 .trivyignore 다(Trivy 가 작업 디렉터리에서 스스로 읽는다). 명령에 역슬래시를
 // 쓰지 않는다 — Jenkins 의 sh ”'…”' 는 Groovy 문자열이다.
 func dependencyScanScriptLines() []string {
-	server := fmt.Sprintf(`--server "$%s" --scanners vuln`, port.ScanServerVariable)
+	// --offline-scan: 원격 저장소를 묻지 않는다. Trivy 는 pom.xml 의 전이 의존성을 풀려고 pom 을 하나씩 Maven Central 에서
+	// 받는데, 전자정부 샘플(Boot · Web) 둘 다 `429 Too Many Requests`(Retry-After 1800) 로 스캔 자체가 죽어 빌드까지 못 갔다
+	// (10-26). 락파일 · pom 에 적힌 것만 보고, Maven 의 전이 의존성은 이미지 스캔이 빌드된 jar 로 본다. 에어갭은 원래 이렇게 돈다.
+	server := fmt.Sprintf(`--server "$%s" --scanners vuln --offline-scan`, port.ScanServerVariable)
 	unfixed := fmt.Sprintf(`$([ "${%s:-true}" = "true" ] && echo --ignore-unfixed)`,
 		port.ScanIgnoreUnfixedVariable)
 	defaults := domain.DefaultScanPolicy()
