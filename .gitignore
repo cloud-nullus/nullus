@@ -70,4 +70,5 @@ web/e2e/screenshots/tour/
 
 # 문서 사이트 — website/stage.sh 가 docs/ 에서 복사해 온다
 website/docs/guides/*.html
+website/docs/presentations/*.html
 .site/

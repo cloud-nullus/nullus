@@ -182,9 +182,10 @@ extra:
       link: https://www.youtube.com/watch?v=VrTqBKInlNw
       name: 시연 영상
 
-# stage.sh 가 가져오는 단독 HTML 가이드들. nav 에는 소개 페이지만 올린다.
+# stage.sh 가 가져오는 단독 HTML 가이드·발표 장표. nav 에는 소개 페이지만 올린다.
 not_in_nav: |
   guides/*.html
+  presentations/*.html
 
 nav:
   - 홈: index.md
