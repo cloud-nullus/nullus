@@ -139,6 +139,9 @@ func (c *AnthropicClient) Complete(ctx context.Context, req port.CompletionReque
 	}
 	if len(body.Tools) > 0 {
 		body.ToolChoice = map[string]string{"type": "auto"}
+		if req.RequireToolUse {
+			body.ToolChoice = map[string]string{"type": "any"}
+		}
 		if req.ForbidToolUse {
 			body.ToolChoice = map[string]string{"type": "none"}
 		}

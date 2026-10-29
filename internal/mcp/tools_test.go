@@ -378,3 +378,39 @@ func TestToolCall_APIErrorSurfacesAsToolError(t *testing.T) {
 	assert.Contains(t, text, "404")
 	assert.Contains(t, text, "trc-1")
 }
+
+// 템플릿 카탈로그는 모델이 세고 고르기 좋은 요약으로 돌려준다 — count 와 템플릿별 id · name · 용도 · 도구.
+// 원문(계획 프로필 · 자원 표)은 11개면 도구 결과 상한에 잘려 모델이 개수를 틀렸다.
+func TestTemplateList_IsCompactWithCount(t *testing.T) {
+	api := newMockAPI(t, map[string]any{
+		"GET /api/v1/stacks/templates": []map[string]any{
+			{
+				"id": "gitlab-argocd-v1", "name": "GitLab + Argo CD", "description": "GitOps 기본",
+				"recommended_use_case": "소규모 팀", "min_resources": "4 vCPU / 8Gi",
+				"planning_profile": strings.Repeat("x", 4000),
+				"tools": []map[string]any{
+					{"category": "source_repository", "name": "GitLab", "helm_version": "8.0.0", "app_version": "17.7.0"},
+					{"category": "cd", "name": "Argo CD", "helm_version": "7.7.16", "app_version": "v2.13.3"},
+				},
+			},
+			{"id": "empty-template-v1", "name": "Empty Template", "description": "", "tools": []map[string]any{}},
+		},
+	})
+	cs := newTestSession(t, api, false)
+
+	text, isErr := callTool(t, cs, "template_list", nil)
+	assert.False(t, isErr, text)
+	var out struct {
+		Count int              `json:"count"`
+		Items []map[string]any `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(text), &out))
+	assert.Equal(t, 2, out.Count)
+	require.Len(t, out.Items, 2)
+	assert.Equal(t, "gitlab-argocd-v1", out.Items[0]["id"])
+	assert.Equal(t, []any{"GitLab 17.7.0", "Argo CD v2.13.3"}, out.Items[0]["tools"])
+	assert.Equal(t, "소규모 팀", out.Items[0]["recommended_use_case"])
+	assert.NotContains(t, out.Items[0], "planning_profile", "원문의 긴 필드는 싣지 않는다")
+	assert.NotContains(t, out.Items[1], "description", "빈 값은 싣지 않는다")
+	assert.Less(t, len(text), 1200, "요약은 짧다")
+}

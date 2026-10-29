@@ -204,3 +204,44 @@ func TestClient_RefusesLinkLocalAddresses(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "링크로컬")
 }
+
+// 조회 질문의 첫 라운드: 모델이 도구를 건너뛰고 지어내지 못하게 tool_choice 를 required 로 보낸다.
+func TestClient_RequireToolUseSendsRequired(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":null,
+		  "tool_calls":[{"id":"call_1","type":"function","function":{"name":"cluster_list","arguments":"{}"}}]}}]}`)
+	}))
+	defer srv.Close()
+
+	msg, err := New(Config{BaseURL: srv.URL, APIKey: "k", Model: "m"}).Complete(context.Background(), port.CompletionRequest{
+		Messages:       []domain.Message{{Role: domain.RoleUser, Content: "등록된 클러스터 목록"}},
+		Tools:          []domain.ToolSpec{{Name: "cluster_list", Description: "목록", Parameters: map[string]any{"type": "object"}}},
+		RequireToolUse: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "required", got["tool_choice"])
+	require.Len(t, msg.ToolCalls, 1)
+	assert.Equal(t, "cluster_list", msg.ToolCalls[0].Name)
+}
+
+// 상한 라운드가 강제보다 앞선다 — 둘 다 켜져 오면 none 이다.
+func TestClient_ForbidWinsOverRequire(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"답"}}]}`)
+	}))
+	defer srv.Close()
+
+	_, err := New(Config{BaseURL: srv.URL, APIKey: "k", Model: "m"}).Complete(context.Background(), port.CompletionRequest{
+		Messages:       []domain.Message{{Role: domain.RoleUser, Content: "a"}},
+		Tools:          []domain.ToolSpec{{Name: "cluster_list", Parameters: map[string]any{"type": "object"}}},
+		RequireToolUse: true, ForbidToolUse: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "none", got["tool_choice"])
+}

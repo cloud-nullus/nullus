@@ -492,6 +492,30 @@ func (uc *UpgradeStack) currentRelease(ctx context.Context, r *resolvedUpgrade, 
 	return nil, fmt.Errorf("%w: %s", domain.ErrUpgradeReleaseNotFound, name)
 }
 
+// upgradeRunListLimit 은 실행 목록 한 번에 돌려주는 상한이다. 스택 하나의 업그레이드는 드물다.
+const upgradeRunListLimit = 50
+
+// ListRuns 는 스택의 업그레이드 실행을 최근 것부터 돌려준다. 막힌 시도도 들어간다 — 누가 언제
+// 무엇을 시도했고 왜 막혔는지가 감사 기록이다. 박동이 끊긴 진행 중 실행은 중단으로 닫는다.
+func (uc *UpgradeStack) ListRuns(ctx context.Context, stackID string) ([]domain.UpgradeRun, error) {
+	if uc.d.Stacks == nil || uc.d.Runs == nil {
+		return nil, fmt.Errorf("업그레이드 기능이 구성되지 않았다")
+	}
+	stack, err := uc.d.Stacks.GetByID(ctx, strings.TrimSpace(stackID))
+	if err != nil || stack == nil {
+		return nil, ErrStackNotFound
+	}
+	runs, err := uc.d.Runs.ListRuns(ctx, stack.ID, upgradeRunListLimit)
+	if err != nil {
+		return nil, fmt.Errorf("list upgrade runs: %w", err)
+	}
+	out := make([]domain.UpgradeRun, 0, len(runs))
+	for i := range runs {
+		out = append(out, *uc.closeIfStale(ctx, &runs[i]))
+	}
+	return out, nil
+}
+
 // GetRun 은 실행 하나를 돌려준다. 오래 갱신이 없는 진행 중 실행은 중단으로 닫는다.
 func (uc *UpgradeStack) GetRun(ctx context.Context, stackID, runID string) (*domain.UpgradeRun, error) {
 	if uc.d.Runs == nil {

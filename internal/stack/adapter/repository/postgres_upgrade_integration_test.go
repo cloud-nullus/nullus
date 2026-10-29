@@ -237,3 +237,89 @@ func TestPostgresUpgradeRepository_Integration(t *testing.T) {
 		require.NoError(t, repo.UpdateRun(ctx, run))
 	})
 }
+
+func TestPostgresUpgradeRepository_Bundles_Integration(t *testing.T) {
+	pool, cleanup := setupPostgres(t)
+	t.Cleanup(cleanup)
+	ctx := context.Background()
+	repo := NewPostgresUpgradeRepository(pool)
+	now := time.Date(2026, 10, 25, 9, 0, 0, 0, time.UTC)
+
+	bundle, err := domain.NewUpgradeBundle(domain.NewUpgradeBundleInput{
+		Tool: "argocd", ReleaseName: "argo-cd", ChartName: "argo-cd", RepoURL: "https://argoproj.github.io/argo-helm",
+		SourceChartVersion: "7.7.16", SourceAppVersion: "v2.13.3", TargetChartVersion: "7.7.22", TargetAppVersion: "v2.13.4",
+		RiskLevel: "low", ExpectedDisruption: "약 1~2분 재시작", ReleaseNotes: "https://github.com/argoproj/argo-cd/releases/tag/v2.13.4",
+		RequiresBackup: true, SupportedArchitectures: []string{"arm64", "amd64"}, FixesCVEs: []string{"CVE-2025-12345"},
+		Status: domain.UpgradeBundleVerified, RehearsalConfirmed: true, Now: now,
+	})
+	require.NoError(t, err)
+	require.NoError(t, repo.CreateBundle(ctx, bundle))
+
+	t.Run("same id or same path is a conflict", func(t *testing.T) {
+		assert.ErrorIs(t, repo.CreateBundle(ctx, bundle), domain.ErrUpgradeBundleExists)
+		samePath := *bundle
+		samePath.ID = "another-id"
+		assert.ErrorIs(t, repo.CreateBundle(ctx, &samePath), domain.ErrUpgradeBundleExists)
+	})
+
+	t.Run("get and list carry every column", func(t *testing.T) {
+		got, err := repo.GetBundle(ctx, bundle.ID)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"amd64", "arm64"}, got.SupportedArchitectures)
+		assert.Equal(t, []string{"CVE-2025-12345"}, got.FixesCVEs)
+		assert.Equal(t, now, got.CreatedAt.UTC())
+		assert.Equal(t, domain.UpgradeBundleVerified, got.Status)
+
+		items, err := repo.ListBundles(ctx)
+		require.NoError(t, err)
+		require.NotEmpty(t, items)
+		verified, err := repo.GetVerifiedBundle(ctx, bundle.ID)
+		require.NoError(t, err, "등록한 번들은 후보 조회에도 잡힌다")
+		assert.Equal(t, "7.7.22", verified.TargetChartVersion)
+	})
+
+	t.Run("status update hides revoked bundles from candidates", func(t *testing.T) {
+		require.NoError(t, repo.UpdateBundleStatus(ctx, bundle.ID, domain.UpgradeBundleRevoked))
+		_, err := repo.GetVerifiedBundle(ctx, bundle.ID)
+		assert.ErrorIs(t, err, domain.ErrUpgradeBundleNotFound)
+		got, err := repo.GetBundle(ctx, bundle.ID)
+		require.NoError(t, err)
+		assert.Equal(t, domain.UpgradeBundleRevoked, got.Status)
+		assert.ErrorIs(t, repo.UpdateBundleStatus(ctx, "missing", domain.UpgradeBundleRevoked), domain.ErrUpgradeBundleUnknown)
+		_, err = repo.GetBundle(ctx, "missing")
+		assert.ErrorIs(t, err, domain.ErrUpgradeBundleUnknown)
+	})
+
+	t.Run("list runs newest first with blocked attempts", func(t *testing.T) {
+		stackID := createUpgradeTestStack(t, ctx, pool)
+		insertUpgradeBundle(t, ctx, pool, "bnd-20-"+stackID, "7.7.16", "7.7.20", domain.UpgradeBundleVerified)
+		first := newUpgradeRunFor(stackID, "k1", now)
+		first.BundleID = "bnd-20-" + stackID
+		require.NoError(t, repo.CreateRun(ctx, first))
+		first.Succeed(now.Add(time.Minute))
+		require.NoError(t, repo.UpdateRun(ctx, first))
+		blocked, _ := domain.NewUpgradeRun(domain.NewUpgradeRunInput{
+			ID: uuid.NewString(), StackID: stackID,
+			Bundle:             domain.UpgradeBundle{ID: "bnd-20-" + stackID, Tool: domain.UpgradeToolArgoCD, TargetChartVersion: "7.7.20"},
+			SourceChartVersion: "7.7.16", PreviousRevision: 3, RequestedBy: "devops", Reason: "retry",
+			IdempotencyKey: "k2", Checks: []domain.UpgradeCheck{domain.BlockedCheck("backup", "none", "backup first")}, Now: now.Add(2 * time.Minute),
+		})
+		require.NoError(t, repo.CreateRun(ctx, blocked))
+
+		runs, err := repo.ListRuns(ctx, stackID, 10)
+		require.NoError(t, err)
+		require.Len(t, runs, 2)
+		assert.Equal(t, blocked.ID, runs[0].ID)
+		assert.Equal(t, domain.UpgradeStatusBlocked, runs[0].Status)
+		assert.Equal(t, first.ID, runs[1].ID)
+		assert.Equal(t, domain.UpgradeStatusSucceeded, runs[1].Status)
+
+		one, err := repo.ListRuns(ctx, stackID, 1)
+		require.NoError(t, err)
+		require.Len(t, one, 1)
+		empty, err := repo.ListRuns(ctx, "stk-none", 10)
+		require.NoError(t, err)
+		assert.Empty(t, empty)
+		assert.NotNil(t, empty)
+	})
+}

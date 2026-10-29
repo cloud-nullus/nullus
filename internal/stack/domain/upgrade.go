@@ -94,7 +94,8 @@ type UpgradeBundle struct {
 	Status                 string   `json:"status"`
 	// FixesCVEs 는 이 업그레이드가 고치는 CVE 다. 번들을 리허설할 때 함께 등록한다 — 설치 OSS CVE
 	// 대응(nullus-plan#78)이 "어느 검증된 업그레이드가 이 CVE 를 고치는가" 를 여기서 읽는다.
-	FixesCVEs []string `json:"fixes_cves,omitempty"`
+	FixesCVEs []string  `json:"fixes_cves,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // BundleFixesFound 는 번들이 고치는 CVE 중 present(지금 스캔에서 발견된 것)에 있는 것이다. 정렬해 돌려준다.

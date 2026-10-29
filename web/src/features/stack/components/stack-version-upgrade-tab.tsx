@@ -1,14 +1,24 @@
-import { useEffect, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
-import { ArrowUpCircle, ExternalLink, GitBranch, ShieldAlert } from 'lucide-react'
-import { iconProps } from '../../../components/ui/icon'
-import { Button } from '../../../components/ui/button'
-import { Modal } from '../../../components/ui/modal'
-import { StatusIcon, type StatusTone } from '../../../components/ui/status-icon'
-import { textInputClass } from '../../../components/ui/text-input'
-import { TOOL_BRAND_GRADIENT } from '../../../lib/tool-brand-colors'
-import { cn } from '../../../lib/utils'
+import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import {
+  ArrowUpCircle,
+  ExternalLink,
+  GitBranch,
+  History,
+  ShieldAlert,
+} from "lucide-react";
+import { iconProps } from "../../../components/ui/icon";
+import { Button } from "../../../components/ui/button";
+import { Modal } from "../../../components/ui/modal";
+import {
+  StatusIcon,
+  type StatusTone,
+} from "../../../components/ui/status-icon";
+import { textInputClass } from "../../../components/ui/text-input";
+import { thClass } from "../../../components/shared/table-chrome";
+import { TOOL_BRAND_GRADIENT } from "../../../lib/tool-brand-colors";
+import { cn } from "../../../lib/utils";
 import {
   createIdempotencyKey,
   isUpgradeRunActive,
@@ -16,76 +26,98 @@ import {
   useStackUpgrades,
   useStartUpgrade,
   useUpgradeRunProgress,
-} from '../api/stack-api'
-import type { UpgradeBundle, UpgradeCandidate, UpgradeCheck, UpgradeRun } from '../api/stack-api-types'
+  useUpgradeRuns,
+} from "../api/stack-api";
+import type {
+  UpgradeBundle,
+  UpgradeCandidate,
+  UpgradeCheck,
+  UpgradeRun,
+} from "../api/stack-api-types";
 
 // 설치된 OSS 업그레이드 탭. 검증된 번들(실클러스터 리허설을 거친 경로)만 실행할 수 있다.
 // 실행은 서버에서 이어지므로 이 화면은 마지막 실행(last_run)을 보여 주기만 한다.
 
-const TOOL_LABEL: Record<string, string> = { argocd: 'Argo CD' }
+const TOOL_LABEL: Record<string, string> = { argocd: "Argo CD" };
 
-const RISK_STYLE: Record<UpgradeBundle['risk_level'], string> = {
-  low: 'bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]',
-  medium: 'bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]',
-  high: 'bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]',
-}
+const RISK_STYLE: Record<UpgradeBundle["risk_level"], string> = {
+  low: "bg-[color-mix(in_srgb,_var(--color-success)_15%,_transparent)] text-[var(--color-success)]",
+  medium:
+    "bg-[color-mix(in_srgb,_var(--color-warning)_15%,_transparent)] text-[var(--color-warning)]",
+  high: "bg-[color-mix(in_srgb,_var(--color-error)_15%,_transparent)] text-[var(--color-error)]",
+};
 
-const CHECK_TONE: Record<UpgradeCheck['status'], StatusTone> = { pass: 'success', warning: 'warning', blocked: 'error' }
+const CHECK_TONE: Record<UpgradeCheck["status"], StatusTone> = {
+  pass: "success",
+  warning: "warning",
+  blocked: "error",
+};
 
-const RUN_TONE: Record<UpgradeRun['status'], StatusTone> = {
-  upgrading: 'running',
-  rolling_back: 'running',
-  failed: 'warning',
-  succeeded: 'success',
-  rolled_back: 'warning',
-  manual_intervention_required: 'error',
-  blocked: 'neutral',
-}
+const RUN_TONE: Record<UpgradeRun["status"], StatusTone> = {
+  upgrading: "running",
+  rolling_back: "running",
+  failed: "warning",
+  succeeded: "success",
+  rolled_back: "warning",
+  manual_intervention_required: "error",
+  blocked: "neutral",
+};
 
-const isLink = (value?: string) => !!value && /^https?:\/\//.test(value)
+const isLink = (value?: string) => !!value && /^https?:\/\//.test(value);
 
 function versionLabel(chart: string, app?: string) {
-  return app ? `${chart} (${app})` : chart
+  return app ? `${chart} (${app})` : chart;
 }
 
 export function StackVersionUpgradeTab({ stackId }: { stackId: string }) {
-  const { t } = useTranslation()
-  const upgrades = useStackUpgrades(stackId)
-  const [selected, setSelected] = useState<UpgradeCandidate | null>(null)
-  const items = upgrades.data?.items ?? []
-  const available = items.filter((item) => item.bundle && !item.blocked_reason).length
+  const { t } = useTranslation();
+  const upgrades = useStackUpgrades(stackId);
+  const [selected, setSelected] = useState<UpgradeCandidate | null>(null);
+  const items = upgrades.data?.items ?? [];
+  const available = items.filter(
+    (item) => item.bundle && !item.blocked_reason,
+  ).length;
 
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <div className="h-5 w-1 rounded-full bg-[linear-gradient(135deg,var(--color-primary),var(--color-accent-alt))]" />
         <h3 className="m-0 text-[14px] font-bold text-[var(--color-text-primary)]">
-          {t('stackList.upgrade.title')}
+          {t("stackList.upgrade.title")}
         </h3>
         <span className="rounded-full bg-[color-mix(in_srgb,_var(--color-primary)_15%,_transparent)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--color-primary)]">
-          {t('stackList.upgrade.available', { count: available })}
+          {t("stackList.upgrade.available", { count: available })}
         </span>
       </div>
 
       {upgrades.isLoading && (
-        <div className="mb-3 text-[13px] text-[var(--color-text-secondary)]">{t('stackList.upgrade.loading')}</div>
+        <div className="mb-3 text-[13px] text-[var(--color-text-secondary)]">
+          {t("stackList.upgrade.loading")}
+        </div>
       )}
       {upgrades.isError && (
         <div className="mb-3 rounded-lg border border-[var(--color-error)] p-4 text-[13px] text-[var(--color-error)]">
-          {t('stackList.upgrade.loadError')}
+          {t("stackList.upgrade.loadError")}
         </div>
       )}
       {!upgrades.isLoading && !upgrades.isError && items.length === 0 && (
         <div className="mb-3 rounded-lg border border-[var(--color-border-default)] p-4 text-[13px] text-[var(--color-text-secondary)]">
-          {t('stackList.upgrade.empty')}
+          {t("stackList.upgrade.empty")}
         </div>
       )}
 
       <div className="flex flex-col gap-3">
         {items.map((item) => (
-          <UpgradeRow key={item.release_name} stackId={stackId} item={item} onUpgrade={() => setSelected(item)} />
+          <UpgradeRow
+            key={item.release_name}
+            stackId={stackId}
+            item={item}
+            onUpgrade={() => setSelected(item)}
+          />
         ))}
       </div>
+
+      <UpgradeRunHistory stackId={stackId} />
 
       {selected?.bundle && (
         <UpgradeDialog
@@ -96,50 +128,86 @@ export function StackVersionUpgradeTab({ stackId }: { stackId: string }) {
         />
       )}
     </div>
-  )
+  );
 }
 
-function UpgradeRow({ stackId, item, onUpgrade }: { stackId: string; item: UpgradeCandidate; onUpgrade: () => void }) {
-  const { t } = useTranslation()
-  const bundle = item.bundle
-  const lastRun = useUpgradeRunProgress(stackId, item.last_run)
-  const running = isUpgradeRunActive(lastRun)
+function UpgradeRow({
+  stackId,
+  item,
+  onUpgrade,
+}: {
+  stackId: string;
+  item: UpgradeCandidate;
+  onUpgrade: () => void;
+}) {
+  const { t } = useTranslation();
+  const bundle = item.bundle;
+  const lastRun = useUpgradeRunProgress(stackId, item.last_run);
+  const running = isUpgradeRunActive(lastRun);
 
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4',
-        !bundle && 'opacity-80',
+        "flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-border-default)] bg-[color-mix(in_srgb,_var(--color-text-primary)_2%,_transparent)] p-4",
+        !bundle && "opacity-80",
       )}
     >
       <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: TOOL_BRAND_GRADIENT.kubernetes }}>
-          <GitBranch {...iconProps('sm')} className="text-white" />
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+          style={{ background: TOOL_BRAND_GRADIENT.kubernetes }}
+        >
+          <GitBranch {...iconProps("sm")} className="text-white" />
         </div>
         <div className="min-w-0">
-          <div className="font-semibold text-[var(--color-text-primary)]">{TOOL_LABEL[item.tool] ?? item.tool}</div>
+          <div className="font-semibold text-[var(--color-text-primary)]">
+            {TOOL_LABEL[item.tool] ?? item.tool}
+          </div>
           <div className="text-[12px] text-[var(--color-text-secondary)]">
-            {t('stackList.upgrade.current')}: {versionLabel(item.current_chart_version, item.current_app_version)}
-            {' → '}
+            {t("stackList.upgrade.current")}:{" "}
+            {versionLabel(item.current_chart_version, item.current_app_version)}
+            {" → "}
             {bundle ? (
               <strong className="text-[var(--color-success)]">
-                {versionLabel(bundle.target_chart_version, bundle.target_app_version)}
+                {versionLabel(
+                  bundle.target_chart_version,
+                  bundle.target_app_version,
+                )}
               </strong>
             ) : (
-              <strong className="text-[var(--color-text-secondary)]">{t('stackList.upgrade.noVerifiedPath')}</strong>
+              <strong className="text-[var(--color-text-secondary)]">
+                {t("stackList.upgrade.noVerifiedPath")}
+              </strong>
             )}
           </div>
           {!bundle && (
-            <div className="text-[12px] text-[var(--color-text-secondary)]">{t('stackList.upgrade.noVerifiedPathHint')}</div>
+            <div className="text-[12px] text-[var(--color-text-secondary)]">
+              {t("stackList.upgrade.noVerifiedPathHint")}
+            </div>
           )}
-          {bundle && <CVEFixesLine bundle={bundle} found={item.fixes_found ?? []} checked={item.fixes_checked ?? false} />}
-          {item.blocked_reason && <div className="text-[12px] text-[var(--color-error)]">{item.blocked_reason}</div>}
+          {bundle && (
+            <CVEFixesLine
+              bundle={bundle}
+              found={item.fixes_found ?? []}
+              checked={item.fixes_checked ?? false}
+            />
+          )}
+          {item.blocked_reason && (
+            <div className="text-[12px] text-[var(--color-error)]">
+              {item.blocked_reason}
+            </div>
+          )}
           {lastRun && <LastRunLine run={lastRun} />}
         </div>
       </div>
       {bundle && (
         <div className="flex items-center gap-2.5">
-          <span className={cn('rounded-full px-2.5 py-0.5 text-[11px] font-semibold', RISK_STYLE[bundle.risk_level])}>
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+              RISK_STYLE[bundle.risk_level],
+            )}
+          >
             {t(`stackList.upgrade.risk.${bundle.risk_level}`)}
           </span>
           {isLink(bundle.release_notes) && (
@@ -149,59 +217,81 @@ function UpgradeRow({ stackId, item, onUpgrade }: { stackId: string; item: Upgra
               rel="noopener noreferrer"
               className="flex items-center gap-1 text-[12px] text-[var(--color-primary)] hover:underline"
             >
-              <ExternalLink {...iconProps('xs')} />
-              {t('stackList.upgrade.releaseNotes')}
+              <ExternalLink {...iconProps("xs")} />
+              {t("stackList.upgrade.releaseNotes")}
             </a>
           )}
-          <Button variant="primary" size="sm" disabled={!!item.blocked_reason || running} onClick={onUpgrade}>
-            <ArrowUpCircle {...iconProps('xs')} />
-            {t('stackList.upgrade.action')}
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!!item.blocked_reason || running}
+            onClick={onUpgrade}
+          >
+            <ArrowUpCircle {...iconProps("xs")} />
+            {t("stackList.upgrade.action")}
           </Button>
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // 번들이 고치는 CVE 중 이 스택에서 발견된 것이 있으면 업그레이드할 이유로 먼저 보인다. 이 스택의 스캔
 // 결과로 확인했는데 없으면 그렇다고 말하고, 확인하지 못했으면(스캐너 없음 · 아직 스캔 전) 고치는 수만
 // 말한다. 번들이 아무것도 적지 않았으면 말하지 않는다.
-function CVEFixesLine({ bundle, found, checked }: { bundle: UpgradeBundle; found: string[]; checked: boolean }) {
-  const { t } = useTranslation()
-  const known = bundle.fixes_cves?.length ?? 0
+function CVEFixesLine({
+  bundle,
+  found,
+  checked,
+}: {
+  bundle: UpgradeBundle;
+  found: string[];
+  checked: boolean;
+}) {
+  const { t } = useTranslation();
+  const known = bundle.fixes_cves?.length ?? 0;
   if (found.length > 0) {
     return (
       <div className="flex items-center gap-1 text-[12px] font-semibold text-[var(--color-error)]">
-        <ShieldAlert {...iconProps('xs')} />
-        {t('stackList.upgrade.fixesFound', { count: found.length })}
+        <ShieldAlert {...iconProps("xs")} />
+        {t("stackList.upgrade.fixesFound", { count: found.length })}
       </div>
-    )
+    );
   }
-  if (known === 0) return null
+  if (known === 0) return null;
   return (
     <div className="text-[12px] text-[var(--color-text-secondary)]">
-      {t(checked ? 'stackList.upgrade.fixesNotFound' : 'stackList.upgrade.fixesKnown', { count: known })}
+      {t(
+        checked
+          ? "stackList.upgrade.fixesNotFound"
+          : "stackList.upgrade.fixesKnown",
+        { count: known },
+      )}
     </div>
-  )
+  );
 }
 
 function LastRunLine({ run }: { run: UpgradeRun }) {
-  const { t } = useTranslation()
-  const step = t(`stackList.upgrade.steps.${run.current_step}`, { defaultValue: run.current_step })
+  const { t } = useTranslation();
+  const step = t(`stackList.upgrade.steps.${run.current_step}`, {
+    defaultValue: run.current_step,
+  });
   const label = t(`stackList.upgrade.run.${run.status}`, {
     step,
     from: run.source_chart_version,
     to: run.target_chart_version,
-  })
+  });
   return (
     <div className="mt-1 flex items-start gap-1.5 text-[12px] text-[var(--color-text-secondary)]">
       <StatusIcon tone={RUN_TONE[run.status]} size="xs" />
       <span>
         {label}
-        {run.error && run.status !== 'succeeded' && <span className="text-[var(--color-error)]"> — {run.error}</span>}
+        {run.error && run.status !== "succeeded" && (
+          <span className="text-[var(--color-error)]"> — {run.error}</span>
+        )}
       </span>
     </div>
-  )
+  );
 }
 
 function UpgradeDialog({
@@ -210,89 +300,116 @@ function UpgradeDialog({
   bundle,
   onClose,
 }: {
-  stackId: string
-  candidate: UpgradeCandidate
-  bundle: UpgradeBundle
-  onClose: () => void
+  stackId: string;
+  candidate: UpgradeCandidate;
+  bundle: UpgradeBundle;
+  onClose: () => void;
 }) {
-  const { t } = useTranslation()
-  const preflight = usePreflightUpgrade()
-  const startUpgrade = useStartUpgrade()
+  const { t } = useTranslation();
+  const preflight = usePreflightUpgrade();
+  const startUpgrade = useStartUpgrade();
   // 대화 상자 하나 = 요청 하나. 재시도(네트워크 오류 등)에도 같은 키를 보내 서버가 실행을 하나만 만든다.
-  const [idempotencyKey] = useState(createIdempotencyKey)
-  const [checks, setChecks] = useState<UpgradeCheck[] | null>(null)
-  const [preflightError, setPreflightError] = useState('')
-  const [reason, setReason] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [startError, setStartError] = useState('')
+  const [idempotencyKey] = useState(createIdempotencyKey);
+  const [checks, setChecks] = useState<UpgradeCheck[] | null>(null);
+  const [preflightError, setPreflightError] = useState("");
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [startError, setStartError] = useState("");
 
   // 열 때 한 번 점검한다. StrictMode 의 이중 실행에도 한 번만 부르도록 ref 로 막는다.
-  const runPreflight = preflight.mutateAsync
-  const preflightRan = useRef(false)
+  const runPreflight = preflight.mutateAsync;
+  const preflightRan = useRef(false);
   useEffect(() => {
-    if (preflightRan.current) return
-    preflightRan.current = true
+    if (preflightRan.current) return;
+    preflightRan.current = true;
     runPreflight({ stackId, bundleId: bundle.id })
       .then((result) => setChecks(result.checks))
-      .catch((error: unknown) => setPreflightError(errorMessage(error)))
-  }, [runPreflight, stackId, bundle.id])
+      .catch((error: unknown) => setPreflightError(errorMessage(error)));
+  }, [runPreflight, stackId, bundle.id]);
 
-  const blocked = checks?.some((check) => check.status === 'blocked') ?? false
-  const canStart = checks !== null && !blocked && reason.trim() !== '' && !submitting
+  const blocked = checks?.some((check) => check.status === "blocked") ?? false;
+  const canStart =
+    checks !== null && !blocked && reason.trim() !== "" && !submitting;
 
   const handleStart = async () => {
-    setSubmitting(true)
-    setStartError('')
+    setSubmitting(true);
+    setStartError("");
     try {
-      const run = await startUpgrade.mutateAsync({ stackId, bundleId: bundle.id, reason: reason.trim(), idempotencyKey })
-      if (run.status === 'blocked') {
-        setChecks(run.checks)
-        return
+      const run = await startUpgrade.mutateAsync({
+        stackId,
+        bundleId: bundle.id,
+        reason: reason.trim(),
+        idempotencyKey,
+      });
+      if (run.status === "blocked") {
+        setChecks(run.checks);
+        return;
       }
-      toast.success(t('stackList.upgrade.started'))
-      onClose()
+      toast.success(t("stackList.upgrade.started"));
+      onClose();
     } catch (error) {
-      setStartError(errorMessage(error) || t('stackList.upgrade.failed'))
+      setStartError(errorMessage(error) || t("stackList.upgrade.failed"));
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
-  }
+  };
 
-  const tool = TOOL_LABEL[candidate.tool] ?? candidate.tool
+  const tool = TOOL_LABEL[candidate.tool] ?? candidate.tool;
   return (
     <Modal
       open
       onClose={onClose}
-      title={t('stackList.upgrade.dialogTitle', { tool })}
+      title={t("stackList.upgrade.dialogTitle", { tool })}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
-            {t('common.cancel', 'Cancel')}
+            {t("common.cancel", "Cancel")}
           </Button>
-          <Button variant="primary" disabled={!canStart} loading={submitting} onClick={() => void handleStart()}>
-            {t('stackList.upgrade.start')}
+          <Button
+            variant="primary"
+            disabled={!canStart}
+            loading={submitting}
+            onClick={() => void handleStart()}
+          >
+            {t("stackList.upgrade.start")}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-4 text-[13px]">
         <div className="text-[var(--color-text-primary)]">
-          {versionLabel(candidate.current_chart_version, candidate.current_app_version)}
-          {' → '}
-          <strong>{versionLabel(bundle.target_chart_version, bundle.target_app_version)}</strong>
+          {versionLabel(
+            candidate.current_chart_version,
+            candidate.current_app_version,
+          )}
+          {" → "}
+          <strong>
+            {versionLabel(
+              bundle.target_chart_version,
+              bundle.target_app_version,
+            )}
+          </strong>
         </div>
         {bundle.expected_disruption && (
           <div>
-            <div className="text-[12px] font-semibold text-[var(--color-text-secondary)]">{t('stackList.upgrade.disruption')}</div>
-            <div className="text-[var(--color-text-primary)]">{bundle.expected_disruption}</div>
+            <div className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
+              {t("stackList.upgrade.disruption")}
+            </div>
+            <div className="text-[var(--color-text-primary)]">
+              {bundle.expected_disruption}
+            </div>
           </div>
         )}
         {bundle.release_notes && !isLink(bundle.release_notes) && (
-          <div className="whitespace-pre-wrap text-[var(--color-text-secondary)]">{bundle.release_notes}</div>
+          <div className="whitespace-pre-wrap text-[var(--color-text-secondary)]">
+            {bundle.release_notes}
+          </div>
         )}
         {(candidate.fixes_found?.length ?? 0) > 0 && (
           <div>
-            <div className="text-[12px] font-semibold text-[var(--color-text-secondary)]">{t('stackList.upgrade.fixesTitle')}</div>
+            <div className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
+              {t("stackList.upgrade.fixesTitle")}
+            </div>
             <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">
               {candidate.fixes_found?.map((id) => (
                 <li
@@ -307,13 +424,17 @@ function UpgradeDialog({
         )}
 
         <div>
-          <div className="mb-1.5 text-[12px] font-semibold text-[var(--color-text-secondary)]">{t('stackList.upgrade.preflightTitle')}</div>
+          <div className="mb-1.5 text-[12px] font-semibold text-[var(--color-text-secondary)]">
+            {t("stackList.upgrade.preflightTitle")}
+          </div>
           {checks === null && !preflightError && (
-            <div className="text-[var(--color-text-secondary)]">{t('stackList.upgrade.preflightRunning')}</div>
+            <div className="text-[var(--color-text-secondary)]">
+              {t("stackList.upgrade.preflightRunning")}
+            </div>
           )}
           {preflightError && (
             <div className="text-[var(--color-error)]">
-              {t('stackList.upgrade.preflightFailed')} {preflightError}
+              {t("stackList.upgrade.preflightFailed")} {preflightError}
             </div>
           )}
           {checks && (
@@ -323,11 +444,17 @@ function UpgradeDialog({
                   <StatusIcon tone={CHECK_TONE[check.status]} size="xs" />
                   <div className="min-w-0">
                     <span className="font-semibold text-[var(--color-text-primary)]">
-                      {t(`stackList.upgrade.checks.${check.name}`, { defaultValue: check.name })}
+                      {t(`stackList.upgrade.checks.${check.name}`, {
+                        defaultValue: check.name,
+                      })}
                     </span>
-                    <div className="text-[var(--color-text-secondary)]">{check.message}</div>
-                    {check.status !== 'pass' && check.remediation && (
-                      <div className="text-[var(--color-warning)]">{check.remediation}</div>
+                    <div className="text-[var(--color-text-secondary)]">
+                      {check.message}
+                    </div>
+                    {check.status !== "pass" && check.remediation && (
+                      <div className="text-[var(--color-warning)]">
+                        {check.remediation}
+                      </div>
                     )}
                   </div>
                 </li>
@@ -337,25 +464,116 @@ function UpgradeDialog({
         </div>
 
         <label className="flex flex-col gap-1">
-          <span className="text-[12px] font-semibold text-[var(--color-text-secondary)]">{t('stackList.upgrade.reasonLabel')}</span>
+          <span className="text-[12px] font-semibold text-[var(--color-text-secondary)]">
+            {t("stackList.upgrade.reasonLabel")}
+          </span>
           <textarea
             rows={2}
             value={reason}
             onChange={(event) => setReason(event.target.value)}
-            placeholder={t('stackList.upgrade.reasonPlaceholder')}
-            className={textInputClass('h-auto py-1.5')}
+            placeholder={t("stackList.upgrade.reasonPlaceholder")}
+            className={textInputClass("h-auto py-1.5")}
           />
         </label>
-        {startError && <div className="text-[var(--color-error)]">{startError}</div>}
+        {startError && (
+          <div className="text-[var(--color-error)]">{startError}</div>
+        )}
       </div>
     </Modal>
-  )
+  );
+}
+
+// 실행 이력 — 이 스택에서 누가 언제 무엇을 시도했고 어떻게 끝났는가. 사전 점검에서 막힌 시도도 남는다.
+// 진행 중인 실행은 위의 행(last_run)이 5초마다 따라가고, 끝나면 이 목록을 다시 읽는다.
+function UpgradeRunHistory({ stackId }: { stackId: string }) {
+  const { t } = useTranslation();
+  const runs = useUpgradeRuns(stackId);
+  const items = runs.data?.items ?? [];
+  const h = (key: string) => t(`stackList.upgrade.history.${key}`);
+  return (
+    <section className="mt-6" data-testid="upgrade-run-history">
+      <div className="mb-2 flex items-center gap-2">
+        <History
+          {...iconProps("sm")}
+          className="text-[var(--color-text-secondary)]"
+        />
+        <h4 className="m-0 text-[13px] font-bold text-[var(--color-text-primary)]">
+          {h("title")}
+        </h4>
+      </div>
+      {runs.isError && (
+        <div className="text-[12px] text-[var(--color-error)]">
+          {h("loadError")}
+        </div>
+      )}
+      {!runs.isLoading && !runs.isError && items.length === 0 && (
+        <div className="rounded-lg border border-[var(--color-border-default)] p-3 text-[12px] text-[var(--color-text-secondary)]">
+          {h("empty")}
+        </div>
+      )}
+      {items.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border border-[var(--color-border-default)]">
+          <table className="min-w-full text-left text-[12px]">
+            <thead className="bg-[color-mix(in_srgb,_var(--color-text-primary)_3%,_transparent)] text-[var(--color-text-secondary)]">
+              <tr>
+                <th className={thClass}>{h("col.when")}</th>
+                <th className={thClass}>{h("col.path")}</th>
+                <th className={thClass}>{h("col.status")}</th>
+                <th className={thClass}>{h("col.requestedBy")}</th>
+                <th className={thClass}>{h("col.reason")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((run) => (
+                <tr
+                  key={run.id}
+                  className="border-t border-[var(--color-border-default)] align-top"
+                  data-testid={`upgrade-run-${run.id}`}
+                >
+                  <td className="whitespace-nowrap px-3 py-2 text-[var(--color-text-secondary)]">
+                    {new Date(run.started_at).toLocaleString()}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 font-mono text-[11px] text-[var(--color-text-primary)]">
+                    {run.source_chart_version} → {run.target_chart_version}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="inline-flex items-center gap-1.5 text-[var(--color-text-primary)]">
+                      <StatusIcon tone={RUN_TONE[run.status]} size="xs" />
+                      {t(`stackList.upgrade.runShort.${run.status}`, {
+                        defaultValue: run.status,
+                      })}
+                    </span>
+                    {run.error && run.status !== "succeeded" && (
+                      <div className="mt-0.5 max-w-[360px] text-[11px] text-[var(--color-error)]">
+                        {run.error}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-[var(--color-text-secondary)]">
+                    {run.requested_by}
+                  </td>
+                  <td className="px-3 py-2 text-[var(--color-text-secondary)]">
+                    {run.reason}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
-    return error.message
+  if (error instanceof Error) return error.message;
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
   }
-  return ''
+  return "";
 }

@@ -1277,6 +1277,27 @@
         "rolled_back": "실패해 {{from}} 로 되돌렸습니다",
         "manual_intervention_required": "수동 개입 필요",
         "blocked": "마지막 시도가 사전 점검에서 막혔습니다"
+      },
+      "history": {
+        "title": "실행 이력",
+        "empty": "아직 실행한 업그레이드가 없습니다.",
+        "loadError": "실행 이력을 불러오지 못했습니다.",
+        "col": {
+          "when": "시각",
+          "path": "경로",
+          "status": "상태",
+          "requestedBy": "요청자",
+          "reason": "사유"
+        }
+      },
+      "runShort": {
+        "upgrading": "진행 중",
+        "rolling_back": "되돌리는 중",
+        "failed": "적용 안 됨",
+        "succeeded": "완료",
+        "rolled_back": "되돌림",
+        "manual_intervention_required": "수동 개입 필요",
+        "blocked": "사전 점검에서 막힘"
       }
     }
   },
@@ -1994,7 +2015,8 @@
     "actions": {
       "new": "새 매트릭스",
       "edit": "편집",
-      "delete": "삭제"
+      "delete": "삭제",
+      "newBundle": "새 번들"
     },
     "filter": {
       "searchPlaceholder": "ID 또는 이름으로 검색",
@@ -2038,6 +2060,91 @@
       "title": "호환성 매트릭스 삭제",
       "description": "이 매트릭스를 삭제하면 이 조합을 사용하던 스택들은 untested 로 처리됩니다. 계속할까요?",
       "confirm": "삭제"
+    },
+    "tabs": {
+      "matrices": "호환성 매트릭스",
+      "upgradeBundles": "업그레이드 번들"
+    },
+    "bundles": {
+      "subtitle": "설치된 OSS 를 올릴 수 있는 검증된 경로입니다. 실클러스터에서 리허설한 경로만 검증됨으로 등록하세요 — 스택의 버전 업그레이드 탭은 검증됨 번들만 후보로 보여 줍니다.",
+      "loadError": "업그레이드 번들을 불러오지 못했습니다.",
+      "empty": {
+        "title": "등록된 업그레이드 번들이 없습니다",
+        "hint": "리허설을 마친 경로를 새 번들로 등록하세요"
+      },
+      "col": {
+        "tool": "도구",
+        "path": "경로",
+        "risk": "위험도",
+        "backup": "백업",
+        "cves": "고치는 CVE",
+        "status": "상태",
+        "createdAt": "등록",
+        "actions": "작업"
+      },
+      "backupRequired": "필요",
+      "backupOptional": "선택",
+      "status": {
+        "draft": "초안",
+        "verified": "검증됨",
+        "deprecated": "폐기 예정",
+        "revoked": "회수됨"
+      },
+      "statusHint": {
+        "draft": "후보에 보이지 않습니다. 리허설을 마치면 검증됨으로 올립니다.",
+        "verified": "출발 버전을 쓰는 모든 스택의 버전 업그레이드 탭에 후보로 보입니다.",
+        "deprecated": "후보에서 빠졌습니다. 다시 검증하거나 회수합니다.",
+        "revoked": "거둔 경로입니다. 되살릴 수 없습니다."
+      },
+      "action": {
+        "verified": "검증됨으로",
+        "deprecated": "폐기",
+        "revoked": "회수"
+      },
+      "change": {
+        "title": "번들 상태 변경",
+        "description": "{{id}} 을(를) {{from}} 에서 {{to}} 로 바꿉니다.",
+        "revokeWarning": "회수는 되돌릴 수 없습니다. 같은 경로를 다시 쓰려면 리허설한 뒤 새 번들로 등록합니다.",
+        "confirm": "변경",
+        "done": "번들 상태를 바꿨습니다.",
+        "failed": "번들 상태를 바꾸지 못했습니다."
+      },
+      "rehearsal": {
+        "label": "이 경로를 실클러스터에서 리허설했다",
+        "hint": "검증됨 번들은 출발 버전을 쓰는 모든 스택에 업그레이드 후보로 보입니다. 실제로 끝까지 돌려 본 경로만 표시하세요.",
+        "required": "검증됨으로 등록하려면 리허설 확인이 필요합니다."
+      },
+      "register": {
+        "title": "업그레이드 번들 등록",
+        "intro": "출발 차트 버전에서 대상 차트 버전으로 가는 경로 하나를 등록합니다. 스택의 버전 업그레이드 탭은 설치된 차트 버전이 출발 버전과 같은 검증됨 번들만 후보로 보여 줍니다.",
+        "tool": "도구",
+        "releaseName": "Helm 릴리스 이름",
+        "chartName": "차트 이름",
+        "repoUrl": "차트 저장소",
+        "sourceChart": "출발 차트 버전",
+        "sourceApp": "출발 앱 버전",
+        "targetChart": "대상 차트 버전",
+        "targetApp": "대상 앱 버전",
+        "targetAppHint": "업그레이드 뒤 상태 검사가 서버 이미지 태그와 비교하는 값입니다 — 틀리면 되돌려집니다.",
+        "risk": "위험도",
+        "disruption": "예상 중단",
+        "releaseNotes": "릴리스 노트(주소 또는 메모)",
+        "fixesCves": "고치는 CVE(쉼표로 구분)",
+        "fixesCvesHint": "예: CVE-2025-12345, CVE-2025-23456 — 비워 두면 화면이 CVE 를 말하지 않습니다.",
+        "requiresBackup": "실행 전 24시간 이내 백업을 요구",
+        "requiresBackupHint": "복구 가능한 백업이 없으면 사전 점검이 막습니다. 리허설로 불필요함을 확인한 경우가 아니면 켜 둡니다.",
+        "architectures": "지원 아키텍처",
+        "status": "등록 상태",
+        "statusVerified": "검증됨 — 업그레이드 후보로 제공",
+        "statusDraft": "초안 — 검증됨으로 올리기 전까지 후보에 보이지 않음",
+        "submit": "등록",
+        "required": "필수 항목입니다.",
+        "versionFormat": "버전 형식이 아닙니다(예: 7.7.22).",
+        "targetSameAsSource": "대상 버전은 출발 버전과 달라야 합니다.",
+        "cveFormat": "CVE 식별자 형식이 아닙니다(예: CVE-2025-12345).",
+        "done": "업그레이드 번들을 등록했습니다.",
+        "failed": "번들을 등록하지 못했습니다."
+      }
     }
   },
   "stackDeployment": {

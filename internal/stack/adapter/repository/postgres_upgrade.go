@@ -24,7 +24,82 @@ func NewPostgresUpgradeRepository(pool *pgxpool.Pool) *PostgresUpgradeRepository
 const upgradeBundleColumns = `id, tool, release_name, chart_name, repo_url,
  source_chart_version, source_app_version, target_chart_version, target_app_version,
  risk_level, expected_disruption, release_notes, requires_backup,
- supported_architectures, status, fixes_cves`
+ supported_architectures, status, fixes_cves, created_at`
+
+func (r *PostgresUpgradeRepository) ListBundles(ctx context.Context) ([]domain.UpgradeBundle, error) {
+	rows, err := r.pool.Query(ctx, `SELECT `+upgradeBundleColumns+`
+ FROM upgrade_bundles ORDER BY tool, source_chart_version, target_chart_version, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []domain.UpgradeBundle{}
+	for rows.Next() {
+		b, err := scanUpgradeBundle(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *b)
+	}
+	return out, rows.Err()
+}
+
+func (r *PostgresUpgradeRepository) GetBundle(ctx context.Context, id string) (*domain.UpgradeBundle, error) {
+	b, err := scanUpgradeBundle(r.pool.QueryRow(ctx, `SELECT `+upgradeBundleColumns+`
+ FROM upgrade_bundles WHERE id=$1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("%w: %s", domain.ErrUpgradeBundleUnknown, id)
+	}
+	return b, err
+}
+
+// CreateBundle 은 기본 키와 경로 유니크 제약(tool · source · target)으로 중복을 막는다.
+func (r *PostgresUpgradeRepository) CreateBundle(ctx context.Context, b *domain.UpgradeBundle) error {
+	architectures, err := json.Marshal(nonNilStrings(b.SupportedArchitectures))
+	if err != nil {
+		return err
+	}
+	fixes, err := json.Marshal(nonNilStrings(b.FixesCVEs))
+	if err != nil {
+		return err
+	}
+	createdAt := b.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	_, err = r.pool.Exec(ctx, `INSERT INTO upgrade_bundles (id, tool, release_name, chart_name, repo_url,
+ source_chart_version, source_app_version, target_chart_version, target_app_version,
+ risk_level, expected_disruption, release_notes, requires_backup, supported_architectures, status,
+ fixes_cves, created_at)
+ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+		b.ID, b.Tool, b.ReleaseName, b.ChartName, b.RepoURL,
+		b.SourceChartVersion, b.SourceAppVersion, b.TargetChartVersion, b.TargetAppVersion,
+		b.RiskLevel, b.ExpectedDisruption, b.ReleaseNotes, b.RequiresBackup, architectures, b.Status,
+		fixes, createdAt)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return domain.ErrUpgradeBundleExists
+	}
+	return err
+}
+
+func (r *PostgresUpgradeRepository) UpdateBundleStatus(ctx context.Context, id, status string) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE upgrade_bundles SET status=$2 WHERE id=$1`, id, status)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: %s", domain.ErrUpgradeBundleUnknown, id)
+	}
+	return nil
+}
+
+func nonNilStrings(in []string) []string {
+	if in == nil {
+		return []string{}
+	}
+	return in
+}
 
 func (r *PostgresUpgradeRepository) ListVerifiedBundles(ctx context.Context, tool, source string) ([]domain.UpgradeBundle, error) {
 	rows, err := r.pool.Query(ctx, `SELECT `+upgradeBundleColumns+`
@@ -62,7 +137,7 @@ func scanUpgradeBundle(row rowScanner) (*domain.UpgradeBundle, error) {
 	err := row.Scan(&b.ID, &b.Tool, &b.ReleaseName, &b.ChartName, &b.RepoURL,
 		&b.SourceChartVersion, &b.SourceAppVersion, &b.TargetChartVersion, &b.TargetAppVersion,
 		&b.RiskLevel, &b.ExpectedDisruption, &b.ReleaseNotes, &b.RequiresBackup,
-		&architectures, &b.Status, &fixes)
+		&architectures, &b.Status, &fixes, &b.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -183,6 +258,27 @@ func (r *PostgresUpgradeRepository) LatestRun(ctx context.Context, stackID, tool
 	return r.optionalRun(ctx, `SELECT `+upgradeRunColumns+`
  FROM stack_upgrade_runs WHERE stack_id=$1 AND tool=$2 AND status <> 'blocked'
  ORDER BY started_at DESC LIMIT 1`, stackID, tool)
+}
+
+func (r *PostgresUpgradeRepository) ListRuns(ctx context.Context, stackID string, limit int) ([]domain.UpgradeRun, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := r.pool.Query(ctx, `SELECT `+upgradeRunColumns+`
+ FROM stack_upgrade_runs WHERE stack_id=$1 ORDER BY started_at DESC, id LIMIT $2`, stackID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []domain.UpgradeRun{}
+	for rows.Next() {
+		run, err := scanUpgradeRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *run)
+	}
+	return out, rows.Err()
 }
 
 func (r *PostgresUpgradeRepository) optionalRun(ctx context.Context, query string, args ...any) (*domain.UpgradeRun, error) {
