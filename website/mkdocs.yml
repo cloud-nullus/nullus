@@ -125,7 +125,7 @@ plugins:
                 link: https://github.com/cloud-nullus/nullus
                 name: GitHub repository
               - icon: fontawesome/brands/youtube
-                link: https://www.youtube.com/watch?v=VrTqBKInlNw
+                link: https://www.youtube.com/watch?v=BDwy0FUZpB4
                 name: Demo video
           # nav 의 제목은 한국어로 적혀 있다. 영어판은 이 표로 바꾼다 — nav 에
           # 제목을 더하면 여기에도 더한다(check-i18n.sh 가 빠진 것을 잡는다).
@@ -179,7 +179,7 @@ extra:
       link: https://github.com/cloud-nullus/nullus
       name: GitHub 저장소
     - icon: fontawesome/brands/youtube
-      link: https://www.youtube.com/watch?v=VrTqBKInlNw
+      link: https://www.youtube.com/watch?v=BDwy0FUZpB4
       name: 시연 영상
 
 # stage.sh 가 가져오는 단독 HTML 가이드·발표 장표. nav 에는 소개 페이지만 올린다.

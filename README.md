@@ -7,7 +7,7 @@ Kubernetes 기반 DevSecOps 자동화 오픈소스 플랫폼
 ![Kubernetes 1.34+](https://img.shields.io/badge/Kubernetes-1.34%2B-326CE5?logo=kubernetes&logoColor=white)
 ![Helm v3](https://img.shields.io/badge/Helm-v3-0F1689?logo=helm&logoColor=white)
 
-**[📖 문서 사이트](https://cloud-nullus.github.io/nullus/)** · **[🚀 라이브 데모](https://cloud-nullus.github.io)** · **[▶️ 시연 영상](https://www.youtube.com/watch?v=VrTqBKInlNw)**
+**[📖 문서 사이트](https://cloud-nullus.github.io/nullus/)** · **[🚀 라이브 데모](https://cloud-nullus.github.io)** · **[▶️ 시연 영상](https://www.youtube.com/watch?v=BDwy0FUZpB4)** · **[📊 발표 장표](https://cloud-nullus.github.io/nullus/presentations/stp3-v0.4.html)**
 
 ## Nullus 란
 
@@ -213,5 +213,5 @@ nullus/
 - [시스템 아키텍처](./docs/20_아키텍처/Nullus_시스템_아키텍처.md) · [API 설계](./docs/20_아키텍처/Nullus_API_설계.md) · [인프라 배포 설계](./docs/50_운영/Nullus_인프라_배포_설계.md)
 - [PRD v1.3](./docs/10_제품기획/nullus_PRD_1.3.md) · [ROADMAP](./docs/70_전략/ROADMAP.md) · [CHANGELOG](./CHANGELOG.md)
 - [CONTRIBUTING](./CONTRIBUTING.md) — 개발 환경·브랜치·커밋 규칙·테스트 가이드 · [PR·커밋 컨벤션](./docs/20_개발가이드/Nullus_PR_커밋_컨벤션.md) · [CLAUDE.md](./CLAUDE.md) — 아키텍처 원칙
-- [2차 기술 검증 발표 장표](./docs/80_프로젝트관리/Nullus_2차기술검증_발표장표.html)
+- 기술 검증 발표 — 3차(v0.6.0): [장표](https://cloud-nullus.github.io/nullus/presentations/stp3-v0.4.html) · [시연 영상](https://www.youtube.com/watch?v=BDwy0FUZpB4) (설치부터 AI 어시스턴트까지 9:37) / 2차: [장표](./docs/80_프로젝트관리/Nullus_2차기술검증_발표장표.html) · [시연 영상](https://www.youtube.com/watch?v=VrTqBKInlNw)
 - 문의: [GitHub Issues](https://github.com/cloud-nullus/nullus/issues) (버그·기능 요청) · [Discussions](https://github.com/cloud-nullus/nullus/discussions) (질문·아이디어)
