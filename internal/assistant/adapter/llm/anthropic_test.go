@@ -183,3 +183,24 @@ func TestAnthropic_AcceptsBaseURLWithV1(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "/v1/messages", path)
 }
+
+// 조회 질문의 첫 라운드: tool_choice any 로 도구 호출을 강제한다.
+func TestAnthropic_RequireToolUseSendsAny(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		_, _ = io.WriteString(w, `{"content":[{"type":"tool_use","id":"toolu_1","name":"cluster_list","input":{}}],"stop_reason":"tool_use"}`)
+	}))
+	defer srv.Close()
+
+	msg, err := NewAnthropic(Config{BaseURL: srv.URL, APIKey: "sk-ant-x", Model: "claude-sonnet-5-5"}).Complete(context.Background(), port.CompletionRequest{
+		Messages:       []domain.Message{{Role: domain.RoleUser, Content: "등록된 클러스터 목록"}},
+		Tools:          []domain.ToolSpec{{Name: "cluster_list", Description: "목록", Parameters: map[string]any{"type": "object"}}},
+		RequireToolUse: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"type": "any"}, got["tool_choice"])
+	require.Len(t, msg.ToolCalls, 1)
+	assert.Equal(t, "cluster_list", msg.ToolCalls[0].Name)
+}

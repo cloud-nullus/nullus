@@ -27,7 +27,7 @@ The transport is **stdio only**.
 | `stack_list` | None | `GET /api/v1/stacks` |
 | `stack_status` | `stack_id` | `GET /api/v1/stacks/{id}/status` |
 | `cluster_list` | None | `GET /api/v1/admin/clusters` |
-| `template_list` | None | `GET /api/v1/stacks/templates` |
+| `template_list` | None | `GET /api/v1/stacks/templates` — the reply is reduced to `count` plus id · name · use case · resources · tools (name + version) per template |
 | `compat_check` | `stack_id`, `tools?` | `POST /api/v1/stacks/{id}/validate` |
 | `stack_logs_tail` | `stack_id`, `lines?` (default 100) | `GET /api/v1/stacks/{id}/deploy/logs/tail` |
 

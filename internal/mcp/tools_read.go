@@ -83,13 +83,13 @@ func registerReadTools(server *sdk.Server, c *nullusclient.Client) {
 
 	sdk.AddTool(server, &sdk.Tool{
 		Name:        "template_list",
-		Description: "스택 템플릿(Golden Path) 카탈로그 조회",
+		Description: "스택 템플릿(Golden Path) 카탈로그 조회 — count 와 템플릿별 id · name · 용도 · 도구 요약",
 	}, func(ctx context.Context, req *sdk.CallToolRequest, in struct{}) (*sdk.CallToolResult, any, error) {
 		out, err := getJSON(ctx, c, "/api/v1/stacks/templates")
 		if err != nil {
 			return nil, nil, err
 		}
-		return jsonResult(out)
+		return jsonResult(compactTemplateList(out))
 	})
 
 	sdk.AddTool(server, &sdk.Tool{
@@ -157,4 +157,49 @@ func redactSecrets(v any) any {
 	default:
 		return v
 	}
+}
+
+// compactTemplateList 는 템플릿 카탈로그를 모델이 세고 고르기 좋은 모양으로 줄인다.
+//
+// 원문은 템플릿 하나에 계획 프로필 · 자원 표까지 1KB 가 넘어, 11개면 어시스턴트의 도구 결과 상한
+// (12,000자)에 잘렸다. 잘린 목록을 받은 모델은 "템플릿은 3개" 처럼 매번 다른 개수를 말했다(10-25 시연).
+// count 를 함께 실어 세는 일을 모델에 맡기지 않는다. 목록이 아닌 응답(오류 본문 등)은 그대로 둔다.
+func compactTemplateList(raw any) any {
+	items, ok := raw.([]any)
+	if !ok {
+		return raw
+	}
+	out := make([]map[string]any, 0, len(items))
+	for _, it := range items {
+		m, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		entry := map[string]any{"id": m["id"], "name": m["name"]}
+		for _, k := range []string{"description", "recommended_use_case", "min_resources"} {
+			if v, ok := m[k]; ok && v != nil && v != "" {
+				entry[k] = v
+			}
+		}
+		if tools, ok := m["tools"].([]any); ok {
+			names := make([]string, 0, len(tools))
+			for _, t := range tools {
+				tm, ok := t.(map[string]any)
+				if !ok {
+					continue
+				}
+				name, _ := tm["name"].(string)
+				if name == "" {
+					continue
+				}
+				if ver, _ := tm["app_version"].(string); ver != "" {
+					name += " " + ver
+				}
+				names = append(names, name)
+			}
+			entry["tools"] = names
+		}
+		out = append(out, entry)
+	}
+	return map[string]any{"count": len(out), "items": out}
 }
