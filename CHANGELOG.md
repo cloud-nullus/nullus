@@ -311,6 +311,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CI 의 e2e 잡이 모든 PR 과 main 에서 테스트 전에 실패하던 것** (`.github/workflows/ci.yml`): GitHub 의 `ubuntu-latest` 러너가 Ubuntu 26.04 로 바뀌자 Playwright(`^1.58.2`)가 `Playwright does not support chromium on ubuntu26.04-x64` 로 브라우저 설치 단계에서 멈췄다. e2e 잡만 `ubuntu-24.04` 에 묶는다 — 다른 잡은 26.04 에서 통과한다. Playwright 를 26.04 지원 판으로 올리면 풀어도 된다.
+
 - **게이트웨이 라우터가 앱 주소(demo-api.<도메인> 등)를 끊던 것** (`scripts/port-forward-gateway.sh`): 로컬 SNI 라우터가 스택 네임스페이스의 HTTPRoute 호스트(gitlab · argocd …)만 알아, 다른 네임스페이스에 배포한 앱의 HTTPRoute 호스트로 들어오면 `no host in upstream` 으로 연결을 끊었다 — 배포한 앱을 브라우저로 열 수 없었다(10-26). 이제 모든 네임스페이스의 HTTPRoute 중 parentRefs 가 그 게이트웨이를 가리키는 것의 호스트도 넣는다. `--hosts` 가 내는 /etc/hosts 줄에도 앱 주소가 들어간다.
 
 - **AI 어시스턴트가 조회 질문에 도구 없이 답을 지어내던 것 · 템플릿 개수를 틀리던 것 · 답에 다른 언어와 표가 섞이던 것** (`internal/assistant/{domain/tool_first.go,domain/prompt.go,usecase/chat.go,adapter/llm/openai_compat.go,adapter/llm/anthropic.go}`, `internal/mcp/tools_read.go`, `website/docs/reference/mcp{,.en}.md`): 10-25 시연에서 "등록된 클러스터 목록" 에 도구를 부르지 않고 "클러스터가 없다" 고 답했고(실제 2개), 템플릿 개수는 물을 때마다 3 · 6 · 10개로 달랐으며, 한국어 답에 중국어 문장과 마크다운 표가 섞였다. 원인 셋 — 모델이 도구 호출을 건너뛴 것, `template_list` 가 템플릿 원문(계획 프로필 · 자원 표)을 통째로 돌려줘 11개면 도구 결과 상한 12,000자에 잘려 모델이 잘린 목록을 센 것, 언어 · 서식 규칙 부재. 이제 스택 · 클러스터 · 템플릿 · 설치 · 로그를 묻는 질문(`domain.RequiresToolFirst`)은 첫 라운드의 `tool_choice` 를 `required`(Anthropic 은 `any`)로 보내 도구부터 부르고, `template_list` 는 `count` 와 템플릿별 id · name · 용도 · 자원 · 도구(이름 + 버전)만 돌려주며, 시스템 프롬프트에 "도구 결과로만 · 개수는 count 그대로 · 사용자 언어 하나로만 · 표 대신 글머리표" 규칙을 더했다. Upstage(solar-pro4)가 `tool_choice: required` 를 받는 것은 실호출로 확인했다.
