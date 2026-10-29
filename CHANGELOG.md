@@ -309,6 +309,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **의존성 스캔이 Maven 프로젝트에서 Maven Central 429 로 전부 막히던 것** (`internal/cicd/adapter/scaffold/dependency_scan.go`, `docs/11_기능설계/Nullus_의존성_취약점_스캔_설계.md`): 전자정부 표준프레임워크 샘플(Boot · Web) 파이프라인이 둘 다 `dependency-scan` 에서 죽었다 — Trivy 가 pom.xml 의 전이 의존성을 풀려고 pom 을 하나씩 Maven Central 에서 받다가 `429 Too Many Requests`(Retry-After 1800) 를 맞고, 스캐너 장애 차단 정책에 따라 빌드까지 못 갔다(10-26 실측). 이제 `trivy fs` 에 `--offline-scan` 을 준다 — 원격 저장소를 묻지 않고 락파일 · pom 에 적힌 것만 본다. Maven 의 전이 의존성은 이미지 스캔 단계가 빌드된 이미지의 jar 로 본다(실제로 들어간 것을 보는 쪽). 에어갭에서는 원래 이렇게 돌았다.
+
 - **상단 헤더의 작업 알림 패널이 페이지 헤더에 가려 홈 말고는 보이지 않았다 — 상단 헤더를 페이지 헤더 위 층에 세운다** (`web/src/components/layout/header.tsx`, `web/scripts/generate-theme.mjs`, `web/src/theme/tokens.generated.css`): 종(진행 중 작업)을 누르면 패널이 열리지만, 화면마다 sticky 로 붙는 페이지 헤더(`--z-page-header: 30`)와 패널(`z-30`)의 층이 같아 DOM 순서가 뒤인 페이지 헤더가 패널을 덮었다 — 페이지 헤더가 있는 거의 모든 화면에서 그림자만 보였다(로컬 시연 녹화의 파이프라인 로그 화면에서 발견). 상단 헤더를 `relative` 로 세우고 새 층 `--z-app-header: 35`(페이지 헤더 30 과 사이드바 40 사이)를 준다 — 헤더 안의 드롭다운이 함께 올라간다. 모달(50)은 여전히 위다.
 
 - **AI 어시스턴트 답변의 마크다운 기호가 그대로 보였다 — 제목 · 목록 · 굵게 · 코드를 그려서 보인다** (`web/src/features/assistant/components/{assistant-text.tsx,assistant-panel.tsx}`): 모델(Upstage Solar 등)은 지시와 무관하게 마크다운으로 답하는 일이 많아 패널에 `**completed**`, `#### 스토리지 구성` 이 그대로 찍혔다(로컬 시연 녹화에서 발견). 답변의 제목(`#`) · 글머리 목록(`-` · `*`) · 번호 목록 · 표(`| … |`) · 굵게(`**`) · 인라인 코드 · 코드 블록만 그린다. HTML 은 만들지 않고 React 요소로만 그려 답변에 섞인 태그는 글자로 보인다. 사용자가 쓴 글은 그대로 둔다.
