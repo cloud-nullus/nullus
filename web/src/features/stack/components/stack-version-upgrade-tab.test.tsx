@@ -1,288 +1,495 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import type { UpgradeCandidate, UpgradeCheck, UpgradeRun } from '../api/stack-api-types'
-import { StackVersionUpgradeTab } from './stack-version-upgrade-tab'
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import type {
+  UpgradeCandidate,
+  UpgradeCheck,
+  UpgradeRun,
+} from "../api/stack-api-types";
+import { StackVersionUpgradeTab } from "./stack-version-upgrade-tab";
 
-const mockUseStackUpgrades = vi.fn()
-const mockProgress = vi.fn()
-const mockPreflight = vi.fn()
-const mockStart = vi.fn()
+const mockUseStackUpgrades = vi.fn();
+const mockProgress = vi.fn();
+const mockPreflight = vi.fn();
+const mockStart = vi.fn();
+const mockRuns = vi.fn();
 
-vi.mock('../api/stack-api', async () => {
-  const actual = await vi.importActual<typeof import('../api/stack-api')>('../api/stack-api')
+vi.mock("../api/stack-api", async () => {
+  const actual =
+    await vi.importActual<typeof import("../api/stack-api")>(
+      "../api/stack-api",
+    );
   return {
     isUpgradeRunActive: actual.isUpgradeRunActive,
     createIdempotencyKey: actual.createIdempotencyKey,
     useStackUpgrades: (...args: unknown[]) => mockUseStackUpgrades(...args),
+    useUpgradeRuns: (...args: unknown[]) => mockRuns(...args),
     // 진행 중 실행은 클러스터가 아니라 실행 하나(DB)를 폴링한다. 기본은 받은 실행 그대로.
-    useUpgradeRunProgress: (stackId: string, run?: UpgradeRun) => mockProgress(stackId, run) ?? run,
-    usePreflightUpgrade: () => ({ mutateAsync: mockPreflight, isPending: false }),
+    useUpgradeRunProgress: (stackId: string, run?: UpgradeRun) =>
+      mockProgress(stackId, run) ?? run,
+    usePreflightUpgrade: () => ({
+      mutateAsync: mockPreflight,
+      isPending: false,
+    }),
     useStartUpgrade: () => ({ mutateAsync: mockStart, isPending: false }),
-  }
-})
+  };
+});
 
 const bundle = {
-  id: 'b-20',
-  tool: 'argocd',
-  source_chart_version: '7.7.16',
-  source_app_version: 'v2.13.3',
-  target_chart_version: '7.7.20',
-  target_app_version: 'v2.13.5',
-  risk_level: 'low' as const,
-  expected_disruption: 'API server restarts for about a minute',
-  release_notes: 'https://github.com/argoproj/argo-cd/releases/tag/v2.13.5',
+  id: "b-20",
+  tool: "argocd",
+  source_chart_version: "7.7.16",
+  source_app_version: "v2.13.3",
+  target_chart_version: "7.7.20",
+  target_app_version: "v2.13.5",
+  risk_level: "low" as const,
+  expected_disruption: "API server restarts for about a minute",
+  release_notes: "https://github.com/argoproj/argo-cd/releases/tag/v2.13.5",
   requires_backup: true,
-}
+};
 
-function candidate(overrides: Partial<UpgradeCandidate> = {}): UpgradeCandidate {
+function candidate(
+  overrides: Partial<UpgradeCandidate> = {},
+): UpgradeCandidate {
   return {
-    tool: 'argocd',
-    release_name: 'argo-cd',
-    current_chart_version: '7.7.16',
-    current_app_version: 'v2.13.3',
+    tool: "argocd",
+    release_name: "argo-cd",
+    current_chart_version: "7.7.16",
+    current_app_version: "v2.13.3",
     current_revision: 3,
-    release_status: 'deployed',
+    release_status: "deployed",
     bundle,
-    checked_at: '2026-10-18T09:00:00Z',
+    checked_at: "2026-10-18T09:00:00Z",
     ...overrides,
-  }
+  };
 }
 
 function run(overrides: Partial<UpgradeRun> = {}): UpgradeRun {
   return {
-    id: 'run-1',
-    stack_id: 'stk_1',
-    bundle_id: 'b-20',
-    tool: 'argocd',
-    status: 'upgrading',
-    current_step: 'helm_upgrade',
-    requested_by: 'devops',
-    reason: 'CVE',
-    source_chart_version: '7.7.16',
-    target_chart_version: '7.7.20',
+    id: "run-1",
+    stack_id: "stk_1",
+    bundle_id: "b-20",
+    tool: "argocd",
+    status: "upgrading",
+    current_step: "helm_upgrade",
+    requested_by: "devops",
+    reason: "CVE",
+    source_chart_version: "7.7.16",
+    target_chart_version: "7.7.20",
     previous_revision: 3,
     checks: [],
-    started_at: '2026-10-18T09:00:00Z',
-    updated_at: '2026-10-18T09:00:00Z',
+    started_at: "2026-10-18T09:00:00Z",
+    updated_at: "2026-10-18T09:00:00Z",
     ...overrides,
-  }
+  };
 }
 
 const passing: UpgradeCheck[] = [
-  { name: 'stack_state', status: 'pass', message: 'Stack installed' },
-  { name: 'backup', status: 'pass', message: 'Last successful backup: 2026-10-18T08:00:00Z' },
-  { name: 'helm_dry_run', status: 'pass', message: 'Helm server-side dry-run passed' },
-]
+  { name: "stack_state", status: "pass", message: "Stack installed" },
+  {
+    name: "backup",
+    status: "pass",
+    message: "Last successful backup: 2026-10-18T08:00:00Z",
+  },
+  {
+    name: "helm_dry_run",
+    status: "pass",
+    message: "Helm server-side dry-run passed",
+  },
+];
 
 function withItems(items: UpgradeCandidate[]) {
-  mockUseStackUpgrades.mockReturnValue({ data: { items }, isLoading: false, isError: false })
+  mockUseStackUpgrades.mockReturnValue({
+    data: { items },
+    isLoading: false,
+    isError: false,
+  });
 }
 
 beforeEach(() => {
-  mockUseStackUpgrades.mockReset()
-  mockProgress.mockReset()
-  mockPreflight.mockReset()
-  mockStart.mockReset()
-})
+  mockUseStackUpgrades.mockReset();
+  mockProgress.mockReset();
+  mockPreflight.mockReset();
+  mockStart.mockReset();
+  mockRuns.mockReset();
+  mockRuns.mockReturnValue({
+    data: { items: [] },
+    isLoading: false,
+    isError: false,
+  });
+});
 
-describe('StackVersionUpgradeTab', () => {
-  it('shows a loading message while inspecting releases', () => {
-    mockUseStackUpgrades.mockReturnValue({ data: undefined, isLoading: true, isError: false })
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-    expect(screen.getByText(/Checking installed releases/i)).toBeInTheDocument()
-  })
+describe("StackVersionUpgradeTab", () => {
+  it("shows a loading message while inspecting releases", () => {
+    mockUseStackUpgrades.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+    });
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(
+      screen.getByText(/Checking installed releases/i),
+    ).toBeInTheDocument();
+  });
 
-  it('shows an error when releases cannot be inspected', () => {
-    mockUseStackUpgrades.mockReturnValue({ data: undefined, isLoading: false, isError: true })
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-    expect(screen.getByText(/Could not inspect installed releases/i)).toBeInTheDocument()
-  })
+  it("shows an error when releases cannot be inspected", () => {
+    mockUseStackUpgrades.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+    });
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(
+      screen.getByText(/Could not inspect installed releases/i),
+    ).toBeInTheDocument();
+  });
 
-  it('says when no upgradable release is installed', () => {
-    withItems([])
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-    expect(screen.getByText(/No upgradable release/i)).toBeInTheDocument()
-  })
+  it("says when no upgradable release is installed", () => {
+    withItems([]);
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(screen.getByText(/No upgradable release/i)).toBeInTheDocument();
+  });
 
   // 검증 경로가 없는 것을 "최신" 이라고 말하면 운영자가 패치를 미룬다.
-  it('does not claim up to date when there is no verified path', () => {
-    withItems([candidate({ bundle: undefined })])
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-    expect(screen.getByText('No verified upgrade path')).toBeInTheDocument()
-    expect(screen.queryByText(/up to date/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Upgrade' })).not.toBeInTheDocument()
-    expect(screen.getByText('0 available')).toBeInTheDocument()
-  })
+  it("does not claim up to date when there is no verified path", () => {
+    withItems([candidate({ bundle: undefined })]);
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(screen.getByText("No verified upgrade path")).toBeInTheDocument();
+    expect(screen.queryByText(/up to date/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Upgrade" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("0 available")).toBeInTheDocument();
+  });
 
-  it('shows the verified target, risk and release notes', () => {
-    withItems([candidate()])
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-    expect(screen.getByText(/7\.7\.20/)).toBeInTheDocument()
-    expect(screen.getByText('Low risk')).toBeInTheDocument()
-    expect(screen.getByText('1 available')).toBeInTheDocument()
-    const notes = screen.getByRole('link', { name: 'Release notes' })
-    expect(notes).toHaveAttribute('href', bundle.release_notes)
-    expect(notes).toHaveAttribute('rel', expect.stringContaining('noopener'))
-    expect(screen.getByRole('button', { name: 'Upgrade' })).toBeEnabled()
-  })
+  it("shows the verified target, risk and release notes", () => {
+    withItems([candidate()]);
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(screen.getByText(/7\.7\.20/)).toBeInTheDocument();
+    expect(screen.getByText("Low risk")).toBeInTheDocument();
+    expect(screen.getByText("1 available")).toBeInTheDocument();
+    const notes = screen.getByRole("link", { name: "Release notes" });
+    expect(notes).toHaveAttribute("href", bundle.release_notes);
+    expect(notes).toHaveAttribute("rel", expect.stringContaining("noopener"));
+    expect(screen.getByRole("button", { name: "Upgrade" })).toBeEnabled();
+  });
 
-  it('disables Upgrade when the release is blocked', () => {
-    withItems([candidate({ blocked_reason: 'Helm release is pending-upgrade' })])
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-    expect(screen.getByText('Helm release is pending-upgrade')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Upgrade' })).toBeDisabled()
-  })
+  it("disables Upgrade when the release is blocked", () => {
+    withItems([
+      candidate({ blocked_reason: "Helm release is pending-upgrade" }),
+    ]);
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(
+      screen.getByText("Helm release is pending-upgrade"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upgrade" })).toBeDisabled();
+  });
 
   // 화면을 다시 열어도 서버에서 이어지는 실행을 보여 준다.
-  it('shows the running upgrade and blocks another one', () => {
-    withItems([candidate({ last_run: run({ current_step: 'health_check' }) })])
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-    expect(screen.getByText(/Upgrading — verifying health/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Upgrade' })).toBeDisabled()
-  })
+  it("shows the running upgrade and blocks another one", () => {
+    withItems([candidate({ last_run: run({ current_step: "health_check" }) })]);
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(
+      screen.getByText(/Upgrading — verifying health/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upgrade" })).toBeDisabled();
+  });
 
   // 진행 중일 때는 후보(클러스터 Helm 조회)를 다시 읽지 않고, 실행 하나를 폴링한 결과를 보여 준다.
-  it('shows the polled progress of the running upgrade', () => {
-    const started = run({ current_step: 'helm_upgrade' })
-    withItems([candidate({ last_run: started })])
-    mockProgress.mockReturnValue(run({ current_step: 'health_check' }))
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-    expect(mockProgress).toHaveBeenCalledWith('stk_1', started)
-    expect(screen.getByText(/Upgrading — verifying health/)).toBeInTheDocument()
-  })
+  it("shows the polled progress of the running upgrade", () => {
+    const started = run({ current_step: "helm_upgrade" });
+    withItems([candidate({ last_run: started })]);
+    mockProgress.mockReturnValue(run({ current_step: "health_check" }));
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(mockProgress).toHaveBeenCalledWith("stk_1", started);
+    expect(
+      screen.getByText(/Upgrading — verifying health/),
+    ).toBeInTheDocument();
+  });
 
-  it('re-enables Upgrade once the polled run has finished', () => {
-    withItems([candidate({ last_run: run() })])
-    mockProgress.mockReturnValue(run({ status: 'succeeded', current_step: 'complete' }))
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-    expect(screen.getByRole('button', { name: 'Upgrade' })).toBeEnabled()
-  })
+  it("re-enables Upgrade once the polled run has finished", () => {
+    withItems([candidate({ last_run: run() })]);
+    mockProgress.mockReturnValue(
+      run({ status: "succeeded", current_step: "complete" }),
+    );
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(screen.getByRole("button", { name: "Upgrade" })).toBeEnabled();
+  });
 
   // 릴리스를 건드리기 전에 실패했으면 되돌린 것이 아니다 — 아무것도 바뀌지 않았다.
-  it('reports an upgrade that did not apply', () => {
-    withItems([candidate({ last_run: run({ status: 'failed', current_step: 'helm_upgrade', error: 'locate chart failed' }) })])
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-    expect(screen.getByText(/did not apply/)).toBeInTheDocument()
-    expect(screen.getByText(/locate chart failed/)).toBeInTheDocument()
-  })
-
-  it('reports a rolled back run with its cause', () => {
-    withItems([candidate({ last_run: run({ status: 'rolled_back', current_step: 'rollback', error: 'argocd-server not ready' }) })])
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-    expect(screen.getByText(/Failed and rolled back to 7\.7\.16/)).toBeInTheDocument()
-    expect(screen.getByText(/argocd-server not ready/)).toBeInTheDocument()
-  })
-
-  it('reports a run that needs manual intervention', () => {
-    withItems([candidate({ last_run: run({ status: 'manual_intervention_required', error: 'rollback failed' }) })])
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-    expect(screen.getByText(/Manual intervention required/)).toBeInTheDocument()
-    expect(screen.getByText(/rollback failed/)).toBeInTheDocument()
-  })
-
-  it('runs preflight, requires a reason and starts with a stable idempotency key', async () => {
-    withItems([candidate()])
-    mockPreflight.mockResolvedValue({ checks: passing })
-    mockStart.mockRejectedValueOnce(new Error('network down')).mockResolvedValueOnce(run())
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Upgrade' }))
-    const dialog = await screen.findByRole('dialog')
-    expect(mockPreflight).toHaveBeenCalledWith({ stackId: 'stk_1', bundleId: 'b-20' })
-    await within(dialog).findByText('Helm server-side dry-run passed')
-    expect(within(dialog).getByText(/API server restarts/)).toBeInTheDocument()
-
-    const start = within(dialog).getByRole('button', { name: 'Start upgrade' })
-    expect(start).toBeDisabled()
-    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'CVE-2026-1234 patch' } })
-    expect(start).toBeEnabled()
-
-    fireEvent.click(start)
-    await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
-    expect(await within(dialog).findByText(/network down/)).toBeInTheDocument()
-
-    fireEvent.click(start)
-    await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(2))
-    const [first, second] = mockStart.mock.calls.map((call) => call[0])
-    expect(second).toMatchObject({ stackId: 'stk_1', bundleId: 'b-20', reason: 'CVE-2026-1234 patch' })
-    expect(second.idempotencyKey).toBeTruthy()
-    expect(second.idempotencyKey).toBe(first.idempotencyKey)
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-  })
-
-  it('keeps Start disabled and shows how to fix a blocked check', async () => {
-    withItems([candidate()])
-    mockPreflight.mockResolvedValue({
-      checks: [{ name: 'backup', status: 'blocked', message: 'No restorable backup', remediation: 'Take a backup first' }],
-    })
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Upgrade' }))
-    const dialog = await screen.findByRole('dialog')
-    await within(dialog).findByText('No restorable backup')
-    expect(within(dialog).getByText('Take a backup first')).toBeInTheDocument()
-    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'x' } })
-    expect(within(dialog).getByRole('button', { name: 'Start upgrade' })).toBeDisabled()
-  })
-
-  it('keeps the dialog open when the server records the attempt as blocked', async () => {
-    withItems([candidate()])
-    mockPreflight.mockResolvedValue({ checks: passing })
-    mockStart.mockResolvedValue(
-      run({ status: 'blocked', checks: [{ name: 'active_run', status: 'blocked', message: 'Another upgrade is running' }] }),
-    )
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Upgrade' }))
-    const dialog = await screen.findByRole('dialog')
-    await within(dialog).findByText('Helm server-side dry-run passed')
-    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'x' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Start upgrade' }))
-    expect(await within(dialog).findByText('Another upgrade is running')).toBeInTheDocument()
-  })
-
-  // 설치 OSS CVE 대응(nullus-plan#78): 검증된 업그레이드가 이 스택에서 발견된 CVE 를 고치면 그것을 먼저 보인다.
-  it('shows how many CVEs found in this stack the upgrade fixes', async () => {
+  it("reports an upgrade that did not apply", () => {
     withItems([
       candidate({
-        bundle: { ...bundle, fixes_cves: ['CVE-2025-1', 'CVE-2025-2', 'CVE-2025-3'] },
-        fixes_found: ['CVE-2025-1', 'CVE-2025-2'],
+        last_run: run({
+          status: "failed",
+          current_step: "helm_upgrade",
+          error: "locate chart failed",
+        }),
+      }),
+    ]);
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(screen.getByText(/did not apply/)).toBeInTheDocument();
+    expect(screen.getByText(/locate chart failed/)).toBeInTheDocument();
+  });
+
+  it("reports a rolled back run with its cause", () => {
+    withItems([
+      candidate({
+        last_run: run({
+          status: "rolled_back",
+          current_step: "rollback",
+          error: "argocd-server not ready",
+        }),
+      }),
+    ]);
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(
+      screen.getByText(/Failed and rolled back to 7\.7\.16/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/argocd-server not ready/)).toBeInTheDocument();
+  });
+
+  it("reports a run that needs manual intervention", () => {
+    withItems([
+      candidate({
+        last_run: run({
+          status: "manual_intervention_required",
+          error: "rollback failed",
+        }),
+      }),
+    ]);
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(
+      screen.getByText(/Manual intervention required/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/rollback failed/)).toBeInTheDocument();
+  });
+
+  it("runs preflight, requires a reason and starts with a stable idempotency key", async () => {
+    withItems([candidate()]);
+    mockPreflight.mockResolvedValue({ checks: passing });
+    mockStart
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValueOnce(run());
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Upgrade" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(mockPreflight).toHaveBeenCalledWith({
+      stackId: "stk_1",
+      bundleId: "b-20",
+    });
+    await within(dialog).findByText("Helm server-side dry-run passed");
+    expect(within(dialog).getByText(/API server restarts/)).toBeInTheDocument();
+
+    const start = within(dialog).getByRole("button", { name: "Start upgrade" });
+    expect(start).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+      target: { value: "CVE-2026-1234 patch" },
+    });
+    expect(start).toBeEnabled();
+
+    fireEvent.click(start);
+    await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+    expect(await within(dialog).findByText(/network down/)).toBeInTheDocument();
+
+    fireEvent.click(start);
+    await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(2));
+    const [first, second] = mockStart.mock.calls.map((call) => call[0]);
+    expect(second).toMatchObject({
+      stackId: "stk_1",
+      bundleId: "b-20",
+      reason: "CVE-2026-1234 patch",
+    });
+    expect(second.idempotencyKey).toBeTruthy();
+    expect(second.idempotencyKey).toBe(first.idempotencyKey);
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("keeps Start disabled and shows how to fix a blocked check", async () => {
+    withItems([candidate()]);
+    mockPreflight.mockResolvedValue({
+      checks: [
+        {
+          name: "backup",
+          status: "blocked",
+          message: "No restorable backup",
+          remediation: "Take a backup first",
+        },
+      ],
+    });
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Upgrade" }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText("No restorable backup");
+    expect(within(dialog).getByText("Take a backup first")).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+      target: { value: "x" },
+    });
+    expect(
+      within(dialog).getByRole("button", { name: "Start upgrade" }),
+    ).toBeDisabled();
+  });
+
+  it("keeps the dialog open when the server records the attempt as blocked", async () => {
+    withItems([candidate()]);
+    mockPreflight.mockResolvedValue({ checks: passing });
+    mockStart.mockResolvedValue(
+      run({
+        status: "blocked",
+        checks: [
+          {
+            name: "active_run",
+            status: "blocked",
+            message: "Another upgrade is running",
+          },
+        ],
+      }),
+    );
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Upgrade" }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText("Helm server-side dry-run passed");
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+      target: { value: "x" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Start upgrade" }),
+    );
+    expect(
+      await within(dialog).findByText("Another upgrade is running"),
+    ).toBeInTheDocument();
+  });
+
+  // 설치 OSS CVE 대응(nullus-plan#78): 검증된 업그레이드가 이 스택에서 발견된 CVE 를 고치면 그것을 먼저 보인다.
+  it("shows how many CVEs found in this stack the upgrade fixes", async () => {
+    withItems([
+      candidate({
+        bundle: {
+          ...bundle,
+          fixes_cves: ["CVE-2025-1", "CVE-2025-2", "CVE-2025-3"],
+        },
+        fixes_found: ["CVE-2025-1", "CVE-2025-2"],
         fixes_checked: true,
       }),
-    ])
-    mockPreflight.mockResolvedValue({ checks: passing })
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
+    ]);
+    mockPreflight.mockResolvedValue({ checks: passing });
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
 
-    expect(screen.getByText('Fixes 2 CVE(s) found in this stack')).toBeInTheDocument()
+    expect(
+      screen.getByText("Fixes 2 CVE(s) found in this stack"),
+    ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Upgrade' }))
-    const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText('CVE-2025-1')).toBeInTheDocument()
-    expect(within(dialog).getByText('CVE-2025-2')).toBeInTheDocument()
-    expect(within(dialog).queryByText('CVE-2025-3')).not.toBeInTheDocument()
-  })
+    fireEvent.click(screen.getByRole("button", { name: "Upgrade" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("CVE-2025-1")).toBeInTheDocument();
+    expect(within(dialog).getByText("CVE-2025-2")).toBeInTheDocument();
+    expect(within(dialog).queryByText("CVE-2025-3")).not.toBeInTheDocument();
+  });
 
-  it('says when the CVEs the upgrade fixes are not in this stack', () => {
-    withItems([candidate({ bundle: { ...bundle, fixes_cves: ['CVE-2025-1'] }, fixes_checked: true })])
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
+  it("says when the CVEs the upgrade fixes are not in this stack", () => {
+    withItems([
+      candidate({
+        bundle: { ...bundle, fixes_cves: ["CVE-2025-1"] },
+        fixes_checked: true,
+      }),
+    ]);
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
 
-    expect(screen.getByText("Fixes 1 known CVE(s) — none in this stack's last image scan")).toBeInTheDocument()
-  })
+    expect(
+      screen.getByText(
+        "Fixes 1 known CVE(s) — none in this stack's last image scan",
+      ),
+    ).toBeInTheDocument();
+  });
 
   // 스캐너가 없거나 아직 스캔하지 않았으면 "이 스택엔 없다" 가 아니라 모르는 것이다.
-  it('does not claim the CVEs are absent when this stack was not scanned', () => {
-    withItems([candidate({ bundle: { ...bundle, fixes_cves: ['CVE-2025-1', 'CVE-2025-2'] } })])
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
+  it("does not claim the CVEs are absent when this stack was not scanned", () => {
+    withItems([
+      candidate({
+        bundle: { ...bundle, fixes_cves: ["CVE-2025-1", "CVE-2025-2"] },
+      }),
+    ]);
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
 
-    expect(screen.getByText('Fixes 2 known CVE(s)')).toBeInTheDocument()
-    expect(screen.queryByText(/none in this stack/)).not.toBeInTheDocument()
-  })
+    expect(screen.getByText("Fixes 2 known CVE(s)")).toBeInTheDocument();
+    expect(screen.queryByText(/none in this stack/)).not.toBeInTheDocument();
+  });
 
-  it('says nothing about CVEs when the bundle lists none', () => {
-    withItems([candidate()])
-    render(<StackVersionUpgradeTab stackId="stk_1" />)
+  it("says nothing about CVEs when the bundle lists none", () => {
+    withItems([candidate()]);
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
 
-    expect(screen.queryByText(/found in this stack/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/known CVE/)).not.toBeInTheDocument()
-  })
-})
+    expect(screen.queryByText(/found in this stack/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/known CVE/)).not.toBeInTheDocument();
+  });
+});
+
+describe("UpgradeRunHistory", () => {
+  it("lists past runs newest first with status, requester and reason — blocked attempts included", () => {
+    withItems([candidate()]);
+    mockRuns.mockReturnValue({
+      data: {
+        items: [
+          run({
+            id: "run-2",
+            status: "blocked",
+            current_step: "preflight",
+            reason: "retry",
+            error: "blocked by preflight",
+            started_at: "2026-10-25T10:00:00Z",
+          }),
+          run({
+            id: "run-1",
+            status: "succeeded",
+            current_step: "complete",
+            reason: "CVE patch",
+            started_at: "2026-10-25T09:00:00Z",
+          }),
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    });
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(mockRuns).toHaveBeenCalledWith("stk_1");
+    const history = screen.getByTestId("upgrade-run-history");
+    const rows = within(history).getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("Blocked by preflight");
+    expect(rows[0]).toHaveTextContent("blocked by preflight");
+    expect(rows[0]).toHaveTextContent("retry");
+    expect(rows[1]).toHaveTextContent("Succeeded");
+    expect(rows[1]).toHaveTextContent("7.7.16 → 7.7.20");
+    expect(rows[1]).toHaveTextContent("devops");
+    expect(rows[1]).toHaveTextContent("CVE patch");
+  });
+
+  it("says when nothing has run yet", () => {
+    withItems([candidate()]);
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(screen.getByText("No upgrade has run yet.")).toBeInTheDocument();
+  });
+
+  it("reports when the history cannot be loaded", () => {
+    withItems([candidate()]);
+    mockRuns.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+    });
+    render(<StackVersionUpgradeTab stackId="stk_1" />);
+    expect(
+      screen.getByText("Could not load the run history."),
+    ).toBeInTheDocument();
+  });
+});
