@@ -7,6 +7,7 @@ on:
       - 'website/**'
       - 'docs/50_운영/Nullus_로컬_E2E_가이드.html'
       - 'docs/20_아키텍처/Nullus_백업복구_아키텍처.html'
+      - 'docs/presentations/Nullus_3차기술검증_발표장표_v0.4_배포용.html'
       - '.github/workflows/docs.yml'
   pull_request:
     branches: [main]
