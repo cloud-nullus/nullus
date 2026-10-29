@@ -87,7 +87,10 @@ jobs:
         run: npm run inventory:check
 
   e2e:
-    runs-on: ubuntu-latest
+    # ubuntu-latest 가 26.04 로 넘어가자 Playwright 1.58 이 chromium 을 설치하지 못해
+    # ("does not support chromium on ubuntu26.04-x64") 테스트 전에 멈췄다. Playwright 를
+    # 26.04 를 지원하는 판으로 올릴 때까지 24.04 에 묶어 둔다.
+    runs-on: ubuntu-24.04
     needs: [backend, frontend]
     # continue-on-error 를 뗐다. 이 잡이 빨간 상태로 5개월을 지나는 동안 어떤 회귀도
     # PR 을 막지 못했고, 실패 78 건 중 58 건은 리눅스 시각 회귀 베이스라인이 없어서,
