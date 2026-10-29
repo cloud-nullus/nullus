@@ -715,8 +715,29 @@ jobs:
                   content, re.DOTALL)
               if m and m.group(1).strip():
                   body = '\n'.join(header)
+                  section = m.group(1).strip()
+                  # GitHub Release 본문 상한은 125,000자다. 넘으면 Release 생성이 422 로
+                  # 실패해 이미지 · 차트만 올라간 채 남는다(v0.6.0 의 섹션이 16만여 자였다).
+                  # 그때는 항목의 굵은 제목만 남긴 요약본을 싣고, 원인 · 결정 · 파일까지
+                  # 담긴 전체는 태그 시점의 CHANGELOG 로 잇는다(릴리즈 정책 §5).
+                  limit = 120000
+                  if len(body) + len(section) > limit:
+                      lines = [
+                          '> 전체 변경 내역이 GitHub Release 본문 상한(125,000자)을 넘어 항목 제목만 싣습니다. '
+                          f'원인 · 결정 · 바뀐 파일은 [CHANGELOG]({repo}/blob/{tag}/CHANGELOG.md) 에 있습니다.',
+                          '',
+                      ]
+                      for line in section.splitlines():
+                          if line.startswith('### '):
+                              lines += ['', line]
+                          elif line.startswith('- '):
+                              t = re.match(r'- \*\*(.+?)\*\*', line)
+                              lines.append('- ' + t.group(1) if t else line[:200])
+                      section = '\n'.join(lines).strip()
+                      if len(body) + len(section) > limit:
+                          section = section[: limit - len(body)].rsplit('\n', 1)[0] + '\n\n…(이하 생략 — CHANGELOG 참조)'
                   with open('release_notes.md', 'w', encoding='utf-8') as out:
-                      out.write(body + '\n' + m.group(1).strip() + '\n')
+                      out.write(body + '\n' + section + '\n')
                   found = True
           except OSError:
               pass

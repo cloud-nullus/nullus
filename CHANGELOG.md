@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-29
+
 ### Added
 
 - **3차 기술 검증 발표 장표(v0.4)를 문서 사이트에서 바로 본다** (`docs/presentations/Nullus_3차기술검증_발표장표_v0.4_배포용.html`, `website/stage.sh`, `website/mkdocs.yml`, `.github/workflows/docs.yml`): 장표가 발표 폴더에만 있어 저장소를 받아야 열 수 있었다. 발표자 노트와 편집 모드를 뺀 배포용 HTML 을 `docs/presentations/` 에 두고, `website/stage.sh` 가 빌드할 때 `presentations/stp3-v0.4.html` 로 복사한다(가이드와 같은 방식 — 사이트에 사본을 커밋하지 않는다). 시연 영상(mp4, 49.7 MB)은 올리지 않는다 — 장표가 같은 폴더에서 영상을 못 찾으면 유튜브를 그 시각으로 새 탭에 연다. `stage.sh` 는 복사 대상을 사이트 루트 기준 경로로 받도록 바꿨다. README 머리 링크와 문서 사이트의 시연 영상 링크(`README.md`, `website/mkdocs.yml`)를 2차 영상에서 3차 시연 영상(9:37, 10/28 녹화)으로 바꾸고 발표 장표 링크를 더했다 — 2차 장표·영상은 README 참고 문서에 남긴다.
@@ -311,6 +313,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CHANGELOG 섹션이 GitHub Release 본문 상한(125,000자)을 넘으면 Release 가 생기지 않던 것 — 항목 제목 요약본으로 싣는다** (`.github/workflows/cd.yml`): `create-release` 는 버전 섹션을 통째로 본문에 넣는데, v0.6.0 섹션은 약 16만 8천 자라 태그를 밀면 Release 생성이 422 로 실패하고 이미지 · 차트만 올라간 채 남을 상황이었다(v0.5.0 때 이미 상한까지 여유 9천여 자). 본문이 12만 자를 넘으면 각 항목의 굵은 제목만 남긴 요약본(v0.6.0 기준 9,714자)을 싣고, 원인 · 결정 · 바뀐 파일은 태그 시점의 `CHANGELOG.md` 링크로 잇는다. 상한 안이면 지금처럼 섹션 전체를 싣는다.
 - **CI 의 e2e 잡이 모든 PR 과 main 에서 테스트 전에 실패하던 것** (`.github/workflows/ci.yml`): GitHub 의 `ubuntu-latest` 러너가 Ubuntu 26.04 로 바뀌자 Playwright(`^1.58.2`)가 `Playwright does not support chromium on ubuntu26.04-x64` 로 브라우저 설치 단계에서 멈췄다. e2e 잡만 `ubuntu-24.04` 에 묶는다 — 다른 잡은 26.04 에서 통과한다. Playwright 를 26.04 지원 판으로 올리면 풀어도 된다.
 
 - **게이트웨이 라우터가 앱 주소(demo-api.<도메인> 등)를 끊던 것** (`scripts/port-forward-gateway.sh`): 로컬 SNI 라우터가 스택 네임스페이스의 HTTPRoute 호스트(gitlab · argocd …)만 알아, 다른 네임스페이스에 배포한 앱의 HTTPRoute 호스트로 들어오면 `no host in upstream` 으로 연결을 끊었다 — 배포한 앱을 브라우저로 열 수 없었다(10-26). 이제 모든 네임스페이스의 HTTPRoute 중 parentRefs 가 그 게이트웨이를 가리키는 것의 호스트도 넣는다. `--hosts` 가 내는 /etc/hosts 줄에도 앱 주소가 들어간다.
@@ -2011,7 +2014,8 @@ compare 링크는 실제로 발행된 태그만 가리킨다 (릴리즈 정책 �
 0.1.0-alpha / 0.2.0-alpha 는 CHANGELOG 기록만 존재하고 git 태그·GitHub Release 가 발행된 적이 없어
 링크를 두지 않는다. v0.3.0-alpha 태그 push 이후 아래 링크가 유효해진다.
 -->
-[unreleased]: https://github.com/cloud-nullus/nullus/compare/v0.5.0...HEAD
+[unreleased]: https://github.com/cloud-nullus/nullus/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/cloud-nullus/nullus/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/cloud-nullus/nullus/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/cloud-nullus/nullus/compare/v0.4.0-alpha...v0.4.1
 [0.4.0-alpha]: https://github.com/cloud-nullus/nullus/compare/v0.3.0-alpha...v0.4.0-alpha
