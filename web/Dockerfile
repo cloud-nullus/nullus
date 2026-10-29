@@ -16,6 +16,9 @@ ENV VITE_OIDC_CLIENT_ID=$VITE_OIDC_CLIENT_ID
 RUN npx vite build
 
 FROM nginx:alpine
+# 베이스 태그가 수정판을 아직 담지 않은 Alpine 패키지 CVE 를 빌드마다 올린다
+# (API 런타임과 같은 방식 — 릴리즈 스캔 게이트, 릴리즈 정책 §7.4).
+RUN apk upgrade --no-cache
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 # 기동 시 /config.js 를 환경변수로 만들어, OIDC 설정을 재빌드 없이 바꿀 수 있게 한다.
