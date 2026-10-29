@@ -151,7 +151,10 @@ planned → preflighting → awaiting_approval → backing_up → upgrading
 | `POST` | `/api/v1/stacks/{stackId}/upgrades/preflight` | 번들을 지정해 사전 점검 실행 |
 | `POST` | `/api/v1/stacks/{stackId}/upgrade-runs` | 사유·승인과 함께 실행 생성 |
 | `GET` | `/api/v1/stacks/{stackId}/upgrade-runs/{runId}` | 상태·단계·로그·결과 조회 |
+| `GET` | `/api/v1/stacks/{stackId}/upgrade-runs` | 실행 목록(최근 50건, 사전 점검에서 막힌 시도 포함) |
 | `POST` | `/api/v1/stacks/{stackId}/upgrade-runs/{runId}/rollback` | 성공한 작업의 수동 rollback |
+| `GET` · `POST` | `/api/v1/admin/upgrade-bundles` | 번들 목록(모든 상태) · 등록 — admin 만(§12.4) |
+| `PATCH` | `/api/v1/admin/upgrade-bundles/{id}/status` | 번들 상태 변경 — admin 만(§12.4) |
 
 `POST` 요청은 `Idempotency-Key`를 필수로 받고, 동일 스택의 설치·설정 적용·백업/복구·업그레이드 lock을 공유한다. 조회 API는 요청 시점의 실제 release 정보와 `checked_at`을 반환해 정적 mock을 제품 정보로 보여주지 않는다.
 
@@ -281,12 +284,38 @@ MVP에서 제외한다.
 - Argo CD `/api/version` · 표본 Application sync · OIDC/저장소 연결 검증 — 지금은 워크로드 준비와 서버 이미지 태그까지
 - 수동 rollback API(`POST /upgrade-runs/{id}/rollback`), Secret 을 가린 매니페스트 diff 표시, 알림 채널 연동
 - 설치 · 설정 적용 · 백업/복구와 공유하는 스택 락 — 지금은 스택이 `completed` 인지와 업그레이드끼리만 배타
-- 번들 배포(release artifact / 서명된 catalog) · 등록 화면 · air-gap 번들
+- 번들 배포(release artifact / 서명된 catalog) · air-gap 번들 — 등록 화면 · API 는 있다(§12.4)
 - 업그레이드한 차트 버전을 스택 설정에 기록하지 않는다. 완료된 스택은 설치 단계를 다시 돌지 않아 지금은 내려가지 않지만, 재설치 경로가 생기면 플랫폼 고정 버전(`domain.ArgoCDChartVersion`)으로 돌아간다
 
 ### 12.4 번들 등록 (리허설을 마친 경로만)
 
-마이그레이션은 번들을 넣지 않는다. Phase 0 리허설로 경로를 확인한 뒤 운영자가 직접 넣는다.
+마이그레이션은 번들을 넣지 않는다. Phase 0 리허설로 경로를 확인한 뒤 운영자가 등록한다 — 관리 › **스택 버전 관리** 의
+**업그레이드 번들** 탭(`/admin/stack-versions?tab=upgrade-bundles`)에서 **새 번들**, 또는 `POST /api/v1/admin/upgrade-bundles`(admin, 2026-10-25).
+
+- `verified` 는 **리허설 확인**(`rehearsal_confirmed: true`, 화면의 "이 경로를 실클러스터에서 리허설했다") 없이 받지 않는다(400
+  `UPGRADE_BUNDLE_REHEARSAL_REQUIRED`). 확인이 없으면 `draft` 로 들어가 후보에 보이지 않는다 — 리허설 없이 실행 가능한 경로가 생기지 않는다는
+  원칙은 등록 화면이 생겨도 그대로다
+- 도메인(`domain.NewUpgradeBundle`)이 검사한다: 지원 도구(지금은 `argocd`)만, 출발 · 대상 차트 버전은 읽을 수 있어야 하고 대상이 더 높아야,
+  저장소는 `https` · `http` · `oci`, 위험도 `low|medium|high`, 아키텍처 `amd64|arm64`, CVE 는 `CVE-YYYY-NNNN`. ID 를 비우면
+  `<도구>-<출발>-<대상>`. 같은 ID 나 같은 경로(도구 · 출발 · 대상)는 409 `UPGRADE_BUNDLE_EXISTS`
+- 상태 변경은 `PATCH /api/v1/admin/upgrade-bundles/{id}/status` — `draft` · `deprecated` → `verified`(확인 필요), `verified` → `deprecated`,
+  어디서든 → `revoked`. `revoked` 는 끝이다(되살리려면 다시 리허설해 새로 등록). 허용되지 않는 변경은 409
+- 등록 · 상태 변경은 감사 로그 `register_upgrade_bundle` · `change_upgrade_bundle_status` 에 남는다(막힌 시도도 `rejected` 로)
+- 실행 목록은 `GET /api/v1/stacks/{stackId}/upgrade-runs`(최근 50건, 막힌 시도 포함) — 화면은 버전 업그레이드 탭의 **실행 이력**
+
+```json
+POST /api/v1/admin/upgrade-bundles
+{
+  "tool": "argocd", "release_name": "argo-cd", "chart_name": "argo-cd", "repo_url": "https://argoproj.github.io/argo-helm",
+  "source_chart_version": "7.7.16", "source_app_version": "v2.13.3", "target_chart_version": "7.7.22", "target_app_version": "v2.13.4",
+  "risk_level": "low", "expected_disruption": "API 서버 · 컨트롤러가 차례로 재시작(약 1~2분)",
+  "release_notes": "https://github.com/argoproj/argo-cd/releases/tag/v2.13.4", "requires_backup": true,
+  "supported_architectures": ["amd64", "arm64"], "fixes_cves": ["CVE-2025-XXXXX"],
+  "status": "verified", "rehearsal_confirmed": true
+}
+```
+
+DB 에 직접 넣어야 할 때(에어갭 반입 스크립트 등)는 같은 내용을 SQL 로 넣어도 된다. 검사는 화면 · API 를 거칠 때만 돈다.
 
 ```sql
 INSERT INTO upgrade_bundles (id, tool, release_name, chart_name, repo_url,

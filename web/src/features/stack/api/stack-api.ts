@@ -34,6 +34,9 @@ import type {
   UpgradeCandidate,
   UpgradeCheck,
   UpgradeRun,
+  UpgradeBundle,
+  UpgradeBundleStatus,
+  RegisterUpgradeBundleInput,
 } from "./stack-api-types";
 import type {
   ClusterStatus,
@@ -113,9 +116,15 @@ const queryKeys = {
     stackId: string,
     digest: string,
     filter: VulnerabilityListFilter,
-  ) => ["stacks", "image-scan-vulnerabilities", stackId, digest, filter] as const,
+  ) =>
+    ["stacks", "image-scan-vulnerabilities", stackId, digest, filter] as const,
   upgrades: (stackId: string) => ["stacks", "upgrades", stackId] as const,
-  upgradeRun: (stackId: string, runId: string) => ["stacks", "upgrade-runs", stackId, runId] as const,
+  upgradeRun: (stackId: string, runId: string) =>
+    ["stacks", "upgrade-runs", stackId, runId] as const,
+  upgradeRuns: (stackId: string) =>
+    ["stacks", "upgrade-run-list", stackId] as const,
+  // 번들은 플랫폼 전체의 것(조직 무관). 관리 화면이 모든 상태를 본다.
+  upgradeBundles: () => ["admin", "upgrade-bundles"] as const,
 };
 
 const ACTIVE_DEPLOYMENT_STATES = new Set([
@@ -129,7 +138,10 @@ const ACTIVE_DEPLOYMENT_STATES = new Set([
 
 /** 업그레이드 요청 하나의 키. 화면이 대화 상자를 열 때 한 번 만들어 재시도에도 같은 키를 보낸다. */
 export function createIdempotencyKey(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}-${Math.random().toString(16).slice(2, 10)}`;
@@ -164,7 +176,9 @@ export function stackListRefetchInterval(
  * OpenBao 에 아무것도 없으므로, 재시도·이어하기에서도 토큰을 다시 보낼 수
  * 있어야 복구가 된다.
  */
-export function toDeployBody(input: DeployStackInput): Record<string, unknown> | undefined {
+export function toDeployBody(
+  input: DeployStackInput,
+): Record<string, unknown> | undefined {
   const body: Record<string, unknown> = {};
   if (input.acknowledgeWarnings) {
     body.acknowledge_warnings = true;
@@ -213,18 +227,68 @@ const stackApiCalls = {
     api.delete("/stacks/" + stackId).then((r) => r.data),
 
   getUpgrades: (stackId: string) =>
-    api.get<{ items: UpgradeCandidate[] }>(`/stacks/${stackId}/upgrades`).then((r) => r.data),
+    api
+      .get<{ items: UpgradeCandidate[] }>(`/stacks/${stackId}/upgrades`)
+      .then((r) => r.data),
 
   getUpgradeRun: (stackId: string, runId: string) =>
-    api.get<UpgradeRun>(`/stacks/${stackId}/upgrade-runs/${runId}`).then((r) => r.data),
+    api
+      .get<UpgradeRun>(`/stacks/${stackId}/upgrade-runs/${runId}`)
+      .then((r) => r.data),
 
   preflightUpgrade: (stackId: string, bundleId: string) =>
-    api.post<{ checks: UpgradeCheck[] }>(`/stacks/${stackId}/upgrades/preflight`, { bundle_id: bundleId }).then((r) => r.data),
+    api
+      .post<{
+        checks: UpgradeCheck[];
+      }>(`/stacks/${stackId}/upgrades/preflight`, { bundle_id: bundleId })
+      .then((r) => r.data),
 
-  startUpgrade: (stackId: string, bundleId: string, reason: string, idempotencyKey: string) =>
-    api.post<UpgradeRun>(`/stacks/${stackId}/upgrade-runs`, { bundle_id: bundleId, reason }, {
-      headers: { "Idempotency-Key": idempotencyKey },
-    }).then((r) => r.data),
+  startUpgrade: (
+    stackId: string,
+    bundleId: string,
+    reason: string,
+    idempotencyKey: string,
+  ) =>
+    api
+      .post<UpgradeRun>(
+        `/stacks/${stackId}/upgrade-runs`,
+        { bundle_id: bundleId, reason },
+        {
+          headers: { "Idempotency-Key": idempotencyKey },
+        },
+      )
+      .then((r) => r.data),
+
+  // 실행 목록 — 최근 것부터, 사전 점검에서 막힌 시도도 들어간다(감사 기록).
+  getUpgradeRuns: (stackId: string) =>
+    api
+      .get<{ items: UpgradeRun[] }>(`/stacks/${stackId}/upgrade-runs`)
+      .then((r) => r.data),
+
+  getUpgradeBundles: () =>
+    api
+      .get<{ items: UpgradeBundle[] }>("/admin/upgrade-bundles")
+      .then((r) => r.data),
+
+  registerUpgradeBundle: (input: RegisterUpgradeBundleInput) =>
+    api
+      .post<UpgradeBundle>("/admin/upgrade-bundles", input)
+      .then((r) => r.data),
+
+  changeUpgradeBundleStatus: (
+    id: string,
+    status: UpgradeBundleStatus,
+    rehearsalConfirmed: boolean,
+  ) =>
+    api
+      .patch<UpgradeBundle>(
+        `/admin/upgrade-bundles/${encodeURIComponent(id)}/status`,
+        {
+          status,
+          rehearsal_confirmed: rehearsalConfirmed,
+        },
+      )
+      .then((r) => r.data),
 
   saveDraft: (request: import("../../../types").CreateStackRequest) =>
     api.post<{ draftId: string }>("/stacks/draft", request).then((r) => r.data),
@@ -401,9 +465,12 @@ const stackApiCalls = {
     filter: VulnerabilityListFilter,
   ): Promise<VulnerabilityListResult> =>
     api
-      .get<unknown>(`/stacks/${encodeURIComponent(stackId)}/image-scans/vulnerabilities`, {
-        params: { digest, ...vulnerabilityListParams(filter) },
-      })
+      .get<unknown>(
+        `/stacks/${encodeURIComponent(stackId)}/image-scans/vulnerabilities`,
+        {
+          params: { digest, ...vulnerabilityListParams(filter) },
+        },
+      )
       .then((r) => normalizeVulnerabilityList(r.data)),
 
   getWorkloadLogs: (stackId: string, tailLines: number) =>
@@ -594,37 +661,113 @@ export function useStackUpgrades(stackId: string) {
 
 // 진행 중인 실행을 5초마다 다시 읽어 가장 새 상태를 돌려준다. 끝나면 후보를 한 번 다시 읽는다 —
 // 설치된 버전이 바뀌었을 수 있다.
-export function useUpgradeRunProgress(stackId: string, run?: UpgradeRun): UpgradeRun | undefined {
+export function useUpgradeRunProgress(
+  stackId: string,
+  run?: UpgradeRun,
+): UpgradeRun | undefined {
   const qc = useQueryClient();
   const active = isUpgradeRunActive(run);
   const query = useQuery({
     queryKey: queryKeys.upgradeRun(stackId, run?.id ?? ""),
     queryFn: () => stackApiCalls.getUpgradeRun(stackId, run?.id ?? ""),
     enabled: !!stackId && active,
-    refetchInterval: (q) => (isUpgradeRunActive(q.state.data ?? run) ? 5_000 : false),
+    refetchInterval: (q) =>
+      isUpgradeRunActive(q.state.data ?? run) ? 5_000 : false,
   });
   const latest = active && query.data?.id === run?.id ? query.data : run;
   const finished = active && !!query.data && !isUpgradeRunActive(query.data);
   useEffect(() => {
-    if (finished) void qc.invalidateQueries({ queryKey: queryKeys.upgrades(stackId) });
+    if (finished) {
+      void qc.invalidateQueries({ queryKey: queryKeys.upgrades(stackId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.upgradeRuns(stackId) });
+    }
   }, [finished, qc, stackId]);
   return latest;
 }
 
+// 실행 이력. 진행 중인 실행의 상태 변화는 useUpgradeRunProgress 가 끝났을 때 이 목록을 다시 읽게 한다.
+export function useUpgradeRuns(stackId: string) {
+  return useQuery({
+    queryKey: queryKeys.upgradeRuns(stackId),
+    queryFn: () => stackApiCalls.getUpgradeRuns(stackId),
+    enabled: !!stackId,
+  });
+}
+
+export function useUpgradeBundles() {
+  return useQuery({
+    queryKey: queryKeys.upgradeBundles(),
+    queryFn: () => stackApiCalls.getUpgradeBundles(),
+  });
+}
+
+// 번들이 바뀌면 모든 스택의 후보(["stacks","upgrades",…])를 다시 읽는다 — 새 verified 번들이 후보가 된다.
+export function useRegisterUpgradeBundle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RegisterUpgradeBundleInput) =>
+      stackApiCalls.registerUpgradeBundle(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.upgradeBundles() });
+      void qc.invalidateQueries({ queryKey: ["stacks", "upgrades"] });
+    },
+  });
+}
+
+export function useChangeUpgradeBundleStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      id: string;
+      status: UpgradeBundleStatus;
+      rehearsalConfirmed: boolean;
+    }) =>
+      stackApiCalls.changeUpgradeBundleStatus(
+        input.id,
+        input.status,
+        input.rehearsalConfirmed,
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.upgradeBundles() });
+      void qc.invalidateQueries({ queryKey: ["stacks", "upgrades"] });
+    },
+  });
+}
+
 export function usePreflightUpgrade() {
   return useMutation({
-    mutationFn: ({ stackId, bundleId }: { stackId: string; bundleId: string }) =>
-      stackApiCalls.preflightUpgrade(stackId, bundleId),
+    mutationFn: ({
+      stackId,
+      bundleId,
+    }: {
+      stackId: string;
+      bundleId: string;
+    }) => stackApiCalls.preflightUpgrade(stackId, bundleId),
   });
 }
 
 export function useStartUpgrade() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { stackId: string; bundleId: string; reason: string; idempotencyKey: string }) =>
-      stackApiCalls.startUpgrade(input.stackId, input.bundleId, input.reason, input.idempotencyKey),
+    mutationFn: (input: {
+      stackId: string;
+      bundleId: string;
+      reason: string;
+      idempotencyKey: string;
+    }) =>
+      stackApiCalls.startUpgrade(
+        input.stackId,
+        input.bundleId,
+        input.reason,
+        input.idempotencyKey,
+      ),
     onSuccess: (_run, input) => {
-      void qc.invalidateQueries({ queryKey: queryKeys.upgrades(input.stackId) });
+      void qc.invalidateQueries({
+        queryKey: queryKeys.upgrades(input.stackId),
+      });
+      void qc.invalidateQueries({
+        queryKey: queryKeys.upgradeRuns(input.stackId),
+      });
     },
   });
 }
@@ -811,7 +954,10 @@ export function useDeleteMatrix() {
  */
 const WORKLOADS_POLL_MS = 30_000;
 
-export function useStackWorkloads(stackId: string, pollMs: number = WORKLOADS_POLL_MS) {
+export function useStackWorkloads(
+  stackId: string,
+  pollMs: number = WORKLOADS_POLL_MS,
+) {
   return useQuery({
     queryKey: queryKeys.workloads(stackId),
     queryFn: () => stackApiCalls.getWorkloads(stackId),
@@ -871,7 +1017,8 @@ export function useStackImageVulnerabilities(
 ) {
   return useQuery({
     queryKey: queryKeys.imageVulnerabilities(stackId, digest, filter),
-    queryFn: () => stackApiCalls.getImageVulnerabilities(stackId, digest, filter),
+    queryFn: () =>
+      stackApiCalls.getImageVulnerabilities(stackId, digest, filter),
     enabled: enabled && !!stackId && !!digest,
     retry: retryVulnerabilityList,
     staleTime: 60_000,
@@ -896,11 +1043,21 @@ export function useExportStackConfig() {
 export function useImportStackConfig() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ payload, replaceExisting = false }: { payload: string; replaceExisting?: boolean }) =>
+    mutationFn: ({
+      payload,
+      replaceExisting = false,
+    }: {
+      payload: string;
+      replaceExisting?: boolean;
+    }) =>
       api
-        .post<{ id: string }>(`/stacks/import?replace_existing=${replaceExisting}`, payload, {
-          headers: { "Content-Type": "text/plain" },
-        })
+        .post<{ id: string }>(
+          `/stacks/import?replace_existing=${replaceExisting}`,
+          payload,
+          {
+            headers: { "Content-Type": "text/plain" },
+          },
+        )
         .then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.list() });
@@ -970,7 +1127,12 @@ export function useReleaseValues(
 /** 적용 전 미리보기. 클러스터를 바꾸지 않고 렌더 결과와 경고만 받아 온다. */
 export function usePreviewReleaseValues() {
   return useMutation({
-    mutationFn: ({ stackId, releaseName, mode, yaml }: ApplyReleaseValuesInput) =>
+    mutationFn: ({
+      stackId,
+      releaseName,
+      mode,
+      yaml,
+    }: ApplyReleaseValuesInput) =>
       api
         .post<ApplyReleaseValuesResponse>(
           `/stacks/${stackId}/releases/${releaseName}/values/preview`,
@@ -984,7 +1146,12 @@ export function usePreviewReleaseValues() {
 export function useApplyReleaseValues() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ stackId, releaseName, mode, yaml }: ApplyReleaseValuesInput) =>
+    mutationFn: ({
+      stackId,
+      releaseName,
+      mode,
+      yaml,
+    }: ApplyReleaseValuesInput) =>
       api
         .put<ApplyReleaseValuesResponse>(
           `/stacks/${stackId}/releases/${releaseName}/values`,
@@ -992,11 +1159,15 @@ export function useApplyReleaseValues() {
         )
         .then((r) => r.data),
     onSuccess: (_data, variables) => {
-      void qc.invalidateQueries({ queryKey: queryKeys.releases(variables.stackId) });
+      void qc.invalidateQueries({
+        queryKey: queryKeys.releases(variables.stackId),
+      });
       void qc.invalidateQueries({
         queryKey: ["stacks", "release-values", variables.stackId],
       });
-      void qc.invalidateQueries({ queryKey: queryKeys.history(variables.stackId) });
+      void qc.invalidateQueries({
+        queryKey: queryKeys.history(variables.stackId),
+      });
     },
   });
 }

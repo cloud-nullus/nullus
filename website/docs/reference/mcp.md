@@ -27,7 +27,7 @@ nullus mcp serve --allow-write   # 변경 도구까지
 | `stack_list` | 없음 | `GET /api/v1/stacks` |
 | `stack_status` | `stack_id` | `GET /api/v1/stacks/{id}/status` |
 | `cluster_list` | 없음 | `GET /api/v1/admin/clusters` |
-| `template_list` | 없음 | `GET /api/v1/stacks/templates` |
+| `template_list` | 없음 | `GET /api/v1/stacks/templates` — 응답을 `count` + 템플릿별 id · name · 용도 · 자원 · 도구(이름 + 버전) 요약으로 줄인다 |
 | `compat_check` | `stack_id`, `tools?` | `POST /api/v1/stacks/{id}/validate` |
 | `stack_logs_tail` | `stack_id`, `lines?`(기본 100) | `GET /api/v1/stacks/{id}/deploy/logs/tail` |
 

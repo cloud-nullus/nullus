@@ -263,6 +263,154 @@ paths:
         'default':
           $ref: '#/components/responses/Error'
 
+  /stacks/{stackId}/upgrades:
+    get:
+      tags: [stacks]
+      summary: List upgrade candidates — installed releases and the highest verified path from each
+      operationId: listStackUpgrades
+      parameters:
+        - $ref: '#/components/parameters/StackIdPathParam'
+      responses:
+        '200':
+          description: Releases Nullus can upgrade (Argo CD only for now), each with its verified bundle and last run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UpgradeCandidate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /stacks/{stackId}/upgrades/preflight:
+    post:
+      tags: [stacks]
+      summary: Run the upgrade preflight checks for a bundle without changing the cluster
+      operationId: preflightStackUpgrade
+      parameters:
+        - $ref: '#/components/parameters/StackIdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bundle_id]
+              properties:
+                bundle_id:
+                  type: string
+      responses:
+        '200':
+          description: Checks — stack state · active run · release status · version path · backup · Helm dry-run
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UpgradeCheck'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /stacks/{stackId}/upgrade-runs:
+    get:
+      tags: [stacks]
+      summary: List upgrade runs, newest first, blocked attempts included
+      operationId: listStackUpgradeRuns
+      parameters:
+        - $ref: '#/components/parameters/StackIdPathParam'
+      responses:
+        '200':
+          description: Up to 50 most recent runs of this stack
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UpgradeRun'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [stacks]
+      summary: Start an upgrade — preflight inside the request, Helm apply in the background
+      operationId: startStackUpgrade
+      parameters:
+        - $ref: '#/components/parameters/StackIdPathParam'
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: One key per dialog; the same key replays the same run
+          schema:
+            type: string
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bundle_id, reason]
+              properties:
+                bundle_id:
+                  type: string
+                reason:
+                  type: string
+      responses:
+        '202':
+          description: Run accepted and continuing on the server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpgradeRun'
+        '200':
+          description: Run blocked by preflight (status blocked) or the replay of an earlier Idempotency-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpgradeRun'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /stacks/{stackId}/upgrade-runs/{runId}:
+    get:
+      tags: [stacks]
+      summary: Get one upgrade run
+      operationId: getStackUpgradeRun
+      parameters:
+        - $ref: '#/components/parameters/StackIdPathParam'
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Upgrade run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpgradeRun'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
   /cicd/templates:
     get:
       tags: [cicd]
@@ -803,6 +951,109 @@ paths:
         'default':
           $ref: '#/components/responses/Error'
 
+  /admin/upgrade-bundles:
+    get:
+      tags: [admin]
+      summary: List upgrade bundles in every status (admin)
+      operationId: listUpgradeBundles
+      responses:
+        '200':
+          description: Bundles ordered by tool, source and target version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UpgradeBundle'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [admin]
+      summary: Register an upgrade bundle — verified only with rehearsal_confirmed (admin)
+      operationId: registerUpgradeBundle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpgradeBundleRegistration'
+      responses:
+        '201':
+          description: Registered bundle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpgradeBundle'
+        '400':
+          description: UPGRADE_BUNDLE_INVALID or UPGRADE_BUNDLE_REHEARSAL_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: UPGRADE_BUNDLE_EXISTS — same id or same path (tool · source · target)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
+  /admin/upgrade-bundles/{id}/status:
+    patch:
+      tags: [admin]
+      summary: Change a bundle's status — draft/deprecated → verified needs rehearsal_confirmed, revoked is final (admin)
+      operationId: changeUpgradeBundleStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [verified, deprecated, revoked]
+                rehearsal_confirmed:
+                  type: boolean
+      responses:
+        '200':
+          description: Bundle after the change
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpgradeBundle'
+        '404':
+          description: UPGRADE_BUNDLE_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: UPGRADE_BUNDLE_STATUS_CONFLICT — transition not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        'default':
+          $ref: '#/components/responses/Error'
+
   /observability/dashboard:
     get:
       tags: [observability]
@@ -1287,6 +1538,195 @@ components:
         appVersion:
           type: string
 
+    UpgradeBundle:
+      type: object
+      description: 검증된 업그레이드 경로(출발 차트 → 대상 차트). verified 만 후보가 되고 실행할 수 있다(OSS 업그레이드 설계 §12.4).
+      required: [id, tool, release_name, chart_name, repo_url, source_chart_version, target_chart_version, risk_level, requires_backup, status]
+      properties:
+        id:
+          type: string
+          example: argocd-7.7.16-7.7.22
+        tool:
+          type: string
+          example: argocd
+        release_name:
+          type: string
+        chart_name:
+          type: string
+        repo_url:
+          type: string
+        source_chart_version:
+          type: string
+        source_app_version:
+          type: string
+        target_chart_version:
+          type: string
+        target_app_version:
+          type: string
+          description: 상태 검사가 업그레이드 뒤 서버 이미지 태그와 비교하는 값 — 틀리면 되돌려진다
+        risk_level:
+          type: string
+          enum: [low, medium, high]
+        expected_disruption:
+          type: string
+        release_notes:
+          type: string
+        requires_backup:
+          type: boolean
+        supported_architectures:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [draft, verified, deprecated, revoked]
+        fixes_cves:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+    UpgradeBundleRegistration:
+      type: object
+      description: 번들 등록 본문. id 를 비우면 <tool>-<source>-<target>. requires_backup 을 비우면 true.
+      required: [tool, release_name, chart_name, repo_url, source_chart_version, target_chart_version, risk_level]
+      properties:
+        id:
+          type: string
+        tool:
+          type: string
+        release_name:
+          type: string
+        chart_name:
+          type: string
+        repo_url:
+          type: string
+        source_chart_version:
+          type: string
+        source_app_version:
+          type: string
+        target_chart_version:
+          type: string
+        target_app_version:
+          type: string
+        risk_level:
+          type: string
+          enum: [low, medium, high]
+        expected_disruption:
+          type: string
+        release_notes:
+          type: string
+        requires_backup:
+          type: boolean
+          default: true
+        supported_architectures:
+          type: array
+          items:
+            type: string
+            enum: [amd64, arm64]
+        fixes_cves:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [draft, verified]
+          default: draft
+        rehearsal_confirmed:
+          type: boolean
+          description: verified 로 등록하려면 true — 운영자가 실클러스터 리허설을 마쳤다는 확인
+    UpgradeCheck:
+      type: object
+      required: [name, status, message]
+      properties:
+        name:
+          type: string
+          enum: [stack_state, active_run, release_status, version_path, backup, helm_dry_run]
+        status:
+          type: string
+          enum: [pass, warning, blocked]
+        message:
+          type: string
+        remediation:
+          type: string
+    UpgradeRun:
+      type: object
+      required: [id, stack_id, bundle_id, tool, status, current_step, requested_by, reason, source_chart_version, target_chart_version, previous_revision, checks, started_at, updated_at]
+      properties:
+        id:
+          type: string
+        stack_id:
+          type: string
+        bundle_id:
+          type: string
+        tool:
+          type: string
+        status:
+          type: string
+          enum: [blocked, upgrading, failed, succeeded, rolling_back, rolled_back, manual_intervention_required]
+        current_step:
+          type: string
+          enum: [preflight, helm_upgrade, health_check, rollback, complete]
+        requested_by:
+          type: string
+        reason:
+          type: string
+        source_chart_version:
+          type: string
+        target_chart_version:
+          type: string
+        previous_revision:
+          type: integer
+        result_revision:
+          type: integer
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/UpgradeCheck'
+        error:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+    UpgradeCandidate:
+      type: object
+      description: 클러스터에 실제로 설치된 릴리스와 거기서 갈 수 있는 검증 경로. bundle 이 없으면 "검증된 경로 없음" 이지 최신이라는 뜻이 아니다.
+      required: [tool, release_name, current_chart_version, current_app_version, current_revision, release_status, checked_at]
+      properties:
+        tool:
+          type: string
+        release_name:
+          type: string
+        current_chart_version:
+          type: string
+        current_app_version:
+          type: string
+        current_revision:
+          type: integer
+        release_status:
+          type: string
+        bundle:
+          $ref: '#/components/schemas/UpgradeBundle'
+        blocked_reason:
+          type: string
+        fixes_found:
+          type: array
+          items:
+            type: string
+        fixes_checked:
+          type: boolean
+        last_run:
+          $ref: '#/components/schemas/UpgradeRun'
+        checked_at:
+          type: string
+          format: date-time
     CompatibilityMatrix:
       type: object
       required: [id, name, status, k8sRange, tools]

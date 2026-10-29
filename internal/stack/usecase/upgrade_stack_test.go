@@ -301,6 +301,60 @@ func (m *memUpgradeRepo) LatestRun(_ context.Context, stackID, tool string) (*do
 	return nil, nil
 }
 
+func (m *memUpgradeRepo) ListBundles(context.Context) ([]domain.UpgradeBundle, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]domain.UpgradeBundle(nil), m.bundles...), nil
+}
+
+func (m *memUpgradeRepo) GetBundle(_ context.Context, id string) (*domain.UpgradeBundle, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, b := range m.bundles {
+		if b.ID == id {
+			b := b
+			return &b, nil
+		}
+	}
+	return nil, domain.ErrUpgradeBundleUnknown
+}
+
+func (m *memUpgradeRepo) CreateBundle(_ context.Context, b *domain.UpgradeBundle) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, e := range m.bundles {
+		if e.ID == b.ID || (e.Tool == b.Tool && e.SourceChartVersion == b.SourceChartVersion && e.TargetChartVersion == b.TargetChartVersion) {
+			return domain.ErrUpgradeBundleExists
+		}
+	}
+	m.bundles = append(m.bundles, *b)
+	return nil
+}
+
+func (m *memUpgradeRepo) UpdateBundleStatus(_ context.Context, id, status string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.bundles {
+		if m.bundles[i].ID == id {
+			m.bundles[i].Status = status
+			return nil
+		}
+	}
+	return domain.ErrUpgradeBundleUnknown
+}
+
+func (m *memUpgradeRepo) ListRuns(_ context.Context, stackID string, limit int) ([]domain.UpgradeRun, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []domain.UpgradeRun{}
+	for i := len(m.runs) - 1; i >= 0 && len(out) < limit; i-- {
+		if m.runs[i].StackID == stackID {
+			out = append(out, *clone(m.runs[i]))
+		}
+	}
+	return out, nil
+}
+
 func (m *memUpgradeRepo) stored(id string) *domain.UpgradeRun {
 	r, _ := m.GetRun(context.Background(), "stk_1", id)
 	return r
