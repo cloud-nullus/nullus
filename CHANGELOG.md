@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-31
+
 ### Added
 
 - **처음 보는 엔지니어가 설치 → 실행 → 첫 결과 확인까지 혼자 가는 빠른 시작 가이드** (`QUICKSTART.md`, `README.md`): 로컬 E2E 가이드는 백업·복구·업그레이드까지 18단계라 처음 온 사람이 한 번 돌려 보기에는 길었고, README 의 설치 절은 스택 설치에서 끝나 파이프라인 결과를 보는 데까지 이어지지 않았다. 10/28 시연 녹화에서 다시 돌린 E2E 가이드 1~9단계를 세 부분으로 줄였다 — **설치**(도구 버전 · Docker CPU 8 · 메모리 20GB 이상 · clone · `preflight`), **실행**(`NULLUS_LOCAL_DOMAIN` → `up --kind` → `setup-local-domain.sh --apply-hosts` → `smoke`), **첫 결과 확인**(기본 계정 로그인 · 클러스터 Connected · `stack-up --template=gitlab-argocd-v1 --wait` · 샘플 템플릿 Nullus Sample App — Backend 로 파이프라인 실행 · Argo CD `Synced`/`Healthy` 와 커밋 SHA 태그 이미지 · 실행 기록 `success`). 단계마다 "됐으면" 기대값을 적고, 스크립트와 실측 기록에서 근거를 찾은 실패 다섯 가지(포트 충돌 · `keycloak.nullus.local` 이름 해석 · 설치 정지와 Docker 자원 · GitLab 포트포워드 · `:bootstrap` 이미지)를 따로 모았다. 코드 블록에는 줄 끝 주석을 두지 않는다 — macOS 기본 zsh 는 `interactivecomments` 가 꺼져 있어 `#` 뒤가 명령 인자로 넘어간다. CloudBro OPEN PROJECT SEASON III 최종 발표의 Quick Start Guide 제출물이고, README 머리 링크와 설치 절 첫머리에서 연결한다.
@@ -2013,7 +2015,8 @@ compare 링크는 실제로 발행된 태그만 가리킨다 (릴리즈 정책 �
 0.1.0-alpha / 0.2.0-alpha 는 CHANGELOG 기록만 존재하고 git 태그·GitHub Release 가 발행된 적이 없어
 링크를 두지 않는다. v0.3.0-alpha 태그 push 이후 아래 링크가 유효해진다.
 -->
-[unreleased]: https://github.com/cloud-nullus/nullus/compare/v0.5.0...HEAD
+[unreleased]: https://github.com/cloud-nullus/nullus/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/cloud-nullus/nullus/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/cloud-nullus/nullus/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/cloud-nullus/nullus/compare/v0.4.0-alpha...v0.4.1
 [0.4.0-alpha]: https://github.com/cloud-nullus/nullus/compare/v0.3.0-alpha...v0.4.0-alpha
