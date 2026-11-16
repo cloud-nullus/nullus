@@ -2,6 +2,8 @@ package kube
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +13,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/cloud-nullus/draft/internal/backup/domain"
 	shareddomain "github.com/cloud-nullus/draft/internal/shared/domain"
@@ -186,4 +190,67 @@ func TestEnsurePVC_출처가_없으면_표시하지_않는다(t *testing.T) {
 		Get(context.Background(), "v", metav1.GetOptions{})
 	require.NoError(t, err)
 	assert.NotContains(t, pvc.Annotations, shareddomain.RestoredFromBackupAnnotation)
+}
+
+// 11-01 실측 — 1.6 GB 볼륨을 exec 로 받는 중 스트림이 64 KiB 경계에서 조용히 끊겼는데 exec 는 성공으로
+// 끝났다. 파드 안에서 tar 가 내보낸 바이트 수(wc -c → stderr)와 여기서 받은 바이트 수가 다르면 잘린 것이다.
+func TestVerifyArchiveStream_파드가_보낸_바이트와_받은_바이트가_같아야_한다(t *testing.T) {
+	assert.NoError(t, verifyArchiveStream("data-trivy-0", 1674162176, "1674162176\n"))
+	assert.NoError(t, verifyArchiveStream("v", 10, "tar: ./x: file changed as we read it\n10\n"), "tar 경고가 섞여도 마지막 숫자 줄을 본다")
+
+	err := verifyArchiveStream("data-trivy-0", 1665069056, "1674162176\n")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "잘렸습니다")
+	assert.Contains(t, err.Error(), "1665069056")
+	assert.Contains(t, err.Error(), "1674162176")
+
+	assert.Error(t, verifyArchiveStream("v", 10, ""), "바이트 수 보고가 없으면 온전함을 알 수 없다 — 실패로 본다")
+}
+
+// 11-01 실측 — 프로세스가 stdout 을 열어 둔 채 끝나면 미전달 끝부분이 떨어진다(kubectl 도 같다).
+// stdout 을 먼저 명시적으로 닫고 잠깐 기다린 뒤 끝내면 같은 조건에서 손실 없이 도착했다.
+// (stdin ack 는 쓸 수 없다 — stdout 을 닫으면 kubelet 이 stdin 도 닫는다.)
+func TestArchiveCommand_바이트수를_보고하고_stdout_을_닫은_뒤_끝낸다(t *testing.T) {
+	script := archiveCommand[len(archiveCommand)-1]
+	assert.Contains(t, script, "set -o pipefail", "tar 의 실패가 종료 코드에 남아야 한다")
+	assert.Contains(t, script, "tee /dev/fd/3 | wc -c >&2", "보낸 바이트 수를 stderr 로 보고한다")
+	assert.Contains(t, script, "exec 1>&- 3>&-; sleep 2", "stdout 을 닫고 전송이 비워질 틈을 준 뒤 끝낸다")
+	assert.Contains(t, script, "exit $rc", "tar 의 종료 코드로 끝난다")
+	assert.NotContains(t, script, "read ", "stdin ack 는 성립하지 않는다")
+}
+
+// 스풀은 지정한 디렉터리 안에 만들고, 디렉터리가 없으면 만든다.
+func TestNewSpoolFile_디렉터리를_만들고_그_안에_둔다(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nested", "spool")
+	f, err := newSpoolFile(dir, "data-trivy-0")
+	require.NoError(t, err)
+	defer func() { _ = f.Close(); _ = os.Remove(f.Name()) }()
+	assert.Equal(t, dir, filepath.Dir(f.Name()))
+	assert.Contains(t, filepath.Base(f.Name()), "data-trivy-0")
+}
+
+// 이전 시도의 헬퍼가 지워지는 중이면 그 위에 exec 하지 않는다(137 · task not found 실측).
+func TestReplaceHelperPod_이전_헬퍼가_사라지지_않으면_실패한다(t *testing.T) {
+	stale := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: helperPodName("v"), Namespace: "nullus"}}
+	c := fake.NewSimpleClientset(stale)
+	c.PrependReactor("delete", "pods", func(k8stesting.Action) (bool, runtime.Object, error) { return true, nil, nil }) // 종료 중: 지워지지 않는다
+	a := NewVolumeArchiver(c, nil, "")
+	a.deleteWait = 200 * time.Millisecond
+
+	err := a.replaceHelperPod(context.Background(), "nullus", &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: helperPodName("v"), Namespace: "nullus"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "사라지지 않았습니다")
+}
+
+func TestReplaceHelperPod_이전_헬퍼를_지우고_새로_만든다(t *testing.T) {
+	stale := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: helperPodName("v"), Namespace: "nullus", Labels: map[string]string{"stale": "true"}}}
+	c := fake.NewSimpleClientset(stale)
+	a := NewVolumeArchiver(c, nil, "")
+
+	fresh := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: helperPodName("v"), Namespace: "nullus", Labels: map[string]string{"fresh": "true"}}}
+	require.NoError(t, a.replaceHelperPod(context.Background(), "nullus", fresh))
+	got, err := c.CoreV1().Pods("nullus").Get(context.Background(), helperPodName("v"), metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "true", got.Labels["fresh"], "새 파드여야 한다")
+	assert.Empty(t, got.Labels["stale"])
 }

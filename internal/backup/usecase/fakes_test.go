@@ -319,6 +319,9 @@ type fakeArchiver struct {
 	archiveErr error
 	// onArchive 는 아카이브가 시작될 때 불린다 — 요청이 끊기는 순간을 흉내 낸다.
 	onArchive func()
+	// failFirst 는 처음 n 번의 Archive 를 "스트림이 잘렸다" 오류로 끝낸다(exec 스트림이 조용히 끊기는 11-01 실측).
+	failFirst int
+	calls     int
 }
 
 func (f *fakeArchiver) ListPVCs(context.Context, string) ([]domain.VolumeSpec, error) {
@@ -333,6 +336,11 @@ func (f *fakeArchiver) Archive(ctx context.Context, _, pvc string, out io.Writer
 	}
 	if f.archiveErr != nil {
 		return 0, f.archiveErr
+	}
+	f.calls++
+	if f.calls <= f.failFirst {
+		_, _ = out.Write([]byte("tar-partial-"))
+		return 12, errors.New("볼륨 " + pvc + " 아카이브 스트림이 잘렸습니다: 받은 12 바이트 / 파드가 보낸 100 바이트")
 	}
 	f.tr.add("vol.archive:" + pvc)
 	n, _ := out.Write([]byte("tar-" + pvc))

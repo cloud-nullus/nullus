@@ -167,7 +167,8 @@ restored"). The stacks then proceed independently of each other.
 | Object key | `[<prefix>/]backup-<run ID>/<name>` |
 | Encryption | Streaming **AES-256-GCM**, 1 MiB chunks, header `NBK1` |
 | Compression | **None** — volumes are raw `tar -cpf -` output (only `pg_dump`'s internal compression applies) |
-| Local disk | Not used (streamed straight to the upload through a pipe) |
+| Local disk | Not used by default (streamed straight to the upload through a pipe). With `NULLUS_BACKUP_SPOOL_DIR` set, each volume tar is first received into that directory, then sealed and uploaded, and removed afterwards — it needs free space for the largest volume |
+| Volume stream check | The byte count sent by the helper pod is compared with the byte count received. On a mismatch only that volume is fetched again, up to 3 attempts; if it still fails, that volume stays failed and the run ends as `partial` |
 | Key | Only one (`backup.seal_key`, 32 bytes). It **must differ** from `ENCRYPTION_KEY` and from the DB password; if it matches either, the server does not start |
 
 The destination pre-check runs **before** any workloads are stopped — it does not just

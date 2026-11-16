@@ -12,7 +12,8 @@
     키가 그 함정에 걸려 기동이 막힌 적이 있습니다.
 
     따로 묶여 있는 키: `platform.namespace` · `backup.seal_key` ·
-    `backup.destination.secret_key` · `backup.keycloak_database.password` ·
+    `backup.spool_dir` · `backup.destination.secret_key` ·
+    `backup.keycloak_database.password` ·
     `server.rate_limit.*`.
 
 ## 서버·데이터베이스
