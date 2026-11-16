@@ -13,7 +13,8 @@ Config key `a.b.c` → environment variable **`NULLUS_A_B_C`**.
     and blocked startup.
 
     Keys bound separately: `platform.namespace` · `backup.seal_key` ·
-    `backup.destination.secret_key` · `backup.keycloak_database.password` ·
+    `backup.spool_dir` · `backup.destination.secret_key` ·
+    `backup.keycloak_database.password` ·
     `server.rate_limit.*`.
 
 ## Server and database

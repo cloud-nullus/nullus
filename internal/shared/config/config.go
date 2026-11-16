@@ -36,6 +36,10 @@ type BackupConfig struct {
 	// 둘 다 잃는다(§5.2).
 	SealKey   string `mapstructure:"seal_key"`
 	SealKeyID string `mapstructure:"seal_key_id"`
+	// SpoolDir 가 비어 있지 않으면 볼륨 아카이브를 먼저 이 디렉터리에 빨리 받아 둔 뒤 봉인 · 업로드한다.
+	// exec 스트림을 느리게 소비하면 끝부분이 떨어지는 전송 계층(11-01 실측)을 피하는 선택지다.
+	// 기본값(빈 값)은 §4.3 대로 중간 파일 없이 흘린다 — E1 규모에서 디스크 여유가 없다.
+	SpoolDir string `mapstructure:"spool_dir"`
 
 	Destination BackupDestinationConfig `mapstructure:"destination"`
 	Schedule    BackupScheduleConfig    `mapstructure:"schedule"`
@@ -210,6 +214,7 @@ func LoadConfig(path string) (*Config, error) {
 // 아니다" 로 기동을 막는다 — kind 인클러스터 리허설에서 실제로 그렇게 됐다.
 func bindBackupSecretEnv(v *viper.Viper) {
 	_ = v.BindEnv("backup.seal_key", "NULLUS_BACKUP_SEAL_KEY")
+	_ = v.BindEnv("backup.spool_dir", "NULLUS_BACKUP_SPOOL_DIR") // 비밀값은 아니지만 설정 파일에 없는 키라 같은 이유로 묶는다
 	_ = v.BindEnv("backup.destination.secret_key", "NULLUS_BACKUP_DESTINATION_SECRET_KEY")
 	_ = v.BindEnv("backup.keycloak_database.password", "NULLUS_BACKUP_KEYCLOAK_DATABASE_PASSWORD")
 }

@@ -222,6 +222,7 @@ func (m *Module) adaptersFor(ctx context.Context, stackID string) (*backupkube.A
 	if err != nil {
 		return nil, err
 	}
+	a.Archiver.SpoolDir = m.deps.Config.SpoolDir
 	m.cache[stackID] = a
 	return a, nil
 }

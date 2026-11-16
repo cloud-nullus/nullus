@@ -367,12 +367,27 @@ func (uc *BackupUseCase) withQuiesce(ctx context.Context, req RunBackupRequest, 
 	return nil
 }
 
+// maxVolumeArchiveAttempts 는 한 볼륨을 다시 받는 상한이다.
+//
+// 11-01 실측: 1.6 GB 볼륨의 exec 스트림이 중간에 조용히 끊겼는데 성공으로 남아, 복구가
+// tar: short read 로 터졌다. 아카이버가 잘림을 오류로 알리면 그 볼륨만 다시 받는다 —
+// 백업 전체를 다시 돌리는 것보다 싸고, 이미 받은 산출물은 그대로 쓴다. 무한히는 아니다.
+const maxVolumeArchiveAttempts = 3
+
 func (uc *BackupUseCase) archiveVolumes(ctx context.Context, req RunBackupRequest, run *domain.BackupRun, out *executeResult) error {
 	var firstErr error
 	for i, v := range out.volumes {
-		art, err := uc.putStream(ctx, run, domain.ComponentVolume, v.Name,
-			key(run.ID, "volumes/"+v.Name+".tar"),
-			func(w io.Writer) (int64, error) { return uc.d.Archiver.Archive(ctx, req.Namespace, v.Name, w) })
+		var art domain.Artifact
+		var err error
+		for attempt := 1; attempt <= maxVolumeArchiveAttempts; attempt++ {
+			art, err = uc.putStream(ctx, run, domain.ComponentVolume, v.Name,
+				key(run.ID, "volumes/"+v.Name+".tar"),
+				func(w io.Writer) (int64, error) { return uc.d.Archiver.Archive(ctx, req.Namespace, v.Name, w) })
+			if err == nil || ctx.Err() != nil {
+				break
+			}
+			uc.d.Logger.Warn("볼륨 아카이브 실패 — 다시 받습니다", "pvc", v.Name, "attempt", attempt, "max", maxVolumeArchiveAttempts, "error", err)
+		}
 		if err != nil {
 			uc.d.Logger.Error("볼륨 아카이브 실패", "pvc", v.Name, "error", err)
 			if firstErr == nil {

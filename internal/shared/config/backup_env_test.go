@@ -54,3 +54,16 @@ func TestLoadConfig_백업_비밀값이_없으면_빈_값(t *testing.T) {
 	assert.Empty(t, cfg.Backup.SealKey)
 	assert.False(t, cfg.Backup.Enabled)
 }
+
+// 11-01 실측 — exec 스트림을 느리게 소비하면 끝부분이 떨어진다. 스풀 디렉터리를 주면 아카이버가 먼저
+// 호스트 디스크에 빨리 받아 두고 봉인 · 업로드한다(§4.3 의 "중간 파일 없음" 은 기본값으로 지킨다 — 옵션).
+func TestLoadConfig_백업_스풀_디렉터리는_환경변수로_받는다(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("server:\n  port: 8080\n"), 0o600))
+	t.Setenv("NULLUS_BACKUP_SPOOL_DIR", "/var/tmp/nullus-spool")
+
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	assert.Equal(t, "/var/tmp/nullus-spool", cfg.Backup.SpoolDir)
+}

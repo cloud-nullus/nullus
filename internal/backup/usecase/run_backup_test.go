@@ -412,3 +412,35 @@ func TestRunBackup_요청이_끊겨도_워크로드를_재개하고_기록을_�
 	assert.NotEqual(t, domain.StatusRunning, last, "실행 기록이 running 으로 남으면 안 된다")
 	assert.Equal(t, run.Status, last)
 }
+
+// 11-01 실측 — 1.6 GB 볼륨의 exec 스트림이 중간에 끊겼는데 "성공"으로 남아 복구가 tar: short read 로
+// 터졌다. 아카이버가 잘림을 오류로 알리면 유스케이스는 그 볼륨만 다시 받는다 — 백업 전체를 다시
+// 돌리는 것보다 싸고, 이미 받은 다른 산출물은 그대로 쓴다.
+func TestRunBackup_볼륨_아카이브가_잘리면_그_볼륨만_다시_받는다(t *testing.T) {
+	uc, _, repo, _, _, archiver, _ := newBackupFixture(t)
+	archiver.failFirst = 2 // 두 번 잘리고 세 번째에 온전히
+
+	run, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", StackID: "stack-1", Namespace: "nullus", Mode: domain.ModeFull,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusSucceeded, run.Status, "다시 받아 온전해졌으면 성공이다")
+	arts, _ := repo.ListArtifacts(context.Background(), run.ID)
+	assert.Len(t, arts, 5, "잘린 시도는 산출물로 남지 않는다")
+	assert.Equal(t, 3, archiver.calls, "잘린 두 번 + 온전한 한 번")
+}
+
+// 무한히 다시 받지는 않는다 — 세 번 잘리면 그 볼륨은 실패로 두고 partial 로 끝낸다.
+func TestRunBackup_볼륨_아카이브가_계속_잘리면_partial_로_끝난다(t *testing.T) {
+	uc, _, repo, _, _, archiver, _ := newBackupFixture(t)
+	archiver.failFirst = 99
+
+	run, err := uc.Run(context.Background(), RunBackupRequest{
+		OrgID: "org-1", StackID: "stack-1", Namespace: "nullus", Mode: domain.ModeFull,
+	})
+	require.NoError(t, err, "부분 실패는 에러가 아니라 partial 이다")
+	assert.Equal(t, domain.StatusPartial, run.Status)
+	assert.Equal(t, maxVolumeArchiveAttempts, archiver.calls, "상한만큼만 다시 받는다")
+	arts, _ := repo.ListArtifacts(context.Background(), run.ID)
+	assert.Len(t, arts, 4, "잘린 볼륨은 산출물로 남지 않는다")
+}
