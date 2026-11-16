@@ -502,3 +502,31 @@ func TestRender_DeploymentReferencesAppPullSecret(t *testing.T) {
 	require.Len(t, d.Spec.Template.Spec.ImagePullSecrets, 1)
 	assert.Equal(t, "nullus-registry-myapp", d.Spec.Template.Spec.ImagePullSecrets[0].Name)
 }
+
+// 베이스 이미지의 OS 패키지는 alpine 저장소보다 뒤처진다. 수정판이 이미 나온
+// CRITICAL 이 끼어 있으면(10/31 nginx:alpine 의 brotli-libs) 이미지 검사 게이트가
+// 첫 배포를 막는다 — 사용자가 손댄 것 하나 없이. 자리표시자 이미지는 빌드 때
+// OS 보안 패치를 적용해 기본 상태가 게이트를 통과해야 한다.
+func TestRender_DockerfileAppliesOSSecurityUpdates(t *testing.T) {
+	for _, port := range []int32{80, 8080} {
+		in := baseInput()
+		in.Port = port
+		files, err := Render(in)
+		require.NoError(t, err)
+
+		dockerfile := fileMap(t, files)["Dockerfile"]
+		from := strings.Index(dockerfile, "FROM nginx:alpine")
+		upgrade := strings.Index(dockerfile, "RUN apk upgrade --no-cache")
+		require.NotEqual(t, -1, from, "port %d", port)
+		require.Greater(t, upgrade, from,
+			"port %d: FROM nginx:alpine 뒤에 OS 보안 패치(apk upgrade)가 있어야 한다", port)
+		// 연속된 RUN 은 SonarQube(docker:S7031)가 새 이슈로 잡아 품질 게이트를 막는다 —
+		// 패치는 설정을 쓰는 RUN 과 한 명령으로 묶여야 한다.
+		assert.Equal(t, 1, strings.Count(dockerfile[from:], "\nRUN "),
+			"port %d: nginx 단계의 RUN 은 하나여야 한다", port)
+		if port != nginxDefaultPort {
+			// 줄 이음은 백슬래시 하나다 — 둘이면 셸이 \ 를 인자로 받아 빌드가 깨진다.
+			assert.Contains(t, dockerfile, "RUN apk upgrade --no-cache \\\n && printf", "port %d", port)
+		}
+	}
+}

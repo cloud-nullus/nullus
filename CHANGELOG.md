@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **새로 만든 파이프라인이 손댄 것 하나 없이 첫 배포에서 막히던 것을 고친다 — 자리표시자 이미지의 OS 보안 패치** (`internal/cicd/adapter/scaffold/renderer.go`, `react_app.go`): 스캐폴드가 만드는 기본 Dockerfile 의 `nginx:alpine` 은 alpine 저장소보다 뒤처져, 수정판이 이미 나온 CRITICAL(10/31 `brotli-libs`)이 끼어 있으면 이미지 검사 게이트가 첫 배포를 막았다. 자리표시자 이미지와 웹(React) 앱의 최종 nginx 단계가 빌드 때 `apk upgrade --no-cache` 를 돌린다. 포트 설정을 쓰는 `RUN` 과 한 명령으로 묶었다 — 연속된 `RUN` 은 SonarQube(`docker:S7031`)가 새 이슈로 잡아 품질 게이트를 막는다.
+
 ## [0.6.0] - 2026-10-31
 
 ### Added

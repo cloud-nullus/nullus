@@ -167,14 +167,18 @@ COPY . .
 RUN npm run build
 
 FROM nginx:alpine
+# 베이스 이미지의 OS 패키지에 수정판이 나온 취약점이 남아 있으면 이미지 검사 게이트가 배포를 막습니다.
+# 빌드 때 OS 보안 패치를 적용합니다.
+#
 # SPA 는 새로고침하면 서버가 그 경로를 찾는다. try_files 로 index.html 에
 # 되돌리지 않으면 첫 화면 말고는 전부 404 가 된다.
 #
 # 포트는 배포 매니페스트가 가리키는 값으로 맞춘다. 기본 80 으로 두면 Service 의
 # targetPort 와 어긋나 endpoints 가 비고, 원인이 멀리 떨어진 503 이 된다.
-RUN printf 'server {\n    listen %d;\n    location / {\n        root  /usr/share/nginx/html;\n        index index.html;\n        try_files $uri $uri/ /index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
+RUN %s \
+ && printf 'server {\n    listen %d;\n    location / {\n        root  /usr/share/nginx/html;\n        index index.html;\n        try_files $uri $uri/ /index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE %d
-`, nodeBuilderImage, appPort, appPort)
+`, nodeBuilderImage, osSecurityUpgrade, appPort, appPort)
 }

@@ -647,24 +647,34 @@ func renderDockerfile(appType domain.AppType, appPort int32) string {
 	header := `# Nullus 가 생성한 기본 Dockerfile 입니다. 애플리케이션에 맞게 수정하세요.
 # 조직 공용 베이스 이미지를 쓰려면 common 프로젝트의 이미지를 FROM 에 지정하면 됩니다.
 FROM nginx:alpine
+# 베이스 이미지의 OS 패키지에 수정판이 나온 취약점이 남아 있으면 이미지 검사 게이트가 배포를 막습니다.
+# 빌드 때 OS 보안 패치를 적용합니다.
 `
 	// 80 이면 기본 설정 그대로다. 불필요한 치환을 넣으면 사용자가 이미지를 바꿀 때
 	// 지워야 할 것만 늘어난다.
 	if appPort == nginxDefaultPort {
-		return fmt.Sprintf("%s\nEXPOSE %d\n", header, appPort)
+		return fmt.Sprintf("%sRUN %s\n\nEXPOSE %d\n", header, osSecurityUpgrade, appPort)
 	}
 
 	// 기본 설정을 통째로 바꿔 쓴다. sed 치환은 listen 지시자의 공백 폭과
 	// IPv6 줄이 이미지 버전마다 달라 조용히 어긋날 수 있고, 사용자가 읽고
 	// 고치기도 어렵다.
-	return fmt.Sprintf(`%s
-# nginx 기본 설정은 80 을 듣는다. 배포 매니페스트가 가리키는 포트로 맞춘다 —
+	//
+	// OS 패치와 한 RUN 으로 묶는다 — 연속된 RUN 은 SonarQube(docker:S7031)가 새 이슈로
+	// 잡아 품질 게이트를 막는다.
+	return fmt.Sprintf(`%s# nginx 기본 설정은 80 을 듣는다. 배포 매니페스트가 가리키는 포트로 맞춘다 —
 # EXPOSE 는 문서일 뿐 바인딩을 바꾸지 않는다.
-RUN printf 'server {\n    listen %d;\n    location / {\n        root  /usr/share/nginx/html;\n        index index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
+RUN %s \
+ && printf 'server {\n    listen %d;\n    location / {\n        root  /usr/share/nginx/html;\n        index index.html;\n    }\n}\n' > /etc/nginx/conf.d/default.conf
 
 EXPOSE %d
-`, header, appPort, appPort)
+`, header, osSecurityUpgrade, appPort, appPort)
 }
+
+// osSecurityUpgrade 는 자리표시자 이미지가 빌드 때 베이스 OS 의 보안 패치를 적용하는
+// 명령이다. 베이스 이미지는 alpine 저장소보다 뒤처지므로, 수정판이 나온 CRITICAL 이
+// 남아 있으면 사용자가 손댄 것 하나 없이 이미지 검사 게이트가 첫 배포를 막는다.
+const osSecurityUpgrade = "apk upgrade --no-cache"
 
 // ownerLabelLines 는 들여쓰기에 맞춘 소유 라벨들이다.
 //
