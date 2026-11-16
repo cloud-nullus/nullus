@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -423,4 +424,33 @@ func TestCommitFiles_ReadsEveryTreePage(t *testing.T) {
 	require.NotNil(t, commit)
 	action := commit.Body["actions"].([]any)[0].(map[string]any)
 	assert.Equal(t, "update", action["action"], "둘째 페이지의 파일도 있는 것으로 봐야 한다")
+}
+
+// 11-01 실측 — 복구 직후 GitLab 이 느릴 때 전자정부 템플릿(가져온 원본 수백 파일)의 스캐폴드 커밋이
+// 기본 30초를 넘겨 "context deadline exceeded" 로 파이프라인 생성이 깨졌다. 커밋은 다른 호출과
+// 다른, 더 긴 상한을 쓴다.
+func TestCommitFiles_큰_커밋은_기본_타임아웃보다_오래_기다린다(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/repository/tree") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		if strings.Contains(r.URL.Path, "/repository/commits") {
+			time.Sleep(300 * time.Millisecond) // 기본 상한(아래 50ms)보다 길고 커밋 상한(2s)보다 짧다
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"abc"}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "tok")
+	c.httpClient.Timeout = 50 * time.Millisecond
+	c.commitTimeout = 2 * time.Second
+
+	err := c.CommitFiles(context.Background(), "42", port.CommitSpec{Branch: "main", Files: []port.CommitFile{{Path: "a.txt", Content: "x"}}})
+	require.NoError(t, err, "커밋은 커밋 전용 상한을 써야 한다")
+	assert.Greater(t, commitTimeout, defaultTimeout, "기본값도 커밋 상한이 더 길어야 한다")
 }

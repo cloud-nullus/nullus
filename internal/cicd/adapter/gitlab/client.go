@@ -21,7 +21,11 @@ import (
 )
 
 const (
-	defaultTimeout       = 30 * time.Second
+	defaultTimeout = 30 * time.Second
+	// commitTimeout 은 스캐폴드 커밋(파일 수백 개를 한 커밋으로)에만 쓰는 상한이다. 복구 직후처럼
+	// GitLab 이 느릴 때 30초를 넘기는 일이 있었다(11-01) — 커밋이 끊기면 저장소는 생겼는데
+	// 파이프라인은 없는 반쪽 상태가 남는다.
+	commitTimeout        = 3 * time.Minute
 	defaultBranchName    = "main"
 	defaultVisibility    = "private"
 	maxErrorBodyReadSize = 4 << 10
@@ -33,6 +37,8 @@ type Client struct {
 	token        string
 	registryHost string
 	httpClient   *http.Client
+	// commitTimeout 은 CommitFiles 가 쓰는 HTTP 상한이다(기본 commitTimeout 상수).
+	commitTimeout time.Duration
 }
 
 // NewClient 는 GitLab API v4 클라이언트를 만든다.
@@ -41,9 +47,10 @@ type Client struct {
 // token 은 api 스코프를 가진 Personal/Project Access Token 이다.
 func NewClient(baseURL, token string) *Client {
 	return &Client{
-		baseURL:    strings.TrimRight(strings.TrimSpace(baseURL), "/"),
-		token:      strings.TrimSpace(token),
-		httpClient: &http.Client{Timeout: defaultTimeout},
+		baseURL:       strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		token:         strings.TrimSpace(token),
+		httpClient:    &http.Client{Timeout: defaultTimeout},
+		commitTimeout: commitTimeout,
 	}
 }
 
@@ -179,7 +186,7 @@ func (c *Client) CommitFiles(ctx context.Context, projectID string, spec port.Co
 	existing := c.existingFilePaths(ctx, projectID, branch)
 
 	endpoint := fmt.Sprintf("/api/v4/projects/%s/repository/commits", url.PathEscape(projectID))
-	if err := c.post(ctx, endpoint, commitBody(branch, spec, existing), nil); err != nil {
+	if err := c.sendWith(ctx, c.commitClient(), http.MethodPost, endpoint, commitBody(branch, spec, existing), nil); err != nil {
 		return fmt.Errorf("commit files to project %s: %w", projectID, err)
 	}
 	return nil
@@ -330,7 +337,20 @@ func (c *Client) put(ctx context.Context, path string, body map[string]any, out 
 	return c.send(ctx, http.MethodPut, path, body, out)
 }
 
+// commitClient 는 커밋 전용 상한을 가진 HTTP 클라이언트다(전송 설정은 공유).
+func (c *Client) commitClient() *http.Client {
+	cc := *c.httpClient
+	if c.commitTimeout > 0 {
+		cc.Timeout = c.commitTimeout
+	}
+	return &cc
+}
+
 func (c *Client) send(ctx context.Context, method, path string, body map[string]any, out any) error {
+	return c.sendWith(ctx, c.httpClient, method, path, body, out)
+}
+
+func (c *Client) sendWith(ctx context.Context, client *http.Client, method, path string, body map[string]any, out any) error {
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return err
@@ -342,7 +362,7 @@ func (c *Client) send(ctx context.Context, method, path string, body map[string]
 	c.applyAuth(req)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

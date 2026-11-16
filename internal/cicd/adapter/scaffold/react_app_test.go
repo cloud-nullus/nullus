@@ -83,3 +83,20 @@ func TestScaffold_NonWebKeepsPlaceholder(t *testing.T) {
 	assert.NotContains(t, byPath, "src/App.tsx")
 	assert.Contains(t, byPath["Dockerfile"], "FROM nginx:alpine")
 }
+
+// 웹 앱의 최종(nginx) 단계도 같다 — 빌드 단계가 아니라 배포되는 이미지에
+// OS 보안 패치가 들어가야 이미지 검사 게이트를 통과한다.
+func TestScaffold_WebDockerfileAppliesOSSecurityUpdates(t *testing.T) {
+	files, err := Render(webInput())
+	require.NoError(t, err)
+	dockerfile := fileMap(t, files)["Dockerfile"]
+
+	runtime := strings.Index(dockerfile, "FROM nginx:alpine")
+	upgrade := strings.Index(dockerfile, "RUN apk upgrade --no-cache")
+	require.NotEqual(t, -1, runtime)
+	require.Greater(t, upgrade, runtime,
+		"최종 nginx 단계의 FROM 뒤에 OS 보안 패치(apk upgrade)가 있어야 한다")
+	// 연속된 RUN 은 SonarQube(docker:S7031)가 새 이슈로 잡는다.
+	assert.Equal(t, 1, strings.Count(dockerfile[runtime:], "\nRUN "), "nginx 단계의 RUN 은 하나여야 한다")
+	assert.Contains(t, dockerfile, "RUN apk upgrade --no-cache \\\n && printf", "줄 이음은 백슬래시 하나")
+}
