@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { SUPPORT_TOOLS, supportToolIconURL, type SupportTool } from '../utils/support-tools'
+import { ToolMark } from '../../stack/components/tool-mark'
+import { SUPPORT_TOOLS, supportToolCategoryKey, type SupportTool } from '../utils/support-tools'
 
 /**
  * 지원 OSS 를 왼쪽으로 흘려 보여 주는 띠.
@@ -20,7 +21,7 @@ export function SupportToolsMarquee() {
         {t('home.supportTools.title', 'Support Tools')}
       </h2>
       <p className="mb-4 mt-0 text-xs text-[var(--color-text-secondary)]">
-        {t('home.supportTools.description', 'Open source that Nullus installs and wires into your cluster.')}
+        {t('home.supportTools.description', 'Tools Nullus installs into your cluster or connects to, and wires together for you.')}
       </p>
 
       <div className="nullus-marquee">
@@ -31,6 +32,10 @@ export function SupportToolsMarquee() {
           <ToolRow aria-hidden />
         </div>
       </div>
+      {/* 이름을 글자로 적는 것은 사실 표시다. 제휴·보증 관계가 아님을 함께 밝힌다. */}
+      <p className="mb-0 mt-2 text-[11px] text-[var(--color-text-muted)]">
+        {t('home.supportTools.trademarkNotice')}
+      </p>
     </section>
   )
 }
@@ -54,15 +59,11 @@ function ToolCard({ tool }: { tool: SupportTool }) {
 
   return (
     <li className="flex shrink-0 items-center gap-3 whitespace-nowrap rounded-[12px] border border-[var(--color-border-default)] bg-[var(--color-surface-card)] px-4 py-3">
-      <img
-        src={supportToolIconURL(tool.icon)}
-        alt=""
-        aria-hidden="true"
-        className={`h-7 w-7 shrink-0 object-contain${tool.monochromeWhite ? ' nullus-mono-mark' : ''}`}
-      />
+      {/* 제품 로고가 아니라 글자 약자다 — 모든 카드가 같은 타일·같은 색을 쓴다. */}
+      <ToolMark name={tool.name} size="lg" />
       <span>
         <span className="block text-sm font-bold text-[var(--color-text-primary)]">{tool.name}</span>
-        <span className="block text-[11px] text-[var(--color-text-muted)]">{t(tool.categoryKey)}</span>
+        <span className="block text-[11px] text-[var(--color-text-muted)]">{t(supportToolCategoryKey(tool.category))}</span>
       </span>
     </li>
   )

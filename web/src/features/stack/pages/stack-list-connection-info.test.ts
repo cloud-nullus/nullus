@@ -63,8 +63,8 @@ describe("stack connection info helpers", () => {
 		).toContain("차트 기본값");
 
 		const tools: LaunchTool[] = [
-			{ name: "ArgoCD", version: "v2", url: "http://argocd.nullus-devsecops-stack.internal", logo: "" },
-			{ name: "OpenSearch", version: "v2", url: "http://opensearch.nullus-devsecops-stack.internal", logo: "" },
+			{ name: "ArgoCD", version: "v2", url: "http://argocd.nullus-devsecops-stack.internal" },
+			{ name: "OpenSearch", version: "v2", url: "http://opensearch.nullus-devsecops-stack.internal" },
 		];
 
 		const text = buildConnectionInfoText(
@@ -84,10 +84,10 @@ describe("stack connection info helpers", () => {
 	it("names the object storage by what gets installed", () => {
 		const info = toConnectionInfoView(serverConnection);
 		const text = buildConnectionInfoText("nullus-devsecops-stack", info, [
-			{ name: "minio", version: "RELEASE.2024", url: "https://minio.example.internal", logo: "" },
-			{ name: "seaweedfs", version: "4.48", url: null, logo: "" },
+			{ name: "minio", version: "RELEASE.2024", url: "https://minio.example.internal" },
+			{ name: "seaweedfs", version: "4.48", url: null },
 		], serverConnection.tools);
-		expect(text).toContain("- MinIO (SILO): https://minio.example.internal");
+		expect(text).toContain("- SILO: https://minio.example.internal");
 		expect(text).toContain("- SeaweedFS: (No URL)");
 	});
 });

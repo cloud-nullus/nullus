@@ -574,8 +574,8 @@
         "description": "Official Docker registry"
       },
       "minio": {
-        "label": "MinIO (SILO)",
-        "description": "S3-compatible object storage"
+        "label": "SILO",
+        "description": "S3-compatible object storage based on MinIO technology (AGPL-3.0)"
       },
       "seaweedfs": {
         "label": "SeaweedFS",
@@ -757,7 +757,8 @@
     },
     "supportTools": {
       "title": "Support Tools",
-      "description": "Open source that Nullus installs into your cluster and wires together for you.",
+      "description": "Tools Nullus installs into your cluster or connects to, and wires together for you.",
+      "trademarkNotice": "Product names are trademarks of their respective owners. Nullus is not affiliated with or endorsed by them.",
       "category": {
         "sourceRepository": "Source repository",
         "cicdPlatform": "CI/CD platform",

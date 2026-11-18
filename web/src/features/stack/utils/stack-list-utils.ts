@@ -56,7 +56,6 @@ export type LaunchTool = {
   name: string;
   version: string;
   url: string | null;
-  logo: string;
 };
 
 import type {
@@ -64,7 +63,7 @@ import type {
   StorageConnectionResponse,
   ToolCredentialResponse,
 } from "../api/stack-api-types";
-import { toolDisplayName } from "./tool-logo";
+import { toolDisplayName } from "./tool-identity";
 
 export type StorageConnectionInfo = {
   mode: string;
@@ -378,8 +377,8 @@ function toProductName(name: string): string {
  *
  * 별칭 목록을 손으로 들고 있지 않는다 — 도구가 늘 때마다 갱신해야 하고 빠뜨리면
  * 조용히 틀린다. 대신 "구분자를 사이에 둔 접두사면 같은 제품" 규칙을 쓴다.
- * grafana 와 tempo 처럼 로고만 공유하는 별개 배포는 이 규칙에 걸리지 않는다
- * (tool-logo.ts 의 로고 매핑을 이 판정에 재사용하면 안 되는 이유다).
+ * gitlab 과 gitea 처럼 같은 카테고리 그림을 쓰는 별개 배포는 이 규칙에 걸리지 않는다
+ * (tool-identity.ts 의 카테고리 매핑을 이 판정에 재사용하면 안 되는 이유다).
  */
 function isSameProduct(candidate: string, base: string): boolean {
   return candidate === base || candidate.startsWith(`${base}-`);

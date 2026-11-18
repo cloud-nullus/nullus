@@ -184,28 +184,16 @@ describe("StackListPage", () => {
     expect(screen.getByTitle("gitlab 콘솔 열기")).not.toBeNull();
     expect(screen.getByTitle("argocd 콘솔 열기")).not.toBeNull();
     expect(screen.getByTitle("grafana 콘솔 열기")).not.toBeNull();
-    // 스택 설정의 minio 는 MinIO 포크 SILO 로 선다 — 마크와 이름이 같은 제품을 가리킨다.
-    expect(screen.getByTitle("MinIO (SILO) 콘솔 열기")).not.toBeNull();
-    expect(screen.getByAltText("gitlab logo")).toHaveAttribute(
-      "src",
-      "/tool-icons/gitlab.svg",
-    );
-    expect(screen.getByAltText("argocd logo")).toHaveAttribute(
-      "src",
-      "/tool-icons/argo.svg",
-    );
-    expect(screen.getByAltText("grafana logo")).toHaveAttribute(
-      "src",
-      "/tool-icons/grafana.svg",
-    );
-    expect(screen.getByAltText("MinIO (SILO) logo")).toHaveAttribute(
-      "src",
-      "/tool-icons/silo.svg",
-    );
-    fireEvent.error(screen.getByAltText("grafana logo"));
-    expect(screen.getByLabelText("grafana logo fallback")).toHaveTextContent(
-      "G",
-    );
+    // 스택 설정의 minio 는 MinIO 포크 SILO 로 선다 — 이름이 설치되는 실물을 가리킨다.
+    expect(screen.getByTitle("SILO 콘솔 열기")).not.toBeNull();
+    // 콘솔 버튼은 브랜드 로고가 아니라 글자 약자를 단다.
+    const consoleMark = (title: string) =>
+      screen.getByTitle(title).querySelector("[data-tool-mark]");
+    expect(consoleMark("gitlab 콘솔 열기")).toHaveTextContent("GL");
+    expect(consoleMark("argocd 콘솔 열기")).toHaveTextContent("AR");
+    expect(consoleMark("grafana 콘솔 열기")).toHaveTextContent("GF");
+    expect(consoleMark("SILO 콘솔 열기")).toHaveTextContent("SI");
+    expect(screen.queryByAltText(/logo/)).toBeNull();
     expect(screen.getByText("Pipeline Topology")).not.toBeNull();
     // Artifacts 한 칸이 아니라 역할별 스테이지로 선다.
     expect(screen.getByText("Source")).not.toBeNull();
@@ -217,22 +205,13 @@ describe("StackListPage", () => {
     expect(screen.getAllByText("1 instance").length).toBe(3);
 
     fireEvent.click(screen.getByRole("button", { name: "Monitoring" }));
-    expect(screen.getByAltText("gitlab icon")).toHaveAttribute(
-      "src",
-      "/tool-icons/gitlab.svg",
-    );
-    expect(screen.getByAltText("argocd icon")).toHaveAttribute(
-      "src",
-      "/tool-icons/argo.svg",
-    );
-    expect(screen.getByAltText("grafana icon")).toHaveAttribute(
-      "src",
-      "/tool-icons/grafana.svg",
-    );
-    expect(screen.getByAltText("MinIO (SILO) icon")).toHaveAttribute(
-      "src",
-      "/tool-icons/silo.svg",
-    );
+    // 막대 아래 약자는 그 자리의 유일한 도구 표시다(X축 라벨이 없다). 읽는 도구에는 이름을 준다.
+    const barMark = (name: string) =>
+      screen.getByRole("img", { name }).querySelector("[data-tool-mark]");
+    expect(barMark("gitlab icon")).toHaveTextContent("GL");
+    expect(barMark("argocd icon")).toHaveTextContent("AR");
+    expect(barMark("grafana icon")).toHaveTextContent("GF");
+    expect(barMark("SILO icon")).toHaveTextContent("SI");
   });
 
   it("renders empty state when no stacks exist", () => {

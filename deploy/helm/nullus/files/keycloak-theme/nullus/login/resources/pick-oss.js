@@ -4,7 +4,7 @@
 // 난수를 만들 수 없어 이 한 조각만 자바스크립트다. 이 파일이 막혀도 화면은
 // scene.generated.css 의 기본 셋으로 그대로 뜬다.
 (function () {
-  var TOOLS = ["gitlab", "gitea", "jenkins", "argo", "harbor", "jfrog", "sonatype", "minio", "openbao", "prometheus", "grafana", "elasticsearch", "opensearch", "jaeger", "opentelemetry", "victoriametrics"];
+  var TOOLS = ["gitlab", "gitea", "jenkins", "argo", "harbor", "nexus", "silo", "seaweedfs", "openbao", "prometheus", "grafana", "loki", "opensearch", "tempo", "jaeger", "opentelemetry"];
 
   // 리소스 경로는 이 스크립트 자신의 주소에서 얻는다 — Keycloak 이 경로에 버전
   // 해시를 넣어서 미리 적어 둘 수 없다. currentScript 는 지금 이 순간에만

@@ -20,7 +20,8 @@ import {
 import { useTranslation } from "react-i18next";
 import { cn } from "../../../lib/utils";
 import { useStackMonitoring } from "../../stack/api/stack-api";
-import { toolDisplayName, toolLogoURL } from "../../stack/utils/tool-logo";
+import { toolDisplayName } from "../../stack/utils/tool-identity";
+import { ToolMark } from "../../stack/components/tool-mark";
 import { CHART_LEGEND_PROPS, CHART_SERIES, CHART_STYLE } from "./monitoring-chart-widgets";
 
 // recharts 는 SVG 라 CSS 변수를 그대로 쓴다. 이 파일이 chart.js(<canvas>)를 쓰던
@@ -55,31 +56,20 @@ function formatAxisValue(value: number | string): string {
  */
 const OSS_PLOT_INSET = "pl-10 pr-2";
 
-function OssLogoRow({ items }: { items: { key: string; fullName: string; iconUrl: string }[] }) {
+function OssLogoRow({ items }: { items: { key: string; fullName: string; toolName: string }[] }) {
   return (
     <div className={cn("pointer-events-none flex h-5 items-start", OSS_PLOT_INSET)}>
       {items.map((item) => (
         <div key={`oss-icon-${item.key}`} className="flex min-w-0 flex-1 justify-center">
-          <div className="relative h-4 w-4">
-            <img
-              src={item.iconUrl}
-              alt={`${item.fullName} icon`}
-              className="h-4 w-4 rounded-[3px]"
-              loading="lazy"
-              onError={(event) => {
-                event.currentTarget.style.display = "none";
-                const fallback = event.currentTarget
-                  .nextElementSibling as HTMLElement | null;
-                if (fallback) fallback.style.display = "flex";
-              }}
-            />
-            <span
-              className="hidden h-4 w-4 items-center justify-center rounded-[3px] bg-[color-mix(in_srgb,_var(--color-text-secondary)_25%,_transparent)] text-[9px] font-bold text-[var(--color-text-primary)]"
-              aria-hidden="true"
-            >
-              {item.fullName.slice(0, 1).toUpperCase()}
-            </span>
-          </div>
+          {/* X축 라벨이 없어 이 약자가 막대의 유일한 도구 표시다. 읽는 도구에는 이름을 준다. */}
+          <span
+            role="img"
+            aria-label={`${item.fullName} icon`}
+            title={item.fullName}
+            className="flex"
+          >
+            <ToolMark name={item.toolName} />
+          </span>
         </div>
       ))}
     </div>
@@ -464,7 +454,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
         .map((tool) => ({
           key: tool.key,
           fullName: toolDisplayName(tool.name),
-          iconUrl: toolLogoURL(tool.name),
+          toolName: tool.name,
           pods: tool.pod_count,
           ready: tool.ready_pods,
         }));
@@ -474,7 +464,7 @@ export function StackMonitoringOverview({ stackId }: { stackId: string }) {
       {
         key: activeTool.key,
         fullName: toolDisplayName(activeTool.name),
-        iconUrl: toolLogoURL(activeTool.name),
+        toolName: activeTool.name,
         pods: activeTool.pod_count,
         ready: activeTool.ready_pods,
       },

@@ -67,7 +67,7 @@ Storage 탭의 **Object Storage → Storage Provider** 에서 스택 안에 세�
 
 | 구현체 | 라이선스 | 설치되는 것 | 웹 콘솔 |
 |--------|----------|-------------|---------|
-| **MinIO (SILO)** | AGPL-3.0 — 이미지는 커뮤니티 포크 SILO(`pgsty/silo`) — 화면도 이 이름과 SILO 마크로 적습니다 | 릴리스 `nullus-minio`(standalone) | `minio.<도메인>`(Keycloak 로그인) |
+| **SILO** | AGPL-3.0 — MinIO 서버의 커뮤니티 포크(`pgsty/silo`, MinIO, Inc. 와 무관). 설치 슬롯 id 는 `minio` 그대로이고, 화면은 MinIO 상표 정책에 따라 SILO 로만 적습니다 | 릴리스 `nullus-minio`(standalone) | `minio.<도메인>`(Keycloak 로그인) |
 | **SeaweedFS** | Apache-2.0 | 릴리스 `nullus-seaweedfs`(all-in-one — master·volume·filer·S3 게이트웨이가 파드 하나) | 없음 — S3 API 뿐 |
 
 GitLab(아티팩트 · LFS · 업로드 · 패키지 · Pages · Container Registry)은 **S3 계약만**

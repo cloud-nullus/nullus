@@ -149,12 +149,6 @@ select option {
   }
 }
 
-/* 흰색 단색 마크(GitHub)는 라이트 테마의 밝은 카드 위에서 보이지 않는다.
-   반전하면 정확히 검정이 되고, 그것이 이 마크의 밝은 배경용 공식 색이다. */
-[data-theme='light'] .nullus-mono-mark {
-  filter: invert(1);
-}
-
 /* 배포 진행 막대와 로켓 (features/stack/components/deploy-progress-bar.tsx).
 
    서버 진행률은 단계가 바뀔 때만 뛴다. 그 사이 몇 분 동안 막대가 멈춰 있으면

@@ -93,7 +93,7 @@ import {
   createDeployScript,
 } from '../utils/install-manifest-builders'
 import type { ManifestToolEntry } from '../utils/install-manifest-builders'
-import { MINIO_DISPLAY_NAME } from '../utils/tool-logo'
+import { MINIO_DISPLAY_NAME } from '../utils/tool-identity'
 import { ToolSelector, MultiToolSelector } from '../components/install-tool-selector'
 import { PageHeader } from '../../../components/layout/page-header'
 import { Checkbox } from '../../../components/ui/checkbox'

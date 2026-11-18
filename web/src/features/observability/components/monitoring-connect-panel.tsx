@@ -8,7 +8,7 @@ import type { OSSMonitoringStatus } from "../../stack/api/stack-api-types"
 import type { EmbedTab } from "../utils/monitoring-utils"
 import { isValidEmbedUrl, normalizeEmbedUrl } from "../utils/monitoring-utils"
 import { TOOL_STATUS } from "./monitoring-chart-widgets"
-import { toolDisplayName } from "../../stack/utils/tool-logo"
+import { toolDisplayName } from "../../stack/utils/tool-identity"
 import { TextInput } from '../../../components/ui/text-input'
 
 // ─── Stack Component Connection UI ───────────────────────────────────────────

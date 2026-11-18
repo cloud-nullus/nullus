@@ -8,7 +8,7 @@ import type { CICDGoldenPath, CICDTool } from '../api/cicd-api'
 import { Button } from '../../../components/ui/button'
 import { Modal } from '../../../components/ui/modal'
 import { useStackConfigStore } from '../../stack/stores/stack-config-store'
-import { toolDisplayName } from '../../stack/utils/tool-logo'
+import { toolDisplayName } from '../../stack/utils/tool-identity'
 import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from '../../../components/ui/search-input'
 

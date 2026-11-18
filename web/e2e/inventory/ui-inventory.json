@@ -1945,11 +1945,12 @@
       "file": "src/features/home/components/support-tools-marquee.tsx",
       "i18nKeys": [
         "home.supportTools.description",
-        "home.supportTools.title"
+        "home.supportTools.title",
+        "home.supportTools.trademarkNotice"
       ],
       "fallbacks": [
-        "Open source that Nullus installs and wires into your cluster.",
-        "Support Tools"
+        "Support Tools",
+        "Tools Nullus installs into your cluster or connects to, and wires together for you."
       ],
       "labels": [
         "support-tools-heading"
@@ -2972,6 +2973,7 @@
         "Log Search",
         "Logging",
         "Metrics Collection",
+        "MinIO 기술 기반 S3 호환 오브젝트 스토리지 (AGPL-3.0)",
         "Nexus Repository",
         "Observability",
         "OpenSearch",
@@ -2982,7 +2984,8 @@
         "Pipeline",
         "Prometheus",
         "Prometheus 스타일 로그 집계",
-        "S3 호환 오브젝트 스토리지",
+        "S3 호환 오브젝트 스토리지 (Apache-2.0)",
+        "SeaweedFS",
         "Source Repository",
         "Spinnaker",
         "Storage Backend",
@@ -3023,6 +3026,7 @@
         "pipeline",
         "prometheus",
         "s3",
+        "seaweedfs",
         "source_repository",
         "spinnaker",
         "storage_backend",

@@ -9,7 +9,7 @@ import { Tabs } from "../../../components/ui/tabs";
 import { cn } from "../../../lib/utils";
 import type { Stack } from "../../../types";
 import { useAddTools, useStacks } from "../api/stack-api";
-import { MINIO_DISPLAY_NAME } from "../utils/tool-logo";
+import { MINIO_DISPLAY_NAME } from "../utils/tool-identity";
 import { PageHeader } from "../../../components/layout/page-header";
 
 interface ToolOption {
@@ -117,7 +117,7 @@ const TOOL_CATEGORIES: ToolCategory[] = [
           {
             id: "minio",
             label: MINIO_DISPLAY_NAME,
-            description: "S3 호환 오브젝트 스토리지",
+            description: "MinIO 기술 기반 S3 호환 오브젝트 스토리지 (AGPL-3.0)",
           },
           {
             id: "seaweedfs",

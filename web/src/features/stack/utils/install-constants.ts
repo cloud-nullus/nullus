@@ -1,6 +1,6 @@
 import type { StoragePlanMode, StorageTargetConfig } from '../stores/stack-config-store'
 import type { ManifestInstallType, PlanningSlot } from './install-planning-utils'
-import { MINIO_DISPLAY_NAME } from './tool-logo'
+import { MINIO_DISPLAY_NAME } from './tool-identity'
 
 export interface ToolOption {
   id: string
