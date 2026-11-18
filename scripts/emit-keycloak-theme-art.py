@@ -36,7 +36,6 @@ UNIT = 25.0
 PAD = 16.0
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-ICON_DIR = REPO / "web/public/tool-icons"
 MARK_GEOMETRY = REPO / "web/src/components/brand/mark-geometry.generated.ts"
 DEFAULT_OUT = "deploy/helm/nullus/files/keycloak-theme/nullus/login/resources"
 
@@ -58,21 +57,32 @@ SCAN = ("#8f99a7", "#7a8493", "#68717e")
 NULLUS_BLUE = "#2f5fe0"
 BADGE_GREEN = "#22c07f"
 
-# 들어가는 OSS. 제품이 실제로 설치하는 도구 중 아이콘이 있는 것들이다
-# (internal/stack/domain 의 스택 템플릿 ↔ web/public/tool-icons).
+# 들어가는 OSS — 제품이 실제로 설치하는 도구다(메인 화면 지원 도구 띠와 같은 범위,
+# web/src/features/home/utils/support-tools.ts). 설치하지 않는 도구를 실으면
+# "검증된 OSS 를 쌓는다" 는 그림이 거짓이 된다.
 # 화면에는 이 중 셋만 실리고, 어느 셋인지는 접속할 때마다 달라진다 —
 # 카탈로그가 넓다는 게 제품의 요지라 매번 같은 셋만 보이면 그게 가려진다.
-OSS_CATALOG = [
-    "gitlab", "gitea", "jenkins", "argo", "harbor", "jfrog", "sonatype", "minio",
-    "openbao", "prometheus", "grafana", "elasticsearch", "opensearch", "jaeger",
-    "opentelemetry", "victoriametrics",
-]
+#
+# 상자에는 제품 로고가 아니라 두 글자 약자를 찍는다. 로고는 각 상표권자의 정책을
+# 따르는데, 그 정책이 제품 화면의 로고 사용을 서면 허락 대상으로 두거나 거절한다
+# (근거: web/src/features/stack/utils/tool-identity.ts). 약자는 거기의 toolMonogram 과
+# 같은 값이라 로그인 화면과 앱 화면이 같은 표기를 쓴다. 상자 색도 브랜드 색이 아니라
+# Nullus 매듭의 세 색을 돌려 쓴다.
+OSS_MONOGRAM = {
+    "gitlab": "GL", "gitea": "GT", "jenkins": "JE", "argo": "AR", "harbor": "HB",
+    "nexus": "NX", "silo": "SI", "seaweedfs": "SW", "openbao": "OB",
+    "prometheus": "PR", "grafana": "GF", "loki": "LK", "opensearch": "OS",
+    "tempo": "TP", "jaeger": "JG", "opentelemetry": "OT",
+}
+OSS_CATALOG = list(OSS_MONOGRAM)
+# Nullus 매듭의 파랑 · 보라 · 청록. 카탈로그 순서대로 돌려 칠한다.
+BOX_PALETTE = ("#2f5fe0", "#6b52d9", "#14a0a0")
 # 자바스크립트가 막힌 환경에서 보일 기본 셋.
 OSS_DEFAULT = ["gitlab", "argo", "grafana"]
 
-# 나온 Nullus 상자 위에 쌓이는 애플리케이션 스택.
-# 이 셋은 도구 카탈로그(web/public/tool-icons)에 없어서 여기서 직접 그린다.
-APPS = [("react", "#2aa5c7"), ("go", "#0090b4"), ("spring", "#5c9c34")]
+# 나온 Nullus 상자 위에 쌓이는 애플리케이션 스택. OSS 상자와 같은 규칙 — 프레임워크
+# 마크를 본뜨지 않고 약자를 찍는다.
+APPS = [("react", "RE"), ("go", "GO"), ("spring", "SP")]
 
 # ── 배치 (월드 좌표) ──────────────────────────────────────────────────────
 # 입구 벨트는 y 축을 따라 (y 가 큰 화면 왼쪽 아래 -> 게이트),
@@ -366,24 +376,11 @@ def art_on_left(d, cx, y, z_bottom, size, body, iw, ih, fill=None):
     d.items.append(f'<g{f} transform="{m}">{body}</g>')
 
 
-def icon_color(slug):
-    """아이콘 파일에 박힌 브랜드 색. 색표를 따로 두면 아이콘과 갈라진다."""
-    src = (ICON_DIR / f"{slug}.svg").read_text()
-    m = re.search(r'fill="(#[0-9A-Fa-f]{6})"', src)
-    if not m:
-        raise SystemExit(f"{slug}.svg 에 브랜드 색이 없다")
-    return m.group(1).lower()
-
-
-def load_icon(slug):
-    """제품이 쓰는 도구 아이콘을 읽어 안쪽 마크업과 viewBox 크기를 돌려준다."""
-    src = (ICON_DIR / f"{slug}.svg").read_text()
-    m = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', src)
-    if not m:
-        raise SystemExit(f"{slug}.svg 에 viewBox 가 없다")
-    inner = src[src.index(">") + 1:src.rindex("</svg>")]
-    return re.sub(r"<title>.*?</title>", "", inner, flags=re.S).strip(), \
-        float(m.group(1)), float(m.group(2))
+def monogram_art(text):
+    """상자 뚜껑에 찍는 두 글자 약자. 24x24 기준이고 색은 감싸는 쪽(art_on_top)이 준다."""
+    return ('<text x="12" y="12.6" font-size="11.5" font-weight="800" '
+            f'font-family="{FONT}" text-anchor="middle" dominant-baseline="central" '
+            f'letter-spacing="-0.3">{text}</text>'), 24.0, 24.0
 
 
 def _mark_strokes(src, name):
@@ -422,27 +419,6 @@ def nullus_mark(colored=True):
     if not parts:
         raise SystemExit("로고 조각을 하나도 읽지 못했다")
     return "".join(parts), 32.0, 32.0
-
-
-def app_mark(name):
-    """React·Go·Spring 은 도구 카탈로그에 없어 직접 그린다. 24x24 기준."""
-    if name == "react":
-        rings = "".join(
-            f'<ellipse cx="12" cy="12" rx="11" ry="4.2" fill="none" '
-            f'stroke="currentColor" stroke-width="1.5" '
-            f'transform="rotate({a} 12 12)"/>' for a in (0, 60, 120))
-        return rings + '<circle cx="12" cy="12" r="2.3" fill="currentColor"/>', 24.0, 24.0
-    if name == "go":
-        return ('<text x="12" y="12" font-size="15" font-weight="800" '
-                f'font-family="{FONT}" fill="currentColor" text-anchor="middle" '
-                'dominant-baseline="central" letter-spacing="-0.5">Go</text>'), 24.0, 24.0
-    if name == "spring":
-        # 잎 하나. 스프링을 뜻하는 초록 잎사귀다.
-        return ('<path d="M12 2.5C5.5 7 4.5 15 12 21.5C19.5 15 18.5 7 12 2.5Z" '
-                'fill="currentColor"/>'
-                '<path d="M12 5.5V19" stroke="#ffffff" stroke-width="1.1" '
-                'stroke-linecap="round" opacity="0.55"/>'), 24.0, 24.0
-    raise SystemExit(f"모르는 마크: {name}")
 
 
 # ── 정지 장면 ─────────────────────────────────────────────────────────────
@@ -1104,14 +1080,14 @@ def metric_tile():
 
 def build_sprites():
     out = {}
-    for slug in OSS_CATALOG:
-        art, color = load_icon(slug), icon_color(slug)
+    for i, slug in enumerate(OSS_CATALOG):
+        art, color = monogram_art(OSS_MONOGRAM[slug]), BOX_PALETTE[i % len(BOX_PALETTE)]
         out[f"oss-{slug}"] = sprite(
             (lambda a, c: lambda d: container(d, OSS_W, OSS_D, OSS_H, c, a,
                                               min(OSS_W, OSS_D) * 0.66))(art, color),
             f"벨트에 얹히는 {slug} 컨테이너.")
-    for name, color in APPS:
-        art = app_mark(name)
+    for i, (name, monogram) in enumerate(APPS):
+        art, color = monogram_art(monogram), BOX_PALETTE[i % len(BOX_PALETTE)]
         out[f"app-{name}"] = sprite(
             (lambda a, c: lambda d: container(d, APP_W, APP_D, APP_H, c, a,
                                               min(APP_W, APP_D) * 0.62))(art, color),
