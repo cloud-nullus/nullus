@@ -203,6 +203,14 @@ const (
 	NexusChartVersion  = "64.2.0"
 	NexusAppVersion    = "3.64.0"
 
+	// NexusCommunityEditionFirstAppVersion 은 Sonatype 이 무료판을 Community Edition
+	// EULA 로 바꾼 첫 버전(3.77.0, 2025-02-04)이다. 그 EULA 는 제품 내장·재배포·제3자
+	// 사용을 금지하므로 NexusAppVersion 은 이보다 낮아야 한다
+	// (고정: TestNexusAppVersion_StaysBeforeCommunityEditionEULA).
+	// 그 아래 버전도 순수 EPL 은 아니다 — maven·raw·apt 코어만 EPL-1.0 이고 Docker·npm
+	// 등 포맷 플러그인은 번들의 Sonatype EULA(OSS-LICENSE.txt)를 따른다.
+	NexusCommunityEditionFirstAppVersion = "3.77.0"
+
 	// GitLab 차트 하나가 소스 저장소·CI·컨테이너 레지스트리를 함께 세운다.
 	// 세 항목이 같은 버전을 봐야 한다.
 	GitLabChartVersion = "8.7.2"
