@@ -18,7 +18,8 @@ import { Badge } from "../../../components/ui/badge";
 import { cn } from "../../../lib/utils";
 import { useStackMonitoring } from "../api/stack-api";
 import type { PodMonitoringStatus } from "../api/stack-api-types";
-import { toolDisplayName, toolLogoURL } from "../utils/tool-logo";
+import { toolDisplayName } from "../utils/tool-identity";
+import { ToolMark } from "./tool-mark";
 
 type WorkloadRow = PodMonitoringStatus & {
   /** 이 파드를 띄운 OSS. 파드 이름만으로는 어느 도구인지 모르는 경우가 많다. */
@@ -88,12 +89,7 @@ export function StackWorkloadsTab({ stackId }: { stackId: string }) {
       header: () => <span className="whitespace-nowrap">Pod</span>,
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
-          <img
-            src={toolLogoURL(row.original.tool)}
-            alt=""
-            aria-hidden="true"
-            className="h-4 w-4 shrink-0 object-contain"
-          />
+          <ToolMark name={row.original.tool} />
           <div className="min-w-0">
             <div className="truncate font-mono text-[12px] text-[var(--color-text-primary)]" title={row.original.name}>
               {row.original.name}

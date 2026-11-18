@@ -49,7 +49,7 @@ import { PageHeader } from '../../../components/layout/page-header'
 import { SearchInput } from "../../../components/ui/search-input"
 import { TextInput } from "../../../components/ui/text-input"
 import { TemplateToolSections } from "../components/template-tool-editor"
-import { toolDisplayName } from "../utils/tool-logo"
+import { toolDisplayName } from "../utils/tool-identity"
 
 const TOOL_CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
   source_repository: { bg: "color-mix(in srgb, var(--color-info) 12%, transparent)", color: "var(--color-info)" },

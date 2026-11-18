@@ -12,7 +12,7 @@ import { cn } from "../../../lib/utils"
 import { CHART_LEGEND_PROPS, CHART_STYLE, KpiCard, ChartPanel } from "./monitoring-chart-widgets"
 import type { TimeRange } from "./monitoring-tab-layout"
 import { formatRangeLabel, selectSeries } from "../utils/monitoring-utils"
-import { toolDisplayName } from "../../stack/utils/tool-logo"
+import { toolDisplayName } from "../../stack/utils/tool-identity"
 
 export function ClusterDefault({
   clusterId,

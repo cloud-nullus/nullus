@@ -16,10 +16,11 @@ describe('stack object storage backend', () => {
     expect(isInClusterObjectStorage('s3')).toBe(false)
   })
 
-  // minio 를 고르면 서는 것은 MinIO 포크 SILO 다. 화면의 마크(silo.svg)와 이름이 같은 것을 가리켜야 한다.
+  // minio 를 고르면 서는 것은 MinIO 포크 SILO 다. 이름이 설치되는 실물을 가리켜야 하고,
+  // MinIO 상표 정책은 수정판에 MinIO 이름을 붙이는 것을 금지한다.
   it('should label each in-cluster implementation by what actually gets installed', () => {
     const labels = Object.fromEntries(STORAGE_PROVIDER_OPTIONS.objectStorage.map((option) => [option.id, option.label]))
-    expect(labels.minio).toBe('MinIO (SILO)')
+    expect(labels.minio).toBe('SILO')
     expect(labels.seaweedfs).toBe('SeaweedFS')
   })
 

@@ -7,16 +7,15 @@
 //
 // 이름과 버전을 각각 join 한 문자열 두 개라, 어느 게 5.2.0 인지 알려면 자리를
 // 세야 했다. 원본 데이터에는 도구별로 {name, version, instances} 가 살아 있는데
-// 렌더 직전에 버리고 있었다. 이제 도구 한 줄에 로고·이름·버전을 함께 둔다.
+// 렌더 직전에 버리고 있었다. 이제 도구 한 줄에 약자·이름·버전을 함께 둔다.
 //
 // 스테이지 옆의 24px 색 동그라미도 걷어냈다. 카테고리마다 임의로 배정한 색이라
-// 아무 뜻이 없었고, 자리는 로고 크기만큼 차지했다. 그 자리는 실제 브랜드 로고가
-// 가져간다(public/tool-icons) — 읽지 않아도 GitLab 인지 Argo 인지 보인다.
+// 아무 뜻이 없었고, 자리는 로고 크기만큼 차지했다. 그 자리는 도구의 두 글자 약자가
+// 가져간다(ToolMark). 브랜드 로고는 상표 정책 때문에 쓰지 않는다(tool-identity.ts).
 //
 // health/sync 배지는 노드마다 달지 않는다. 값이 stack.status 하나에서 나오므로
 // 노드 8개가 늘 같은 값을 반복했다 — 1비트를 8번 그린 셈이다. 헤더에 한 번만 둔다.
 
-import { useState } from "react";
 import { ChevronRight, CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
 import { iconProps } from '../../../components/ui/icon'
 import { cn } from "../../../lib/utils";
@@ -25,7 +24,8 @@ import type {
   PipelineTool,
   ToolRuntimeStatus,
 } from "../utils/stack-list-utils";
-import { toolDisplayName, toolLogoURL } from "../utils/tool-logo";
+import { toolDisplayName } from "../utils/tool-identity";
+import { ToolMark } from "./tool-mark";
 
 // 색만으로 상태를 구분하지 않는다 — 색 + 아이콘 + 글자를 함께 쓴다 (DESIGN.md §상태 표시).
 const RUNTIME_STYLE: Record<
@@ -36,31 +36,6 @@ const RUNTIME_STYLE: Record<
   warning: { icon: TriangleAlert, className: "text-[var(--color-warning)]" },
   error: { icon: CircleAlert, className: "text-[var(--color-error)]" },
 };
-
-function ToolMark({ name }: { name: string }) {
-  const [failed, setFailed] = useState(false);
-
-  if (failed) {
-    return (
-      <span
-        aria-hidden="true"
-        className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[color-mix(in_srgb,_var(--color-text-primary)_10%,_transparent)] text-[9px] font-bold text-[var(--color-text-secondary)]"
-      >
-        {name.charAt(0).toUpperCase()}
-      </span>
-    );
-  }
-
-  return (
-    <img
-      src={toolLogoURL(name)}
-      alt=""
-      aria-hidden="true"
-      className="h-4 w-4 shrink-0 object-contain"
-      onError={() => setFailed(true)}
-    />
-  );
-}
 
 function ToolRow({ tool }: { tool: PipelineTool }) {
   return (

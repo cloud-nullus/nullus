@@ -17,7 +17,8 @@ import {
 import { RetryStackButton } from "./retry-stack-button";
 import type { StackStatus as RetryStackStatus } from "../utils/retry-policy";
 import type { PipelineNode, LaunchTool } from "../utils/stack-list-utils";
-import { toolDisplayName, toolLogoURL } from "../utils/tool-logo";
+import { toolDisplayName } from "../utils/tool-identity";
+import { ToolMark } from "./tool-mark";
 import {
   buildPipelineNodesFromSnapshot,
   buildPipelineNodesFromMonitoring,
@@ -52,27 +53,6 @@ import {
 import { TextInput } from "../../../components/ui/text-input"
 import { Badge } from "../../../components/ui/badge";
 import { PipelineTopologyRail } from "./pipeline-topology";
-
-function ToolLogo({ name, logo }: Pick<LaunchTool, "name" | "logo">) {
-  const [hasError, setHasError] = useState(false);
-
-  if (hasError) {
-    return (
-      <span aria-label={`${name} logo fallback`}>
-        {name.charAt(0).toUpperCase()}
-      </span>
-    );
-  }
-
-  return (
-    <img
-      src={logo}
-      alt={`${name} logo`}
-      className="absolute inset-0 h-full w-full object-contain p-0.5"
-      onError={() => setHasError(true)}
-    />
-  );
-}
 
 export function StackInfoTab({
   stack,
@@ -167,7 +147,6 @@ export function StackInfoTab({
     name: tool.name,
     version: tool.version,
     url: resolveToolLaunchURL(tool.name, monitoringData?.oss_statuses, accessDomain),
-    logo: toolLogoURL(tool.name),
   }));
   const hostsText = buildHostsText(stack.name, accessDomain, launchTools);
   // 접속 정보는 서버가 확정해 내려준다 — 리소스 이름을 화면에서 조립하면
@@ -427,9 +406,7 @@ export function StackInfoTab({
                     : `${toolDisplayName(tool.name)}: 경로 미설정`
                 }
               >
-                <span className="relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-sm bg-[color-mix(in_srgb,_var(--color-text-primary)_8%,_transparent)] text-[10px] font-bold uppercase text-[var(--color-text-secondary)]">
-                  <ToolLogo name={toolDisplayName(tool.name)} logo={tool.logo} />
-                </span>
+                <ToolMark name={tool.name} size="md" />
                 <span className="font-medium">{toolDisplayName(tool.name)}</span>
                 <span className="text-[10px] text-[var(--color-text-secondary)]">
                   {tool.version}

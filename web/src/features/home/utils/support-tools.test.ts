@@ -11,7 +11,8 @@ import {
 } from '../../stack/utils/install-constants'
 import en from '../../../i18n/en.json'
 import ko from '../../../i18n/ko.json'
-import { SUPPORT_TOOLS, supportToolIconURL } from './support-tools'
+import { toolMonogram } from '../../stack/utils/tool-identity'
+import { SUPPORT_TOOLS, supportToolCategoryKey } from './support-tools'
 
 /** 설치 마법사가 실제로 고르게 하는 OSS 선택지 전부. */
 function wizardOptionIDs(): string[] {
@@ -61,15 +62,9 @@ describe('지원 OSS 목록', () => {
     expect(contradictions, `NOT_INSTALLABLE 인데 카드에 있는 id:\n${contradictions.join('\n')}`).toEqual([])
   })
 
-  // 마크와 이름이 다른 제품을 가리키면 안 된다 — SILO 마크 옆에 "MinIO" 만 적혀 있었다.
-  it('SILO 마크를 쓰는 도구는 이름에도 SILO 를 적는다', () => {
-    const silo = SUPPORT_TOOLS.filter((tool) => tool.icon === 'silo')
-    expect(silo.map((tool) => tool.name)).toEqual(['MinIO (SILO)'])
-  })
-
   it('오브젝트 스토리지 구현체를 둘 다 적는다', () => {
     const storage = SUPPORT_TOOLS.filter((tool) => tool.wizardIds.some((id) => IN_CLUSTER_OBJECT_STORAGE_IDS.includes(id)))
-    expect(storage.map((tool) => tool.name)).toEqual(['MinIO (SILO)', 'SeaweedFS'])
+    expect(storage.map((tool) => tool.name)).toEqual(['SILO', 'SeaweedFS'])
   })
 
   // 마법사에서 사라진 도구가 목록에 남으면 "지원한다" 가 거짓이 된다.
@@ -93,13 +88,24 @@ describe('지원 OSS 목록', () => {
     expect(names).toEqual([...new Set(names)])
   })
 
-  // 파일이 없으면 화면에는 깨진 이미지가 뜬다. 아이콘 이름 오타와
-  // 자산 삭제를 배포 전에 잡는다.
-  it('모든 아이콘 파일이 실제로 있다', () => {
-    const missing = SUPPORT_TOOLS.filter(
-      (tool) => !existsSync(join(__dirname, '../../../../public', supportToolIconURL(tool.icon))),
-    ).map((tool) => `${tool.name} → ${supportToolIconURL(tool.icon)}`)
-    expect(missing, `없는 아이콘 파일:\n${missing.join('\n')}`).toEqual([])
+  // 제품 로고를 싣지 않는다. 상표권자 다수가 제품 화면·웹사이트·홍보물의 로고 사용을
+  // 서면 허락 대상으로 두고(Linux Foundation·Grafana Labs), GitLab 은 제품 UI 의 로고
+  // 사용 요청을 "generally refused" 라고 적어 두었다. 이름(글자)으로 가리키는 것은
+  // 사실 표시라 허용된다 — 그래서 카드는 이름과 글자 약자만 쓴다.
+  it('브랜드 로고 파일을 저장소에 다시 두지 않는다', () => {
+    expect(existsSync(join(__dirname, '../../../../public/tool-icons'))).toBe(false)
+  })
+
+  // 로고 대신 두 글자 약자를 쓴다. 약자가 겹치면 모니터링 막대 아래처럼 이름 없이
+  // 약자만 보이는 자리에서 두 도구가 구분되지 않는다.
+  it('카드마다 약자가 다르다', () => {
+    const byMonogram = new Map<string, string[]>()
+    for (const tool of SUPPORT_TOOLS) {
+      const monogram = toolMonogram(tool.name)
+      byMonogram.set(monogram, [...(byMonogram.get(monogram) ?? []), tool.name])
+    }
+    const clashes = [...byMonogram].filter(([, names]) => names.length > 1).map(([m, names]) => `${m}: ${names.join(', ')}`)
+    expect(clashes, `약자가 겹치는 카드:\n${clashes.join('\n')}`).toEqual([])
   })
 
   it('카테고리 라벨 키가 en/ko 양쪽에 있다', () => {
@@ -108,7 +114,7 @@ describe('지원 OSS 목록', () => {
         (cur, part) => (cur !== null && typeof cur === 'object' ? (cur as Record<string, unknown>)[part] : undefined),
         source,
       )
-    const missing = SUPPORT_TOOLS.map((tool) => tool.categoryKey)
+    const missing = SUPPORT_TOOLS.map((tool) => supportToolCategoryKey(tool.category))
       .filter((key, index, all) => all.indexOf(key) === index)
       .filter((key) => typeof resolve(en, key) !== 'string' || typeof resolve(ko, key) !== 'string')
     expect(missing, `번역이 없는 카테고리 키:\n${missing.join('\n')}`).toEqual([])

@@ -43,15 +43,16 @@ describe("PipelineTopologyRail", () => {
     render(<PipelineTopologyRail nodes={nodes} />);
 
     const row = screen.getByText("GitLab CE").parentElement!;
-    expect(row.textContent).toBe("GitLab CE18.5.1");
+    // 한 줄 = 약자 타일(GL) + 이름 + 버전.
+    expect(row.textContent).toBe("GLGitLab CE18.5.1");
   });
 
   // 스택 설정에는 구현체 id(minio·seaweedfs)가 그대로 들어 있다. minio 를 고르면 서는 것은
-  // MinIO 포크 SILO 라 마크가 silo.svg 다 — 이름도 같은 제품을 가리켜야 한다.
+  // MinIO 포크 SILO 다 — 이름이 설치되는 실물을 가리켜야 한다.
   it.each([
-    ["minio", "MinIO (SILO)", "/tool-icons/silo.svg"],
-    ["seaweedfs", "SeaweedFS", "/tool-icons/seaweedfs.svg"],
-  ])("names the object storage %s after what gets installed", (stored, label, icon) => {
+    ["minio", "SILO", "SI"],
+    ["seaweedfs", "SeaweedFS", "SW"],
+  ])("names the object storage %s after what gets installed", (stored, label, monogram) => {
     const { container } = render(
       <PipelineTopologyRail
         nodes={[{ category: "Storage", tools: [{ name: stored, version: "1", instances: 1 }], instances: 1 }]}
@@ -59,7 +60,7 @@ describe("PipelineTopologyRail", () => {
     );
 
     expect(screen.getByText(label)).toBeInTheDocument();
-    expect(container.querySelector("img")?.getAttribute("src")).toBe(icon);
+    expect(container.querySelector("[data-tool-mark]")).toHaveAttribute("data-tool-mark", monogram);
   });
 
   // Nexus 는 레지스트리 두 칸에 다 나오지만 파드는 하나다. 뒤쪽 칸에 "0" 이라고
@@ -133,16 +134,14 @@ describe("PipelineTopologyRail", () => {
     expect(within(stage("Source")).getByText("2 instances")).toBeTruthy();
   });
 
-  it("renders a brand logo per tool", () => {
+  // 브랜드 로고 대신 글자 약자를 붙인다(tool-identity.ts 의 이유 참고).
+  it("marks each tool with its initials, not a brand logo", () => {
     const { container } = render(<PipelineTopologyRail nodes={nodes} />);
 
-    const logos = Array.from(container.querySelectorAll("img")).map((img) =>
-      img.getAttribute("src"),
+    expect(container.querySelector("img")).toBeNull();
+    const marks = Array.from(container.querySelectorAll("[data-tool-mark]")).map((mark) =>
+      mark.getAttribute("data-tool-mark"),
     );
-    expect(logos).toEqual([
-      "/tool-icons/gitlab.svg",
-      "/tool-icons/sonatype.svg",
-      "/tool-icons/sonatype.svg",
-    ]);
+    expect(marks).toEqual(["GL", "NX", "NX"]);
   });
 });

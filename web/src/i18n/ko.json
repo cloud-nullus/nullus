@@ -574,8 +574,8 @@
         "description": "Docker 공식 레지스트리"
       },
       "minio": {
-        "label": "MinIO (SILO)",
-        "description": "S3 호환 오브젝트 스토리지"
+        "label": "SILO",
+        "description": "MinIO 기술 기반 S3 호환 오브젝트 스토리지 (AGPL-3.0)"
       },
       "seaweedfs": {
         "label": "SeaweedFS",
@@ -757,7 +757,8 @@
     },
     "supportTools": {
       "title": "지원 도구",
-      "description": "Nullus 가 클러스터에 설치하고 서로 이어 주는 오픈소스입니다.",
+      "description": "Nullus 가 클러스터에 설치하거나 연동해 서로 이어 주는 도구입니다.",
+      "trademarkNotice": "제품명은 각 소유자의 상표입니다. Nullus 는 이들과 제휴하거나 보증받은 관계가 아닙니다.",
       "category": {
         "sourceRepository": "소스 저장소",
         "cicdPlatform": "CI/CD 플랫폼",

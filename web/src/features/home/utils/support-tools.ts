@@ -15,78 +15,64 @@
 // 카드는 **제품 단위**다. 같은 제품이 마법사에서 역할별로 여러 번 나오는 경우
 // (GitLab = 소스·레지스트리·CI) 카드는 하나이고 wizardIds 가 그 선택지들을 모은다.
 
-import { MINIO_DISPLAY_NAME } from '../../stack/utils/tool-logo'
+import { MINIO_DISPLAY_NAME } from '../../stack/utils/tool-identity'
+
+/** 카드의 카테고리 — 값이 곧 i18n 키 `home.supportTools.category.<값>` 의 끝이다. */
+export type SupportToolCategory =
+  | 'sourceRepository'
+  | 'cicdPlatform'
+  | 'delivery'
+  | 'registry'
+  | 'objectStorage'
+  | 'metrics'
+  | 'visualization'
+  | 'logSearch'
+  | 'tracing'
+  | 'telemetry'
+  | 'secrets'
 
 export interface SupportTool {
   /** 카드에 보이는 제품명. 브랜드명이라 번역하지 않는다. */
   name: string
-  /** public/tool-icons/<icon>.svg — 각 제품의 공식 마크다. */
-  icon: string
-  /** 카테고리 라벨의 i18n 키. */
-  categoryKey: string
+  /** 카드 아래 줄의 카테고리 라벨. */
+  category: SupportToolCategory
   /** 이 카드가 대표하는 설치 마법사 선택지 id. */
   wizardIds: string[]
-  /**
-   * 흰색 단색 마크라 라이트 테마의 밝은 카드 위에서 사라진다.
-   * 반전하면 정확히 검정이 되고, 그것이 이 마크의 밝은 배경용 공식 색이다.
-   */
-  monochromeWhite?: boolean
 }
 
-const CATEGORY = {
-  source: 'home.supportTools.category.sourceRepository',
-  cicd: 'home.supportTools.category.cicdPlatform',
-  delivery: 'home.supportTools.category.delivery',
-  registry: 'home.supportTools.category.registry',
-  objectStorage: 'home.supportTools.category.objectStorage',
-  metrics: 'home.supportTools.category.metrics',
-  visualization: 'home.supportTools.category.visualization',
-  logSearch: 'home.supportTools.category.logSearch',
-  tracing: 'home.supportTools.category.tracing',
-  telemetry: 'home.supportTools.category.telemetry',
-  secrets: 'home.supportTools.category.secrets',
-} as const
+/** 카테고리 라벨의 i18n 키. */
+export function supportToolCategoryKey(category: SupportToolCategory): string {
+  return `home.supportTools.category.${category}`
+}
 
 /** 순서는 DevSecOps 흐름을 따른다 — 소스 → CI → CD → 저장소 → 관측 → 비밀. */
 export const SUPPORT_TOOLS: SupportTool[] = [
-  { name: 'GitLab', icon: 'gitlab', categoryKey: CATEGORY.source, wizardIds: ['gitlab', 'gitlab-registry', 'gitlab-ci'] },
+  { name: 'GitLab', category: 'sourceRepository', wizardIds: ['gitlab', 'gitlab-registry', 'gitlab-ci'] },
   // GitHub·GHCR·GitHub Actions 는 클러스터 밖이라 설치할 차트가 없다. 그래도
   // 지원 목록에 있는 것은 파이프라인을 실제로 만들어 주는 어댑터가 있기
   // 때문이다 — 리포·시크릿·워크플로 스캐폴딩까지 간다.
-  { name: 'GitHub', icon: 'github', categoryKey: CATEGORY.source, wizardIds: ['github', 'ghcr'], monochromeWhite: true },
-  { name: 'GitHub Actions', icon: 'githubactions', categoryKey: CATEGORY.cicd, wizardIds: ['github-actions'] },
+  { name: 'GitHub', category: 'sourceRepository', wizardIds: ['github', 'ghcr'] },
+  { name: 'GitHub Actions', category: 'cicdPlatform', wizardIds: ['github-actions'] },
   // Gitea 는 소스 저장소만 담당한다 — GitLab 처럼 CI 도 레지스트리도 겸하지 않아
   // wizardIds 가 하나다.
-  { name: 'Gitea', icon: 'gitea', categoryKey: CATEGORY.source, wizardIds: ['gitea'] },
-  { name: 'Jenkins', icon: 'jenkins', categoryKey: CATEGORY.cicd, wizardIds: ['jenkins'] },
-  { name: 'Argo CD', icon: 'argo', categoryKey: CATEGORY.delivery, wizardIds: ['argocd'] },
-  { name: 'Harbor', icon: 'harbor', categoryKey: CATEGORY.registry, wizardIds: ['harbor'] },
-  { name: 'Nexus Repository', icon: 'sonatype', categoryKey: CATEGORY.registry, wizardIds: ['nexus'] },
+  { name: 'Gitea', category: 'sourceRepository', wizardIds: ['gitea'] },
+  { name: 'Jenkins', category: 'cicdPlatform', wizardIds: ['jenkins'] },
+  { name: 'Argo CD', category: 'delivery', wizardIds: ['argocd'] },
+  { name: 'Harbor', category: 'registry', wizardIds: ['harbor'] },
+  { name: 'Nexus Repository', category: 'registry', wizardIds: ['nexus'] },
   // 오브젝트 스토리지는 마법사의 Storage 탭에서 구현체를 고른다(S3 계약 뒤에서 갈아 끼운다).
   // MinIO 로 설치되는 실물은 MinIO 포크인 SILO 다(받을 수 있는 이미지가 그쪽뿐이다 —
-  // shareddomain.MinIOServerImage). 마크도 이름도 설치되는 것과 같아야 한다.
-  { name: MINIO_DISPLAY_NAME, icon: 'silo', categoryKey: CATEGORY.objectStorage, wizardIds: ['minio'] },
-  { name: 'SeaweedFS', icon: 'seaweedfs', categoryKey: CATEGORY.objectStorage, wizardIds: ['seaweedfs'] },
-  { name: 'Prometheus', icon: 'prometheus', categoryKey: CATEGORY.metrics, wizardIds: ['prometheus'] },
-  { name: 'Grafana', icon: 'grafana', categoryKey: CATEGORY.visualization, wizardIds: ['grafana'] },
+  // shareddomain.MinIOServerImage). 이름도 설치되는 것과 같아야 한다.
+  { name: MINIO_DISPLAY_NAME, category: 'objectStorage', wizardIds: ['minio'] },
+  { name: 'SeaweedFS', category: 'objectStorage', wizardIds: ['seaweedfs'] },
+  { name: 'Prometheus', category: 'metrics', wizardIds: ['prometheus'] },
+  { name: 'Grafana', category: 'visualization', wizardIds: ['grafana'] },
   // OpenSearch Dashboards 는 여기 없다 — 마법사의 시각화 선택지로 남아 있지만
   // 설치하는 단계가 없다. OpenSearch 본체만 로그 검색 저장소로 설치된다.
-  { name: 'OpenSearch', icon: 'opensearch', categoryKey: CATEGORY.logSearch, wizardIds: ['opensearch'] },
-  // Loki·Tempo 는 Grafana Labs 제품이고 별도 마크가 배포되지 않아 같은 마크를 쓴다.
-  // 이름이 다르므로 카드가 구분된다 — 지원 목록에서 빼는 것보다 낫다.
-  { name: 'Grafana Loki', icon: 'grafana', categoryKey: CATEGORY.logSearch, wizardIds: ['loki'] },
-  { name: 'Grafana Tempo', icon: 'grafana', categoryKey: CATEGORY.tracing, wizardIds: ['tempo'] },
-  { name: 'Jaeger', icon: 'jaeger', categoryKey: CATEGORY.tracing, wizardIds: ['jaeger'] },
-  { name: 'OpenTelemetry Collector', icon: 'opentelemetry', categoryKey: CATEGORY.telemetry, wizardIds: ['opentelemetry-collector'] },
-  { name: 'OpenBao', icon: 'openbao', categoryKey: CATEGORY.secrets, wizardIds: ['openbao'] },
+  { name: 'OpenSearch', category: 'logSearch', wizardIds: ['opensearch'] },
+  { name: 'Grafana Loki', category: 'logSearch', wizardIds: ['loki'] },
+  { name: 'Grafana Tempo', category: 'tracing', wizardIds: ['tempo'] },
+  { name: 'Jaeger', category: 'tracing', wizardIds: ['jaeger'] },
+  { name: 'OpenTelemetry Collector', category: 'telemetry', wizardIds: ['opentelemetry-collector'] },
+  { name: 'OpenBao', category: 'secrets', wizardIds: ['openbao'] },
 ]
-
-/**
- * 공식 마크의 경로.
- *
- * stack 의 toolLogoURL 과 달리 이름을 추측하지 않는다 — 그쪽은 못 찾으면
- * 쿠버네티스 마크로 떨어지는데, 여기서는 엉뚱한 제품 로고가 조용히 붙는다.
- */
-export function supportToolIconURL(icon: string): string {
-  return `/tool-icons/${icon}.svg`
-}
