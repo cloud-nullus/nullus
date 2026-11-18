@@ -128,7 +128,7 @@ func TestCheckStepArchitectures_BlocksUnsupportedArch(t *testing.T) {
 	assert.Empty(t, notices)
 }
 
-// 대체 출처가 없는 도구(Nexus 3.64.0)는 arm64 노드에서 설치 전에 멈춘다.
+// 대체 출처가 없는 도구(Nexus 3.76.1)는 arm64 노드에서 설치 전에 멈춘다.
 func TestCheckStepArchitectures_BlocksToolWithoutSource(t *testing.T) {
 	_, err := checkStepArchitectures([]string{"installing_nexus"}, []string{domain.ArchARM64})
 

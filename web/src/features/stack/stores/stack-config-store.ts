@@ -46,7 +46,7 @@ export const TOOL_VERSION_CATALOG: Record<string, ToolVersionCatalogEntry> = {
   grafana: { appVersion: '11.5.1', chartVersion: '8.9.0' },
   opensearch: { appVersion: '2.14.0', chartVersion: '2.22.0' },
   tempo: { appVersion: '2.7.0', chartVersion: '1.18.1' },
-  nexus: { appVersion: '3.64.0', chartVersion: '64.2.0' },
+  nexus: { appVersion: '3.76.1', chartVersion: '64.2.0' },
   jfrog: { appVersion: '7.77.3', chartVersion: '107.95.10' },
   github: { appVersion: 'external' },
   gitea: { appVersion: '1.27.0', chartVersion: '12.7.0' },

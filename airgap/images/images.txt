@@ -3,7 +3,7 @@
 # Regenerate whenever chart deps or app versions change.
 # Format : <registry>/<repo>:<tag>, one per line. Blank / "#" lines ignored.
 # CI     : MODE=check ./00-generate-images.sh blocks drift.
-# installer-values-sha256: b03d5ac9d96fbc793032ff81f2bae778b912ca9f536b3756158041a8ae79645c
+# installer-values-sha256: 76a19d8f73f2056b0383eddd62269420b2196fedf991204db0c7a21f2c7ca1f1
 
 # --- Nullus app + chart dependency images (rendered from chart) ---
 busybox:1.37
@@ -91,7 +91,7 @@ registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.5.1
 registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.14.0
 registry.k8s.io/metrics-server/metrics-server:v0.7.2
 sonarqube:26.9.0.129388-community
-sonatype/nexus3:3.64.0
+sonatype/nexus3:3.76.1
 
 # --- Infra images (not part of helm render) ---
 kindest/node:v1.30.0

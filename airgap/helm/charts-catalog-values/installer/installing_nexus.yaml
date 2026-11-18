@@ -2,6 +2,9 @@
 # step: installing_nexus
 # chart: nexus-repository-manager 64.2.0
 fullnameOverride: nexus
+image:
+    repository: sonatype/nexus3
+    tag: 3.76.1
 ingress:
     enabled: false
 nexus:

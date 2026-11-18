@@ -76,9 +76,10 @@ var toolImageProfiles = []ToolImageProfile{
 		}},
 	},
 	{
-		// sonatype/nexus3 는 3.80 부터 멀티아키다. 설치하는 3.64.0(NexusAppVersion)은
+		// sonatype/nexus3 는 3.80 부터 멀티아키다. 설치하는 3.76.1(NexusAppVersion)은
 		// 단일 아키(amd64) 매니페스트이고 대체 출처가 없어 arm64 노드에서는 막는다.
-		// 버전 상향으로 풀리는 문제라 대체 이미지를 두지 않는다(nullus-plan#70).
+		// 멀티아키 판(3.80+)은 Community Edition EULA 라 제품에 넣을 수 없으므로
+		// 버전 상향으로는 풀리지 않는다(NexusCommunityEditionFirstAppVersion, nullus-plan#70).
 		Tool:        "Nexus",
 		Step:        "installing_nexus",
 		NativeArchs: []string{ArchAMD64},
