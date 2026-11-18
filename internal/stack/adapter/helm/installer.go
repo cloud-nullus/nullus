@@ -127,6 +127,10 @@ func (h *HelmInstaller) installAirgapOCI(ctx context.Context, req port.HelmInsta
 }
 
 func (h *HelmInstaller) Install(ctx context.Context, req port.HelmInstallRequest) (*port.HelmInstallResult, error) {
+	// 아래 세 갈래(새 설치 · 기존 릴리스 upgrade · 재설치)와 에어갭 경로가 모두 같은
+	// values 를 쓰므로 여기서 한 번 고친다.
+	req.Values = h.keepDeployedNexusDataFormat(req)
+
 	if airgapOCIRegistry() != "" {
 		return h.installAirgapOCI(ctx, req)
 	}

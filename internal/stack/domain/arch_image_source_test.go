@@ -17,7 +17,7 @@ func TestToolImageProfileForStep_Harbor(t *testing.T) {
 	assert.Equal(t, []string{ArchAMD64, ArchARM64}, p.SupportedArchs())
 }
 
-// sonatype/nexus3 는 3.80 부터 멀티아키다. 설치하는 3.64.0 은 단일 아키(amd64)이고
+// sonatype/nexus3 는 3.80 부터 멀티아키다. 설치하는 3.76.1 은 단일 아키(amd64)이고
 // 대체 출처가 없으므로 arm64 노드에서는 설치 전에 막아야 한다.
 func TestToolImageProfileForStep_Nexus(t *testing.T) {
 	p, ok := ToolImageProfileForStep("installing_nexus")

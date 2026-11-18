@@ -160,7 +160,7 @@ var archMulti = []string{domain.ArchAMD64, domain.ArchARM64}
 // 이미지만 깔던 때에도 arm64 클러스터에서 게이트를 통과했다(#270).
 var archHarbor = toolImageArchSupport("Harbor")
 
-// archNexus 는 Nexus 가 뜰 수 있는 아키텍처다. 설치하는 sonatype/nexus3 3.64.0 은
+// archNexus 는 Nexus 가 뜰 수 있는 아키텍처다. 설치하는 sonatype/nexus3 3.76.1 은
 // amd64 뿐이고 대체 출처가 없다 — 매트릭스가 amd64·arm64 로 잘못 적고 있었다.
 var archNexus = toolImageArchSupport("Nexus")
 

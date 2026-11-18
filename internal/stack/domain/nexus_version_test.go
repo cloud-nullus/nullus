@@ -30,3 +30,34 @@ func TestNexusAppVersion_StaysBeforeCommunityEditionEULA(t *testing.T) {
 func TestNexusCommunityEditionFirstAppVersion_Is3770(t *testing.T) {
 	require.Equal(t, "3.77.0", NexusCommunityEditionFirstAppVersion)
 }
+
+// 3.71.0 부터 Nexus 는 OrientDB 를 열지 못한다(H2 · PostgreSQL 만). 이미 OrientDB 시대
+// 태그로 떠 있는 릴리스를 새 기본 태그로 올리면 파드가 데이터베이스를 열지 못해 서지
+// 않는다 — 재시도 · 도구 추가가 설치 단계를 다시 돌릴 때 그 릴리스의 태그를 지킨다.
+func TestNexusImageTagForRelease(t *testing.T) {
+	cases := []struct {
+		name     string
+		deployed string
+		want     string
+	}{
+		{"새 설치는 기본 태그", "", NexusAppVersion},
+		{"OrientDB 시대(3.64.0)는 그대로", "3.64.0", "3.64.0"},
+		{"OrientDB 마지막 줄(3.70.5)도 그대로", "3.70.5", "3.70.5"},
+		{"H2 시대는 기본 태그로", "3.71.0", NexusAppVersion},
+		{"이미 기본 태그면 그대로", NexusAppVersion, NexusAppVersion},
+		{"읽을 수 없는 태그는 기본 태그로", "latest", NexusAppVersion},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, NexusImageTagForRelease(tc.deployed))
+		})
+	}
+}
+
+// 기본 태그 자체가 OrientDB 시대면 위 규칙이 거꾸로 동작한다 — 새 설치가 H2 를 써야 한다.
+func TestNexusAppVersion_IsOnH2(t *testing.T) {
+	got := parseJenkinsVersion(t, NexusAppVersion)
+	boundary := parseJenkinsVersion(t, NexusH2FirstAppVersion)
+	require.GreaterOrEqualf(t, compareVersions(got, boundary), 0,
+		"Nexus appVersion %s 이 OrientDB 시대다 — %s 이상이어야 한다", NexusAppVersion, NexusH2FirstAppVersion)
+}

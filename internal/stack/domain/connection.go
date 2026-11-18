@@ -201,8 +201,14 @@ const (
 	HarborChartVersion = "1.15.0"
 	HarborAppVersion   = "2.11.0"
 	NexusChartVersion  = "64.2.0"
-	NexusAppVersion    = "3.64.0"
+	NexusAppVersion    = "3.76.1"
 
+	// Nexus 차트(64.2.0)는 2023-10-24 부터 지원이 끊겨 appVersion 이 3.64.0 에 멈춰 있다.
+	// 이미지 태그는 values 가 NexusAppVersion 으로 덮는다(installing_nexus). 3.76.1 은 CE EULA
+	// 이전의 마지막 판이고, 3.64.0 의 비인증 경로 탐색(CVE-2024-4956) · OrientDB 원격 실행
+	// (CVE-2026-5189) · 하드코딩 암호화 키(CVE-2024-5764)가 고쳐져 있다. 3.71.0 부터 OrientDB
+	// 를 열지 못하므로 이미 3.64.0 으로 떠 있는 릴리스는 NexusImageTagForRelease 가 그대로 둔다.
+	//
 	// NexusCommunityEditionFirstAppVersion 은 Sonatype 이 무료판을 Community Edition
 	// EULA 로 바꾼 첫 버전(3.77.0, 2025-02-04)이다. 그 EULA 는 제품 내장·재배포·제3자
 	// 사용을 금지하므로 NexusAppVersion 은 이보다 낮아야 한다

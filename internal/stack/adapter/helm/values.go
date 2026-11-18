@@ -43,6 +43,8 @@ const (
 	// 이미지를 아무도 받지 못한다.
 	jenkinsImageRepository = "cloud-nullus/nullus/nullus-jenkins"
 	jenkinsImageTag        = "2.568.3"
+	// nexusImageRepository 는 Sonatype 공식 이미지다. 차트 기본값과 같다.
+	nexusImageRepository = "sonatype/nexus3"
 )
 
 func DefaultValues(stepName string) map[string]any {
@@ -382,6 +384,14 @@ func DefaultValues(stepName string) map[string]any {
 			// 차트 기본 이름은 {release}-nexus-repository-manager 라 길다.
 			// 연결정보와 CI 가 안내하는 주소를 짧게 유지하려고 맞춘다.
 			"fullnameOverride": domain.NexusServiceName,
+			// 차트(64.2.0)는 지원이 끊겨 appVersion 이 3.64.0 에 멈춰 있다 — 태그를 비우면
+			// 지원이 끝난 그 버전이 뜬다. 설치 버전은 domain.NexusAppVersion 이 정하고,
+			// 이미 OrientDB 시대 태그로 떠 있는 릴리스는 Install 이 그 태그를 지킨다
+			// (keepNexusDataFormat).
+			"image": map[string]any{
+				"repository": nexusImageRepository,
+				"tag":        domain.NexusAppVersion,
+			},
 			"nexus": map[string]any{
 				"env": []any{
 					// 기본 JVM 값(2703M)은 소규모 클러스터에서 스케줄되지 않는다.
